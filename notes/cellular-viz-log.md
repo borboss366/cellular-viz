@@ -17,12 +17,14 @@ _None yet. No screenshot verdicts posted._
 - 2026-10-21 · Researcher: Flow Lenia defaults θ_A=1, n=2, dt 0.2, s 0.65, search radius 5; reference uses 10 kernels up to radius 25 (too heavy for phone) → start with 1–3 kernels, R ≤ 13.
 - 2026-10-21 · User asked for one-tap copy of the setup. Dev added a **Copy setup** button to 01 and 02 (PR #3, merged 6bd91c2): copies experiment · preset, all params, grid, fps, time since reset, and a link that reopens the settings (fresh random seed, so not the same picture).
 - 2026-10-21 · User asked to keep this log on GitHub too → notes/cellular-viz-log.md in borboss366/cellular-viz (Pages: notes/cellular-viz-log.html). Lab Notes pushes updates.
+- 2026-10-21 · 03 audio-reactive Lenia merged (PR #4 was empty by mistake; files came in PR #5, 9459ea1). Orbium defaults R13 T10 μ0.15 σ0.015, polynomial growth; audio from Mic or File; bass beat pulse → flash/glow, μ nudge, blob inject (toggles); BPM via realtime-bpm-analyzer; `?size=512` option. Live at experiments/03-lenia-audio.html.
+- 2026-10-21 · 04 Lenia on a metronome merged (PR #6, 4196e98). Built-in Web Audio clock: BPM 60–180 (120), beats/bar 2–7, swing, humanize, grooves four/break/half/waltz; kick → μ / blob, snare → flash, hat → shimmer, pad → hue drift / σ ±0.001. Live at experiments/04-lenia-metronome.html.
+- 2026-10-21 20:38 · User asked for links to review. None of 01–04 browser-tested by Dev yet.
 
 ## Open
-- Step 1 (02 stall reseed + σ governor): Dev starting.
+- Step 1 (02 stall reseed + σ governor): not on main yet (checked 20:38).
 - Step 2 Flow Lenia, step 3 Particle Lenia: queued.
-- 03 beat sync: on hold until asked.
-- Fps on phone for 01 and 02: not reported yet.
+- Fps on phone for 01–04: not reported yet.
 
 ## Entries by CA type
 _Screenshot entries go here: date · experiment · CA type · exact params · verdict (keep / maybe / dull) · your words._
