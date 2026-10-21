@@ -1,0 +1,809 @@
+<!doctype html>
+<!--
+  04 · Lenia on a metronome
+
+  Lenia (as in 02/03) driven by a synthetic drum machine instead of real music,
+  so every pulse is known exactly. Lenia step, 256×256 torus (?size=512 for 512²):
+    U  = K * A                                (ring-weighted average around each cell)
+    G  = 2·max(0, 1 − (U − μ)² / (9σ²))⁴ − 1  (polynomial growth bump)
+    A' = clamp(A + G / T, 0, 1)
+  K is a ring of radius R with the bump exp(4 − 1/(r(1 − r))), normalised to sum 1.
+  Orbium: R 13, T 10, μ 0.15, σ 0.015.
+
+  Clock: the Web Audio clock. Every 25 ms a scheduler queues every 16th note that
+  falls in the next 100 ms (Chris Wilson's "tale of two clocks"). Each frame reads
+  ctx.currentTime, so the clicks and the visuals share one clock.
+  Lanes, the way music splits into bands and percussive vs harmonic parts:
+    kick  low band,  τ 150 ms     snare mid band, τ 120 ms
+    hat   high band, τ 40 ms      pad   smooth LFO over 1 or 4 bars (no hits)
+  A hit at time t0 gives  env = vel·(1 − e^(−dt/5ms))·e^(−dt/τ),  dt = now − t0.
+  vel is 1.0 on the bar's downbeat and 0.7 elsewhere. Swing delays odd 16ths by
+  swing × a 16th; humanize adds ±n ms of random timing to each hit.
+
+  Mappings (each toggles):
+    kick → μ  μ_eff = μ + 0.005·kick         kick → blob  mass blob on strong kicks
+    snare → flash  brightness + glow from U   hat → shimmer  sparkle on the mass
+    pad → hue  slow hue drift                 pad → σ  σ_eff = σ ± 0.001
+  The visuals only see the lane levels { kick, snare, hat, pad, beatPhase, barPhase }
+  from `lanes.read()`. A real-music analyser can later replace the metronome there.
+  Drawing: one finger paints mass, two fingers erase.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>04 · Lenia metronome</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
+    margin: 0 auto; flex: none; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre; pointer-events: none; }
+  #panel { flex: 1; overflow-y: auto; padding: 8px 12px 16px; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .row input[type=text] { flex: 1; min-width: 0; padding: 6px; border: 1px solid #2a3647;
+    border-radius: 6px; background: #0b111a; color: inherit;
+    font: 14px ui-monospace, Menlo, monospace; letter-spacing: 1px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 22%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  .maps button { flex-basis: 30%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: auto; height: 100dvh; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="padBars">pad 1 bar</button>
+  </div>
+  <div class="buttons" id="presets"></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="row"><label for="bpb">beats/bar</label><input id="bpb" type="range" min="2" max="7" step="1"><output id="bpbOut"></output></div>
+  <div class="row"><label for="swing">swing</label><input id="swing" type="range" min="0" max="0.3" step="0.01"><output id="swingOut"></output></div>
+  <div class="row"><label for="human">humanize ms</label><input id="human" type="range" min="0" max="10" step="1"><output id="humanOut"></output></div>
+  <div class="row"><label for="kick">kick</label><input id="kick" type="text" maxlength="16" spellcheck="false" autocomplete="off"></div>
+  <div class="row"><label for="snare">snare</label><input id="snare" type="text" maxlength="16" spellcheck="false" autocomplete="off"></div>
+  <div class="row"><label for="hat">hat</label><input id="hat" type="text" maxlength="16" spellcheck="false" autocomplete="off"></div>
+  <div class="buttons maps">
+    <button id="mKickMu">kick → μ</button>
+    <button id="mKickBlob">kick → blob</button>
+    <button id="mSnareFlash">snare → flash</button>
+    <button id="mHatShimmer">hat → shimmer</button>
+    <button id="mPadHue">pad → hue</button>
+    <button id="mPadSigma">pad → σ</button>
+  </div>
+  <div class="row"><label for="T">time T</label><input id="T" type="range" min="4" max="30" step="1"><output id="TOut"></output></div>
+  <div class="row"><label for="mu">growth μ</label><input id="mu" type="range" min="0.08" max="0.30" step="0.001"><output id="muOut"></output></div>
+  <div class="row"><label for="sigma">width σ</label><input id="sigma" type="range" min="0.005" max="0.040" step="0.0005"><output id="sigmaOut"></output></div>
+  <div class="buttons">
+    <button id="reset">Reset</button>
+    <button id="clear">Clear</button>
+    <button id="pause">Pause</button>
+    <button id="copy" class="wide">Copy setup</button>
+  </div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+const SIZE = query.get('size') === '512' ? 512 : 256;   // grid is SIZE × SIZE, wrapping
+const BRUSH = 10 * SIZE / 256;                          // finger brush radius in texels
+// kick → blob fires when the kick envelope rises past this. A downbeat (vel 1) stays above
+// 0.75 for ~35 ms, so even a 30 fps frame catches it; other kicks (vel 0.7) peak at ~0.61.
+const STRONG_KICK = 0.75;
+
+// Bert Chan's Orbium unicaudatus, 20×20, for R 13 T 10 μ 0.15 σ 0.015.
+const ORBIUM = [
+  [0,0,0,0,0,0,0.1,0.14,0.1,0,0,0.03,0.03,0,0,0.3,0,0,0,0],
+  [0,0,0,0,0,0.08,0.24,0.3,0.3,0.18,0.14,0.15,0.16,0.15,0.09,0.2,0,0,0,0],
+  [0,0,0,0,0,0.15,0.34,0.44,0.46,0.38,0.18,0.14,0.11,0.13,0.19,0.18,0.45,0,0,0],
+  [0,0,0,0,0.06,0.13,0.39,0.5,0.5,0.37,0.06,0,0,0,0.02,0.16,0.68,0,0,0],
+  [0,0,0,0.11,0.17,0.17,0.33,0.4,0.38,0.28,0.14,0,0,0,0,0,0.18,0.42,0,0],
+  [0,0,0.09,0.18,0.13,0.06,0.08,0.26,0.32,0.32,0.27,0,0,0,0,0,0,0.82,0,0],
+  [0.27,0,0.16,0.12,0,0,0,0.25,0.38,0.44,0.45,0.34,0,0,0,0,0,0.22,0.17,0],
+  [0,0.07,0.2,0.02,0,0,0,0.31,0.48,0.57,0.6,0.57,0,0,0,0,0,0,0.49,0],
+  [0,0.59,0.19,0,0,0,0,0.2,0.57,0.69,0.76,0.76,0.49,0,0,0,0,0,0.36,0],
+  [0,0.58,0.19,0,0,0,0,0,0.67,0.83,0.9,0.92,0.87,0.12,0,0,0,0,0.22,0.07],
+  [0,0,0.46,0,0,0,0,0,0.7,0.93,1,1,1,0.61,0,0,0,0,0.18,0.11],
+  [0,0,0.82,0,0,0,0,0,0.47,1,1,0.98,1,0.96,0.27,0,0,0,0.19,0.1],
+  [0,0,0.46,0,0,0,0,0,0.25,1,1,0.84,0.92,0.97,0.54,0.14,0.04,0.1,0.21,0.05],
+  [0,0,0,0.4,0,0,0,0,0.09,0.8,1,0.82,0.8,0.85,0.63,0.31,0.18,0.19,0.2,0.01],
+  [0,0,0,0.36,0.1,0,0,0,0.05,0.54,0.86,0.79,0.74,0.72,0.6,0.39,0.28,0.24,0.13,0],
+  [0,0,0,0.01,0.3,0.07,0,0,0.08,0.36,0.64,0.7,0.64,0.6,0.51,0.39,0.29,0.19,0.04,0],
+  [0,0,0,0,0.1,0.24,0.14,0.1,0.15,0.29,0.45,0.53,0.52,0.46,0.4,0.31,0.21,0.08,0,0],
+  [0,0,0,0,0,0.08,0.21,0.21,0.22,0.29,0.36,0.39,0.37,0.33,0.26,0.18,0.09,0,0,0],
+  [0,0,0,0,0,0,0.03,0.13,0.19,0.22,0.24,0.24,0.23,0.18,0.13,0.05,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0.02,0.06,0.08,0.09,0.07,0.05,0.01,0,0,0,0,0],
+];
+
+// Presets are grooves; the Lenia rule stays Orbium. Patterns are 16 steps of 16th
+// notes, x = hit, anything else = rest; a bar of n beats uses the first 4n steps.
+const PRESETS = {
+  four:  { bpm: 120, bpb: 4, swing: 0,    kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' },
+  break: { bpm: 96,  bpb: 4, swing: 0.15, kick: 'x.....x...x.....', snare: '....x.......x..x', hat: 'x.xxx.x.x.xxx.x.' },
+  half:  { bpm: 140, bpb: 4, swing: 0,    kick: 'x.........x.....', snare: '........x.......', hat: 'x.x.x.x.x.x.x.x.' },
+  waltz: { bpm: 90,  bpb: 3, swing: 0.1,  kick: 'x...............', snare: '....x...x.......', hat: 'x.x.x.x.x.x.....' },
+};
+
+const PALETTE = ['#040215', '#4c02a1', '#b52f8c', '#f68f44', '#f0f921'];   // plasma-like, dark → light
+
+const params = { preset: 'four', bpm: 120, bpb: 4, swing: 0, human: 0,
+                 kick: '', snare: '', hat: '', padBars: 1, muted: false,
+                 R: 13, T: 10, mu: 0.15, sigma: 0.015, paused: false };
+const maps = { mKickMu: false, mKickBlob: true, mSnareFlash: true,
+               mHatShimmer: true, mPadHue: true, mPadSigma: false };   // which mappings are on
+
+// ---------- Metronome: the lane source ----------
+// Everything the visuals need comes from metronome.read(); swap it for an analyser later.
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };   // decay per lane, seconds
+const LANES = ['kick', 'snare', 'hat'];
+
+const metronome = {
+  ctx: null, master: null, noise: null, timer: 0, playing: false,
+  nextTime: 0,   // grid time of the next 16th to schedule
+  step: 0,       // index of that 16th since Play
+  hits: [],      // {lane, time, vel}: scheduled hits, for the envelopes
+  steps: [],     // {time, step}: grid times of scheduled 16ths, for the phases
+
+  // Must run inside a tap: phones only let an AudioContext start from a user gesture.
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx;
+      this.master = ctx.createGain();
+      this.master.connect(ctx.destination);
+      // One second of white noise, reused by snare and hat clicks.
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume();
+    this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05;
+    this.step = 0;
+    this.hits = []; this.steps = [];
+    this.playing = true;
+    this.timer = setInterval(() => this.schedule(), 25);
+    this.schedule();
+  },
+
+  stop() {
+    clearInterval(this.timer);
+    this.playing = false;
+  },
+
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+
+  // Queue every 16th that starts within the next 100 ms.
+  schedule() {
+    const ctx = this.ctx;
+    while (this.nextTime < ctx.currentTime + 0.1) {
+      this.queueStep(this.step, this.nextTime);
+      this.nextTime += 60 / params.bpm / 4;
+      this.step++;
+    }
+    const old = ctx.currentTime - 1;   // forget what is long past
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+
+  queueStep(step, gridTime) {
+    const sixteenth = 60 / params.bpm / 4;
+    const stepsPerBar = params.bpb * 4;
+    const inBar = step % stepsPerBar;
+    const swung = gridTime + (step % 2 === 1 ? params.swing * sixteenth : 0);
+    this.steps.push({ time: gridTime, step });
+    for (const lane of LANES) {
+      if (params[lane][inBar % 16] !== 'x') continue;
+      const time = Math.max(this.ctx.currentTime,
+                            swung + (Math.random() * 2 - 1) * params.human / 1000);
+      const vel = inBar === 0 ? 1.0 : 0.7;
+      this.hits.push({ lane, time, vel });
+      this.click(lane, time, vel);
+    }
+  },
+
+  // Quiet clicks. Phone speakers barely play 60 Hz, so the kick sweeps 150 → 60 Hz.
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain();
+    g.connect(this.master);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') {
+      src = ctx.createOscillator();
+      src.frequency.setValueAtTime(150, t);
+      src.frequency.exponentialRampToValueAtTime(60, t + 0.08);
+      src.connect(g);
+    } else {
+      src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      const f = ctx.createBiquadFilter();
+      f.type = lane === 'snare' ? 'bandpass' : 'highpass';
+      f.frequency.value = lane === 'snare' ? 1800 : 8000;
+      src.connect(f); f.connect(g);
+    }
+    const end = t + TAU[lane] * 4;
+    g.gain.exponentialRampToValueAtTime(0.001, end);
+    src.start(t);
+    src.stop(end + 0.01);
+  },
+
+  // Lane levels and phases at the moment the listener hears.
+  read() {
+    const out = { kick: 0, snare: 0, hat: 0, pad: 0, beatPhase: 0, barPhase: 0 };
+    if (!this.ctx) return out;
+    const latency = Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0);
+    const now = this.ctx.currentTime - latency;
+
+    for (const h of this.hits) {
+      const dt = now - h.time;
+      if (dt < 0) continue;
+      const env = h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane]);
+      out[h.lane] = Math.max(out[h.lane], env);
+    }
+
+    // Phases from the latest 16th that has started.
+    let last = null;
+    for (const s of this.steps) if (s.time <= now) last = s;
+    if (last) {
+      const sixteenth = 60 / params.bpm / 4;
+      const frac = Math.min(1, (now - last.time) / sixteenth);
+      const stepsPerBar = params.bpb * 4;
+      const inBar = last.step % stepsPerBar;
+      out.beatPhase = ((inBar % 4) + frac) / 4;
+      out.barPhase = (inBar + frac) / stepsPerBar;
+      const bar = Math.floor(last.step / stepsPerBar) % params.padBars;
+      out.pad = 0.5 - 0.5 * Math.cos(2 * Math.PI * (bar + out.barPhase) / params.padBars);
+    }
+    return out;
+  },
+};
+const lanes = metronome;   // the visuals read lanes.read(); replace with an analyser later
+
+// ---------- WebGL setup ----------
+const canvas = document.getElementById('c');
+const hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: false });
+if (!gl) fail('WebGL2 is not available in this browser.');
+
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+
+// Fullscreen triangle generated from gl_VertexID, so no vertex buffers are needed.
+const VERT = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+// One Lenia step, plus the finger brush (a capsule uBrush.xy → uBrush.zw) and the kick blob.
+// State: r = A, g = trail (fading max of A, for looks), b = U (kept for the glow).
+const SIM = `#version 300 es
+precision highp float;
+uniform sampler2D uState;
+uniform sampler2D uKernel;  // (2R+1)² weights, already normalised to sum 1
+uniform int uR;
+uniform float uMu, uSigma, uDt;
+uniform vec4 uBrush;        // finger segment endpoints in texels
+uniform float uBrushR;      // finger brush radius in texels, 0 = not drawing
+uniform float uErase;       // 1 = finger erases
+uniform vec4 uBlob;         // kick blob: centre xy, radius, 0 = none
+uniform float uSeed;        // changes every frame so painted noise differs
+out vec4 outColor;
+
+float hash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+// Offset from c to the nearest copy of the point p on the torus.
+vec2 torusDelta(vec2 p, vec2 c, vec2 size) {
+  vec2 q = p - c;
+  return q - size * round(q / size);
+}
+
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  ivec2 s = textureSize(uState, 0);
+  vec2 size = vec2(s);
+  vec2 c = texelFetch(uState, p, 0).rg;
+
+  // U = K * A, skipping the corners of the square where the ring is zero.
+  float u = 0.0;
+  for (int dy = -uR; dy <= uR; dy++) {
+    int w = int(sqrt(float(uR * uR - dy * dy)));
+    for (int dx = -w; dx <= w; dx++) {
+      float k = texelFetch(uKernel, ivec2(dx + uR, dy + uR), 0).r;
+      u += k * texelFetch(uState, (p + ivec2(dx, dy) + s) % s, 0).r;
+    }
+  }
+
+  // Polynomial growth: 2·max(0, 1 − (U−μ)²/(9σ²))⁴ − 1
+  float d = (u - uMu) / uSigma;
+  float bump = max(0.0, 1.0 - d * d / 9.0);
+  float growth = 2.0 * bump * bump * bump * bump - 1.0;
+  float a = clamp(c.r + uDt * growth, 0.0, 1.0);
+
+  if (uBrushR > 0.0) {
+    vec2 q = torusDelta(gl_FragCoord.xy, uBrush.xy, size);
+    vec2 e = uBrush.zw - uBrush.xy;
+    float h = clamp(dot(q, e) / max(dot(e, e), 1e-6), 0.0, 1.0);
+    float inside = 1.0 - smoothstep(uBrushR * 0.6, uBrushR, length(q - e * h));
+    if (uErase > 0.5) a *= 1.0 - inside;
+    else a = max(a, inside * hash(gl_FragCoord.xy + uSeed));
+  }
+
+  if (uBlob.z > 0.0) {   // soft noisy disc: full noise in the middle, fading to the rim
+    float r = length(torusDelta(gl_FragCoord.xy, uBlob.xy, size)) / uBlob.z;
+    float inside = 1.0 - smoothstep(0.4, 1.0, r);
+    a = max(a, inside * hash(gl_FragCoord.xy + uSeed + 17.0));
+  }
+
+  float trail = max(a, c.g * (uDt > 0.0 ? 0.9 : 1.0));
+  outColor = vec4(a, trail, u, 1.0);
+}`;
+
+// Colour max(A, faded trail) through the gradient, then the lane effects.
+// uKick..uPad are 0..1 lane levels already multiplied by their mapping toggles;
+// uBeatPhase / uBarPhase are 0→1 saws, passed for mappings to come.
+const DRAW = `#version 300 es
+precision highp float;
+uniform sampler2D uState;
+uniform vec3 uPal[5];
+uniform float uKick, uSnare, uHat, uPad, uBeatPhase, uBarPhase;
+uniform float uTime;
+in vec2 vUv;
+out vec4 outColor;
+
+vec3 fetchAt(ivec2 p) {
+  ivec2 s = textureSize(uState, 0);
+  return texelFetch(uState, (p + s) % s, 0).rgb;
+}
+
+// Manual bilinear filter (float textures are not always filterable on phones).
+vec3 sampleAt(vec2 t) {
+  t -= 0.5;
+  ivec2 i = ivec2(floor(t));
+  vec2 f = fract(t);
+  vec3 v00 = fetchAt(i), v10 = fetchAt(i + ivec2(1, 0));
+  vec3 v01 = fetchAt(i + ivec2(0, 1)), v11 = fetchAt(i + ivec2(1, 1));
+  return mix(mix(v00, v10, f.x), mix(v01, v11, f.x), f.y);
+}
+
+vec3 palette(float t) {
+  t = clamp(t, 0.0, 1.0) * 4.0;
+  vec3 c = uPal[0];
+  for (int i = 0; i < 4; i++) c = mix(c, uPal[i + 1], clamp(t - float(i), 0.0, 1.0));
+  return c;
+}
+
+float hash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+// Rotate a colour's hue by angle a (radians) around the grey axis.
+vec3 hueRotate(vec3 c, float a) {
+  vec3 k = vec3(0.57735);
+  return c * cos(a) + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - cos(a));
+}
+
+void main() {
+  vec2 tc = vUv * vec2(textureSize(uState, 0));
+  vec3 v = sampleAt(tc);
+  float t = max(v.r, 0.35 * v.g);           // trail shows as faint mass
+  vec3 col = palette(pow(t, 0.8));
+
+  // hat: fast sparkle on the mass, new noise every frame
+  float n = hash(floor(tc * 2.0) + fract(uTime) * 100.0);
+  col *= 1.0 + uHat * 0.6 * (n - 0.5) * smoothstep(0.05, 0.4, t);
+
+  // snare: brightness flash plus a glow from U (a ring-blurred copy of A, a free bloom)
+  float glow = smoothstep(0.02, 0.3, v.b);
+  col = col * (1.0 + 0.5 * uSnare) + palette(0.8) * glow * 0.7 * uSnare;
+
+  // pad: slow hue drift, up to ±0.8 rad over the LFO
+  col = hueRotate(col, (uPad - 0.5) * 1.6);
+
+  outColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(s));
+  return s;
+}
+
+function program(fragSrc) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fragSrc));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(p));
+  const u = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) {
+    const name = gl.getActiveUniform(p, i).name.replace('[0]', '');
+    u[name] = gl.getUniformLocation(p, name);
+  }
+  return { p, u };
+}
+
+const simProg = program(SIM);
+const drawProg = program(DRAW);
+gl.bindVertexArray(gl.createVertexArray());   // empty VAO: positions come from gl_VertexID
+
+// ---------- Ping-pong state textures ----------
+// Prefer 32-bit floats; fall back to 16-bit where the phone only supports those.
+const hasF32 = gl.getExtension('EXT_color_buffer_float');
+const hasF16 = gl.getExtension('EXT_color_buffer_half_float');
+let targets = null, precisionLabel = '';
+for (const fmt of [hasF32 && gl.RGBA32F, (hasF32 || hasF16) && gl.RGBA16F].filter(Boolean)) {
+  targets = makeTargets(fmt);
+  if (targets) { precisionLabel = fmt === gl.RGBA32F ? 'f32' : 'f16'; break; }
+}
+if (!targets) fail('This device cannot render to float textures.');
+
+function makeTargets(internalFormat) {
+  const list = [];
+  for (let i = 0; i < 2; i++) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, SIZE, SIZE, 0, gl.RGBA, gl.FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) return null;
+    list.push({ tex, fbo });
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return list;
+}
+
+let cur = 0;   // index of the texture holding the current state
+let seededAt = performance.now();   // when the field was last reseeded, for Copy setup
+
+// ---------- Kernel texture ----------
+// Ring of radius R: weight exp(4 − 1/(r(1−r))) at r = distance/R, zero outside, sum 1.
+const kernelTex = gl.createTexture();
+let kernelR = 0;
+function buildKernel(R) {
+  const n = 2 * R + 1;
+  const w = new Float32Array(n * n);
+  let sum = 0;
+  for (let y = -R; y <= R; y++) for (let x = -R; x <= R; x++) {
+    const r = Math.hypot(x, y) / R;
+    const k = (r > 0 && r < 1) ? Math.exp(4 - 1 / (r * (1 - r))) : 0;
+    w[(y + R) * n + (x + R)] = k;
+    sum += k;
+  }
+  for (let i = 0; i < w.length; i++) w[i] /= sum;
+  gl.bindTexture(gl.TEXTURE_2D, kernelTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, n, n, 0, gl.RED, gl.FLOAT, w);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  kernelR = R;
+}
+
+// ---------- Seeding ----------
+// Copies of Orbium in random cells of a 6×6 layout (12×12 at 512²), each turned and
+// mirrored at random. count is for 256² and grows with the area; 0 clears the field.
+function seed(count) {
+  count = Math.round(count * (SIZE / 256) ** 2);
+  const data = new Float32Array(SIZE * SIZE * 4);
+  const put = (x, y, v) => {
+    const i = (((y % SIZE) + SIZE) % SIZE * SIZE + ((x % SIZE) + SIZE) % SIZE) * 4;
+    data[i] = Math.max(data[i], v);
+  };
+  const grid = SIZE === 512 ? 12 : 6;
+  const slots = [...Array(grid * grid).keys()].sort(() => Math.random() - 0.5).slice(0, count);
+  const cell = SIZE / grid, n = ORBIUM.length;
+  for (const slot of slots) {
+    const ox = Math.floor((slot % grid) * cell + Math.random() * (cell - n));
+    const oy = Math.floor(Math.floor(slot / grid) * cell + Math.random() * (cell - n));
+    const turn = Math.floor(Math.random() * 4), flip = Math.random() < 0.5;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      let [u, v] = [flip ? n - 1 - x : x, y];
+      for (let t = 0; t < turn; t++) [u, v] = [n - 1 - v, u];   // rotate 90°
+      put(ox + u, oy + v, ORBIUM[y][x]);
+    }
+  }
+  for (let i = 0; i < SIZE * SIZE; i++) { data[i * 4 + 1] = data[i * 4]; data[i * 4 + 3] = 1; }
+  gl.bindTexture(gl.TEXTURE_2D, targets[cur].tex);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, SIZE, SIZE, gl.RGBA, gl.FLOAT, data);
+  seededAt = performance.now();
+}
+
+// ---------- Touch / mouse drawing ----------
+// The first finger draws; while a second finger is down the brush erases.
+const pointer = { down: false, id: -1, x: 0, y: 0, lastX: 0, lastY: 0 };
+const activePointers = new Set();
+
+function toGrid(e) {
+  const r = canvas.getBoundingClientRect();
+  return [(e.clientX - r.left) / r.width * SIZE, (1 - (e.clientY - r.top) / r.height) * SIZE];
+}
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  activePointers.add(e.pointerId);
+  if (pointer.down) return;
+  [pointer.x, pointer.y] = toGrid(e);
+  pointer.lastX = pointer.x; pointer.lastY = pointer.y;
+  pointer.down = true; pointer.id = e.pointerId;
+});
+canvas.addEventListener('pointermove', e => {
+  if (pointer.down && e.pointerId === pointer.id) [pointer.x, pointer.y] = toGrid(e);
+});
+for (const ev of ['pointerup', 'pointercancel']) canvas.addEventListener(ev, e => {
+  activePointers.delete(e.pointerId);
+  if (e.pointerId === pointer.id) pointer.down = false;
+});
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+
+$('play').onclick = () => {
+  if (metronome.playing) metronome.stop(); else metronome.start();
+  $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', metronome.playing);
+};
+$('mute').onclick = () => {
+  params.muted = !params.muted;
+  metronome.setMuted(params.muted);
+  syncButtons();
+};
+$('padBars').onclick = () => { params.padBars = params.padBars === 1 ? 4 : 1; syncButtons(); };
+
+const presetBox = $('presets');
+for (const name of Object.keys(PRESETS)) {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.onclick = () => applyPreset(name);
+  presetBox.appendChild(b);
+}
+
+function hexToRgb(h) { return [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255); }
+const paletteFlat = PALETTE.flatMap(hexToRgb);
+
+let basePreset = 'four';   // last groove picked
+function applyPreset(name) {
+  basePreset = name;
+  Object.assign(params, PRESETS[name], { preset: name });
+  for (const b of presetBox.children) b.classList.toggle('on', b.textContent === name);
+  syncControls();
+}
+function markCustom() {   // hand-tuned values no longer match a preset
+  params.preset = 'custom';
+  for (const b of presetBox.children) b.classList.remove('on');
+}
+
+// Patterns: 16 characters, x = hit, everything else a rest.
+function cleanPattern(s) {
+  return (String(s).toLowerCase().replace(/[^x]/g, '.') + '.'.repeat(16)).slice(0, 16);
+}
+for (const lane of LANES) {
+  $(lane).addEventListener('input', e => { params[lane] = cleanPattern(e.target.value); markCustom(); });
+  $(lane).addEventListener('change', e => { e.target.value = params[lane]; });
+}
+
+const sliders = { bpm: 0, bpb: 0, swing: 2, human: 0, T: 0, mu: 3, sigma: 4 };   // name → decimals shown
+const grooveSliders = ['bpm', 'bpb', 'swing', 'human'];
+function syncControls() {
+  for (const [name, dec] of Object.entries(sliders)) {
+    $(name).value = params[name];
+    $(name + 'Out').textContent = Number(params[name]).toFixed(dec);
+  }
+  for (const lane of LANES) $(lane).value = params[lane];
+  syncButtons();
+}
+for (const [name, dec] of Object.entries(sliders)) {
+  $(name).addEventListener('input', e => {
+    params[name] = parseFloat(e.target.value);
+    $(name + 'Out').textContent = params[name].toFixed(dec);
+    if (grooveSliders.includes(name)) markCustom();
+  });
+}
+function syncButtons() {
+  for (const name of Object.keys(maps)) $(name).classList.toggle('on', maps[name]);
+  $('mute').classList.toggle('on', params.muted);
+  $('padBars').textContent = `pad ${params.padBars} bar${params.padBars > 1 ? 's' : ''}`;
+}
+for (const name of Object.keys(maps)) $(name).onclick = () => { maps[name] = !maps[name]; syncButtons(); };
+
+$('reset').onclick = () => seed(5);
+$('clear').onclick = () => seed(0);
+$('pause').onclick = e => { params.paused = !params.paused; e.target.classList.toggle('on', params.paused); };
+
+function mapsLabel() {
+  const names = { mKickMu: 'kick→μ', mKickBlob: 'kick→blob', mSnareFlash: 'snare→flash',
+                  mHatShimmer: 'hat→shimmer', mPadHue: 'pad→hue', mPadSigma: 'pad→σ' };
+  const on = Object.keys(maps).filter(m => maps[m]).map(m => names[m]);
+  return on.length ? on.join(' ') : 'none';
+}
+
+// ---------- Copy setup ----------
+// One tap copies the settings as text plus a link that reopens this exact setup.
+// The link's query (?preset=four&bpm=120&...&kick=x...x...) is read back by loadFromUrl().
+const urlKeys = [...Object.keys(sliders), ...LANES, 'padBars'];
+function setupLink() {
+  const q = new URLSearchParams({ preset: basePreset });
+  for (const name of urlKeys) q.set(name, params[name]);
+  for (const name of Object.keys(maps)) q.set(name, maps[name] ? 1 : 0);
+  q.set('muted', params.muted ? 1 : 0);
+  if (SIZE !== 256) q.set('size', SIZE);
+  return location.origin + location.pathname + '?' + q;
+}
+function setupText() {
+  const secs = Math.round((performance.now() - seededAt) / 1000);
+  return `04 · Lenia metronome · ${params.preset}` + (params.preset === 'custom' ? ` (from ${basePreset})` : '') + '\n' +
+    `${params.bpm} bpm ${params.bpb}/4 swing ${params.swing.toFixed(2)} humanize ${params.human} ms · pad ${params.padBars} bar\n` +
+    `kick ${params.kick}  snare ${params.snare}  hat ${params.hat}\n` +
+    `maps: ${mapsLabel()}\n` +
+    `R ${params.R}  T ${params.T}  μ ${params.mu.toFixed(3)}  σ ${params.sigma.toFixed(4)}\n` +
+    `${SIZE}² ${precisionLabel} · ${fps} fps · ${secs}s since reset\n` +
+    setupLink();
+}
+$('copy').onclick = async e => {
+  const text = setupText(), btn = e.target;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch {   // older browsers or no clipboard permission: fall back to a hidden textarea
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    ok = document.execCommand('copy'); ta.remove();
+  }
+  if (!ok) { prompt('Copy this:', text); return; }
+  btn.textContent = 'Copied ✓';
+  setTimeout(() => { btn.textContent = 'Copy setup'; }, 1500);
+};
+
+function loadFromUrl() {
+  applyPreset(PRESETS[query.get('preset')] ? query.get('preset') : 'four');
+  let changed = false;
+  for (const name of Object.keys(sliders)) {
+    const v = parseFloat(query.get(name));
+    if (Number.isNaN(v) || v === params[name]) continue;
+    params[name] = v;
+    if (grooveSliders.includes(name)) changed = true;
+  }
+  for (const lane of LANES) {
+    if (!query.has(lane)) continue;
+    const p = cleanPattern(query.get(lane));
+    if (p !== params[lane]) { params[lane] = p; changed = true; }
+  }
+  if (query.get('padBars') === '4') params.padBars = 4;
+  for (const name of Object.keys(maps)) if (query.has(name)) maps[name] = query.get(name) === '1';
+  params.muted = query.get('muted') === '1';
+  if (changed) markCustom();
+  syncControls();
+  seed(5);
+}
+
+// ---------- Main loop ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(1024, Math.round(canvas.clientWidth * dpr));
+  const h = Math.min(1024, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+
+// One step. When paused (dt 0) it still runs so the brush keeps working.
+function step(dt, mu, sigma, blob) {
+  if (kernelR !== params.R) buildKernel(params.R);
+  const next = 1 - cur;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, targets[next].fbo);
+  gl.viewport(0, 0, SIZE, SIZE);
+  gl.useProgram(simProg.p);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, targets[cur].tex);
+  gl.uniform1i(simProg.u.uState, 0);
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, kernelTex);
+  gl.uniform1i(simProg.u.uKernel, 1);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.uniform1i(simProg.u.uR, params.R);
+  gl.uniform1f(simProg.u.uMu, mu);
+  gl.uniform1f(simProg.u.uSigma, sigma);
+  gl.uniform1f(simProg.u.uDt, dt);
+  gl.uniform4f(simProg.u.uBrush, pointer.lastX, pointer.lastY, pointer.x, pointer.y);
+  gl.uniform1f(simProg.u.uBrushR, pointer.down ? BRUSH : 0);
+  gl.uniform1f(simProg.u.uErase, activePointers.size > 1 ? 1 : 0);
+  gl.uniform4f(simProg.u.uBlob, ...(blob || [0, 0, 0, 0]));
+  gl.uniform1f(simProg.u.uSeed, Math.random() * 1000);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  cur = next;
+}
+
+const bar = v => '█'.repeat(Math.round(v * 8)).padEnd(8, '·');   // HUD level meter
+
+let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
+let prevKick = 0, blobs = 0;
+function frame(now) {
+  resize();
+  const L = lanes.read();   // the only place the visuals learn about the music
+
+  // Mappings: lane levels → rule tweaks and shader inputs.
+  const muEff = params.mu + (maps.mKickMu ? 0.005 * L.kick : 0);
+  const sigmaEff = params.sigma + (maps.mPadSigma ? 0.001 * (2 * L.pad - 1) : 0);
+  let blob = null;
+  if (maps.mKickBlob && !params.paused && L.kick >= STRONG_KICK && prevKick < STRONG_KICK) {
+    blob = [Math.random() * SIZE, Math.random() * SIZE, params.R * (1 + 0.6 * Math.random()), 1];
+    blobs++;
+  }
+  prevKick = L.kick;
+
+  if (!params.paused) step(1 / params.T, muEff, sigmaEff, blob);
+  else if (pointer.down) step(0, muEff, sigmaEff, null);
+  pointer.lastX = pointer.x; pointer.lastY = pointer.y;
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(drawProg.p);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, targets[cur].tex);
+  gl.uniform1i(drawProg.u.uState, 0);
+  gl.uniform3fv(drawProg.u.uPal, paletteFlat);
+  gl.uniform1f(drawProg.u.uKick, L.kick);
+  gl.uniform1f(drawProg.u.uSnare, maps.mSnareFlash ? L.snare : 0);
+  gl.uniform1f(drawProg.u.uHat, maps.mHatShimmer ? L.hat : 0);
+  gl.uniform1f(drawProg.u.uPad, maps.mPadHue ? L.pad : 0.5);   // 0.5 = no hue shift
+  gl.uniform1f(drawProg.u.uBeatPhase, L.beatPhase);
+  gl.uniform1f(drawProg.u.uBarPhase, L.barPhase);
+  gl.uniform1f(drawProg.u.uTime, now / 1000);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  frames++;
+  if (now - lastFpsTime > 500) {
+    fps = Math.round(frames * 1000 / (now - lastFpsTime));
+    frames = 0; lastFpsTime = now;
+  }
+  if (now - lastHud > 100) {   // fast enough to watch the envelopes
+    lastHud = now;
+    const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    hud.textContent =
+      `metronome · ${params.preset} · ${params.bpm} bpm ${params.bpb}/4 · ${state}\n` +
+      `kick  ${bar(L.kick)} ${L.kick.toFixed(2)}   beat ${L.beatPhase.toFixed(2)}\n` +
+      `snare ${bar(L.snare)} ${L.snare.toFixed(2)}   bar  ${L.barPhase.toFixed(2)}\n` +
+      `hat   ${bar(L.hat)} ${L.hat.toFixed(2)}\n` +
+      `pad   ${bar(L.pad)} ${L.pad.toFixed(2)}   ${blobs} blobs\n` +
+      `R ${params.R} T ${params.T} μ ${muEff.toFixed(4)} σ ${sigmaEff.toFixed(4)}\n` +
+      `${SIZE}² ${precisionLabel} · ${fps} fps`;
+  }
+  requestAnimationFrame(frame);
+}
+
+loadFromUrl();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
