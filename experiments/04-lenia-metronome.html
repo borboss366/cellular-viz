@@ -34,14 +34,16 @@
   over ~2 s so single kick blobs don't count as crowding; activity = mean |ΔA|
   per unit time from the Lenia rule only (painting and kick blobs are not counted,
   so a beat landing never looks like motion). Then:
-    crowded (cover > 40%, until < 25%) → base σ drifts down, and on every
-            downbeat (every 2 s when stopped) a soft hole is cut at a random spot
-            instead of the kick blob. Lowering σ alone can't clear a dense soup.
-    sparse  (cover < 10%)  → base σ drifts back up to the slider value
-    still   (activity/mass < 1% for 3 s, or empty) → if cover < 20%: two Orbiums
-            plus one noisy blob drop in (Orbiums alone may not survive this
-            rule's polynomial growth; the blob always restarts growth), else σ drops
-  pad → σ still wobbles around that base. Thresholds are first guesses.
+  Two sliders set the band Auto aims for (defaults 10% and 40%):
+    crowded (cover > "thin above", until 15 points lower) → base σ drifts down,
+            and on every downbeat (every 2 s when stopped) a soft hole is cut at a
+            random spot instead of the kick blob. Lowering σ alone can't clear a soup.
+    sparse  (cover < "refill below") → base σ drifts back up to the slider value,
+            and after 3 s two Orbiums plus one noisy blob drop in (again every 3 s
+            until the cover is back above the line)
+    still   (activity/mass < 1% for 3 s) → the same reseed if cover is under half
+            of "thin above", else σ drops
+  pad → σ still wobbles around that base.
 -->
 <html lang="en">
 <head>
@@ -120,11 +122,14 @@
   <div class="row"><label for="T">time T</label><input id="T" type="range" min="4" max="30" step="1"><output id="TOut"></output></div>
   <div class="row"><label for="mu">growth μ</label><input id="mu" type="range" min="0.08" max="0.30" step="0.001"><output id="muOut"></output></div>
   <div class="row"><label for="sigma">width σ</label><input id="sigma" type="range" min="0.005" max="0.040" step="0.0005"><output id="sigmaOut"></output></div>
+  <div class="row"><label for="fill">refill below %</label><input id="fill" type="range" min="0" max="50" step="1"><output id="fillOut"></output></div>
+  <div class="row"><label for="thin">thin above %</label><input id="thin" type="range" min="10" max="95" step="1"><output id="thinOut"></output></div>
   <div class="buttons">
     <button id="reset">Reset</button>
     <button id="clear">Clear</button>
     <button id="pause">Pause</button>
     <button id="auto" class="on">Auto</button>
+    <button id="hudMode">Info: full</button>
     <button id="copy" class="wide">Copy setup</button>
   </div>
   <a href="../index.html">← all experiments</a>
@@ -177,14 +182,15 @@ const PALETTE = ['#040215', '#4c02a1', '#b52f8c', '#f68f44', '#f0f921'];   // pl
 
 const params = { preset: 'four', bpm: 120, bpb: 4, swing: 0, human: 0,
                  kick: '', snare: '', hat: '', padBars: 1, muted: false,
-                 R: 13, T: 10, mu: 0.15, sigma: 0.015, paused: false };
+                 R: 13, T: 10, mu: 0.15, sigma: 0.015, paused: false,
+                 fill: 10, thin: 40, hudShort: false };   // fill/thin: Auto's cover band, %
 // Auto keeps the field alive (see the comment at the top). sigma is the base σ the rule uses.
-const AUTO = { crowdOn: 0.40, crowdOff: 0.25, sparse: 0.10, dropBelow: 0.20,   // cover fractions
+const AUTO = { hysteresis: 0.15, refillSecs: 3,   // crowded stays on until cover drops 15 points
                frozen: 0.01, frozenSecs: 3, smoothSecs: 2,
                sigmaStep: 0.0006, sigmaFloor: 0.5,   // sigmaFloor: fraction of slider σ
                cutRadius: 0.2, cutEverySecs: 2, checkEvery: 15 };   // cutRadius: fraction of the grid
 const auto = { on: true, sigma: 0.015, mass: 0, cover: 0, coverSmooth: 0, activity: 0,
-               crowded: false, frozenSince: null, lastCheck: 0, lastCut: 0, cuts: 0, drops: 0,
+               crowded: false, frozenSince: null, sparseSince: null, lastCheck: 0, lastCut: 0, cuts: 0, drops: 0,
                pendingBlob: false, note: '', noteUntil: 0 };
 
 const maps = { mKickMu: false, mKickBlob: true, mSnareFlash: true,
@@ -637,7 +643,7 @@ function seed(count) {
   gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, SIZE, SIZE, gl.RGBA, gl.FLOAT, data);
   seededAt = performance.now();
   auto.sigma = params.sigma;
-  auto.frozenSince = null;
+  auto.frozenSince = null; auto.sparseSince = null;
   auto.coverSmooth = -1;   // -1: take the next reading as is
   auto.crowded = false;
 }
@@ -715,7 +721,8 @@ for (const lane of LANES) {
   $(lane).addEventListener('change', e => { e.target.value = params[lane]; });
 }
 
-const sliders = { bpm: 0, bpb: 0, swing: 2, human: 0, T: 0, mu: 3, sigma: 4 };   // name → decimals shown
+const sliders = { bpm: 0, bpb: 0, swing: 2, human: 0, T: 0, mu: 3, sigma: 4,
+                  fill: 0, thin: 0 };   // name → decimals shown
 const grooveSliders = ['bpm', 'bpb', 'swing', 'human'];
 function syncControls() {
   for (const [name, dec] of Object.entries(sliders)) {
@@ -743,6 +750,8 @@ for (const name of Object.keys(maps)) $(name).onclick = () => { maps[name] = !ma
 $('reset').onclick = () => seed(5);
 $('clear').onclick = () => seed(0);
 $('pause').onclick = e => { params.paused = !params.paused; e.target.classList.toggle('on', params.paused); };
+function syncHudButton() { $('hudMode').textContent = params.hudShort ? 'Info: short' : 'Info: full'; }
+$('hudMode').onclick = () => { params.hudShort = !params.hudShort; syncHudButton(); };
 $('auto').onclick = () => {
   auto.on = !auto.on; auto.sigma = params.sigma; auto.frozenSince = null;
   $('auto').classList.toggle('on', auto.on);
@@ -780,19 +789,24 @@ function autoCheck(now) {
   auto.coverSmooth = auto.coverSmooth < 0 ? auto.cover : auto.coverSmooth + k * (auto.cover - auto.coverSmooth);
 
   const ceiling = params.sigma, floor = params.sigma * AUTO.sigmaFloor;
-  // Hysteresis: start thinning above 40% cover, keep at it until below 25%.
-  if (auto.coverSmooth > AUTO.crowdOn) auto.crowded = true;
-  if (auto.coverSmooth < AUTO.crowdOff) auto.crowded = false;
+  // The band from the two sliders; thin is kept at least 5 points above fill.
+  const cover = auto.coverSmooth;
+  const fill = params.fill / 100, thin = Math.max(params.thin, params.fill + 5) / 100;
+  // Hysteresis: start thinning above "thin above", keep at it until 15 points lower.
+  if (cover > thin) auto.crowded = true;
+  if (cover < Math.max(fill, thin - AUTO.hysteresis)) auto.crowded = false;
   const crowded = auto.crowded;
   const stillNow = auto.activity < AUTO.frozen * Math.max(auto.mass, 1e-6);
   auto.frozenSince = stillNow ? (auto.frozenSince ?? now) : null;
   const frozen = auto.frozenSince !== null && now - auto.frozenSince > AUTO.frozenSecs * 1000;
+  auto.sparseSince = cover < fill ? (auto.sparseSince ?? now) : null;
+  const sparseLong = auto.sparseSince !== null && now - auto.sparseSince > AUTO.refillSecs * 1000;
 
-  if (frozen && auto.coverSmooth < AUTO.dropBelow) {   // empty or stuck sparse: new creatures
+  if (sparseLong || (frozen && cover < thin / 2)) {   // too empty or stuck: new creatures
     dropOrbium(); dropOrbium();
     auto.pendingBlob = true;   // frame() adds one noisy blob on the next step
     auto.sigma = ceiling;
-    auto.frozenSince = null;
+    auto.frozenSince = null; auto.sparseSince = null;   // wait another 3 s before the next one
     auto.drops++;
     auto.note = 'reseeded'; auto.noteUntil = now + 2000;   // keep it on screen long enough to read
   } else if (now < auto.noteUntil) {
@@ -800,7 +814,7 @@ function autoCheck(now) {
   } else if (crowded || frozen) {
     auto.sigma = Math.max(floor, auto.sigma - AUTO.sigmaStep);
     auto.note = 'thinning';
-  } else if (auto.coverSmooth < AUTO.sparse && auto.sigma < ceiling) {
+  } else if (cover < fill && auto.sigma < ceiling) {
     auto.sigma = Math.min(ceiling, auto.sigma + AUTO.sigmaStep);
     auto.note = 'regrowing';
   } else {
@@ -814,7 +828,7 @@ function autoLine() {
   const moving = auto.mass > 1e-6 ? auto.activity / auto.mass : 0;
   return `auto σ ${auto.sigma.toFixed(4)} · cover ${(Math.max(0, auto.coverSmooth) * 100).toFixed(0)}% · ` +
          `mass ${(auto.mass * 100).toFixed(1)}% · moving ${(moving * 100).toFixed(1)}% · ` +
-         `${auto.note} · ${auto.cuts} cuts · ${auto.drops} reseeds`;
+         `${auto.note} · band ${params.fill}–${params.thin}% · ${auto.cuts} cuts · ${auto.drops} reseeds`;
 }
 
 function mapsLabel() {
@@ -834,6 +848,7 @@ function setupLink() {
   for (const name of Object.keys(maps)) q.set(name, maps[name] ? 1 : 0);
   q.set('muted', params.muted ? 1 : 0);
   q.set('auto', auto.on ? 1 : 0);
+  if (params.hudShort) q.set('hud', 'short');
   if (SIZE !== 256) q.set('size', SIZE);
   return location.origin + location.pathname + '?' + q;
 }
@@ -880,6 +895,8 @@ function loadFromUrl() {
   for (const name of Object.keys(maps)) if (query.has(name)) maps[name] = query.get(name) === '1';
   params.muted = query.get('muted') === '1';
   if (query.get('auto') === '0') { auto.on = false; $('auto').classList.remove('on'); }
+  params.hudShort = query.get('hud') === 'short';
+  syncHudButton();
   if (changed) markCustom();
   syncControls();
   seed(5);   // also sets Auto's base σ to the slider value
@@ -976,7 +993,10 @@ function frame(now) {
   if (now - lastHud > 100) {   // fast enough to watch the envelopes
     lastHud = now;
     const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
-    hud.textContent =
+    hud.textContent = params.hudShort
+      ? `${params.preset} · ${params.bpm} bpm · ${state} · ${fps} fps · ` +
+        (auto.on ? `cover ${(Math.max(0, auto.coverSmooth) * 100).toFixed(0)}% · ${auto.note}` : 'auto off')
+      :
       `metronome · ${params.preset} · ${params.bpm} bpm ${params.bpb}/4 · ${state}\n` +
       `kick  ${bar(L.kick)} ${L.kick.toFixed(2)}   beat ${L.beatPhase.toFixed(2)}\n` +
       `snare ${bar(L.snare)} ${L.snare.toFixed(2)}   bar  ${L.barPhase.toFixed(2)}\n` +
