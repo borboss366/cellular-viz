@@ -30,8 +30,9 @@
 
   Auto (on by default, as in 02) keeps the field from filling up or dying out.
   Every 15 frames the state is averaged to a 64×64 summary and read back:
-  cover = share of cells with A > 0.1 (how much of the screen is lit), smoothed
-  over ~2 s so single kick blobs don't count as crowding; activity = mean |ΔA|
+  cover = share of 16×16-cell patches holding anything lit (A > 0.1), smoothed
+  over ~2 s (counting patches, not lit cells, so a screen full of thin rings or
+  worms reads as full even when most cells between them are dark) so single kick blobs don't count as crowding; activity = mean |ΔA|
   per unit time from the Lenia rule only (painting and kick blobs are not counted,
   so a beat landing never looks like motion). Then:
   Two sliders set the band Auto aims for (defaults 10% and 40%):
@@ -41,7 +42,7 @@
     sparse  (cover < "refill below") → base σ drifts back up to the slider value,
             and after 3 s two Orbiums plus one noisy blob drop in (again every 3 s
             until the cover is back above the line)
-    still   (activity/mass < 1% for 3 s) → the same reseed if cover is under half
+    still   (activity/mass < 2.5% for 3 s) → the same reseed if cover is under half
             of "thin above", else σ drops
   pad → σ still wobbles around that base.
 -->
@@ -186,7 +187,7 @@ const params = { preset: 'four', bpm: 120, bpb: 4, swing: 0, human: 0,
                  fill: 10, thin: 40, hudShort: false };   // fill/thin: Auto's cover band, %
 // Auto keeps the field alive (see the comment at the top). sigma is the base σ the rule uses.
 const AUTO = { hysteresis: 0.15, refillSecs: 3,   // crowded stays on until cover drops 15 points
-               frozen: 0.01, frozenSecs: 3, smoothSecs: 2,
+               frozen: 0.025, frozenSecs: 3, smoothSecs: 2,   // frozen: still rings read ~1%
                sigmaStep: 0.0006, sigmaFloor: 0.5,   // sigmaFloor: fraction of slider σ
                cutRadius: 0.2, cutEverySecs: 2, checkEvery: 15 };   // cutRadius: fraction of the grid
 const auto = { on: true, sigma: 0.015, mass: 0, cover: 0, coverSmooth: 0, activity: 0,
@@ -770,17 +771,28 @@ function autoCheck(now) {
   const px = statsTarget.pixels;
   gl.readPixels(0, 0, STATS_SIZE, STATS_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, px);
 
-  let mass = 0, activity = 0, lit = 0;
+  let mass = 0, activity = 0;
   for (let i = 0; i < px.length; i += 4) {
     mass += px[i] / 255;
     const g = px[i + 1] / 255;
     activity += g * g;
-    lit += px[i + 2] / 255;
   }
   const n = STATS_SIZE * STATS_SIZE;
   auto.mass = mass / n;
   auto.activity = activity / n;
-  auto.cover = lit / n;
+
+  // Cover: group the summary texels (4×4 cells each) into 4×4 patches = 16×16 cells,
+  // and count the patches where any cell is lit (blue channel > 0).
+  const PATCH = 4, patchesPerSide = STATS_SIZE / PATCH;
+  let occupied = 0;
+  for (let py = 0; py < patchesPerSide; py++) for (let qx = 0; qx < patchesPerSide; qx++) {
+    let any = false;
+    for (let y = 0; y < PATCH && !any; y++) for (let x = 0; x < PATCH; x++) {
+      if (px[((py * PATCH + y) * STATS_SIZE + qx * PATCH + x) * 4 + 2] > 0) { any = true; break; }
+    }
+    if (any) occupied++;
+  }
+  auto.cover = occupied / (patchesPerSide * patchesPerSide);
 
   // Smooth cover over ~2 s so the bump from each kick blob averages out.
   const dt = Math.min(1, (now - (auto.lastCheck || now)) / 1000);
