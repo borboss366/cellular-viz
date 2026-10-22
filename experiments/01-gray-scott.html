@@ -22,7 +22,9 @@
 <title>01 · Gray-Scott</title>
 <style>
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: #05070c; color: #e8eef5;
+  /* The page scrolls as a whole, so the controls are reachable in any viewer (in-app
+     browsers can report a viewport taller than what is visible). */
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
     font: 14px/1.3 system-ui, -apple-system, sans-serif; }
   body { display: flex; flex-direction: column; }
   #wrap { position: relative; width: min(100vw, calc(100vh - 230px)); width: min(100vw, calc(100dvh - 230px)); aspect-ratio: 1;
@@ -31,8 +33,8 @@
   canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
   #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
     background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
-    white-space: pre; pointer-events: none; }
-  #panel { flex: 1; min-height: 200px; overflow-y: auto; padding: 8px 12px 16px; }
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
   .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
   .row label { width: 92px; flex: none; color: #9fb0c3; }
   .row input[type=range] { flex: 1; }
@@ -45,7 +47,8 @@
   a { color: #7fb4e6; }
   @media (orientation: landscape) {
     body { flex-direction: row; }
-    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0; }
+    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0;
+      position: sticky; top: 0; align-self: flex-start; }   /* picture stays while the panel scrolls */
     #panel { min-height: 0; min-width: 38vw; }
   }
 </style>
