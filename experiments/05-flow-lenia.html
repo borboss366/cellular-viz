@@ -1,0 +1,674 @@
+<!doctype html>
+<!--
+  05 · Flow Lenia
+
+  Lenia where mass is moved instead of created or destroyed (Plantec et al. 2023,
+  "Flow-Lenia"), so the field can never fill up or die out: the total mass stays
+  the same forever. Three passes per step on a 256×256 torus:
+
+    1. growth   G = 2·exp(−(U − μ)² / 2σ²) − 1,   U = K * A
+                K = ring of radius R, profile exp(−((r − 0.5)/0.15)²/2), sum 1
+    2. flow     F = (1 − α)·∇G − α·∇A,   α = clamp(A², 0, 1)   (∇ = 3×3 Sobel)
+                mass climbs towards high growth, but crowded mass pushes outwards
+    3. move     every cell sends its mass to  x + clamp(dt·F, −(dd − s), dd − s)
+                spread as a square of half-width s; each cell collects what lands
+                on it ("reintegration tracking", dd = 3, so 7×7 cells are read)
+
+  No settings are known that give stable gliders, so Randomize picks μ in
+  0.05–0.5 and σ in 0.001–0.18 (the paper's search range) and reseeds.
+  Touch: Stir (default) drags mass along with your finger; Paint adds noisy
+  mass; two fingers or Erase remove it (painting and erasing change the total).
+  View: mass through a colour gradient, or flow direction as hue.
+  WebGL2, float render targets (32-bit if available, else 16-bit).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>05 · Flow Lenia</title>
+<style>
+  * { box-sizing: border-box; }
+  /* The page scrolls as a whole, so the controls are reachable in any viewer (in-app
+     browsers can report a viewport taller than what is visible). */
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
+    margin: 0 auto; flex: none; }
+  /* Absolute so the canvas size never feeds back into the layout. */
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
+  #hint { position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+    padding: 6px 12px; border-radius: 16px; background: rgba(0,0,0,.6); font-size: 13px;
+    white-space: nowrap; pointer-events: none; transition: opacity .6s; }
+  #hint.gone { opacity: 0; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0;
+      position: sticky; top: 0; align-self: flex-start; }   /* picture stays while the panel scrolls */
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hint">✍︎ Drag to stir · two fingers erase</div>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons" id="presets"></div>
+  <div class="buttons">
+    <button id="randomize" class="wide">🎲 Randomize μ and σ</button>
+  </div>
+  <div class="row"><label for="mu">growth μ</label><input id="mu" type="range" min="0.05" max="0.5" step="0.001"><output id="muOut"></output></div>
+  <div class="row"><label for="sigma">width σ</label><input id="sigma" type="range" min="0.001" max="0.18" step="0.001"><output id="sigmaOut"></output></div>
+  <div class="row"><label for="R">radius R</label><input id="R" type="range" min="8" max="18" step="1"><output id="ROut"></output></div>
+  <div class="row"><label for="dt">time step dt</label><input id="dt" type="range" min="0.05" max="0.5" step="0.01"><output id="dtOut"></output></div>
+  <div class="row"><label for="spread">spread s</label><input id="spread" type="range" min="0.3" max="1.2" step="0.01"><output id="spreadOut"></output></div>
+  <div class="row"><label for="steps">steps/frame</label><input id="steps" type="range" min="1" max="4" step="1"><output id="stepsOut"></output></div>
+  <div class="row"><label for="brush">brush</label><input id="brush" type="range" min="4" max="30" step="1"><output id="brushOut"></output></div>
+  <div class="buttons">
+    <button id="mode">Touch: stir</button>
+    <button id="view">View: mass</button>
+    <button id="erase">Erase</button>
+  </div>
+  <div class="buttons">
+    <button id="reset">Reseed</button>
+    <button id="pause">Pause</button>
+    <button id="copy" class="wide">Copy setup</button>
+  </div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const SIZE = 256;   // grid is SIZE × SIZE, wrapping at the edges
+const DD = 3;       // how far mass may travel per step, in cells (the move pass reads 7×7)
+
+// Starting points; the rule is the same, only μ/σ and the seeding change.
+// None of these is a known creature: use them, then Randomize and keep what you like.
+const PRESETS = {
+  calm:  { mu: 0.15, sigma: 0.015, seed: 'centre', palette: ['#03040c', '#14235c', '#2f6bb3', '#8fd3e8', '#f4fbff'] },
+  blobs: { mu: 0.25, sigma: 0.05,  seed: 'soup',   palette: ['#08030a', '#3d0c3f', '#a2265e', '#f28f3b', '#ffe8a3'] },
+  cells: { mu: 0.35, sigma: 0.10,  seed: 'soup',   palette: ['#020806', '#0d3b2e', '#1f8a70', '#bfe3a5', '#fbfff2'] },
+  fizz:  { mu: 0.10, sigma: 0.03,  seed: 'centre', palette: ['#0a0014', '#2b0b5e', '#7b2cbf', '#e0aaff', '#fff6ff'] },
+};
+
+const params = { preset: 'calm', mu: 0.15, sigma: 0.015, R: 13, dt: 0.2, spread: 0.65,
+                 steps: 1, brush: 12, paused: false, erase: false, stir: true, flowView: false };
+
+// ---------- WebGL setup ----------
+const canvas = document.getElementById('c');
+const hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: false });
+if (!gl) fail('WebGL2 is not available in this browser.');
+
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+
+// Fullscreen triangle generated from gl_VertexID, so no vertex buffers are needed.
+const VERT = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+// Shared GLSL: wrap a cell index onto the torus, and the distance to the finger's stroke.
+const COMMON = `
+ivec2 wrapCell(ivec2 q, ivec2 s) { return (q + s) % s; }   // q is never below -s here
+// Distance from cell centre c to the segment a → b, on the torus.
+float strokeDist(vec2 c, vec4 seg, vec2 size) {
+  vec2 q = c - seg.xy;
+  q -= size * round(q / size);
+  vec2 e = seg.zw - seg.xy;
+  float h = clamp(dot(q, e) / max(dot(e, e), 1e-6), 0.0, 1.0);
+  return length(q - e * h);
+}`;
+
+// Pass 1: growth G from the ring average U. Output r = G, g = U.
+const GROW = `#version 300 es
+precision highp float;
+uniform sampler2D uState;
+uniform sampler2D uKernel;   // (2R+1)² weights, sum 1
+uniform int uR;
+uniform float uMu, uSigma;
+out vec4 outColor;
+${COMMON}
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  ivec2 s = textureSize(uState, 0);
+  float u = 0.0;
+  for (int dy = -uR; dy <= uR; dy++) {
+    int w = int(sqrt(float(uR * uR - dy * dy)));   // skip the empty corners
+    for (int dx = -w; dx <= w; dx++) {
+      float k = texelFetch(uKernel, ivec2(dx + uR, dy + uR), 0).r;
+      u += k * texelFetch(uState, wrapCell(p + ivec2(dx, dy), s), 0).r;
+    }
+  }
+  float d = (u - uMu) / uSigma;
+  outColor = vec4(2.0 * exp(-0.5 * d * d) - 1.0, u, 0.0, 1.0);
+}`;
+
+// Pass 2: flow F = (1 − α)∇G − α∇A, plus the stir brush. Output rg = F.
+const FLOW = `#version 300 es
+precision highp float;
+uniform sampler2D uState;
+uniform sampler2D uGrowth;
+uniform vec4 uBrush;      // stroke endpoints in cells
+uniform float uStirR;     // brush radius, 0 = not stirring
+uniform vec2 uStirVel;    // finger velocity, cells per unit time
+out vec4 outColor;
+${COMMON}
+float G(ivec2 q, ivec2 s) { return texelFetch(uGrowth, wrapCell(q, s), 0).r; }
+float A(ivec2 q, ivec2 s) { return texelFetch(uState, wrapCell(q, s), 0).r; }
+
+// 3×3 Sobel gradient (x right, y up), unnormalised like the reference code.
+#define SOBEL(F, p, s) vec2( \
+  (F(p + ivec2(1, 1), s) + 2.0 * F(p + ivec2(1, 0), s) + F(p + ivec2(1, -1), s)) - \
+  (F(p + ivec2(-1, 1), s) + 2.0 * F(p + ivec2(-1, 0), s) + F(p + ivec2(-1, -1), s)), \
+  (F(p + ivec2(1, 1), s) + 2.0 * F(p + ivec2(0, 1), s) + F(p + ivec2(-1, 1), s)) - \
+  (F(p + ivec2(1, -1), s) + 2.0 * F(p + ivec2(0, -1), s) + F(p + ivec2(-1, -1), s)))
+
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  ivec2 s = textureSize(uState, 0);
+  float a = A(p, s);
+  float alpha = clamp(a * a, 0.0, 1.0);   // θ_A = 1, n = 2
+  vec2 flow = (1.0 - alpha) * SOBEL(G, p, s) - alpha * SOBEL(A, p, s);
+
+  if (uStirR > 0.0) {
+    float d = strokeDist(gl_FragCoord.xy, uBrush, vec2(s));
+    flow += uStirVel * (1.0 - smoothstep(uStirR * 0.5, uStirR, d));
+  }
+  outColor = vec4(flow, 0.0, 1.0);
+}`;
+
+// Pass 3: move the mass (reintegration tracking), plus paint/erase.
+// Output r = A, g = trail (fading max of A, for looks), b = speed |F| for the flow view.
+const MOVE = `#version 300 es
+precision highp float;
+uniform sampler2D uState;
+uniform sampler2D uFlow;
+uniform int uDD;
+uniform float uDt, uSpread, uTrail;
+uniform vec4 uBrush;
+uniform float uBrushR;    // paint/erase radius, 0 = off
+uniform float uErase;
+uniform float uSeed;
+out vec4 outColor;
+${COMMON}
+float hash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  ivec2 s = textureSize(uState, 0);
+  vec2 here = texelFetch(uState, p, 0).rg;
+  float a = 0.0;
+
+  if (uDt == 0.0) {
+    a = here.r;   // paused: keep the field, only the brush acts
+  } else {
+    float maxMove = float(uDD) - uSpread;   // keeps every landing square inside the 7×7 read
+    float side = min(1.0, 2.0 * uSpread);
+    for (int dy = -uDD; dy <= uDD; dy++) for (int dx = -uDD; dx <= uDD; dx++) {
+      ivec2 q = wrapCell(p + ivec2(dx, dy), s);
+      float m = texelFetch(uState, q, 0).r;
+      if (m <= 0.0) continue;
+      vec2 move = clamp(uDt * texelFetch(uFlow, q, 0).xy, -maxMove, maxMove);
+      vec2 land = vec2(dx, dy) + move;                    // where that mass lands, seen from here
+      vec2 overlap = clamp(0.5 + uSpread - abs(land), 0.0, side);
+      a += m * overlap.x * overlap.y / (4.0 * uSpread * uSpread);
+    }
+  }
+
+  if (uBrushR > 0.0) {
+    float inside = 1.0 - smoothstep(uBrushR * 0.6, uBrushR, strokeDist(gl_FragCoord.xy, uBrush, vec2(s)));
+    if (uErase > 0.5) a *= 1.0 - inside;
+    else a = max(a, inside * hash(gl_FragCoord.xy + uSeed));
+  }
+
+  float trail = max(a, here.g * uTrail);
+  outColor = vec4(a, trail, 0.0, 1.0);
+}`;
+
+// Mass for the HUD: average 4×4 blocks of A (divided by 4, A can exceed 1) into 8 bits.
+const STATS = `#version 300 es
+precision highp float;
+uniform sampler2D uState;
+out vec4 outColor;
+void main() {
+  ivec2 base = ivec2(gl_FragCoord.xy) * 4;
+  float sum = 0.0;
+  for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++)
+    sum += texelFetch(uState, base + ivec2(x, y), 0).r;
+  outColor = vec4(clamp(sum / 64.0, 0.0, 1.0), 0.0, 0.0, 1.0);
+}`;
+
+// Colour the field: mass through the gradient, or flow direction as hue.
+const DRAW = `#version 300 es
+precision highp float;
+uniform sampler2D uState;
+uniform sampler2D uFlow;
+uniform vec3 uPal[5];
+uniform float uFlowView;
+in vec2 vUv;
+out vec4 outColor;
+${COMMON}
+vec2 fetchAt(ivec2 p) {
+  ivec2 s = textureSize(uState, 0);
+  return texelFetch(uState, wrapCell(p, s), 0).rg;
+}
+// Manual bilinear filter (float textures are not always filterable on phones).
+vec2 sampleAt(vec2 t) {
+  t -= 0.5;
+  ivec2 i = ivec2(floor(t));
+  vec2 f = fract(t);
+  vec2 v00 = fetchAt(i), v10 = fetchAt(i + ivec2(1, 0));
+  vec2 v01 = fetchAt(i + ivec2(0, 1)), v11 = fetchAt(i + ivec2(1, 1));
+  return mix(mix(v00, v10, f.x), mix(v01, v11, f.x), f.y);
+}
+vec3 palette(float t) {
+  t = clamp(t, 0.0, 1.0) * 4.0;
+  vec3 c = uPal[0];
+  for (int i = 0; i < 4; i++) c = mix(c, uPal[i + 1], clamp(t - float(i), 0.0, 1.0));
+  return c;
+}
+vec3 hsv(float h, float s, float v) {
+  vec3 k = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+  return v * mix(vec3(1.0), k, s);
+}
+void main() {
+  vec2 tc = vUv * vec2(textureSize(uState, 0));
+  vec2 v = sampleAt(tc);
+  float m = 1.0 - exp(-1.6 * max(v.r, 0.3 * v.g));   // soft-saturate: A can exceed 1
+  vec3 col = palette(m);
+  if (uFlowView > 0.5) {
+    vec2 f = texelFetch(uFlow, ivec2(tc), 0).xy;
+    float hue = atan(f.y, f.x) / 6.2831853 + 0.5;
+    col = hsv(hue, 0.75, m) + 0.15 * palette(m);
+  }
+  outColor = vec4(col, 1.0);
+}`;
+
+function compile(type, src) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(sh));
+  return sh;
+}
+
+function program(fragSrc) {
+  const pr = gl.createProgram();
+  gl.attachShader(pr, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(pr, compile(gl.FRAGMENT_SHADER, fragSrc));
+  gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(pr));
+  const u = {};
+  const n = gl.getProgramParameter(pr, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) {
+    const name = gl.getActiveUniform(pr, i).name.replace('[0]', '');
+    u[name] = gl.getUniformLocation(pr, name);
+  }
+  return { p: pr, u };
+}
+
+const growProg = program(GROW);
+const flowProg = program(FLOW);
+const moveProg = program(MOVE);
+const statsProg = program(STATS);
+const drawProg = program(DRAW);
+gl.bindVertexArray(gl.createVertexArray());   // empty VAO: positions come from gl_VertexID
+
+// ---------- Render targets ----------
+// Prefer 32-bit floats; fall back to 16-bit where the phone only supports those.
+const hasF32 = gl.getExtension('EXT_color_buffer_float');
+const hasF16 = gl.getExtension('EXT_color_buffer_half_float');
+
+function makeTarget(internalFormat, type, size) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, size, size, 0, gl.RGBA, type, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return ok ? { tex, fbo } : null;
+}
+
+// Four float targets: two for the state (ping-pong), one for growth, one for flow.
+let floatTargets = null, precisionLabel = '';
+for (const fmt of [hasF32 && gl.RGBA32F, (hasF32 || hasF16) && gl.RGBA16F].filter(Boolean)) {
+  const list = [0, 1, 2, 3].map(() => makeTarget(fmt, gl.FLOAT, SIZE));
+  if (list.every(Boolean)) { floatTargets = list; precisionLabel = fmt === gl.RGBA32F ? 'f32' : 'f16'; break; }
+}
+if (!floatTargets) fail('This device cannot render to float textures.');
+const stateTargets = [floatTargets[0], floatTargets[1]];
+const growthTarget = floatTargets[2];
+const flowTarget = floatTargets[3];
+const STATS_SIZE = SIZE / 4;
+const statsTarget = makeTarget(gl.RGBA8, gl.UNSIGNED_BYTE, STATS_SIZE);
+const statsPixels = new Uint8Array(STATS_SIZE * STATS_SIZE * 4);
+
+let cur = 0;   // index of the state texture holding the current field
+let seededAt = performance.now();
+let mass = 0;  // mean A, read back every 30 frames
+
+// ---------- Kernel texture ----------
+// Gaussian ring of radius R: exp(−((r − 0.5)/0.15)²/2) at r = distance/R, zero outside, sum 1.
+const kernelTex = gl.createTexture();
+let kernelR = 0;
+function buildKernel(R) {
+  const n = 2 * R + 1;
+  const w = new Float32Array(n * n);
+  let sum = 0;
+  for (let y = -R; y <= R; y++) for (let x = -R; x <= R; x++) {
+    const r = Math.hypot(x, y) / R;
+    const k = r < 1 ? Math.exp(-0.5 * ((r - 0.5) / 0.15) ** 2) : 0;
+    w[(y + R) * n + (x + R)] = k;
+    sum += k;
+  }
+  for (let i = 0; i < w.length; i++) w[i] /= sum;
+  gl.bindTexture(gl.TEXTURE_2D, kernelTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, n, n, 0, gl.RED, gl.FLOAT, w);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  kernelR = R;
+}
+
+// ---------- Seeding ----------
+// 'centre': one 64×64 square of random noise in the middle (as in the paper's demos).
+// 'soup': a dozen noisy discs scattered around.
+function seed(kind) {
+  const data = new Float32Array(SIZE * SIZE * 4);
+  const put = (x, y, v) => {
+    const i = (((y % SIZE) + SIZE) % SIZE * SIZE + ((x % SIZE) + SIZE) % SIZE) * 4;
+    data[i] = Math.max(data[i], v);
+  };
+  if (kind === 'centre') {
+    const half = 32, c = SIZE / 2;
+    for (let y = -half; y < half; y++) for (let x = -half; x < half; x++) put(c + x, c + y, Math.random());
+  } else {
+    for (let k = 0; k < 12; k++) {
+      const r = 8 + Math.random() * 10;
+      const cx = Math.random() * SIZE, cy = Math.random() * SIZE;
+      for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) {
+        if (x * x + y * y <= r * r) put(Math.floor(cx + x), Math.floor(cy + y), Math.random());
+      }
+    }
+  }
+  for (let i = 0; i < SIZE * SIZE; i++) { data[i * 4 + 1] = data[i * 4]; data[i * 4 + 3] = 1; }
+  gl.bindTexture(gl.TEXTURE_2D, stateTargets[cur].tex);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, SIZE, SIZE, gl.RGBA, gl.FLOAT, data);
+  seededAt = performance.now();
+}
+
+// ---------- Touch / mouse ----------
+// The first finger stirs or paints; while a second finger is down it erases.
+const pointer = { down: false, id: -1, x: 0, y: 0, lastX: 0, lastY: 0 };
+const activePointers = new Set();
+
+function toGrid(e) {
+  const r = canvas.getBoundingClientRect();
+  return [(e.clientX - r.left) / r.width * SIZE, (1 - (e.clientY - r.top) / r.height) * SIZE];
+}
+canvas.addEventListener('pointerdown', e => {
+  document.getElementById('hint').classList.add('gone');
+  canvas.setPointerCapture(e.pointerId);
+  activePointers.add(e.pointerId);
+  if (pointer.down) return;
+  [pointer.x, pointer.y] = toGrid(e);
+  pointer.lastX = pointer.x; pointer.lastY = pointer.y;
+  pointer.down = true; pointer.id = e.pointerId;
+});
+canvas.addEventListener('pointermove', e => {
+  if (pointer.down && e.pointerId === pointer.id) [pointer.x, pointer.y] = toGrid(e);
+});
+for (const ev of ['pointerup', 'pointercancel']) canvas.addEventListener(ev, e => {
+  activePointers.delete(e.pointerId);
+  if (e.pointerId === pointer.id) pointer.down = false;
+});
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const presetBox = $('presets');
+for (const name of Object.keys(PRESETS)) {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.onclick = () => applyPreset(name);
+  presetBox.appendChild(b);
+}
+
+function hexToRgb(h) { return [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255); }
+
+let paletteFlat = [];
+let basePreset = 'calm';   // last preset picked: its palette and seeding stay after sliders move
+function applyPreset(name) {
+  const pr = PRESETS[name];
+  basePreset = name;
+  Object.assign(params, { preset: name, mu: pr.mu, sigma: pr.sigma });
+  paletteFlat = pr.palette.flatMap(hexToRgb);
+  for (const b of presetBox.children) b.classList.toggle('on', b.textContent === name);
+  syncSliders();
+  seed(pr.seed);
+}
+function markCustom(label) {   // hand-tuned values no longer match a preset
+  params.preset = label;
+  for (const b of presetBox.children) b.classList.remove('on');
+}
+
+const sliders = { mu: 3, sigma: 3, R: 0, dt: 2, spread: 2, steps: 0, brush: 0 };   // name → decimals
+const ruleSliders = ['mu', 'sigma', 'R', 'dt', 'spread'];
+function syncSliders() {
+  for (const [name, dec] of Object.entries(sliders)) {
+    $(name).value = params[name];
+    $(name + 'Out').textContent = Number(params[name]).toFixed(dec);
+  }
+}
+for (const [name, dec] of Object.entries(sliders)) {
+  $(name).addEventListener('input', e => {
+    params[name] = parseFloat(e.target.value);
+    $(name + 'Out').textContent = params[name].toFixed(dec);
+    if (ruleSliders.includes(name)) markCustom('custom');
+  });
+}
+
+$('randomize').onclick = () => {
+  params.mu = Math.round((0.05 + 0.45 * Math.random()) * 1000) / 1000;
+  params.sigma = Math.round((0.001 + 0.179 * Math.random()) * 1000) / 1000;
+  markCustom('random');
+  syncSliders();
+  seed(PRESETS[basePreset].seed);
+};
+function syncToggles() {
+  $('mode').textContent = params.stir ? 'Touch: stir' : 'Touch: paint';
+  $('view').textContent = params.flowView ? 'View: flow' : 'View: mass';
+  $('hint').textContent = params.stir ? '✍︎ Drag to stir · two fingers erase' : '✍︎ Draw with a finger · two fingers erase';
+}
+$('mode').onclick = () => { params.stir = !params.stir; syncToggles(); };
+$('view').onclick = () => { params.flowView = !params.flowView; syncToggles(); };
+$('erase').onclick = e => { params.erase = !params.erase; e.target.classList.toggle('on', params.erase); };
+$('reset').onclick = () => seed(PRESETS[basePreset].seed);
+$('pause').onclick = e => { params.paused = !params.paused; e.target.classList.toggle('on', params.paused); };
+
+// ---------- Copy setup ----------
+// One tap copies the settings plus a link whose query (?preset=calm&mu=…) loadFromUrl() reads.
+function setupLink() {
+  const q = new URLSearchParams({ preset: basePreset });
+  for (const name of Object.keys(sliders)) q.set(name, params[name]);
+  if (!params.stir) q.set('touch', 'paint');
+  if (params.flowView) q.set('view', 'flow');
+  return location.origin + location.pathname + '?' + q;
+}
+function setupText() {
+  const secs = Math.round((performance.now() - seededAt) / 1000);
+  return `05 · Flow Lenia · ${params.preset}` + (params.preset !== basePreset ? ` (from ${basePreset})` : '') + '\n' +
+    `μ ${params.mu.toFixed(3)}  σ ${params.sigma.toFixed(3)}  R ${params.R}  dt ${params.dt.toFixed(2)}  s ${params.spread.toFixed(2)}\n` +
+    `steps ${params.steps}  brush ${params.brush}  touch ${params.stir ? 'stir' : 'paint'}  view ${params.flowView ? 'flow' : 'mass'}\n` +
+    `${SIZE}² ${precisionLabel} · ${fps} fps · ${secs}s since reseed · mass ${(mass * 100).toFixed(1)}%\n` +
+    setupLink();
+}
+$('copy').onclick = async e => {
+  const text = setupText(), btn = e.target;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch {   // older browsers or no clipboard permission: fall back to a hidden textarea
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    ok = document.execCommand('copy'); ta.remove();
+  }
+  if (!ok) { prompt('Copy this:', text); return; }
+  btn.textContent = 'Copied ✓';
+  setTimeout(() => { btn.textContent = 'Copy setup'; }, 1500);
+};
+
+function loadFromUrl() {
+  const q = new URLSearchParams(location.search);
+  applyPreset(PRESETS[q.get('preset')] ? q.get('preset') : 'calm');
+  let changed = false;
+  for (const name of Object.keys(sliders)) {
+    const v = parseFloat(q.get(name));
+    if (Number.isNaN(v) || v === params[name]) continue;
+    params[name] = v;
+    if (ruleSliders.includes(name)) changed = true;
+  }
+  if (changed) markCustom('custom');
+  params.stir = q.get('touch') !== 'paint';
+  params.flowView = q.get('view') === 'flow';
+  syncSliders();
+  syncToggles();
+}
+
+// ---------- Main loop ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(1024, Math.round(canvas.clientWidth * dpr));
+  const h = Math.min(1024, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+
+function bindTextures(prog, names, texs) {
+  names.forEach((name, i) => {
+    gl.activeTexture(gl.TEXTURE0 + i);
+    gl.bindTexture(gl.TEXTURE_2D, texs[i]);
+    gl.uniform1i(prog.u[name], i);
+  });
+  gl.activeTexture(gl.TEXTURE0);
+}
+
+// One Flow Lenia step: growth → flow → move. dt 0 (paused) only applies the brush.
+function step(dt, useBrush) {
+  if (kernelR !== params.R) buildKernel(params.R);
+  const erasing = params.erase || activePointers.size > 1;
+  const stroke = [pointer.lastX, pointer.lastY, pointer.x, pointer.y];
+  gl.viewport(0, 0, SIZE, SIZE);
+
+  if (dt > 0) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, growthTarget.fbo);
+    gl.useProgram(growProg.p);
+    bindTextures(growProg, ['uState', 'uKernel'], [stateTargets[cur].tex, kernelTex]);
+    gl.uniform1i(growProg.u.uR, params.R);
+    gl.uniform1f(growProg.u.uMu, params.mu);
+    gl.uniform1f(growProg.u.uSigma, params.sigma);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    // Stir: the finger's velocity in cells per unit time, so dt·F moves mass with the finger.
+    const stirring = useBrush && params.stir && !erasing;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, flowTarget.fbo);
+    gl.useProgram(flowProg.p);
+    bindTextures(flowProg, ['uState', 'uGrowth'], [stateTargets[cur].tex, growthTarget.tex]);
+    gl.uniform4f(flowProg.u.uBrush, ...stroke);
+    gl.uniform1f(flowProg.u.uStirR, stirring ? params.brush : 0);
+    gl.uniform2f(flowProg.u.uStirVel, (pointer.x - pointer.lastX) / dt, (pointer.y - pointer.lastY) / dt);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  const painting = useBrush && (!params.stir || erasing);
+  const next = 1 - cur;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, stateTargets[next].fbo);
+  gl.useProgram(moveProg.p);
+  bindTextures(moveProg, ['uState', 'uFlow'], [stateTargets[cur].tex, flowTarget.tex]);
+  gl.uniform1i(moveProg.u.uDD, DD);
+  gl.uniform1f(moveProg.u.uDt, dt);
+  gl.uniform1f(moveProg.u.uSpread, params.spread);
+  gl.uniform1f(moveProg.u.uTrail, dt > 0 ? 0.92 : 1.0);
+  gl.uniform4f(moveProg.u.uBrush, ...stroke);
+  gl.uniform1f(moveProg.u.uBrushR, painting ? params.brush : 0);
+  gl.uniform1f(moveProg.u.uErase, erasing ? 1 : 0);
+  gl.uniform1f(moveProg.u.uSeed, Math.random() * 1000);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  cur = next;
+}
+
+// Mean A over the field (mass), from the 64×64 summary. Total mass should stay put.
+function readMass() {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, statsTarget.fbo);
+  gl.viewport(0, 0, STATS_SIZE, STATS_SIZE);
+  gl.useProgram(statsProg.p);
+  bindTextures(statsProg, ['uState'], [stateTargets[cur].tex]);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.readPixels(0, 0, STATS_SIZE, STATS_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, statsPixels);
+  let total = 0;
+  for (let i = 0; i < statsPixels.length; i += 4) total += statsPixels[i];
+  mass = total / 255 * 4 / (STATS_SIZE * STATS_SIZE);
+}
+
+let frames = 0, fps = 0, lastFpsTime = performance.now(), frameCount = 0;
+function frame(now) {
+  resize();
+  if (params.paused) {
+    if (pointer.down) step(0, true);
+  } else {
+    for (let i = 0; i < params.steps; i++) step(params.dt, pointer.down && i === 0);
+  }
+  pointer.lastX = pointer.x; pointer.lastY = pointer.y;
+  if (++frameCount % 30 === 0) readMass();
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(drawProg.p);
+  bindTextures(drawProg, ['uState', 'uFlow'], [stateTargets[cur].tex, flowTarget.tex]);
+  gl.uniform3fv(drawProg.u.uPal, paletteFlat);
+  gl.uniform1f(drawProg.u.uFlowView, params.flowView ? 1 : 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  frames++;
+  if (now - lastFpsTime > 500) {
+    fps = Math.round(frames * 1000 / (now - lastFpsTime));
+    frames = 0; lastFpsTime = now;
+    hud.textContent =
+      `Flow Lenia · ${params.preset}\n` +
+      `μ ${params.mu.toFixed(3)}  σ ${params.sigma.toFixed(3)}  R ${params.R}  dt ${params.dt.toFixed(2)}  s ${params.spread.toFixed(2)}\n` +
+      `${SIZE}² ${precisionLabel} · ${params.steps} step/frame · ${fps} fps · mass ${(mass * 100).toFixed(1)}%`;
+  }
+  requestAnimationFrame(frame);
+}
+
+loadFromUrl();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
