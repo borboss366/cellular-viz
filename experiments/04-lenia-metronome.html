@@ -770,17 +770,17 @@ function autoCheck(now) {
   const px = statsTarget.pixels;
   gl.readPixels(0, 0, STATS_SIZE, STATS_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, px);
 
-  let mass = 0, activity = 0, cover = 0;
+  let mass = 0, activity = 0, lit = 0;
   for (let i = 0; i < px.length; i += 4) {
     mass += px[i] / 255;
     const g = px[i + 1] / 255;
     activity += g * g;
-    cover += px[i + 2] / 255;
+    lit += px[i + 2] / 255;
   }
   const n = STATS_SIZE * STATS_SIZE;
   auto.mass = mass / n;
   auto.activity = activity / n;
-  auto.cover = cover / n;
+  auto.cover = lit / n;
 
   // Smooth cover over ~2 s so the bump from each kick blob averages out.
   const dt = Math.min(1, (now - (auto.lastCheck || now)) / 1000);
