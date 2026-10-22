@@ -30,13 +30,16 @@
 
   Auto (on by default, as in 02) keeps the field from filling up or dying out.
   Every 15 frames the state is averaged to a 64×64 summary and read back:
-  mass = mean A, smoothed over ~2 s so single kick blobs don't count as crowding;
-  activity = mean |ΔA| per unit time from the Lenia rule only (painting and kick
-  blobs are not counted, so a beat landing never looks like motion). Then:
-    crowded (smoothed mass > 30%) → base σ drifts down (growth band narrows)
-    sparse  (smoothed mass < 8%)  → base σ drifts back up to the slider value
+  cover = share of cells with A > 0.1 (how much of the screen is lit), smoothed
+  over ~2 s so single kick blobs don't count as crowding; activity = mean |ΔA|
+  per unit time from the Lenia rule only (painting and kick blobs are not counted,
+  so a beat landing never looks like motion). Then:
+    crowded (cover > 40%, until < 25%) → base σ drifts down, and on every
+            downbeat (every 2 s when stopped) a soft hole is cut at a random spot
+            instead of the kick blob. Lowering σ alone can't clear a dense soup.
+    sparse  (cover < 10%)  → base σ drifts back up to the slider value
     still   (activity/mass < 1% for 3 s, or empty) → two Orbiums drop in if
-            mass < 15%, else σ drops
+            cover < 20%, else σ drops
   pad → σ still wobbles around that base. Thresholds are first guesses.
 -->
 <html lang="en">
@@ -172,10 +175,12 @@ const params = { preset: 'four', bpm: 120, bpb: 4, swing: 0, human: 0,
                  kick: '', snare: '', hat: '', padBars: 1, muted: false,
                  R: 13, T: 10, mu: 0.15, sigma: 0.015, paused: false };
 // Auto keeps the field alive (see the comment at the top). sigma is the base σ the rule uses.
-const AUTO = { crowded: 0.30, sparse: 0.08, frozen: 0.01, frozenSecs: 3, massSecs: 2,
-               sigmaStep: 0.0003, sigmaFloor: 0.5, checkEvery: 15 };   // sigmaFloor: fraction of slider σ
-const auto = { on: true, sigma: 0.015, mass: 0, massSmooth: 0, activity: 0,
-               frozenSince: null, lastCheck: 0, note: '' };
+const AUTO = { crowdOn: 0.40, crowdOff: 0.25, sparse: 0.10, dropBelow: 0.20,   // cover fractions
+               frozen: 0.01, frozenSecs: 3, smoothSecs: 2,
+               sigmaStep: 0.0006, sigmaFloor: 0.5,   // sigmaFloor: fraction of slider σ
+               cutRadius: 0.2, cutEverySecs: 2, checkEvery: 15 };   // cutRadius: fraction of the grid
+const auto = { on: true, sigma: 0.015, mass: 0, cover: 0, coverSmooth: 0, activity: 0,
+               crowded: false, frozenSince: null, lastCheck: 0, lastCut: 0, cuts: 0, note: '' };
 
 const maps = { mKickMu: false, mKickBlob: true, mSnareFlash: true,
                mHatShimmer: true, mPadHue: true, mPadSigma: false };   // which mappings are on
@@ -338,6 +343,7 @@ uniform vec4 uBrush;        // finger segment endpoints in texels
 uniform float uBrushR;      // finger brush radius in texels, 0 = not drawing
 uniform float uErase;       // 1 = finger erases
 uniform vec4 uBlob;         // kick blob: centre xy, radius, 0 = none
+uniform vec4 uCut;          // Auto's hole when crowded: centre xy, radius, 0 = none
 uniform float uSeed;        // changes every frame so painted noise differs
 out vec4 outColor;
 
@@ -391,25 +397,31 @@ void main() {
     a = max(a, inside * hash(gl_FragCoord.xy + uSeed + 17.0));
   }
 
+  if (uCut.z > 0.0) {    // soft hole: empty in the middle, untouched past the rim
+    float r = length(torusDelta(gl_FragCoord.xy, uCut.xy, size)) / uCut.z;
+    a *= smoothstep(0.5, 1.0, r);
+  }
+
   float trail = max(a, c.g * (uDt > 0.0 ? 0.9 : 1.0));
   outColor = vec4(a, trail, u, activity);
 }`;
 
 // Auto: average 4×4 blocks of the state into a (SIZE/4)² 8-bit texture we can read back.
-// r = mean A, g = sqrt(mean activity) (sqrt keeps small values above 8-bit rounding).
+// r = mean A, g = sqrt(mean activity) (sqrt keeps small values above 8-bit rounding),
+// b = share of cells with A > 0.1 (cover).
 const STATS = `#version 300 es
 precision highp float;
 uniform sampler2D uState;
 out vec4 outColor;
 void main() {
   ivec2 base = ivec2(gl_FragCoord.xy) * 4;
-  vec2 sum = vec2(0.0);
+  vec3 sum = vec3(0.0);
   for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) {
     vec4 v = texelFetch(uState, base + ivec2(x, y), 0);
-    sum += vec2(v.r, v.a);
+    sum += vec3(v.r, v.a, step(0.1, v.r));
   }
   sum /= 16.0;
-  outColor = vec4(sum.x, sqrt(min(sum.y, 1.0)), 0.0, 1.0);
+  outColor = vec4(sum.x, sqrt(min(sum.y, 1.0)), sum.z, 1.0);
 }`;
 
 // Colour max(A, faded trail) through the gradient, then the lane effects.
@@ -621,7 +633,8 @@ function seed(count) {
   seededAt = performance.now();
   auto.sigma = params.sigma;
   auto.frozenSince = null;
-  auto.massSmooth = -1;   // -1: take the next reading as is
+  auto.coverSmooth = -1;   // -1: take the next reading as is
+  auto.crowded = false;
 }
 
 // ---------- Touch / mouse drawing ----------
@@ -743,29 +756,34 @@ function autoCheck(now) {
   const px = statsTarget.pixels;
   gl.readPixels(0, 0, STATS_SIZE, STATS_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, px);
 
-  let mass = 0, activity = 0;
+  let mass = 0, activity = 0, cover = 0;
   for (let i = 0; i < px.length; i += 4) {
     mass += px[i] / 255;
     const g = px[i + 1] / 255;
     activity += g * g;
+    cover += px[i + 2] / 255;
   }
   const n = STATS_SIZE * STATS_SIZE;
   auto.mass = mass / n;
   auto.activity = activity / n;
+  auto.cover = cover / n;
 
-  // Smooth mass over ~2 s so the bump from each kick blob averages out.
+  // Smooth cover over ~2 s so the bump from each kick blob averages out.
   const dt = Math.min(1, (now - (auto.lastCheck || now)) / 1000);
   auto.lastCheck = now;
-  const k = 1 - Math.exp(-dt / AUTO.massSecs);
-  auto.massSmooth = auto.massSmooth < 0 ? auto.mass : auto.massSmooth + k * (auto.mass - auto.massSmooth);
+  const k = 1 - Math.exp(-dt / AUTO.smoothSecs);
+  auto.coverSmooth = auto.coverSmooth < 0 ? auto.cover : auto.coverSmooth + k * (auto.cover - auto.coverSmooth);
 
   const ceiling = params.sigma, floor = params.sigma * AUTO.sigmaFloor;
-  const crowded = auto.massSmooth > AUTO.crowded;
+  // Hysteresis: start thinning above 40% cover, keep at it until below 25%.
+  if (auto.coverSmooth > AUTO.crowdOn) auto.crowded = true;
+  if (auto.coverSmooth < AUTO.crowdOff) auto.crowded = false;
+  const crowded = auto.crowded;
   const stillNow = auto.activity < AUTO.frozen * Math.max(auto.mass, 1e-6);
   auto.frozenSince = stillNow ? (auto.frozenSince ?? now) : null;
   const frozen = auto.frozenSince !== null && now - auto.frozenSince > AUTO.frozenSecs * 1000;
 
-  if (frozen && auto.massSmooth < AUTO.crowded / 2) {   // empty or stuck sparse: new creatures
+  if (frozen && auto.coverSmooth < AUTO.dropBelow) {   // empty or stuck sparse: new creatures
     dropOrbium(); dropOrbium();
     auto.sigma = ceiling;
     auto.frozenSince = null;
@@ -773,7 +791,7 @@ function autoCheck(now) {
   } else if (crowded || frozen) {
     auto.sigma = Math.max(floor, auto.sigma - AUTO.sigmaStep);
     auto.note = 'thinning';
-  } else if (auto.massSmooth < AUTO.sparse && auto.sigma < ceiling) {
+  } else if (auto.coverSmooth < AUTO.sparse && auto.sigma < ceiling) {
     auto.sigma = Math.min(ceiling, auto.sigma + AUTO.sigmaStep);
     auto.note = 'regrowing';
   } else {
@@ -781,12 +799,13 @@ function autoCheck(now) {
   }
 }
 
-// "auto σ 0.0131 · mass 12% · moving 8% · thinning": what Auto sees and does right now.
+// "auto σ 0.0131 · cover 45% · mass 12% · moving 8% · thinning · 3 cuts": what Auto sees and does.
 function autoLine() {
   if (!auto.on) return 'auto off';
   const moving = auto.mass > 1e-6 ? auto.activity / auto.mass : 0;
-  return `auto σ ${auto.sigma.toFixed(4)} · mass ${(Math.max(0, auto.massSmooth) * 100).toFixed(1)}% · ` +
-         `moving ${(moving * 100).toFixed(1)}% · ${auto.note}`;
+  return `auto σ ${auto.sigma.toFixed(4)} · cover ${(Math.max(0, auto.coverSmooth) * 100).toFixed(0)}% · ` +
+         `mass ${(auto.mass * 100).toFixed(1)}% · moving ${(moving * 100).toFixed(1)}% · ` +
+         `${auto.note} · ${auto.cuts} cuts`;
 }
 
 function mapsLabel() {
@@ -866,7 +885,7 @@ function resize() {
 }
 
 // One step. When paused (dt 0) it still runs so the brush keeps working.
-function step(dt, mu, sigma, blob) {
+function step(dt, mu, sigma, blob, cut) {
   if (kernelR !== params.R) buildKernel(params.R);
   const next = 1 - cur;
   gl.bindFramebuffer(gl.FRAMEBUFFER, targets[next].fbo);
@@ -887,6 +906,7 @@ function step(dt, mu, sigma, blob) {
   gl.uniform1f(simProg.u.uBrushR, pointer.down ? BRUSH : 0);
   gl.uniform1f(simProg.u.uErase, activePointers.size > 1 ? 1 : 0);
   gl.uniform4f(simProg.u.uBlob, ...(blob || [0, 0, 0, 0]));
+  gl.uniform4f(simProg.u.uCut, ...(cut || [0, 0, 0, 0]));
   gl.uniform1f(simProg.u.uSeed, Math.random() * 1000);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   cur = next;
@@ -904,15 +924,21 @@ function frame(now) {
   const muEff = params.mu + (maps.mKickMu ? 0.005 * L.kick : 0);
   const sigmaBase = auto.on ? auto.sigma : params.sigma;
   const sigmaEff = sigmaBase + (maps.mPadSigma ? 0.001 * (2 * L.pad - 1) : 0);
-  let blob = null;
-  if (maps.mKickBlob && !params.paused && L.kick >= STRONG_KICK && prevKick < STRONG_KICK) {
+  const downbeat = !params.paused && L.kick >= STRONG_KICK && prevKick < STRONG_KICK;
+  prevKick = L.kick;
+  // Crowded: cut a hole on the downbeat (every 2 s when the metronome is stopped) and skip the blob.
+  const culling = auto.on && auto.crowded && !params.paused;
+  let blob = null, cut = null;
+  if (culling && (downbeat || (!metronome.playing && now - auto.lastCut > AUTO.cutEverySecs * 1000))) {
+    cut = [Math.random() * SIZE, Math.random() * SIZE, AUTO.cutRadius * SIZE, 1];
+    auto.lastCut = now; auto.cuts++;
+  } else if (maps.mKickBlob && downbeat && !culling) {
     blob = [Math.random() * SIZE, Math.random() * SIZE, params.R * (1 + 0.6 * Math.random()), 1];
     blobs++;
   }
-  prevKick = L.kick;
 
   if (!params.paused) {
-    step(1 / params.T, muEff, sigmaEff, blob);
+    step(1 / params.T, muEff, sigmaEff, blob, cut);
     if (auto.on && ++autoFrame % AUTO.checkEvery === 0) autoCheck(now);
   } else if (pointer.down) step(0, muEff, sigmaEff, null);
   pointer.lastX = pointer.x; pointer.lastY = pointer.y;
