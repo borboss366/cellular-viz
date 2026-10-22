@@ -38,8 +38,9 @@
             downbeat (every 2 s when stopped) a soft hole is cut at a random spot
             instead of the kick blob. Lowering σ alone can't clear a dense soup.
     sparse  (cover < 10%)  → base σ drifts back up to the slider value
-    still   (activity/mass < 1% for 3 s, or empty) → two Orbiums drop in if
-            cover < 20%, else σ drops
+    still   (activity/mass < 1% for 3 s, or empty) → if cover < 20%: two Orbiums
+            plus one noisy blob drop in (Orbiums alone may not survive this
+            rule's polynomial growth; the blob always restarts growth), else σ drops
   pad → σ still wobbles around that base. Thresholds are first guesses.
 -->
 <html lang="en">
@@ -180,7 +181,8 @@ const AUTO = { crowdOn: 0.40, crowdOff: 0.25, sparse: 0.10, dropBelow: 0.20,   /
                sigmaStep: 0.0006, sigmaFloor: 0.5,   // sigmaFloor: fraction of slider σ
                cutRadius: 0.2, cutEverySecs: 2, checkEvery: 15 };   // cutRadius: fraction of the grid
 const auto = { on: true, sigma: 0.015, mass: 0, cover: 0, coverSmooth: 0, activity: 0,
-               crowded: false, frozenSince: null, lastCheck: 0, lastCut: 0, cuts: 0, note: '' };
+               crowded: false, frozenSince: null, lastCheck: 0, lastCut: 0, cuts: 0, drops: 0,
+               pendingBlob: false, note: '', noteUntil: 0 };
 
 const maps = { mKickMu: false, mKickBlob: true, mSnareFlash: true,
                mHatShimmer: true, mPadHue: true, mPadSigma: false };   // which mappings are on
@@ -785,9 +787,13 @@ function autoCheck(now) {
 
   if (frozen && auto.coverSmooth < AUTO.dropBelow) {   // empty or stuck sparse: new creatures
     dropOrbium(); dropOrbium();
+    auto.pendingBlob = true;   // frame() adds one noisy blob on the next step
     auto.sigma = ceiling;
     auto.frozenSince = null;
-    auto.note = 'orbiums in';
+    auto.drops++;
+    auto.note = 'reseeded'; auto.noteUntil = now + 2000;   // keep it on screen long enough to read
+  } else if (now < auto.noteUntil) {
+    // leave the 'reseeded' note up for a moment
   } else if (crowded || frozen) {
     auto.sigma = Math.max(floor, auto.sigma - AUTO.sigmaStep);
     auto.note = 'thinning';
@@ -805,7 +811,7 @@ function autoLine() {
   const moving = auto.mass > 1e-6 ? auto.activity / auto.mass : 0;
   return `auto σ ${auto.sigma.toFixed(4)} · cover ${(Math.max(0, auto.coverSmooth) * 100).toFixed(0)}% · ` +
          `mass ${(auto.mass * 100).toFixed(1)}% · moving ${(moving * 100).toFixed(1)}% · ` +
-         `${auto.note} · ${auto.cuts} cuts`;
+         `${auto.note} · ${auto.cuts} cuts · ${auto.drops} reseeds`;
 }
 
 function mapsLabel() {
@@ -932,9 +938,9 @@ function frame(now) {
   if (culling && (downbeat || (!metronome.playing && now - auto.lastCut > AUTO.cutEverySecs * 1000))) {
     cut = [Math.random() * SIZE, Math.random() * SIZE, AUTO.cutRadius * SIZE, 1];
     auto.lastCut = now; auto.cuts++;
-  } else if (maps.mKickBlob && downbeat && !culling) {
+  } else if ((maps.mKickBlob && downbeat && !culling) || auto.pendingBlob) {
     blob = [Math.random() * SIZE, Math.random() * SIZE, params.R * (1 + 0.6 * Math.random()), 1];
-    blobs++;
+    if (auto.pendingBlob) auto.pendingBlob = false; else blobs++;
   }
 
   if (!params.paused) {
