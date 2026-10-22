@@ -36,12 +36,13 @@
   per unit time from the Lenia rule only (painting and kick blobs are not counted,
   so a beat landing never looks like motion). Then:
   Two sliders set the band Auto aims for (defaults 10% and 40%):
-    crowded (cover > "thin above", until 15 points lower) → base σ drifts down,
+    crowded (cover > "thin above", until 10 points lower) → base σ drifts down,
             and on every downbeat (every 2 s when stopped) a soft hole is cut at a
             random spot instead of the kick blob. Lowering σ alone can't clear a soup.
-    sparse  (cover < "refill below") → base σ drifts back up to the slider value,
-            and after 3 s two Orbiums plus one noisy blob drop in (again every 3 s
-            until the cover is back above the line)
+    sparse  (cover < "refill below") → base σ jumps back to the slider value and,
+            every 4/speed s ("refill speed" 1–5), `speed` Orbiums plus speed/2
+            noisy blobs drop in on the next kick (at once when stopped), until the
+            cover is back above the line
     still   (activity/mass < 2.5% for 3 s) → the same reseed if cover is under half
             of "thin above", else σ drops
   pad → σ still wobbles around that base.
@@ -125,6 +126,7 @@
   <div class="row"><label for="sigma">width σ</label><input id="sigma" type="range" min="0.005" max="0.040" step="0.0005"><output id="sigmaOut"></output></div>
   <div class="row"><label for="fill">refill below %</label><input id="fill" type="range" min="0" max="50" step="1"><output id="fillOut"></output></div>
   <div class="row"><label for="thin">thin above %</label><input id="thin" type="range" min="10" max="95" step="1"><output id="thinOut"></output></div>
+  <div class="row"><label for="refill">refill speed</label><input id="refill" type="range" min="1" max="5" step="1"><output id="refillOut"></output></div>
   <div class="buttons">
     <button id="reset">Reset</button>
     <button id="clear">Clear</button>
@@ -184,15 +186,15 @@ const PALETTE = ['#040215', '#4c02a1', '#b52f8c', '#f68f44', '#f0f921'];   // pl
 const params = { preset: 'four', bpm: 120, bpb: 4, swing: 0, human: 0,
                  kick: '', snare: '', hat: '', padBars: 1, muted: false,
                  R: 13, T: 10, mu: 0.15, sigma: 0.015, paused: false,
-                 fill: 10, thin: 40, hudShort: false };   // fill/thin: Auto's cover band, %
+                 fill: 10, thin: 40, refill: 3, hudShort: false };   // fill/thin: Auto's cover band, %
 // Auto keeps the field alive (see the comment at the top). sigma is the base σ the rule uses.
-const AUTO = { hysteresis: 0.15, refillSecs: 3,   // crowded stays on until cover drops 15 points
+const AUTO = { hysteresis: 0.10,   // crowded stays on until cover drops 10 points
                frozen: 0.025, frozenSecs: 3, smoothSecs: 2,   // frozen: still rings read ~1%
                sigmaStep: 0.0006, sigmaFloor: 0.5,   // sigmaFloor: fraction of slider σ
                cutRadius: 0.2, cutEverySecs: 2, checkEvery: 15 };   // cutRadius: fraction of the grid
 const auto = { on: true, sigma: 0.015, mass: 0, cover: 0, coverSmooth: 0, activity: 0,
                crowded: false, frozenSince: null, sparseSince: null, lastCheck: 0, lastCut: 0, cuts: 0, drops: 0,
-               pendingBlob: false, note: '', noteUntil: 0 };
+               pendingBlob: 0, pendingReseed: 0, pendingAt: 0, note: '', noteUntil: 0 };   // pending*: counts
 
 const maps = { mKickMu: false, mKickBlob: true, mSnareFlash: true,
                mHatShimmer: true, mPadHue: true, mPadSigma: false };   // which mappings are on
@@ -645,6 +647,7 @@ function seed(count) {
   seededAt = performance.now();
   auto.sigma = params.sigma;
   auto.frozenSince = null; auto.sparseSince = null;
+  auto.pendingReseed = 0; auto.pendingBlob = 0;
   auto.coverSmooth = -1;   // -1: take the next reading as is
   auto.crowded = false;
 }
@@ -723,7 +726,7 @@ for (const lane of LANES) {
 }
 
 const sliders = { bpm: 0, bpb: 0, swing: 2, human: 0, T: 0, mu: 3, sigma: 4,
-                  fill: 0, thin: 0 };   // name → decimals shown
+                  fill: 0, thin: 0, refill: 0 };   // name → decimals shown
 const grooveSliders = ['bpm', 'bpb', 'swing', 'human'];
 function syncControls() {
   for (const [name, dec] of Object.entries(sliders)) {
@@ -812,13 +815,14 @@ function autoCheck(now) {
   auto.frozenSince = stillNow ? (auto.frozenSince ?? now) : null;
   const frozen = auto.frozenSince !== null && now - auto.frozenSince > AUTO.frozenSecs * 1000;
   auto.sparseSince = cover < fill ? (auto.sparseSince ?? now) : null;
-  const sparseLong = auto.sparseSince !== null && now - auto.sparseSince > AUTO.refillSecs * 1000;
+  const refillMs = 4000 / params.refill;   // speed 3 → every 1.3 s
+  const sparseLong = auto.sparseSince !== null && now - auto.sparseSince > refillMs;
 
   if (sparseLong || (frozen && cover < thin / 2)) {   // too empty or stuck: new creatures
-    dropOrbium(); dropOrbium();
-    auto.pendingBlob = true;   // frame() adds one noisy blob on the next step
+    auto.pendingReseed = params.refill;   // frame() drops them on the next kick
+    auto.pendingAt = now;
     auto.sigma = ceiling;
-    auto.frozenSince = null; auto.sparseSince = null;   // wait another 3 s before the next one
+    auto.frozenSince = null; auto.sparseSince = null;   // wait refillMs before the next one
     auto.drops++;
     auto.note = 'reseeded'; auto.noteUntil = now + 2000;   // keep it on screen long enough to read
   } else if (now < auto.noteUntil) {
@@ -963,16 +967,24 @@ function frame(now) {
   const sigmaBase = auto.on ? auto.sigma : params.sigma;
   const sigmaEff = sigmaBase + (maps.mPadSigma ? 0.001 * (2 * L.pad - 1) : 0);
   const downbeat = !params.paused && L.kick >= STRONG_KICK && prevKick < STRONG_KICK;
+  const anyKick = !params.paused && L.kick >= 0.5 && prevKick < 0.5;   // every kick peaks above 0.6
   prevKick = L.kick;
+  // Auto's refill lands on the next kick, or right away when the metronome is stopped.
+  if (auto.pendingReseed > 0 && !params.paused &&
+      (anyKick || !metronome.playing || now - auto.pendingAt > 2000)) {   // 2 s: no kicks in the pattern
+    for (let i = 0; i < auto.pendingReseed; i++) dropOrbium();
+    auto.pendingBlob += Math.ceil(auto.pendingReseed / 2);   // one blob per frame from here
+    auto.pendingReseed = 0;
+  }
   // Crowded: cut a hole on the downbeat (every 2 s when the metronome is stopped) and skip the blob.
   const culling = auto.on && auto.crowded && !params.paused;
   let blob = null, cut = null;
   if (culling && (downbeat || (!metronome.playing && now - auto.lastCut > AUTO.cutEverySecs * 1000))) {
     cut = [Math.random() * SIZE, Math.random() * SIZE, AUTO.cutRadius * SIZE, 1];
     auto.lastCut = now; auto.cuts++;
-  } else if ((maps.mKickBlob && downbeat && !culling) || auto.pendingBlob) {
+  } else if ((maps.mKickBlob && downbeat && !culling) || auto.pendingBlob > 0) {
     blob = [Math.random() * SIZE, Math.random() * SIZE, params.R * (1 + 0.6 * Math.random()), 1];
-    if (auto.pendingBlob) auto.pendingBlob = false; else blobs++;
+    if (auto.pendingBlob > 0) auto.pendingBlob--; else blobs++;
   }
 
   if (!params.paused) {
