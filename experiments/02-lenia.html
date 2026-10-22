@@ -17,6 +17,17 @@
   colour gradient, bilinear upscale from the 256×256 grid.
   WebGL2, float render targets (32-bit if available, else 16-bit), ping-pong FBOs.
   The kernel weights live in a small float texture, rebuilt when R changes.
+
+  Auto (on by default) keeps it from filling up or dying out. Plain Lenia does
+  not conserve mass, so the field can freeze or empty. A few times a second the
+  field is averaged down to 64×64 and read back: mass = mean A, activity =
+  mean |ΔA| per unit time. Then:
+    crowded (mass > 30%)            → effective σ drifts down (growth band narrows)
+    sparse  (mass < 8%)             → effective σ drifts back up to the slider value
+    frozen  (activity/mass < 1% for 3 s, or empty) → two Orbiums drop in if mass < 15%,
+                                      else σ drops
+  The σ slider is the ceiling; the HUD shows the effective σ the rule really uses.
+  Thresholds are first guesses, tune them on the phone.
 -->
 <html lang="en">
 <head>
@@ -40,7 +51,7 @@
   .row input[type=range] { flex: 1; }
   .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
   .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
-  button { flex: 1 1 22%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
     background: #121a26; color: inherit; font: inherit; }
   button.on { background: #24496b; border-color: #4f86b8; }
   button.wide { flex-basis: 100%; }
@@ -70,6 +81,7 @@
     <button id="clear">Clear</button>
     <button id="erase">Erase</button>
     <button id="pause">Pause</button>
+    <button id="auto" class="on">Auto</button>
     <button id="copy" class="wide">Copy setup</button>
   </div>
   <a href="../index.html">← all experiments</a>
@@ -119,6 +131,11 @@ const PRESETS = {
 const params = { preset: 'orbium', R: 13, T: 10, mu: 0.15, sigma: 0.015,
                  steps: 1, brush: 10, trail: 0.9, paused: false, erase: false };
 
+// Auto keeps the field alive (see the comment at the top). sigmaEff is the σ the rule really uses.
+const AUTO = { crowded: 0.30, sparse: 0.08, frozen: 0.01, frozenSecs: 3,
+               sigmaStep: 0.0003, sigmaFloor: 0.5, checkEvery: 15 };   // sigmaFloor: fraction of slider σ
+const auto = { on: true, sigmaEff: 0.015, mass: 0, activity: 0, frozenSince: null, note: '' };
+
 // ---------- WebGL setup ----------
 const canvas = document.getElementById('c');
 const hud = document.getElementById('hud');
@@ -137,7 +154,8 @@ void main() {
 }`;
 
 // One Lenia step, plus the finger brush (a capsule from uBrush.xy to uBrush.zw).
-// State: r = A (the field), g = trail (slowly fading max of A, only for looks).
+// State: r = A (the field), g = trail (slowly fading max of A, only for looks),
+//        b = activity |ΔA| / dt (read back by Auto to spot a frozen field).
 const SIM = `#version 300 es
 precision highp float;
 uniform sampler2D uState;
@@ -174,6 +192,7 @@ void main() {
   float d = (u - uMu) / uSigma;
   float growth = 2.0 * exp(-0.5 * d * d) - 1.0;
   float a = clamp(c.r + uDt * growth, 0.0, 1.0);
+  float activity = uDt > 0.0 ? abs(a - c.r) / uDt : 0.0;
 
   if (uBrushR > 0.0) {
     vec2 size = vec2(s);
@@ -187,7 +206,24 @@ void main() {
   }
 
   float trail = max(a, c.g * uTrail);
-  outColor = vec4(a, trail, 0.0, 1.0);
+  outColor = vec4(a, trail, activity, 1.0);
+}`;
+
+// Auto: average 4×4 blocks of the 256² state into a 64² 8-bit texture we can read back.
+// r = mean A, g = sqrt(mean activity) (sqrt keeps small values above 8-bit rounding).
+const STATS = `#version 300 es
+precision highp float;
+uniform sampler2D uState;
+out vec4 outColor;
+void main() {
+  ivec2 base = ivec2(gl_FragCoord.xy) * 4;
+  vec2 sum = vec2(0.0);
+  for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) {
+    vec4 v = texelFetch(uState, base + ivec2(x, y), 0);
+    sum += vec2(v.r, v.b);
+  }
+  sum /= 16.0;
+  outColor = vec4(sum.x, sqrt(min(sum.y, 1.0)), 0.0, 1.0);
 }`;
 
 // Colour max(A, faded trail) through the gradient, bilinear upscale.
@@ -251,6 +287,7 @@ function program(fragSrc) {
 
 const simProg = program(SIM);
 const drawProg = program(DRAW);
+const statsProg = program(STATS);
 gl.bindVertexArray(gl.createVertexArray());   // empty VAO: positions come from gl_VertexID
 
 // ---------- Ping-pong state textures ----------
@@ -282,6 +319,19 @@ function makeTargets(internalFormat) {
   return list;
 }
 
+// Small 8-bit target for Auto's read-back (RGBA8 is always readable with readPixels).
+const STATS_SIZE = SIZE / 4;
+const statsTarget = (() => {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, STATS_SIZE, STATS_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { tex, fbo, pixels: new Uint8Array(STATS_SIZE * STATS_SIZE * 4) };
+})();
+
 let cur = 0;   // index of the texture holding the current state
 let seededAt = performance.now();   // when the field was last reseeded, for Copy setup
 
@@ -308,7 +358,31 @@ function buildKernel(R) {
 }
 
 // ---------- Seeding ----------
-// 'orbium': copies of Orbium in random cells of a 6×6 layout, each turned and mirrored at random.
+// Calls put(x, y, value) for each Orbium cell, turned by a random multiple of 90° and maybe mirrored.
+function forEachOrbiumCell(put) {
+  const n = ORBIUM.length;
+  const turn = Math.floor(Math.random() * 4), flip = Math.random() < 0.5;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    let [u, v] = [flip ? n - 1 - x : x, y];
+    for (let t = 0; t < turn; t++) [u, v] = [n - 1 - v, u];   // rotate 90°
+    put(u, v, ORBIUM[y][x]);
+  }
+}
+
+// Auto: drop one Orbium at a random spot, overwriting that 20×20 patch.
+function dropOrbium() {
+  const n = ORBIUM.length;
+  const block = new Float32Array(n * n * 4);
+  forEachOrbiumCell((u, v, a) => {
+    const i = (v * n + u) * 4;
+    block[i] = a; block[i + 1] = a; block[i + 3] = 1;
+  });
+  const x = Math.floor(Math.random() * (SIZE - n)), y = Math.floor(Math.random() * (SIZE - n));
+  gl.bindTexture(gl.TEXTURE_2D, targets[cur].tex);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, n, n, gl.RGBA, gl.FLOAT, block);
+}
+
+// 'orbium': copies of Orbium in random cells of a 6×6 layout.
 // 'soup': random noisy discs.
 function seed(kind, count) {
   const data = new Float32Array(SIZE * SIZE * 4);
@@ -323,12 +397,7 @@ function seed(kind, count) {
     for (const slot of slots) {
       const ox = Math.floor((slot % 6) * cell + Math.random() * (cell - n));
       const oy = Math.floor(Math.floor(slot / 6) * cell + Math.random() * (cell - n));
-      const turn = Math.floor(Math.random() * 4), flip = Math.random() < 0.5;
-      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-        let [u, v] = [flip ? n - 1 - x : x, y];
-        for (let t = 0; t < turn; t++) [u, v] = [n - 1 - v, u];   // rotate 90°
-        put(ox + u, oy + v, ORBIUM[y][x]);
-      }
+      forEachOrbiumCell((u, v, a) => put(ox + u, oy + v, a));
     }
   } else if (kind === 'soup') {
     for (let s = 0; s < count; s++) {
@@ -343,6 +412,8 @@ function seed(kind, count) {
   gl.bindTexture(gl.TEXTURE_2D, targets[cur].tex);
   gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, SIZE, SIZE, gl.RGBA, gl.FLOAT, data);
   seededAt = performance.now();
+  auto.sigmaEff = params.sigma;
+  auto.frozenSince = null;
 }
 
 // ---------- Touch / mouse drawing ----------
@@ -407,6 +478,7 @@ for (const [name, dec] of Object.entries(sliders)) {
     params[name] = parseFloat(e.target.value);
     $(name + 'Out').textContent = params[name].toFixed(dec);
     if (ruleSliders.includes(name)) markCustom();
+    if (name === 'sigma') auto.sigmaEff = params.sigma;
   });
 }
 function markCustom() {   // hand-tuned values no longer match a preset
@@ -417,6 +489,55 @@ $('reset').onclick = () => { const p = PRESETS[basePreset]; seed(p.seed, p.count
 $('clear').onclick = () => seed('none', 0);
 $('erase').onclick = e => { params.erase = !params.erase; e.target.classList.toggle('on', params.erase); };
 $('pause').onclick = e => { params.paused = !params.paused; e.target.classList.toggle('on', params.paused); };
+$('auto').onclick = e => {
+  auto.on = !auto.on; auto.sigmaEff = params.sigma; auto.frozenSince = null;
+  e.target.classList.toggle('on', auto.on);
+};
+
+// ---------- Auto ----------
+// Read the 64×64 summary back, then nudge σ or drop in Orbiums.
+function autoCheck(now) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, statsTarget.fbo);
+  gl.viewport(0, 0, STATS_SIZE, STATS_SIZE);
+  gl.useProgram(statsProg.p);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, targets[cur].tex);
+  gl.uniform1i(statsProg.u.uState, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  const px = statsTarget.pixels;
+  gl.readPixels(0, 0, STATS_SIZE, STATS_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, px);
+
+  let mass = 0, activity = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    mass += px[i] / 255;
+    const g = px[i + 1] / 255;
+    activity += g * g;
+  }
+  const n = STATS_SIZE * STATS_SIZE;
+  auto.mass = mass / n;
+  auto.activity = activity / n;
+
+  const ceiling = params.sigma, floor = params.sigma * AUTO.sigmaFloor;
+  const crowded = auto.mass > AUTO.crowded;
+  const frozenNow = auto.activity < AUTO.frozen * Math.max(auto.mass, 1e-6);
+  auto.frozenSince = frozenNow ? (auto.frozenSince ?? now) : null;
+  const frozen = auto.frozenSince !== null && now - auto.frozenSince > AUTO.frozenSecs * 1000;
+
+  if (frozen && auto.mass < AUTO.crowded / 2) {   // empty or stuck sparse: new creatures
+    dropOrbium(); dropOrbium();
+    auto.sigmaEff = ceiling;
+    auto.frozenSince = null;
+    auto.note = 'orbiums in';
+  } else if (crowded || frozen) {
+    auto.sigmaEff = Math.max(floor, auto.sigmaEff - AUTO.sigmaStep);
+    auto.note = 'thinning';
+  } else if (auto.mass < AUTO.sparse && auto.sigmaEff < ceiling) {
+    auto.sigmaEff = Math.min(ceiling, auto.sigmaEff + AUTO.sigmaStep);
+    auto.note = 'regrowing';
+  } else {
+    auto.note = 'steady';
+  }
+}
 
 // ---------- Copy setup ----------
 // One tap copies the settings as text plus a link that reopens this exact setup.
@@ -424,6 +545,7 @@ $('pause').onclick = e => { params.paused = !params.paused; e.target.classList.t
 function setupLink() {
   const q = new URLSearchParams({ preset: basePreset });
   for (const name of Object.keys(sliders)) q.set(name, params[name]);
+  q.set('auto', auto.on ? 1 : 0);
   return location.origin + location.pathname + '?' + q;
 }
 function setupText() {
@@ -432,7 +554,15 @@ function setupText() {
     `R ${params.R}  T ${params.T}  μ ${params.mu.toFixed(3)}  σ ${params.sigma.toFixed(4)}\n` +
     `steps ${params.steps}  brush ${params.brush}  trail ${params.trail.toFixed(2)}\n` +
     `${SIZE}² ${precisionLabel} · ${fps} fps · ${secs}s since reset\n` +
+    autoLine() + '\n' +
     setupLink();
+}
+// "auto σ 0.0231 · mass 12% · moving 8% · thinning": what Auto sees and does right now.
+function autoLine() {
+  if (!auto.on) return 'auto off';
+  const moving = auto.mass > 1e-6 ? auto.activity / auto.mass : 0;
+  return `auto σ ${auto.sigmaEff.toFixed(4)} · mass ${(auto.mass * 100).toFixed(1)}% · ` +
+         `moving ${(moving * 100).toFixed(1)}% · ${auto.note}`;
 }
 $('copy').onclick = async e => {
   const text = setupText(), btn = e.target;
@@ -459,6 +589,8 @@ function loadFromUrl() {
     if (ruleSliders.includes(name)) changed = true;
   }
   if (changed) markCustom();
+  if (q.get('auto') === '0') { auto.on = false; $('auto').classList.remove('on'); }
+  auto.sigmaEff = params.sigma;
   syncSliders();
 }
 
@@ -486,7 +618,7 @@ function step(drawBrush, dt) {
   gl.activeTexture(gl.TEXTURE0);
   gl.uniform1i(simProg.u.uR, params.R);
   gl.uniform1f(simProg.u.uMu, params.mu);
-  gl.uniform1f(simProg.u.uSigma, params.sigma);
+  gl.uniform1f(simProg.u.uSigma, auto.on ? auto.sigmaEff : params.sigma);
   gl.uniform1f(simProg.u.uDt, dt);
   gl.uniform1f(simProg.u.uTrail, dt > 0 ? params.trail : 1);
   gl.uniform4f(simProg.u.uBrush, pointer.lastX, pointer.lastY, pointer.x, pointer.y);
@@ -497,13 +629,14 @@ function step(drawBrush, dt) {
   cur = next;
 }
 
-let frames = 0, fps = 0, lastFpsTime = performance.now();
+let frames = 0, fps = 0, lastFpsTime = performance.now(), autoFrame = 0;
 function frame(now) {
   resize();
   if (params.paused) {
     if (pointer.down) step(true, 0);
   } else {
     for (let i = 0; i < params.steps; i++) step(pointer.down && i === 0, 1 / params.T);
+    if (auto.on && ++autoFrame % AUTO.checkEvery === 0) autoCheck(now);
   }
   pointer.lastX = pointer.x; pointer.lastY = pointer.y;
 
@@ -523,7 +656,8 @@ function frame(now) {
     hud.textContent =
       `Lenia · ${params.preset}\n` +
       `R ${params.R}  T ${params.T}  μ ${params.mu.toFixed(3)}  σ ${params.sigma.toFixed(4)}\n` +
-      `${SIZE}² ${precisionLabel} · ${params.steps} step/frame · ${fps} fps`;
+      `${SIZE}² ${precisionLabel} · ${params.steps} step/frame · ${fps} fps\n` +
+      autoLine();
   }
   requestAnimationFrame(frame);
 }
