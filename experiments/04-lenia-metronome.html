@@ -27,6 +27,17 @@
   The visuals only see the lane levels { kick, snare, hat, pad, beatPhase, barPhase }
   from `lanes.read()`. A real-music analyser can later replace the metronome there.
   Drawing: one finger paints mass, two fingers erase.
+
+  Auto (on by default, as in 02) keeps the field from filling up or dying out.
+  Every 15 frames the state is averaged to a 64×64 summary and read back:
+  mass = mean A, smoothed over ~2 s so single kick blobs don't count as crowding;
+  activity = mean |ΔA| per unit time from the Lenia rule only (painting and kick
+  blobs are not counted, so a beat landing never looks like motion). Then:
+    crowded (smoothed mass > 30%) → base σ drifts down (growth band narrows)
+    sparse  (smoothed mass < 8%)  → base σ drifts back up to the slider value
+    still   (activity/mass < 1% for 3 s, or empty) → two Orbiums drop in if
+            mass < 15%, else σ drops
+  pad → σ still wobbles around that base. Thresholds are first guesses.
 -->
 <html lang="en">
 <head>
@@ -38,9 +49,10 @@
   html, body { margin: 0; height: 100%; background: #05070c; color: #e8eef5;
     font: 14px/1.3 system-ui, -apple-system, sans-serif; }
   body { display: flex; flex-direction: column; }
-  #wrap { position: relative; width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
     margin: 0 auto; flex: none; }
-  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  /* Absolute so the canvas size never feeds back into the layout (it hid the panel on some phones). */
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
   #hint { position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
     padding: 6px 12px; border-radius: 16px; background: rgba(0,0,0,.6); font-size: 13px;
     white-space: nowrap; pointer-events: none; transition: opacity .6s; }
@@ -48,7 +60,7 @@
   #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
     background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
     white-space: pre; pointer-events: none; }
-  #panel { flex: 1; overflow-y: auto; padding: 8px 12px 16px; }
+  #panel { flex: 1; min-height: 200px; overflow-y: auto; padding: 8px 12px 16px; }
   .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
   .row label { width: 92px; flex: none; color: #9fb0c3; }
   .row input[type=range] { flex: 1; }
@@ -57,7 +69,7 @@
     border-radius: 6px; background: #0b111a; color: inherit;
     font: 14px ui-monospace, Menlo, monospace; letter-spacing: 1px; }
   .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
-  button { flex: 1 1 22%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
     background: #121a26; color: inherit; font: inherit; }
   button.on { background: #24496b; border-color: #4f86b8; }
   button.wide { flex-basis: 100%; }
@@ -65,7 +77,8 @@
   a { color: #7fb4e6; }
   @media (orientation: landscape) {
     body { flex-direction: row; }
-    #wrap { width: auto; height: 100dvh; margin: 0; }
+    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0; }
+    #panel { min-height: 0; min-width: 38vw; }
   }
 </style>
 </head>
@@ -104,6 +117,7 @@
     <button id="reset">Reset</button>
     <button id="clear">Clear</button>
     <button id="pause">Pause</button>
+    <button id="auto" class="on">Auto</button>
     <button id="copy" class="wide">Copy setup</button>
   </div>
   <a href="../index.html">← all experiments</a>
@@ -157,6 +171,12 @@ const PALETTE = ['#040215', '#4c02a1', '#b52f8c', '#f68f44', '#f0f921'];   // pl
 const params = { preset: 'four', bpm: 120, bpb: 4, swing: 0, human: 0,
                  kick: '', snare: '', hat: '', padBars: 1, muted: false,
                  R: 13, T: 10, mu: 0.15, sigma: 0.015, paused: false };
+// Auto keeps the field alive (see the comment at the top). sigma is the base σ the rule uses.
+const AUTO = { crowded: 0.30, sparse: 0.08, frozen: 0.01, frozenSecs: 3, massSecs: 2,
+               sigmaStep: 0.0003, sigmaFloor: 0.5, checkEvery: 15 };   // sigmaFloor: fraction of slider σ
+const auto = { on: true, sigma: 0.015, mass: 0, massSmooth: 0, activity: 0,
+               frozenSince: null, lastCheck: 0, note: '' };
+
 const maps = { mKickMu: false, mKickBlob: true, mSnareFlash: true,
                mHatShimmer: true, mPadHue: true, mPadSigma: false };   // which mappings are on
 
@@ -306,7 +326,8 @@ void main() {
 }`;
 
 // One Lenia step, plus the finger brush (a capsule uBrush.xy → uBrush.zw) and the kick blob.
-// State: r = A, g = trail (fading max of A, for looks), b = U (kept for the glow).
+// State: r = A, g = trail (fading max of A, for looks), b = U (kept for the glow),
+//        a = activity |ΔA| / dt from the rule alone (read back by Auto).
 const SIM = `#version 300 es
 precision highp float;
 uniform sampler2D uState;
@@ -353,6 +374,7 @@ void main() {
   float bump = max(0.0, 1.0 - d * d / 9.0);
   float growth = 2.0 * bump * bump * bump * bump - 1.0;
   float a = clamp(c.r + uDt * growth, 0.0, 1.0);
+  float activity = uDt > 0.0 ? abs(a - c.r) / uDt : 0.0;   // before brush and blob on purpose
 
   if (uBrushR > 0.0) {
     vec2 q = torusDelta(gl_FragCoord.xy, uBrush.xy, size);
@@ -370,7 +392,24 @@ void main() {
   }
 
   float trail = max(a, c.g * (uDt > 0.0 ? 0.9 : 1.0));
-  outColor = vec4(a, trail, u, 1.0);
+  outColor = vec4(a, trail, u, activity);
+}`;
+
+// Auto: average 4×4 blocks of the state into a (SIZE/4)² 8-bit texture we can read back.
+// r = mean A, g = sqrt(mean activity) (sqrt keeps small values above 8-bit rounding).
+const STATS = `#version 300 es
+precision highp float;
+uniform sampler2D uState;
+out vec4 outColor;
+void main() {
+  ivec2 base = ivec2(gl_FragCoord.xy) * 4;
+  vec2 sum = vec2(0.0);
+  for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) {
+    vec4 v = texelFetch(uState, base + ivec2(x, y), 0);
+    sum += vec2(v.r, v.a);
+  }
+  sum /= 16.0;
+  outColor = vec4(sum.x, sqrt(min(sum.y, 1.0)), 0.0, 1.0);
 }`;
 
 // Colour max(A, faded trail) through the gradient, then the lane effects.
@@ -464,6 +503,7 @@ function program(fragSrc) {
 
 const simProg = program(SIM);
 const drawProg = program(DRAW);
+const statsProg = program(STATS);
 gl.bindVertexArray(gl.createVertexArray());   // empty VAO: positions come from gl_VertexID
 
 // ---------- Ping-pong state textures ----------
@@ -495,6 +535,19 @@ function makeTargets(internalFormat) {
   return list;
 }
 
+// Small 8-bit target for Auto's read-back (RGBA8 is always readable with readPixels).
+const STATS_SIZE = SIZE / 4;
+const statsTarget = (() => {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, STATS_SIZE, STATS_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { tex, fbo, pixels: new Uint8Array(STATS_SIZE * STATS_SIZE * 4) };
+})();
+
 let cur = 0;   // index of the texture holding the current state
 let seededAt = performance.now();   // when the field was last reseeded, for Copy setup
 
@@ -521,6 +574,30 @@ function buildKernel(R) {
 }
 
 // ---------- Seeding ----------
+// Calls put(x, y, value) for each Orbium cell, turned by a random multiple of 90° and maybe mirrored.
+function forEachOrbiumCell(put) {
+  const n = ORBIUM.length;
+  const turn = Math.floor(Math.random() * 4), flip = Math.random() < 0.5;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    let [u, v] = [flip ? n - 1 - x : x, y];
+    for (let t = 0; t < turn; t++) [u, v] = [n - 1 - v, u];   // rotate 90°
+    put(u, v, ORBIUM[y][x]);
+  }
+}
+
+// Auto: drop one Orbium at a random spot, overwriting that 20×20 patch.
+function dropOrbium() {
+  const n = ORBIUM.length;
+  const block = new Float32Array(n * n * 4);
+  forEachOrbiumCell((u, v, a) => {
+    const i = (v * n + u) * 4;
+    block[i] = a; block[i + 1] = a;
+  });
+  const x = Math.floor(Math.random() * (SIZE - n)), y = Math.floor(Math.random() * (SIZE - n));
+  gl.bindTexture(gl.TEXTURE_2D, targets[cur].tex);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, n, n, gl.RGBA, gl.FLOAT, block);
+}
+
 // Copies of Orbium in random cells of a 6×6 layout (12×12 at 512²), each turned and
 // mirrored at random. count is for 256² and grows with the area; 0 clears the field.
 function seed(count) {
@@ -536,17 +613,15 @@ function seed(count) {
   for (const slot of slots) {
     const ox = Math.floor((slot % grid) * cell + Math.random() * (cell - n));
     const oy = Math.floor(Math.floor(slot / grid) * cell + Math.random() * (cell - n));
-    const turn = Math.floor(Math.random() * 4), flip = Math.random() < 0.5;
-    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-      let [u, v] = [flip ? n - 1 - x : x, y];
-      for (let t = 0; t < turn; t++) [u, v] = [n - 1 - v, u];   // rotate 90°
-      put(ox + u, oy + v, ORBIUM[y][x]);
-    }
+    forEachOrbiumCell((u, v, a) => put(ox + u, oy + v, a));
   }
   for (let i = 0; i < SIZE * SIZE; i++) { data[i * 4 + 1] = data[i * 4]; data[i * 4 + 3] = 1; }
   gl.bindTexture(gl.TEXTURE_2D, targets[cur].tex);
   gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, SIZE, SIZE, gl.RGBA, gl.FLOAT, data);
   seededAt = performance.now();
+  auto.sigma = params.sigma;
+  auto.frozenSince = null;
+  auto.massSmooth = -1;   // -1: take the next reading as is
 }
 
 // ---------- Touch / mouse drawing ----------
@@ -637,6 +712,7 @@ for (const [name, dec] of Object.entries(sliders)) {
     params[name] = parseFloat(e.target.value);
     $(name + 'Out').textContent = params[name].toFixed(dec);
     if (grooveSliders.includes(name)) markCustom();
+    if (name === 'sigma') auto.sigma = params.sigma;
   });
 }
 function syncButtons() {
@@ -649,6 +725,69 @@ for (const name of Object.keys(maps)) $(name).onclick = () => { maps[name] = !ma
 $('reset').onclick = () => seed(5);
 $('clear').onclick = () => seed(0);
 $('pause').onclick = e => { params.paused = !params.paused; e.target.classList.toggle('on', params.paused); };
+$('auto').onclick = () => {
+  auto.on = !auto.on; auto.sigma = params.sigma; auto.frozenSince = null;
+  $('auto').classList.toggle('on', auto.on);
+};
+
+// ---------- Auto ----------
+// Read the summary back, then nudge the base σ or drop in Orbiums.
+function autoCheck(now) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, statsTarget.fbo);
+  gl.viewport(0, 0, STATS_SIZE, STATS_SIZE);
+  gl.useProgram(statsProg.p);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, targets[cur].tex);
+  gl.uniform1i(statsProg.u.uState, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  const px = statsTarget.pixels;
+  gl.readPixels(0, 0, STATS_SIZE, STATS_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, px);
+
+  let mass = 0, activity = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    mass += px[i] / 255;
+    const g = px[i + 1] / 255;
+    activity += g * g;
+  }
+  const n = STATS_SIZE * STATS_SIZE;
+  auto.mass = mass / n;
+  auto.activity = activity / n;
+
+  // Smooth mass over ~2 s so the bump from each kick blob averages out.
+  const dt = Math.min(1, (now - (auto.lastCheck || now)) / 1000);
+  auto.lastCheck = now;
+  const k = 1 - Math.exp(-dt / AUTO.massSecs);
+  auto.massSmooth = auto.massSmooth < 0 ? auto.mass : auto.massSmooth + k * (auto.mass - auto.massSmooth);
+
+  const ceiling = params.sigma, floor = params.sigma * AUTO.sigmaFloor;
+  const crowded = auto.massSmooth > AUTO.crowded;
+  const stillNow = auto.activity < AUTO.frozen * Math.max(auto.mass, 1e-6);
+  auto.frozenSince = stillNow ? (auto.frozenSince ?? now) : null;
+  const frozen = auto.frozenSince !== null && now - auto.frozenSince > AUTO.frozenSecs * 1000;
+
+  if (frozen && auto.massSmooth < AUTO.crowded / 2) {   // empty or stuck sparse: new creatures
+    dropOrbium(); dropOrbium();
+    auto.sigma = ceiling;
+    auto.frozenSince = null;
+    auto.note = 'orbiums in';
+  } else if (crowded || frozen) {
+    auto.sigma = Math.max(floor, auto.sigma - AUTO.sigmaStep);
+    auto.note = 'thinning';
+  } else if (auto.massSmooth < AUTO.sparse && auto.sigma < ceiling) {
+    auto.sigma = Math.min(ceiling, auto.sigma + AUTO.sigmaStep);
+    auto.note = 'regrowing';
+  } else {
+    auto.note = 'steady';
+  }
+}
+
+// "auto σ 0.0131 · mass 12% · moving 8% · thinning": what Auto sees and does right now.
+function autoLine() {
+  if (!auto.on) return 'auto off';
+  const moving = auto.mass > 1e-6 ? auto.activity / auto.mass : 0;
+  return `auto σ ${auto.sigma.toFixed(4)} · mass ${(Math.max(0, auto.massSmooth) * 100).toFixed(1)}% · ` +
+         `moving ${(moving * 100).toFixed(1)}% · ${auto.note}`;
+}
 
 function mapsLabel() {
   const names = { mKickMu: 'kick→μ', mKickBlob: 'kick→blob', mSnareFlash: 'snare→flash',
@@ -666,6 +805,7 @@ function setupLink() {
   for (const name of urlKeys) q.set(name, params[name]);
   for (const name of Object.keys(maps)) q.set(name, maps[name] ? 1 : 0);
   q.set('muted', params.muted ? 1 : 0);
+  q.set('auto', auto.on ? 1 : 0);
   if (SIZE !== 256) q.set('size', SIZE);
   return location.origin + location.pathname + '?' + q;
 }
@@ -677,6 +817,7 @@ function setupText() {
     `maps: ${mapsLabel()}\n` +
     `R ${params.R}  T ${params.T}  μ ${params.mu.toFixed(3)}  σ ${params.sigma.toFixed(4)}\n` +
     `${SIZE}² ${precisionLabel} · ${fps} fps · ${secs}s since reset\n` +
+    autoLine() + '\n' +
     setupLink();
 }
 $('copy').onclick = async e => {
@@ -710,9 +851,10 @@ function loadFromUrl() {
   if (query.get('padBars') === '4') params.padBars = 4;
   for (const name of Object.keys(maps)) if (query.has(name)) maps[name] = query.get(name) === '1';
   params.muted = query.get('muted') === '1';
+  if (query.get('auto') === '0') { auto.on = false; $('auto').classList.remove('on'); }
   if (changed) markCustom();
   syncControls();
-  seed(5);
+  seed(5);   // also sets Auto's base σ to the slider value
 }
 
 // ---------- Main loop ----------
@@ -753,14 +895,15 @@ function step(dt, mu, sigma, blob) {
 const bar = v => '█'.repeat(Math.round(v * 8)).padEnd(8, '·');   // HUD level meter
 
 let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
-let prevKick = 0, blobs = 0;
+let prevKick = 0, blobs = 0, autoFrame = 0;
 function frame(now) {
   resize();
   const L = lanes.read();   // the only place the visuals learn about the music
 
   // Mappings: lane levels → rule tweaks and shader inputs.
   const muEff = params.mu + (maps.mKickMu ? 0.005 * L.kick : 0);
-  const sigmaEff = params.sigma + (maps.mPadSigma ? 0.001 * (2 * L.pad - 1) : 0);
+  const sigmaBase = auto.on ? auto.sigma : params.sigma;
+  const sigmaEff = sigmaBase + (maps.mPadSigma ? 0.001 * (2 * L.pad - 1) : 0);
   let blob = null;
   if (maps.mKickBlob && !params.paused && L.kick >= STRONG_KICK && prevKick < STRONG_KICK) {
     blob = [Math.random() * SIZE, Math.random() * SIZE, params.R * (1 + 0.6 * Math.random()), 1];
@@ -768,8 +911,10 @@ function frame(now) {
   }
   prevKick = L.kick;
 
-  if (!params.paused) step(1 / params.T, muEff, sigmaEff, blob);
-  else if (pointer.down) step(0, muEff, sigmaEff, null);
+  if (!params.paused) {
+    step(1 / params.T, muEff, sigmaEff, blob);
+    if (auto.on && ++autoFrame % AUTO.checkEvery === 0) autoCheck(now);
+  } else if (pointer.down) step(0, muEff, sigmaEff, null);
   pointer.lastX = pointer.x; pointer.lastY = pointer.y;
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -803,7 +948,8 @@ function frame(now) {
       `hat   ${bar(L.hat)} ${L.hat.toFixed(2)}\n` +
       `pad   ${bar(L.pad)} ${L.pad.toFixed(2)}   ${blobs} blobs\n` +
       `R ${params.R} T ${params.T} μ ${muEff.toFixed(4)} σ ${sigmaEff.toFixed(4)}\n` +
-      `${SIZE}² ${precisionLabel} · ${fps} fps`;
+      `${SIZE}² ${precisionLabel} · ${fps} fps\n` +
+      autoLine();
   }
   requestAnimationFrame(frame);
 }
