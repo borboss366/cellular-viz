@@ -79,3 +79,13 @@ on the home Wi-Fi. Every run lists its videos with scores; keep / maybe / dull
 and a note are saved to `verdicts.json` and written into `results.json` and
 `report.md`. Only those reports go to GitHub; videos stay on the box.
 LAN only, no login: don't expose the port to the internet.
+
+### Host side (once, on the box itself, outside Puggie's container)
+
+Puggie's worker runs in rootless Podman with no published ports and no devices.
+`serve.mjs --socket /home/puggie/pi-durable-worker/data/qa-viewer.sock` listens
+on a Unix socket in the bind-mounted folder; the host forwards :8787 to it with
+two systemd user units (`systemd-socket-proxyd`). For the GPU, the container
+needs `/dev/dri/renderD128` and the render group (`keep-groups`); Mesa is
+unpacked into `~/qa-libs` and `run.mjs` switches to ANGLE gl-egl when the
+render node shows up (`--gpu off` forces SwiftShader).

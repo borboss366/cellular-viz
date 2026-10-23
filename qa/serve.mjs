@@ -16,6 +16,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
 const portArg = process.argv.indexOf('--port');
 const port = portArg > 0 ? +process.argv[portArg + 1] : 8787;
+// The Puggie worker container publishes no ports, so the viewer also listens on a Unix
+// socket in the bind-mounted data folder; the host forwards :8787 to it (qa/README.md).
+const sockArg = process.argv.indexOf('--socket');
+const sock = sockArg > 0 ? process.argv[sockArg + 1] : null;
 const VERDICTS = ['keep', 'maybe', 'dull'];
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -119,7 +123,7 @@ function sendFile(req, res, p) {
   fs.createReadStream(p).pipe(res);
 }
 
-http.createServer((req, res) => {
+const handler = (req, res) => {
   const url = new URL(req.url, 'http://x');
   const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   const html = s => { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(s); };
@@ -151,4 +155,9 @@ http.createServer((req, res) => {
     }
     res.writeHead(404); res.end('not found');
   } catch (e) { res.writeHead(500); res.end(String(e.message)); }
-}).listen(port, '0.0.0.0', () => console.log(`QA viewer on :${port}`));
+};
+http.createServer(handler).listen(port, '0.0.0.0', () => console.log(`QA viewer on :${port}`));
+if (sock) {
+  try { fs.unlinkSync(sock); } catch {}
+  http.createServer(handler).listen(sock, () => { fs.chmodSync(sock, 0o600); console.log(`QA viewer on ${sock}`); });
+}

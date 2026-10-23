@@ -48,13 +48,22 @@ await new Promise(r => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
 // ---- browser ----
-const hasGpu = fs.existsSync('/dev/dri');
+// GPU only when the container got the render node (--device /dev/dri/renderD128) and --gpu off isn't set
+const renderNode = '/dev/dri/renderD128';
+const hasGpu = args.gpu !== 'off' && fs.existsSync(renderNode);
 const flags = ['--autoplay-policy=no-user-gesture-required'];
-if (!hasGpu) flags.push('--use-angle=swiftshader', '--enable-unsafe-swiftshader');
+if (hasGpu) flags.push('--use-angle=gl-egl', '--ignore-gpu-blocklist', '--enable-gpu-rasterization');
+else flags.push('--use-angle=swiftshader', '--enable-unsafe-swiftshader');
 // libs unpacked without root (see qa/README.md, "Headless on the box")
 const libs = [path.join(os.homedir(), 'qa-libs/root/usr/lib/x86_64-linux-gnu'), path.join(os.homedir(), 'qa-libs/root/lib/x86_64-linux-gnu')].filter(fs.existsSync);
 const env = { ...process.env };
 if (libs.length) env.LD_LIBRARY_PATH = [...libs, env.LD_LIBRARY_PATH].filter(Boolean).join(':');
+// Mesa unpacked into ~/qa-libs too (radeonsi for the Radeon 780M); point GLVND and the DRI loader at it
+const mesa = path.join(os.homedir(), 'qa-libs/root');
+if (hasGpu && fs.existsSync(path.join(mesa, 'usr/share/glvnd/egl_vendor.d'))) {
+  env.__EGL_VENDOR_LIBRARY_DIRS = path.join(mesa, 'usr/share/glvnd/egl_vendor.d');
+  env.LIBGL_DRIVERS_PATH = path.join(mesa, 'usr/lib/x86_64-linux-gnu/dri');
+}
 const fontsConf = path.join(os.homedir(), 'qa-libs/fonts.conf');
 if (!env.FONTCONFIG_FILE && fs.existsSync(fontsConf)) env.FONTCONFIG_FILE = fontsConf;
 
@@ -129,8 +138,9 @@ results.forEach((r, i) => {
 });
 
 const meta = {
-  exp, stamp, warm, dur, host: os.hostname(), cpu: os.cpus()[0]?.model, gpu: hasGpu ? 'host /dev/dri' : 'none (SwiftShader software GL)',
-  chromium: browser.version(), renderer, note: hasGpu ? '' : 'fps is software-rendered and says nothing about the phone',
+  exp, stamp, warm, dur, host: os.hostname(), cpu: os.cpus()[0]?.model, gpu: hasGpu ? `${renderNode} (ANGLE gl-egl, Mesa)` : 'none (SwiftShader software GL)',
+  chromium: browser.version(), renderer, note: !hasGpu ? 'fps is software-rendered and says nothing about the phone'
+    : /SwiftShader|llvmpipe/i.test(renderer) ? 'render node present but Chromium fell back to software GL; fps not comparable' : '',
 };
 fs.writeFileSync(path.join(out, 'results.json'), JSON.stringify({ meta, results }, null, 1));
 fs.writeFileSync(path.join(out, 'report.md'),
