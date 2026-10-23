@@ -164,10 +164,22 @@ async function runOne(v, i, n) {
   try { canvas = frame.contentDocument.querySelector('canvas'); } catch (e) { canvas = null; }
   if (!canvas) { results.push({ label: v.label, url, error: 'no canvas reachable (cross-origin?)' }); return; }
 
+  // WebGL canvases without preserveDrawingBuffer read back blank outside their own
+  // frame callback, so measure from a <video> fed by the canvas stream instead.
+  let stream = null, src = canvas;
+  try {
+    stream = canvas.captureStream(30);
+    const vid = document.createElement('video');
+    vid.muted = true; vid.playsInline = true; vid.srcObject = stream;
+    await vid.play().catch(() => {});
+    for (let k = 0; k < 20 && vid.readyState < 2; k++) await sleep(50);
+    if (vid.readyState >= 2) src = vid;
+  } catch (e) { /* fall back to reading the canvas */ }
+
   // recorder
   let rec = null, chunks = [];
   try {
-    const stream = canvas.captureStream(30);
+    if (!stream) throw new Error('no stream');
     const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
     rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2_500_000 });
     rec.ondataavailable = e => chunks.push(e.data);
@@ -182,7 +194,7 @@ async function runOne(v, i, n) {
   const t0 = performance.now();
   let prev = null; const samples = [];
   while (performance.now() - t0 < dur) {
-    const s = sample(canvas, prev);
+    const s = sample(src, prev);
     samples.push(s); prev = s.ys;
     status(`[${i+1}/${n}] ${v.label}\nrecording ${(((performance.now()-t0))/1000).toFixed(0)}/${dur/1000}s · cover ${(s.coverage*100).toFixed(0)}% · motion ${s.motion.toFixed(4)}`);
     await sleep(250);

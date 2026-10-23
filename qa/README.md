@@ -47,3 +47,27 @@ for dev (one page, 06, or flags on 04):
 
 With that, a sweep is just variant lines like
 `bloom-low :: preset=four&fxBloom=0.3 ::tap`.
+
+## Headless on the box (QA box)
+
+`qa/run.mjs` drives the same harness in headless Chromium (Playwright) on the
+home server, presses Play in each variant, and writes
+`qa/<exp>/runs/<YYYY-MM-DD-HHMM>/`:
+
+- `results.json` — metrics, scores and run info (box, GPU, Chromium, renderer)
+- `report.md` — the harness table plus a header
+- `stills/NN-label.png` — one frame per variant, mid-recording
+- `console.log` — browser console, page errors, harness steps
+- `videos/` — .webm per variant; **git-ignored**, stays on the box
+
+```
+cd qa && npm install && npx playwright install chromium
+node run.mjs --exp 06-lenia-effects.html                  # harness defaults
+node run.mjs --exp 04-lenia-metronome.html --variants v.txt --warm 4 --dur 12
+```
+
+The box runs in a container without root or a GPU: missing Chromium libs are
+unpacked from Debian .debs into `~/qa-libs` (with a `fonts.conf`) and
+`run.mjs` picks them up. WebGL runs on SwiftShader, so **fps from the box is
+software speed (~16 fps) and says nothing about the phone**; the fps part of
+the score is near 0 for every variant there. Compare variants with each other.
