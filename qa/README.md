@@ -71,3 +71,11 @@ unpacked from Debian .debs into `~/qa-libs` (with a `fonts.conf`) and
 `run.mjs` picks them up. WebGL runs on SwiftShader, so **fps from the box is
 software speed (~16 fps) and says nothing about the phone**; the fps part of
 the score is near 0 for every variant there. Compare variants with each other.
+
+### Watch and grade (QA viewer)
+
+`node qa/serve.mjs --port 8787` on the box, then open `http://192.168.8.164:8787/`
+on the home Wi-Fi. Every run lists its videos with scores; keep / maybe / dull
+and a note are saved to `verdicts.json` and written into `results.json` and
+`report.md`. Only those reports go to GitHub; videos stay on the box.
+LAN only, no login: don't expose the port to the internet.
