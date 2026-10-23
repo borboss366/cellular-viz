@@ -11,6 +11,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadComparisons, nextPair, ranking, savePick, undoPick, setups, comparePage } from './compare.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
@@ -72,7 +73,7 @@ const page = (title, body) => `<!DOCTYPE html><html lang="en"><head><meta charse
 function indexPage() {
   const items = runs().map(r => {
     const d = load(r.dir), v = loadVerdicts(r.dir), n = d.results.length, graded = Object.keys(v).length;
-    return `<li><a href="/run/${r.exp}/${r.stamp}"><b>${esc(r.exp)}</b> · ${esc(r.stamp)}</a> <span class="m">· ${n} variants · graded ${graded}/${n}</span></li>`;
+    return `<li><a href="/run/${r.exp}/${r.stamp}"><b>${esc(r.exp)}</b> · ${esc(r.stamp)}</a> <span class="m">· ${n} variants · graded ${graded}/${n} · <a href="/run/${r.exp}/${r.stamp}/compare">compare</a> (${loadComparisons(r.dir).length} picks)</span></li>`;
   }).join('');
   return page('QA runs', items ? `<ul>${items}</ul>` : '<p>No runs yet.</p>');
 }
@@ -102,7 +103,8 @@ document.querySelectorAll('.card').forEach(card => {
   card.querySelectorAll('button').forEach(b => b.onclick = () => send(b.dataset.v));
   note.onchange = () => { const on = card.querySelector('button.on'); if (on) send(on.dataset.v); };
 });</script>`;
-  return page(`${exp} · ${stamp}`, head + cards + js);
+  const cmp = `<p><a href="/run/${exp}/${stamp}/compare"><b>⇄ Compare two at a time</b></a> <span class="m">· ${loadComparisons(dir).length} picks so far</span></p>`;
+  return page(`${exp} · ${stamp}`, cmp + head + cards + js);
 }
 function stillOf(dir, i, label, exp, stamp) {
   const f = `${String(i + 1).padStart(2, '0')}-${label.replace(/[^\w-]+/g, '-')}.png`;
@@ -121,6 +123,37 @@ function sendFile(req, res, p) {
   }
   res.writeHead(200, { 'content-type': type, 'content-length': size, 'accept-ranges': 'bytes' });
   fs.createReadStream(p).pipe(res);
+}
+
+function compareRoute(req, res, exp, stamp, dir, action) {
+  const json = (o, code = 200) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+  const data = load(dir);
+  const usable = data.results.filter(r => r.video && fs.existsSync(path.join(dir, r.video)));
+  const labels = usable.map(r => r.label);
+  if (!action) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(page(`${exp} · ${stamp} · compare`, comparePage(exp, stamp))); }
+  if (action === 'next') {
+    const comps = loadComparisons(dir), su = setups(data.results), per = Math.max(1, labels.length - 1);
+    const pair = nextPair(labels, comps);
+    const info = l => { const i = data.results.findIndex(r => r.label === l), r = data.results[i];
+      return { label: l, setup: su[l], video: `/file/${exp}/${stamp}/${r.video}`, still: stillOf(dir, i, l, exp, stamp) }; };
+    return json({ pair: pair && pair.map(info), count: comps.length, round: Math.floor(comps.length / per) + 1, inRound: comps.length % per, perRound: per, ranking: ranking(labels, comps) });
+  }
+  if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
+  if (action === 'undo') { undoPick(dir, labels); return json({ ok: true }); }
+  if (action === 'pick') {
+    let body = '';
+    req.on('data', c => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on('end', () => {
+      try {
+        const { a, b, winner } = JSON.parse(body);
+        if (!labels.includes(a) || !labels.includes(b) || a === b || ![a, b, 'tie'].includes(winner)) throw new Error('bad pick');
+        savePick(dir, labels, { a, b, winner });
+        json({ ok: true });
+      } catch (e) { json({ error: e.message }, 400); }
+    });
+    return;
+  }
+  json({ error: 'not found' }, 404);
 }
 
 const handler = (req, res) => {
@@ -145,6 +178,7 @@ const handler = (req, res) => {
         });
         return;
       }
+      if (parts[3] === 'compare') return compareRoute(req, res, parts[1], parts[2], dir, parts[4]);
       return html(runPage(parts[1], parts[2], dir));
     }
     if (parts[0] === 'file' && parts.length >= 4 && safe(parts[1]) && safe(parts[2]) && parts.slice(3).every(safe)) {

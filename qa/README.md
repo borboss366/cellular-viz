@@ -89,3 +89,13 @@ two systemd user units (`systemd-socket-proxyd`). For the GPU, the container
 needs `/dev/dri/renderD128` and the render group (`keep-groups`); Mesa is
 unpacked into `~/qa-libs` and `run.mjs` switches to ANGLE gl-egl when the
 render node shows up (`--gpu off` forces SwiftShader).
+
+### Compare two at a time (swipe grading)
+
+`http://192.168.8.164:8787/run/<exp>/<stamp>/compare` shows two variants at once
+with only the setup params that differ. Tap the better one or swipe it right
+(swipe left = the other wins); ≈ same, skip and undo are there too. Picks go to
+`comparisons.json` as `{a, b, winner, at}` (winner = label or `tie`), and a
+Bradley–Terry ranking is written into the run's `report.md`. The next pair is
+the one whose outcome is most uncertain and least compared (a cheap stand-in
+for ASAP); a round is N−1 picks, 2–3 rounds give a steady order.
