@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QA harness · cellular-viz</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:#0b0e14; color:#dde3ee; }
+  header { padding:10px 14px; background:#121724; }
+  h1 { font-size:16px; margin:0 0 2px; }
+  .sub { color:#8fa0bd; font-size:12px; }
+  main { padding:10px 14px 60px; max-width:720px; margin:0 auto; }
+  label { display:block; margin:10px 0 4px; color:#9fb0cc; font-size:12px; }
+  select, input, textarea, button { font:inherit; background:#1a2234; color:#e6ecf7; border:1px solid #2c3850; border-radius:8px; padding:8px 10px; }
+  select, input, textarea { width:100%; box-sizing:border-box; }
+  textarea { min-height:110px; font-family:ui-monospace, monospace; font-size:12px; }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  button { cursor:pointer; }
+  button.primary { background:#2b5cff; border-color:#2b5cff; font-weight:600; }
+  button:disabled { opacity:.45; }
+  #stage { margin-top:12px; border:1px solid #2c3850; border-radius:10px; overflow:hidden; background:#000; }
+  #frame { width:100%; height:420px; border:0; display:block; }
+  #status { margin-top:10px; padding:8px 10px; background:#121724; border-radius:8px; font-family:ui-monospace, monospace; font-size:12px; white-space:pre-wrap; }
+  table { border-collapse:collapse; width:100%; margin-top:12px; font-size:12px; }
+  th, td { border:1px solid #2c3850; padding:6px 7px; text-align:left; vertical-align:top; }
+  th { background:#141b2b; color:#9fb0cc; }
+  td a { color:#7fb0ff; }
+  .verdict button { padding:4px 8px; margin-right:4px; font-size:12px; }
+  .verdict button.on { background:#2b5cff; border-color:#2b5cff; }
+  .hint { color:#8fa0bd; font-size:12px; margin-top:8px; }
+  #overlay { position:fixed; inset:0; background:rgba(5,8,14,.85); display:none; align-items:center; justify-content:center; flex-direction:column; gap:12px; z-index:9; text-align:center; padding:20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>QA harness</h1>
+  <div class="sub">Loads an experiment, records the canvas, measures motion / coverage / colour, scores it. All in this browser.</div>
+</header>
+<main>
+  <label>Experiment</label>
+  <select id="exp">
+    <option value="01-gray-scott.html">01 Gray-Scott</option>
+    <option value="02-lenia.html">02 Lenia</option>
+    <option value="03-lenia-audio.html">03 Lenia audio</option>
+    <option value="04-lenia-metronome.html" selected>04 Lenia metronome</option>
+    <option value="05-flow-lenia.html">05 Flow Lenia</option>
+    <option value="custom">custom URL below</option>
+  </select>
+  <label>Custom URL (only for "custom")</label>
+  <input id="customUrl" placeholder="https://… .html">
+  <label>Variants — one per line: <b>label :: query string</b> (add <b>::tap</b> if the page needs a Play tap)</label>
+  <textarea id="variants">baseline :: preset=four&bpm=120&auto=1 ::tap</textarea>
+  <div class="row">
+    <div><label>Warm-up s</label><input id="warm" type="number" value="4" min="0"></div>
+    <div><label>Record s</label><input id="dur" type="number" value="12" min="3"></div>
+    <div><label>&nbsp;</label><button id="run" class="primary">▶ Run sweep</button></div>
+  </div>
+  <div id="stage"><iframe id="frame" allow="autoplay; microphone"></iframe></div>
+  <div id="status">idle</div>
+  <div id="results"></div>
+  <div class="row" style="margin-top:10px">
+    <button id="copyRep" disabled>Copy report (markdown)</button>
+    <button id="copyJson" disabled>Copy JSON</button>
+  </div>
+  <p class="hint">Videos save as .webm downloads, named <code>exp_label.webm</code>. Paste the report in the group chat; share the videos there too so QA can commit them to the qa/ folders.</p>
+</main>
+<div id="overlay">
+  <div id="overlayMsg">Tap Play inside the frame, then continue.</div>
+  <button id="overlayGo" class="primary">Continue</button>
+</div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const results = [];
+let running = false;
+
+function expUrl() {
+  const v = $('exp').value;
+  if (v === 'custom') return $('customUrl').value.trim();
+  return new URL('../experiments/' + v, location.href).href;
+}
+function parseVariants() {
+  return $('variants').value.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    const parts = l.split('::').map(s => s.trim());
+    return { label: parts[0] || 'variant', query: parts[1] || '', tap: parts.includes('tap') };
+  });
+}
+function status(t) { $('status').textContent = t; }
+
+function waitTap(msg) {
+  return new Promise(res => {
+    $('overlayMsg').textContent = msg;
+    $('overlay').style.display = 'flex';
+    $('overlayGo').onclick = () => { $('overlay').style.display = 'none'; res(); };
+  });
+}
+
+// ---- metrics on a 64x64 downsample ----
+const M = 64;
+const probe = document.createElement('canvas'); probe.width = M; probe.height = M;
+const pctx = probe.getContext('2d', { willReadFrequently: true });
+function sample(canvas, prev) {
+  pctx.drawImage(canvas, 0, 0, M, M);
+  const d = pctx.getImageData(0, 0, M, M).data;
+  let lit = 0, sum = 0, sum2 = 0, diff = 0, rs = 0, gs = 0, bs = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i+1], b = d[i+2];
+    const y = (0.299*r + 0.587*g + 0.114*b) / 255;
+    if (y > 0.08) lit++;
+    sum += y; sum2 += y*y; rs += r; gs += g; bs += b;
+    if (prev) diff += Math.abs(y - prev[i>>2]);
+  }
+  const n = M*M;
+  const ys = new Float32Array(n);
+  for (let i = 0, j = 0; i < d.length; i += 4, j++) ys[j] = (0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]) / 255;
+  const mean = sum/n;
+  // colourfulness: spread of channel means from grey
+  const cm = (Math.abs(rs-gs) + Math.abs(gs-bs) + Math.abs(rs-bs)) / (3*n*255);
+  return { ys, coverage: lit/n, brightness: mean, contrast: Math.sqrt(Math.max(0, sum2/n - mean*mean)), motion: prev ? diff/n : 0, colour: cm };
+}
+
+function band(x, lo, hi, soft) { // 1 inside [lo,hi], fades to 0 over `soft`
+  if (x >= lo && x <= hi) return 1;
+  const d = x < lo ? lo - x : x - hi;
+  return Math.max(0, 1 - d / soft);
+}
+function score(agg) {
+  // motion: want visible movement, 0.004–0.06 mean luma diff per sample
+  const sMotion = band(agg.motion, 0.004, 0.06, 0.04);
+  // coverage: want 15–60% of pixels lit
+  const sCover = band(agg.coverage, 0.15, 0.60, 0.25);
+  // pulse: motion varying over time (beat response) is good
+  const sPulse = Math.min(1, agg.motionStd / 0.01);
+  const sColour = Math.min(1, agg.colour / 0.08);
+  const sFps = band(agg.fps, 30, 1000, 15);
+  const total = 10 * (0.30*sMotion + 0.25*sCover + 0.15*sPulse + 0.15*sColour + 0.15*sFps);
+  return { total: +total.toFixed(1), parts: { motion: sMotion, coverage: sCover, pulse: sPulse, colour: sColour, fps: sFps } };
+}
+
+async function runOne(v, i, n) {
+  const frame = $('frame');
+  const url = expUrl() + (v.query ? (expUrl().includes('?') ? '&' : '?') + v.query : '');
+  status(`[${i+1}/${n}] ${v.label}\nloading ${url}`);
+  await new Promise(res => { frame.onload = res; frame.src = url; });
+  await sleep(500);
+  if (v.tap) await waitTap(`"${v.label}": tap Play / start inside the frame, then continue.`);
+  const warm = +$('warm').value * 1000, dur = +$('dur').value * 1000;
+  status(`[${i+1}/${n}] ${v.label}\nwarm-up ${warm/1000}s…`);
+  await sleep(warm);
+  let canvas;
+  try { canvas = frame.contentDocument.querySelector('canvas'); } catch (e) { canvas = null; }
+  if (!canvas) { results.push({ label: v.label, url, error: 'no canvas reachable (cross-origin?)' }); return; }
+
+  // recorder
+  let rec = null, chunks = [];
+  try {
+    const stream = canvas.captureStream(30);
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+    rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2_500_000 });
+    rec.ondataavailable = e => chunks.push(e.data);
+    rec.start();
+  } catch (e) { /* record is optional */ }
+
+  // fps via rAF
+  let frames = 0, rafOn = true;
+  const raf = () => { frames++; if (rafOn) requestAnimationFrame(raf); };
+  requestAnimationFrame(raf);
+
+  const t0 = performance.now();
+  let prev = null; const samples = [];
+  while (performance.now() - t0 < dur) {
+    const s = sample(canvas, prev);
+    samples.push(s); prev = s.ys;
+    status(`[${i+1}/${n}] ${v.label}\nrecording ${(((performance.now()-t0))/1000).toFixed(0)}/${dur/1000}s · cover ${(s.coverage*100).toFixed(0)}% · motion ${s.motion.toFixed(4)}`);
+    await sleep(250);
+  }
+  rafOn = false;
+  const fps = frames / (dur/1000);
+  let videoUrl = null, videoSize = 0;
+  if (rec) {
+    await new Promise(res => { rec.onstop = res; rec.stop(); });
+    const blob = new Blob(chunks, { type: 'video/webm' });
+    videoSize = blob.size; videoUrl = URL.createObjectURL(blob);
+  }
+  const ms = samples.slice(1).map(s => s.motion);
+  const mean = a => a.reduce((x,y)=>x+y,0)/Math.max(1,a.length);
+  const mm = mean(ms);
+  const agg = {
+    coverage: mean(samples.map(s=>s.coverage)),
+    motion: mm,
+    motionStd: Math.sqrt(mean(ms.map(x=>(x-mm)*(x-mm)))),
+    colour: mean(samples.map(s=>s.colour)),
+    contrast: mean(samples.map(s=>s.contrast)),
+    fps: +fps.toFixed(1)
+  };
+  const sc = score(agg);
+  results.push({ label: v.label, url, agg, score: sc, videoUrl, videoSize, verdict: '' });
+}
+
+function fname(label) { return ($('exp').value.replace('.html','') + '_' + label).replace(/[^\w-]+/g, '-') + '.webm'; }
+
+function render() {
+  const rows = results.map((r, i) => {
+    if (r.error) return `<tr><td>${r.label}</td><td colspan="5">⚠ ${r.error}</td></tr>`;
+    const a = r.agg;
+    return `<tr>
+      <td><b>${r.label}</b></td>
+      <td><b>${r.score.total}</b>/10</td>
+      <td>cover ${(a.coverage*100).toFixed(0)}%<br>motion ${a.motion.toFixed(4)} ±${a.motionStd.toFixed(4)}<br>colour ${a.colour.toFixed(3)} · ${a.fps} fps</td>
+      <td>${r.videoUrl ? `<a href="${r.videoUrl}" download="${fname(r.label)}">⬇ ${(r.videoSize/1e6).toFixed(1)} MB</a>` : '—'}</td>
+      <td class="verdict" data-i="${i}">
+        <button data-v="keep">keep</button><button data-v="maybe">maybe</button><button data-v="dull">dull</button>
+      </td></tr>`;
+  }).join('');
+  $('results').innerHTML = `<table><tr><th>variant</th><th>score</th><th>metrics</th><th>video</th><th>verdict</th></tr>${rows}</table>`;
+  $('results').querySelectorAll('.verdict button').forEach(b => b.onclick = () => {
+    const i = +b.parentElement.dataset.i; results[i].verdict = b.dataset.v;
+    b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  });
+}
+
+function report() {
+  const exp = $('exp').value.replace('.html','');
+  let md = `QA sweep · ${exp} · ${new Date().toISOString().slice(0,16)}\n`;
+  md += `| variant | score | cover | motion | pulse | colour | fps | verdict |\n|---|---|---|---|---|---|---|---|\n`;
+  for (const r of results) {
+    if (r.error) { md += `| ${r.label} | — | ${r.error} ||||||\n`; continue; }
+    const a = r.agg;
+    md += `| ${r.label} | ${r.score.total} | ${(a.coverage*100).toFixed(0)}% | ${a.motion.toFixed(4)} | ±${a.motionStd.toFixed(4)} | ${a.colour.toFixed(3)} | ${a.fps} | ${r.verdict||''} |\n`;
+  }
+  md += `\nqueries:\n` + results.map(r => `- ${r.label}: ${r.url}`).join('\n');
+  return md;
+}
+
+$('run').onclick = async () => {
+  if (running) return; running = true; $('run').disabled = true;
+  results.length = 0;
+  const vs = parseVariants();
+  for (let i = 0; i < vs.length; i++) { try { await runOne(vs[i], i, vs.length); } catch (e) { results.push({ label: vs[i].label, error: String(e) }); } render(); }
+  status(`done · ${results.length} variants`);
+  $('copyRep').disabled = $('copyJson').disabled = false;
+  running = false; $('run').disabled = false;
+};
+$('copyRep').onclick = () => navigator.clipboard.writeText(report()).then(() => status('report copied — paste it in the chat'));
+$('copyJson').onclick = () => navigator.clipboard.writeText(JSON.stringify(results.map(({videoUrl, ...r}) => r), null, 1)).then(() => status('JSON copied'));
+</script>
+</body>
+</html>
