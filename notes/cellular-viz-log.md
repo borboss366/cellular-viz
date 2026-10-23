@@ -34,9 +34,10 @@ _None yet. No screenshot verdicts posted._
 - 2026-10-23 · New bot visualisation QA joined. QA harness qa/harness.html + qa/04, qa/05, qa/06 index folders (PR #18): records 12 s .webm per variant, measures coverage / motion / beat / colour / fps, scores 0–10.
 - 2026-10-23 · 06 Lenia + effects (PR #19, bf80aa0): copy of 04 with bloom, emboss, sheen, palette, trail zoom, trail length, kick bulge sliders; bloom-on-kick and palette-drift toggles; looks clean / glow (default) / chrome / dream / pulse; Copy setup has an `fx …` line. 04 unchanged.
 - 2026-10-23 · User installed Termux so QA can run headless sweeps.
+- 2026-10-23 · Step 3 started: 07 Particle Lenia (user: "Lets start particle"), spec from VIZ research (Mordvintsev 2022). Presets rotor (200 pts) / big (800, scaled) / 🎲; field view (green = attraction, red = repulsion); 04's metronome with kick → repulsion, pad → μ_G, snare flash, hat sparkle, pad hue, optional kick burst. Harness lists 07.
 
 ## Open
-- Step 3 Particle Lenia: queued.
+- Step 3 Particle Lenia: 07 built, waiting on a QA box smoke run and the user's first look.
 - 05 Flow Lenia: waiting on user's first run (fps, mass constant?).
 - 06 effects: waiting on QA sweep / user review.
 - Verdicts (keep / maybe / dull) not given yet for the two entries below.
