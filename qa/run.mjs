@@ -85,6 +85,9 @@ const renderer = await page.evaluate(() => {
 });
 note('info', `chromium ${browser.version()} · renderer ${renderer}`);
 
+// experiments the harness doesn't list yet (a fresh PR) get an option added on the fly
+await page.evaluate(e => { const s = document.getElementById('exp');
+  if (![...s.options].some(o => o.value === e)) s.add(new Option(e, e), s.options.length - 1); }, exp);
 await page.selectOption('#exp', exp);
 if (variants) await page.fill('#variants', variants);
 await page.fill('#warm', String(warm));
