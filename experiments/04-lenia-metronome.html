@@ -36,19 +36,21 @@
   per unit time from the Lenia rule only (painting and kick blobs are not counted,
   so a beat landing never looks like motion). Then:
   Two sliders set the band Auto aims for (defaults 10% and 40%):
-    crowded (smoothed cover > "thin above", until 10 points lower) → base σ drifts
-            down to 75% of the slider, and on every downbeat (every 2 s when stopped)
-            a soft hole (12% of the grid) is cut while the current cover is still
-            within 5 points of the line. Lowering σ alone can't clear a soup.
-    not crowded → σ climbs back to the slider value at twice the speed it fell,
-            so a thinned field regrows instead of fading out.
+    crowded (smoothed cover > "thin above", until 10 points lower) → base σ creeps
+            down (0.0002 per check, floor 50% of the slider), and on every downbeat
+            (every 2 s when stopped) a soft hole (12% of the grid) is cut while the
+            current cover is still within 5 points of the line.
+    falling (current cover under the middle of the band and dropping faster than
+            4 points a second) → σ jumps up by 10% of the slider each check. A soup
+            dies all at once below some σ, so σ has to back off as soon as it starts.
+    in band → σ holds where it is: near the edge where the soup stops growing.
     sparse  (current cover < "refill below") → at once and then every 4/speed s
             ("refill speed" 1–5), σ jumps back to the slider value and Orbiums plus
             half as many noisy blobs drop in on the next kick (at once when
-            stopped): `speed` of them, twice that when sparse, three times when
-            under half the line.
-    falling (cover under the middle of the band and dropping faster than 4 points
-            a second) → the same drop, `speed` Orbiums, before the screen empties.
+            stopped): twice `speed` of them, three times under half the line.
+  For QA sweeps the tuning can come from the URL: aStep (σ step per check),
+  aFloor (σ floor, fraction), aKick (σ jump when falling, fraction), aFall (fall
+  rate per second), aCut (hole radius, fraction of the grid).
     still   (activity/mass < 2.5% for 3 s) → the same reseed if cover is under half
             of "thin above", else σ drops
   pad → σ still wobbles around that base.
@@ -196,10 +198,15 @@ const params = { preset: 'four', bpm: 120, bpb: 4, swing: 0, human: 0,
 // Auto keeps the field alive (see the comment at the top). sigma is the base σ the rule uses.
 const AUTO = { hysteresis: 0.10,   // crowded stays on until cover drops 10 points
                frozen: 0.025, frozenSecs: 3, smoothSecs: 2,   // frozen: still rings read ~1%
-               sigmaStep: 0.0006, sigmaFloor: 0.75,   // sigmaFloor: fraction of slider σ
-               recover: 2,   // σ climbs back this many times faster than it falls
+               sigmaStep: 0.0002, sigmaFloor: 0.5,   // step per check (4×/s); floor: fraction of slider σ
+               fallKick: 0.1,   // falling: σ jumps up by this fraction of the slider σ
                fallRate: 0.04,   // cover lost per second that counts as falling
                cutRadius: 0.12, cutEverySecs: 2, checkEvery: 15 };   // cutRadius: fraction of the grid
+const AUTO_URL = { aStep: 'sigmaStep', aFloor: 'sigmaFloor', aKick: 'fallKick', aFall: 'fallRate', aCut: 'cutRadius' };
+for (const [k, key] of Object.entries(AUTO_URL)) {   // tuning from the URL, for QA sweeps
+  const v = parseFloat(query.get(k));
+  if (Number.isFinite(v)) AUTO[key] = v;
+}
 const auto = { on: true, sigma: 0.015, mass: 0, cover: 0, coverSmooth: 0, activity: 0,
                crowded: false, cutting: false, frozenSince: null, sparseSince: null, lastCheck: 0, lastCut: 0, cuts: 0, drops: 0,
                prevCover: -1, rate: 0, lastDrop: 0,   // rate: smoothed change of cover per second
@@ -831,26 +838,28 @@ function autoCheck(now) {
   auto.cutting = crowded && raw > thin - AUTO.hysteresis / 2;   // stop cutting once it has really thinned
   const refillMs = 4000 / params.refill;   // speed 3 → every 1.3 s
   const sparse = raw < fill;
-  const falling = !crowded && raw < (fill + thin) / 2 && auto.rate < -AUTO.fallRate;
+  const falling = raw < (fill + thin) / 2 && auto.rate < -AUTO.fallRate;
   const dropDue = now - auto.lastDrop > refillMs;
 
-  if (dropDue && (sparse || falling || (frozen && cover < thin / 2))) {   // too empty, emptying or stuck
-    auto.pendingReseed = params.refill * (raw < fill / 2 ? 3 : sparse ? 2 : 1);   // frame() drops them on the next kick
+  if (dropDue && (sparse || (frozen && cover < thin / 2))) {   // too empty or stuck: new creatures
+    auto.pendingReseed = params.refill * (raw < fill / 2 ? 3 : 2);   // frame() drops them on the next kick
     auto.pendingAt = now;
     auto.lastDrop = now;
     auto.sigma = ceiling;
     auto.frozenSince = null;
     auto.drops++;
-    auto.note = sparse ? 'reseeded' : falling ? 'catching' : 'reseeded';
+    auto.note = 'reseeded';
     auto.noteUntil = now + 2000;   // keep it on screen long enough to read
+  } else if (falling) {   // the soup is dying off: back σ off before it is gone
+    auto.sigma = Math.min(ceiling, auto.sigma + AUTO.fallKick * ceiling);
+    auto.note = 'catching';
   } else if (now < auto.noteUntil) {
     // leave the note up for a moment
   } else if (crowded || frozen) {
     auto.sigma = Math.max(floor, auto.sigma - AUTO.sigmaStep);
     auto.note = 'thinning';
-  } else if (auto.sigma < ceiling) {   // not crowded: let it regrow instead of fading out
-    auto.sigma = Math.min(ceiling, auto.sigma + AUTO.recover * AUTO.sigmaStep);
-    auto.note = 'regrowing';
+  } else if (auto.sigma < ceiling) {
+    auto.note = 'holding';   // in band: σ stays near where the soup stopped growing
   } else {
     auto.note = 'steady';
   }
@@ -884,6 +893,7 @@ function setupLink() {
   q.set('auto', auto.on ? 1 : 0);
   if (params.hudShort) q.set('hud', 'short');
   if (SIZE !== 256) q.set('size', SIZE);
+  for (const k of Object.keys(AUTO_URL)) if (query.has(k)) q.set(k, query.get(k));
   return location.origin + location.pathname + '?' + q;
 }
 function setupText() {
