@@ -36,13 +36,19 @@
   per unit time from the Lenia rule only (painting and kick blobs are not counted,
   so a beat landing never looks like motion). Then:
   Two sliders set the band Auto aims for (defaults 10% and 40%):
-    crowded (cover > "thin above", until 10 points lower) → base σ drifts down,
-            and on every downbeat (every 2 s when stopped) a soft hole is cut at a
-            random spot instead of the kick blob. Lowering σ alone can't clear a soup.
-    sparse  (cover < "refill below") → base σ jumps back to the slider value and,
-            every 4/speed s ("refill speed" 1–5), `speed` Orbiums plus speed/2
-            noisy blobs drop in on the next kick (at once when stopped), until the
-            cover is back above the line
+    crowded (smoothed cover > "thin above", until 10 points lower) → base σ drifts
+            down to 75% of the slider, and on every downbeat (every 2 s when stopped)
+            a soft hole (12% of the grid) is cut while the current cover is still
+            within 5 points of the line. Lowering σ alone can't clear a soup.
+    not crowded → σ climbs back to the slider value at twice the speed it fell,
+            so a thinned field regrows instead of fading out.
+    sparse  (current cover < "refill below") → at once and then every 4/speed s
+            ("refill speed" 1–5), σ jumps back to the slider value and Orbiums plus
+            half as many noisy blobs drop in on the next kick (at once when
+            stopped): `speed` of them, twice that when sparse, three times when
+            under half the line.
+    falling (cover under the middle of the band and dropping faster than 4 points
+            a second) → the same drop, `speed` Orbiums, before the screen empties.
     still   (activity/mass < 2.5% for 3 s) → the same reseed if cover is under half
             of "thin above", else σ drops
   pad → σ still wobbles around that base.
@@ -190,10 +196,13 @@ const params = { preset: 'four', bpm: 120, bpb: 4, swing: 0, human: 0,
 // Auto keeps the field alive (see the comment at the top). sigma is the base σ the rule uses.
 const AUTO = { hysteresis: 0.10,   // crowded stays on until cover drops 10 points
                frozen: 0.025, frozenSecs: 3, smoothSecs: 2,   // frozen: still rings read ~1%
-               sigmaStep: 0.0006, sigmaFloor: 0.5,   // sigmaFloor: fraction of slider σ
-               cutRadius: 0.2, cutEverySecs: 2, checkEvery: 15 };   // cutRadius: fraction of the grid
+               sigmaStep: 0.0006, sigmaFloor: 0.75,   // sigmaFloor: fraction of slider σ
+               recover: 2,   // σ climbs back this many times faster than it falls
+               fallRate: 0.04,   // cover lost per second that counts as falling
+               cutRadius: 0.12, cutEverySecs: 2, checkEvery: 15 };   // cutRadius: fraction of the grid
 const auto = { on: true, sigma: 0.015, mass: 0, cover: 0, coverSmooth: 0, activity: 0,
-               crowded: false, frozenSince: null, sparseSince: null, lastCheck: 0, lastCut: 0, cuts: 0, drops: 0,
+               crowded: false, cutting: false, frozenSince: null, sparseSince: null, lastCheck: 0, lastCut: 0, cuts: 0, drops: 0,
+               prevCover: -1, rate: 0, lastDrop: 0,   // rate: smoothed change of cover per second
                pendingBlob: 0, pendingReseed: 0, pendingAt: 0, note: '', noteUntil: 0 };   // pending*: counts
 
 const maps = { mKickMu: false, mKickBlob: true, mSnareFlash: true,
@@ -649,6 +658,7 @@ function seed(count) {
   auto.frozenSince = null; auto.sparseSince = null;
   auto.pendingReseed = 0; auto.pendingBlob = 0;
   auto.coverSmooth = -1;   // -1: take the next reading as is
+  auto.prevCover = -1; auto.rate = 0; auto.cutting = false;
   auto.crowded = false;
 }
 
@@ -814,24 +824,32 @@ function autoCheck(now) {
   const stillNow = auto.activity < AUTO.frozen * Math.max(auto.mass, 1e-6);
   auto.frozenSince = stillNow ? (auto.frozenSince ?? now) : null;
   const frozen = auto.frozenSince !== null && now - auto.frozenSince > AUTO.frozenSecs * 1000;
-  auto.sparseSince = cover < fill ? (auto.sparseSince ?? now) : null;
+  // Emptiness is judged on the current cover: the smoothed one lags ~2 s behind a fall.
+  const raw = auto.cover;
+  if (auto.prevCover >= 0 && dt > 0) auto.rate += Math.min(1, dt) * ((raw - auto.prevCover) / dt - auto.rate);
+  auto.prevCover = raw;
+  auto.cutting = crowded && raw > thin - AUTO.hysteresis / 2;   // stop cutting once it has really thinned
   const refillMs = 4000 / params.refill;   // speed 3 → every 1.3 s
-  const sparseLong = auto.sparseSince !== null && now - auto.sparseSince > refillMs;
+  const sparse = raw < fill;
+  const falling = !crowded && raw < (fill + thin) / 2 && auto.rate < -AUTO.fallRate;
+  const dropDue = now - auto.lastDrop > refillMs;
 
-  if (sparseLong || (frozen && cover < thin / 2)) {   // too empty or stuck: new creatures
-    auto.pendingReseed = params.refill;   // frame() drops them on the next kick
+  if (dropDue && (sparse || falling || (frozen && cover < thin / 2))) {   // too empty, emptying or stuck
+    auto.pendingReseed = params.refill * (raw < fill / 2 ? 3 : sparse ? 2 : 1);   // frame() drops them on the next kick
     auto.pendingAt = now;
+    auto.lastDrop = now;
     auto.sigma = ceiling;
-    auto.frozenSince = null; auto.sparseSince = null;   // wait refillMs before the next one
+    auto.frozenSince = null;
     auto.drops++;
-    auto.note = 'reseeded'; auto.noteUntil = now + 2000;   // keep it on screen long enough to read
+    auto.note = sparse ? 'reseeded' : falling ? 'catching' : 'reseeded';
+    auto.noteUntil = now + 2000;   // keep it on screen long enough to read
   } else if (now < auto.noteUntil) {
-    // leave the 'reseeded' note up for a moment
+    // leave the note up for a moment
   } else if (crowded || frozen) {
     auto.sigma = Math.max(floor, auto.sigma - AUTO.sigmaStep);
     auto.note = 'thinning';
-  } else if (cover < fill && auto.sigma < ceiling) {
-    auto.sigma = Math.min(ceiling, auto.sigma + AUTO.sigmaStep);
+  } else if (auto.sigma < ceiling) {   // not crowded: let it regrow instead of fading out
+    auto.sigma = Math.min(ceiling, auto.sigma + AUTO.recover * AUTO.sigmaStep);
     auto.note = 'regrowing';
   } else {
     auto.note = 'steady';
@@ -977,7 +995,7 @@ function frame(now) {
     auto.pendingReseed = 0;
   }
   // Crowded: cut a hole on the downbeat (every 2 s when the metronome is stopped) and skip the blob.
-  const culling = auto.on && auto.crowded && !params.paused;
+  const culling = auto.on && auto.cutting && !params.paused;
   let blob = null, cut = null;
   if (culling && (downbeat || (!metronome.playing && now - auto.lastCut > AUTO.cutEverySecs * 1000))) {
     cut = [Math.random() * SIZE, Math.random() * SIZE, AUTO.cutRadius * SIZE, 1];
