@@ -44,14 +44,24 @@
     <option value="01-gray-scott.html">01 Gray-Scott</option>
     <option value="02-lenia.html">02 Lenia</option>
     <option value="03-lenia-audio.html">03 Lenia audio</option>
-    <option value="04-lenia-metronome.html" selected>04 Lenia metronome</option>
+    <option value="04-lenia-metronome.html">04 Lenia metronome</option>
     <option value="05-flow-lenia.html">05 Flow Lenia</option>
+    <option value="06-lenia-effects.html" selected>06 Lenia effects</option>
     <option value="custom">custom URL below</option>
   </select>
   <label>Custom URL (only for "custom")</label>
   <input id="customUrl" placeholder="https://… .html">
   <label>Variants — one per line: <b>label :: query string</b> (add <b>::tap</b> if the page needs a Play tap)</label>
-  <textarea id="variants">baseline :: preset=four&bpm=120&auto=1 ::tap</textarea>
+  <textarea id="variants">clean :: preset=four&sigma=0.02&look=clean ::tap
+bloom-mid :: preset=four&sigma=0.02&look=clean&fxBloom=0.6&fxBloomBeat=1 ::tap
+emboss :: preset=four&sigma=0.02&look=clean&fxEmboss=0.7&fxSheen=0.5 ::tap
+palette :: preset=four&sigma=0.02&look=clean&fxPal=2&fxPalDrift=1 ::tap
+trails :: preset=four&sigma=0.02&look=clean&fxZoom=1.012&fxDecay=0.96 ::tap
+bulge :: preset=four&sigma=0.02&look=clean&fxBulge=0.6 ::tap
+look-glow :: preset=four&sigma=0.02&look=glow ::tap
+look-chrome :: preset=four&sigma=0.02&look=chrome ::tap
+look-dream :: preset=four&sigma=0.02&look=dream ::tap
+look-pulse :: preset=four&sigma=0.02&look=pulse ::tap</textarea>
   <div class="row">
     <div><label>Warm-up s</label><input id="warm" type="number" value="4" min="0"></div>
     <div><label>Record s</label><input id="dur" type="number" value="12" min="3"></div>
