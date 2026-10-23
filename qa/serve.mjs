@@ -70,12 +70,45 @@ button.on{background:#2b5cff;border-color:#2b5cff}input{font:inherit;flex:1;min-
 li{margin:8px 0}`;
 const page = (title, body) => `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${css}</style></head><body><header><h1>${esc(title)}</h1><div class="m"><a href="/">all runs</a></div></header><main>${body}</main></body></html>`;
 
+// ---- start page: everything that waits for the user's eyes ----
+// qa/todo.json holds the questions bots ask the user ({id, title, note?, links:[{label, href}], done?});
+// runs show up by themselves, ungraded first.
+const TODO = path.join(here, 'todo.json');
+const loadTodo = () => { try { return JSON.parse(fs.readFileSync(TODO, 'utf8')); } catch { return []; } };
+
+function runState(r) {
+  const d = load(r.dir), n = d.results.length, picks = loadComparisons(r.dir).length, verdicts = Object.keys(loadVerdicts(r.dir)).length;
+  const software = /SwiftShader|none/i.test(d.meta?.gpu || '');
+  const target = Math.max(1, n - 1) * 2;            // two rounds of picks
+  const graded = picks >= target || (verdicts >= n && n > 0);
+  return { n, picks, verdicts, software, graded, target, tag: r.stamp.slice(16) || '' };
+}
+
 function indexPage() {
-  const items = runs().map(r => {
-    const d = load(r.dir), v = loadVerdicts(r.dir), n = d.results.length, graded = Object.keys(v).length;
-    return `<li><a href="/run/${r.exp}/${r.stamp}"><b>${esc(r.exp)}</b> · ${esc(r.stamp)}</a> <span class="m">· ${n} variants · graded ${graded}/${n} · <a href="/run/${r.exp}/${r.stamp}/compare">compare</a> (${loadComparisons(r.dir).length} picks)</span></li>`;
-  }).join('');
-  return page('QA runs', items ? `<ul>${items}</ul>` : '<p>No runs yet.</p>');
+  const todo = loadTodo().filter(t => !t.done);
+  const asks = todo.map(t => `<div class="card"><b>${esc(t.title)}</b>${t.note ? `<div class="m">${esc(t.note)}</div>` : ''}
+    <div class="row">${(t.links || []).map(l => `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join(' · ')}</div>
+    <div class="row"><button onclick="fetch('/todo/${esc(t.id)}/done',{method:'POST'}).then(()=>location.reload())">✓ done</button>
+    <span class="m">from ${esc(t.from || 'QA box')}</span></div></div>`).join('');
+  const all = runs().map(r => ({ ...r, s: runState(r) }));
+  const row = r => `<li><b>${esc(r.exp)}</b> · ${esc(r.stamp.slice(0, 15))}${r.s.tag ? ` <span class="m">${esc(r.s.tag)}</span>` : ''}<br>
+    <a href="/run/${r.exp}/${r.stamp}/compare"><b>⇄ compare</b></a> · <a href="/run/${r.exp}/${r.stamp}">▶ watch all</a>
+    <span class="m">· ${r.s.n} variants · ${r.s.picks}/${r.s.target} picks · ${r.s.verdicts} verdicts</span></li>`;
+  const diag = r => !!r.s.tag;                       // tagged runs (branch checks, cover tests) are measurements, not swipe rounds
+  const open = all.filter(r => !r.s.graded && !r.s.software && r.s.n > 1 && !diag(r));
+  const done = all.filter(r => r.s.graded);
+  const other = all.filter(r => !r.s.graded && (r.s.software || r.s.n <= 1 || diag(r)));
+  const body = `
+    <h2 style="font-size:16px">Waiting for you (${todo.length})</h2>${asks || '<p class="m">Nothing asked right now.</p>'}
+    <h2 style="font-size:16px">Runs to grade (${open.length})</h2>${open.length ? `<ul>${open.map(row).join('')}</ul>` : '<p class="m">All graded.</p>'}
+    <h2 style="font-size:16px">Graded (${done.length})</h2>${done.length ? `<ul>${done.map(row).join('')}</ul>` : '<p class="m">None yet.</p>'}
+    <details><summary class="m">Other runs (${other.length}): branch checks, software-only, single variant</summary><ul>${other.map(row).join('')}</ul></details>
+    <h2 style="font-size:16px">Elsewhere</h2><ul>
+      <li><a href="https://github.com/users/borboss366/projects/1">Board (GitHub Projects)</a></li>
+      <li><a href="https://github.com/borboss366/cellular-viz/pulls">Pull requests</a></li>
+      <li><a href="https://borboss366.github.io/cellular-viz/">Experiments (live site)</a></li></ul>
+    <p class="m">Bookmark this page: http://192.168.8.164:8787/ (home Wi-Fi only).</p>`;
+  return page('QA: what needs you', body);
 }
 
 function runPage(exp, stamp, dir) {
@@ -180,6 +213,13 @@ const handler = (req, res) => {
       }
       if (parts[3] === 'compare') return compareRoute(req, res, parts[1], parts[2], dir, parts[4]);
       return html(runPage(parts[1], parts[2], dir));
+    }
+    if (parts[0] === 'todo' && parts[2] === 'done' && req.method === 'POST' && safe(parts[1] || '')) {
+      const t = loadTodo(), item = t.find(x => x.id === parts[1]);
+      if (!item) { res.writeHead(404); return res.end('no such item'); }
+      item.done = new Date().toISOString();
+      fs.writeFileSync(TODO, JSON.stringify(t, null, 1));
+      res.writeHead(200); return res.end('ok');
     }
     if (parts[0] === 'file' && parts.length >= 4 && safe(parts[1]) && safe(parts[2]) && parts.slice(3).every(safe)) {
       return sendFile(req, res, path.join(here, parts[1], 'runs', parts[2], ...parts.slice(3)));
