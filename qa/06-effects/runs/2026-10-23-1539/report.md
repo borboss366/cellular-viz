@@ -35,17 +35,17 @@ Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
 
 ## Pairwise ranking (user picks)
 
-19 picks, Bradley–Terry strength (1 = average).
+25 picks, Bradley–Terry strength (1 = average).
 
 | # | variant | strength | won | lost | tie |
 |---|---|---|---|---|---|
-| 1 | look-dream | 8.299 | 3 | 0 | 0 |
-| 2 | look-glow | 3.965 | 3 | 1 | 0 |
-| 3 | trails | 2.78 | 2 | 0 | 1 |
-| 4 | look-pulse | 2.054 | 2 | 1 | 1 |
-| 5 | palette | 0.945 | 2 | 2 | 1 |
-| 6 | bulge | 0.78 | 1 | 1 | 2 |
-| 7 | clean | 0.422 | 1 | 4 | 0 |
-| 8 | emboss | 0.368 | 1 | 2 | 1 |
-| 9 | bloom-mid | 0.246 | 0 | 2 | 1 |
-| 10 | look-chrome | 0.189 | 0 | 2 | 1 |
+| 1 | look-dream | 5.7 | 3 | 0 | 1 |
+| 2 | trails | 3.455 | 2 | 0 | 3 |
+| 3 | look-glow | 3.378 | 3 | 1 | 1 |
+| 4 | palette | 1.481 | 3 | 2 | 1 |
+| 5 | look-pulse | 1.268 | 2 | 2 | 1 |
+| 6 | bulge | 0.884 | 2 | 1 | 2 |
+| 7 | bloom-mid | 0.401 | 1 | 3 | 1 |
+| 8 | look-chrome | 0.356 | 1 | 2 | 1 |
+| 9 | emboss | 0.275 | 1 | 3 | 1 |
+| 10 | clean | 0.23 | 1 | 5 | 0 |

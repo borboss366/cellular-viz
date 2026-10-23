@@ -34,9 +34,10 @@
     }
    },
    "videoSize": 2760079,
-   "verdict": "",
+   "verdict": "keep",
    "hud": "particle lenia · rotor · four 120 bpm 4/4 · ▶\nkick  ██······ 0.22   snare █·······\nhat   ········ 0.01   pad   ██······\nN 200 μ_K 4.0 σ_K 1.00 w_K 0.0220\nμ_G 0.585 σ_G 0.150 rep 1.45\nfit 0.90 · speed 0.025 · size 6.3 · 3140 steps\n60 fps · sim 2.2 ms · field 256²",
-   "video": "videos/01-rotor.webm"
+   "video": "videos/01-rotor.webm",
+   "note": ""
   },
   {
    "label": "big",
@@ -60,9 +61,10 @@
     }
    },
    "videoSize": 2589457,
-   "verdict": "",
+   "verdict": "keep",
    "hud": "particle lenia · big · four 120 bpm 4/4 · ▶\nkick  ········ 0.06   snare ········\nhat   ········ 0.03   pad   ········\nN 800 μ_K 8.0 σ_K 2.00 w_K 0.0055\nμ_G 0.572 σ_G 0.150 rep 1.11\nfit 0.70 · speed 0.032 · size 10.9 · 1920 steps\n60 fps · sim 12.9 ms · field 256²",
-   "video": "videos/02-big.webm"
+   "video": "videos/02-big.webm",
+   "note": ""
   }
  ]
 }

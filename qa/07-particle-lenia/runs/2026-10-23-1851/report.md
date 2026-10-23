@@ -16,3 +16,12 @@ queries:
 - big-60s: http://127.0.0.1:37181/experiments/07-particle-lenia.html?preset=big
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+2 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | rotor-60s | 2.751 | 2 | 0 | 0 |
+| 2 | big-60s | 0.363 | 0 | 2 | 0 |

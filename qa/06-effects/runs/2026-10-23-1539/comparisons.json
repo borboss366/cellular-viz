@@ -112,5 +112,41 @@
   "b": "clean",
   "winner": "bulge",
   "at": "2026-10-23T18:45:01.589Z"
+ },
+ {
+  "a": "emboss",
+  "b": "bloom-mid",
+  "winner": "bloom-mid",
+  "at": "2026-10-23T21:19:30.589Z"
+ },
+ {
+  "a": "trails",
+  "b": "look-glow",
+  "winner": "tie",
+  "at": "2026-10-23T21:19:39.519Z"
+ },
+ {
+  "a": "bloom-mid",
+  "b": "bulge",
+  "winner": "bulge",
+  "at": "2026-10-23T21:19:53.723Z"
+ },
+ {
+  "a": "clean",
+  "b": "look-chrome",
+  "winner": "look-chrome",
+  "at": "2026-10-23T21:19:59.257Z"
+ },
+ {
+  "a": "look-dream",
+  "b": "trails",
+  "winner": "tie",
+  "at": "2026-10-23T21:20:03.713Z"
+ },
+ {
+  "a": "look-pulse",
+  "b": "palette",
+  "winner": "palette",
+  "at": "2026-10-23T21:20:09.003Z"
  }
 ]
