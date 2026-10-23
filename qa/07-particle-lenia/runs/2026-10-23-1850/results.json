@@ -1,0 +1,68 @@
+{
+ "meta": {
+  "exp": "07-particle-lenia.html",
+  "stamp": "2026-10-23-1850",
+  "warm": 4,
+  "dur": 12,
+  "host": "3adc2b2ec197",
+  "cpu": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
+  "gpu": "/dev/dri/renderD128 (ANGLE gl-egl, Mesa)",
+  "chromium": "156.0.8078.4",
+  "renderer": "ANGLE (AMD, AMD Radeon Graphics (gfx1103_r1 LLVM 15.0.6 DRM 3.64 7.0.0-31-generic), OpenGL ES 3.2)",
+  "note": ""
+ },
+ "results": [
+  {
+   "label": "rotor",
+   "url": "http://127.0.0.1:46587/experiments/07-particle-lenia.html?preset=rotor",
+   "agg": {
+    "coverage": 0.3077443440755208,
+    "motion": 0.043985935608418285,
+    "motionStd": 0.012270382763926686,
+    "colour": 0.04338288483796298,
+    "contrast": 0.22970285456690798,
+    "fps": 60.8
+   },
+   "score": {
+    "total": 9.3,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.5422860604745372,
+     "fps": 1
+    }
+   },
+   "videoSize": 2760079,
+   "verdict": "",
+   "hud": "particle lenia · rotor · four 120 bpm 4/4 · ▶\nkick  ██······ 0.22   snare █·······\nhat   ········ 0.01   pad   ██······\nN 200 μ_K 4.0 σ_K 1.00 w_K 0.0220\nμ_G 0.585 σ_G 0.150 rep 1.45\nfit 0.90 · speed 0.025 · size 6.3 · 3140 steps\n60 fps · sim 2.2 ms · field 256²",
+   "video": "videos/01-rotor.webm"
+  },
+  {
+   "label": "big",
+   "url": "http://127.0.0.1:46587/experiments/07-particle-lenia.html?preset=big",
+   "agg": {
+    "coverage": 0.4391726230053192,
+    "motion": 0.039550994125958853,
+    "motionStd": 0.017007483383623342,
+    "colour": 0.04594911934188569,
+    "contrast": 0.22620063022691514,
+    "fps": 61
+   },
+   "score": {
+    "total": 9.4,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.5743639917735711,
+     "fps": 1
+    }
+   },
+   "videoSize": 2589457,
+   "verdict": "",
+   "hud": "particle lenia · big · four 120 bpm 4/4 · ▶\nkick  ········ 0.06   snare ········\nhat   ········ 0.03   pad   ········\nN 800 μ_K 8.0 σ_K 2.00 w_K 0.0055\nμ_G 0.572 σ_G 0.150 rep 1.11\nfit 0.70 · speed 0.032 · size 10.9 · 1920 steps\n60 fps · sim 12.9 ms · field 256²",
+   "video": "videos/02-big.webm"
+  }
+ ]
+}

@@ -99,6 +99,7 @@ await page.click('#run');
 // ---- drive the sweep: press Play when asked, grab a still mid-recording ----
 const frame = page.frameLocator('#frame');
 const stills = new Set();
+const huds = {};
 let lastStatus = '';
 const deadline = Date.now() + nVariants * (warm + dur + 30) * 1000 + 60000;
 while (Date.now() < deadline) {
@@ -119,6 +120,9 @@ while (Date.now() < deadline) {
     stills.add(m[1]);
     const file = path.join(out, 'stills', `${pad(+m[1])}-${m[2].replace(/[^\w-]+/g, '-')}.png`);
     await frame.locator('canvas').first().screenshot({ path: file }).catch(e => note('warn', 'still: ' + e.message));
+    // the experiment's own info box (fps, sim cost, mass…) if it has one
+    const hud = await frame.locator('#hud').first().textContent({ timeout: 1000 }).catch(() => null);
+    if (hud) { huds[m[2]] = hud.trim(); note('hud', `${m[2]}: ${hud.trim().replace(/\n/g, ' | ')}`); }
   }
   await page.waitForTimeout(200);
 }
@@ -134,6 +138,7 @@ const videos = await page.evaluate(async () => Promise.all(results.map(async r =
   return btoa(s);
 })));
 results.forEach((r, i) => {
+  if (huds[r.label]) r.hud = huds[r.label];
   if (!videos[i]) return;
   const f = `${pad(i + 1)}-${r.label.replace(/[^\w-]+/g, '-')}.webm`;
   fs.writeFileSync(path.join(out, 'videos', f), Buffer.from(videos[i], 'base64'));

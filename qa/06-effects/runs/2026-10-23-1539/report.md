@@ -32,3 +32,20 @@ queries:
 - look-pulse: http://127.0.0.1:44473/experiments/06-lenia-effects.html?preset=four&sigma=0.02&look=pulse
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+19 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | look-dream | 8.299 | 3 | 0 | 0 |
+| 2 | look-glow | 3.965 | 3 | 1 | 0 |
+| 3 | trails | 2.78 | 2 | 0 | 1 |
+| 4 | look-pulse | 2.054 | 2 | 1 | 1 |
+| 5 | palette | 0.945 | 2 | 2 | 1 |
+| 6 | bulge | 0.78 | 1 | 1 | 2 |
+| 7 | clean | 0.422 | 1 | 4 | 0 |
+| 8 | emboss | 0.368 | 1 | 2 | 1 |
+| 9 | bloom-mid | 0.246 | 0 | 2 | 1 |
+| 10 | look-chrome | 0.189 | 0 | 2 | 1 |
