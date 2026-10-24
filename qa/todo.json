@@ -36,15 +36,15 @@
  {
   "id": "07-creatures",
   "from": "VIZ QA / QA box",
-  "title": "07 Particle Lenia: 12 new creatures — swipe 2 rounds (22 picks)",
-  "note": "Your top 4–5 become preset buttons. 20 s warm-up, 20 s each.",
+  "title": "07 Particle Lenia: 12 new creatures \u2014 swipe 2 rounds (22 picks)",
+  "note": "Your top 4\u20135 become preset buttons. 20 s warm-up, 20 s each.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/07-particle-lenia/2026-10-23-2124/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/07-particle-lenia/2026-10-23-2124"
    }
   ],
@@ -53,7 +53,7 @@
  {
   "id": "08-blend-first",
   "from": "QA box",
-  "title": "08 Blend (PR #30): watch the first switches — density vs fade",
+  "title": "08 Blend (PR #30): watch the first switches \u2014 density vs fade",
   "note": "Density on the new version has only short dark moments; fade still dips when 06 glow/pulse come in dark.",
   "links": [
    {
@@ -71,14 +71,14 @@
   "id": "blend-shootout-1",
   "from": "VIZ QA / QA box",
   "title": "Blend shootout round 1: fade vs mask vs cut vs screen vs color vs difference",
-  "note": "Same switch every time: 06 dream ↔ 07 small-ring, 60 s each. Swipe 2 rounds (10 picks). More methods join as they're built.",
+  "note": "Same switch every time: 06 dream \u2194 07 small-ring, 60 s each. Swipe 2 rounds (10 picks). More methods join as they're built.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/08-blend/2026-10-24-1917/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/08-blend/2026-10-24-1917"
    }
   ],
@@ -87,15 +87,15 @@
  {
   "id": "09-riemann",
   "from": "QA box",
-  "title": "09 Riemann: first look (PR #38) — maths checks all pass, 60 fps at 1080p",
-  "note": "Every zero is a rainbow pinwheel on the line x = ½. Clips are small here; on the laptop press Fullscreen.",
+  "title": "09 Riemann: first look (PR #38) \u2014 maths checks all pass, 60 fps at 1080p",
+  "note": "Every zero is a rainbow pinwheel on the line x = \u00bd. Clips are small here; on the laptop press Fullscreen.",
   "links": [
    {
-    "label": "▶ watch",
+    "label": "\u25b6 watch",
     "href": "/run/09-riemann/2026-10-24-1958"
    },
    {
-    "label": "⇄ travel vs overview",
+    "label": "\u21c4 travel vs overview",
     "href": "/run/09-riemann/2026-10-24-1958/compare"
    }
   ],
@@ -104,16 +104,32 @@
  {
   "id": "10-bsd",
   "from": "QA box",
-  "title": "10 Birch–Swinnerton-Dyer: first look (PR #39) — all maths checks pass, 60 fps at 1080p",
+  "title": "10 Birch\u2013Swinnerton-Dyer: first look (PR #39) \u2014 all maths checks pass, 60 fps at 1080p",
   "note": "A point hops along the curve each beat; the dust is the curve mod a new prime each bar. Press Fullscreen on the laptop.",
   "links": [
    {
-    "label": "▶ watch",
+    "label": "\u25b6 watch",
     "href": "/run/10-bsd/2026-10-24-2042"
    },
    {
-    "label": "⇄ x³+17 vs x³−25x",
+    "label": "\u21c4 x\u00b3+17 vs x\u00b3\u221225x",
     "href": "/run/10-bsd/2026-10-24-2042/compare"
+   }
+  ]
+ },
+ {
+  "id": "11-riemann-show",
+  "from": "VIZ QA / QA box",
+  "title": "11 Riemann show: which scenes stay? Swipe ribbon, march, scope, primes, canyon vs map (the old 09 look)",
+  "note": "All maths and speed checks pass. 2 rounds = 10 picks. Your picks decide which scenes stay in the show.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/11-riemann-show/2026-10-24-2203/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/11-riemann-show/2026-10-24-2203"
    }
   ]
  }

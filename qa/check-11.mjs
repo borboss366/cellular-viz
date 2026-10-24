@@ -107,7 +107,8 @@ for (const s of scenes) {
     const alive = __qa.tCam != null && __qa.tCam !== cam0 && document.getElementById('hud').textContent !== hud0;
     const dt = t.slice(1).map((x, i) => x - t[i]).sort((a, b) => a - b);
     return { fps: +((t.length - 1) / ((t.at(-1) - t[0]) / 1000)).toFixed(1), p99: +dt[Math.floor(dt.length * 0.99)].toFixed(1), worst: +dt.at(-1).toFixed(1),
-      canvas: [document.querySelector('canvas').width, document.querySelector('canvas').height], scene: __qa.scene, alive };
+      canvas: [document.querySelector('canvas').width, document.querySelector('canvas').height], scene: __qa.scene, alive,
+      caught: (__qa.errors || []).map(e => String(e.message || e)).slice(0, 3), caughtN: (__qa.errors || []).length };
   }, secs);
   await page.screenshot({ path: path.join(here, '11-riemann-show', `_${s}.png`) }).catch(() => {});
 }
@@ -121,7 +122,7 @@ const pass = {
   beatLock: lockRes.downbeats > 0 && lockRes.worst < 0.15,
   pageLoopAlive: Object.values(speed).every(v => v.alive),
   fps60: Object.values(speed).every(v => v.fps >= 58),
-  noErrors: errors.length === 0,
+  noErrors: errors.length === 0 && Object.values(speed).every(v => !v.caughtN),
 };
 const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
 const out = path.join(here, '11-riemann-show', 'checks', stamp);
@@ -138,5 +139,5 @@ fs.writeFileSync(path.join(out, 'check.md'), `# 11 Riemann show check · ${stamp
   `| beat lock: camera on a zero at each downbeat | ${ok(pass.beatLock)} | ${lockRes.downbeats} downbeat samples, worst ${lockRes.worst?.toFixed(3)}, median ${lockRes.median?.toFixed(3)} |\n` +
   `| page keeps animating (camera time moves) | ${ok(pass.pageLoopAlive)} | ${scenes.map(s => `${s} ${speed[s].alive ? 'yes' : '**FROZEN**'}`).join(' · ')} |\n` +
   `| fps at 1920×1080 per scene | ${ok(pass.fps60)} | ${scenes.map(s => `${s} ${speed[s].fps} (worst ${speed[s].worst} ms)`).join(' · ')} |\n` +
-  `| page errors | ${ok(pass.noErrors)} | ${errors.length ? errors.slice(0, 3).join('; ') : 'none'} |\n`);
+  `| page errors (thrown + caught in __qa.errors) | ${ok(pass.noErrors)} | thrown: ${errors.length ? errors.slice(0, 3).join('; ') : 'none'}; caught: ${scenes.map(s => `${s} ${speed[s].caughtN}`).join(' · ')}${scenes.some(s => speed[s].caughtN) ? ' — ' + scenes.flatMap(s => speed[s].caught).slice(0, 2).join('; ') : ''} |\n`);
 console.log(out);
