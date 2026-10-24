@@ -14,6 +14,9 @@
           has creatures by the time it fades in (both sims run then: fps dips)
     blend bars of transition, starting on a downbeat; after it the old slot is
           unloaded to free the GPU
+  Dark guard: each slot's picture is sampled 4× a second (share of lit pixels).
+  A switch waits, a bar at a time (up to 4 extra bars), until the incoming page is
+  at least 8% lit; a page that stays under 8% for a whole bar is switched away early.
   Transitions, in the GL Transitions style: mix(from, to, m(uv, progress)).
     fade      plain crossfade
     dissolve  blocky noise threshold
@@ -22,7 +25,8 @@
     iris      circle opening from the centre
     random    a different one each switch
   ?list= sets the playlist: comma-separated items, each a file number with optional
-  query after a colon, e.g. list=04,06:look=dream,05 . Other params: bpm, hold,
+  query after a colon, e.g. list=04,06:look=dream,05 . Default: 06 dream, 05 blobs,
+  06 glow, 05 cells, 06 pulse (all lit from the start). Other params: bpm, hold,
   warm, blend, kind.
 -->
 <html lang="en">
@@ -93,7 +97,11 @@
 const query = new URLSearchParams(location.search);
 const FILES = { '01': '01-gray-scott.html', '02': '02-lenia.html', '04': '04-lenia-metronome.html',
                 '05': '05-flow-lenia.html', '06': '06-lenia-effects.html', '07': '07-particle-lenia.html' };
-const DEFAULT_LIST = '04,06:look=dream,05,06:look=glow,02';
+// Pages that are lit from the first second: 06 looks and 05 soups. 02 needs ~12 s from its
+// seed and 04 sits near-empty until the Auto fix (#26) lands, so they are opt-in via ?list=.
+const DEFAULT_LIST = '06:look=dream,05:preset=blobs,06:look=glow,05:preset=cells,06:look=pulse';
+const MIN_LIT = 0.08;      // share of lit pixels a page needs to fade in, or to keep the screen
+const MAX_WAIT = 4;        // bars a switch waits for the incoming page to light up
 const KINDS = ['fade', 'dissolve', 'density', 'iris', 'random'];
 
 const params = { bpm: 120, hold: 8, warm: 2, blend: 1, kind: 'density', list: DEFAULT_LIST };
@@ -125,13 +133,26 @@ function makeSlot() {
   document.body.appendChild(frame);
   const video = document.createElement('video');
   video.muted = true; video.playsInline = true;
-  return { frame, video, item: null, ready: false, loadedAt: 0 };
+  return { frame, video, item: null, ready: false, loadedAt: 0, lit: 0, darkSince: null };
+}
+
+// Share of lit pixels in a slot's picture, from a 32² copy of its video.
+const probe = document.createElement('canvas');
+probe.width = probe.height = 32;
+const pctx = probe.getContext('2d', { willReadFrequently: true });
+function measureLit(slot) {
+  if (!live(slot)) { slot.lit = 0; return; }
+  pctx.drawImage(slot.video, 0, 0, 32, 32);
+  const d = pctx.getImageData(0, 0, 32, 32).data;
+  let lit = 0;
+  for (let i = 0; i < d.length; i += 4) if (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] > 30) lit++;
+  slot.lit = lit / 1024;
 }
 const slots = [makeSlot(), makeSlot()];
 
 function loadSlot(slot, item) {
   slot.item = item; slot.ready = false; slot.video.srcObject = null;
-  slot.loadedAt = performance.now();
+  slot.loadedAt = performance.now(); slot.lit = 0; slot.darkSince = null;
   const q = new URLSearchParams(item.query);
   q.set('bpm', params.bpm);
   q.set('muted', '1');
@@ -245,7 +266,7 @@ function upload(i) {
 
 // ---------- The show: bar clock, playlist, switches ----------
 const clock = { playing: false, start: 0 };
-const show = { cur: 0, index: 0, phase: 'hold', switchAt: 0, kind: 'fade', switches: 0 };
+const show = { cur: 0, index: 0, phase: 'hold', switchAt: 0, warmedAt: 0, kind: 'fade', switches: 0 };
 // cur: slot showing; index: playlist position of what it shows; switchAt: bar the next blend starts.
 const barMs = () => 4 * 60000 / params.bpm;
 const barsNow = now => clock.playing ? (now - clock.start) / barMs() : 0;
@@ -267,11 +288,18 @@ function tick(now) {
   if (show.phase === 'hold' && bar >= show.switchAt - params.warm) {
     loadSlot(other, nextItem());
     show.phase = 'warm';
+    show.warmedAt = bar;
+  }
+  if (show.phase === 'hold' && slots[show.cur].darkSince !== null &&
+      now - slots[show.cur].darkSince > barMs() && bar < show.switchAt - params.warm - 1) {
+    show.switchAt = Math.floor(bar) + 1 + params.warm;   // dark for a bar: move on early
   }
   if (show.phase === 'warm' && bar >= show.switchAt) {
-    // Never fade into a page that has no picture yet: wait a bar at a time.
-    if (live(other)) { show.phase = 'blend'; show.kind = pickKind(); }
-    else show.switchAt += 1;
+    // Never fade into a page that is still dark: wait a bar at a time, up to MAX_WAIT bars.
+    const waited = bar - show.warmedAt;
+    if (live(other) && (other.lit >= MIN_LIT || waited > params.warm + MAX_WAIT)) {
+      show.phase = 'blend'; show.kind = pickKind();
+    } else show.switchAt += 1;
   }
   if (show.phase === 'blend') {
     const p = (bar - show.switchAt) / params.blend;
@@ -358,9 +386,17 @@ function resize() {
   const h = Math.min(1024, Math.round(canvas.clientHeight * dpr));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 }
-let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
+let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastProbe = 0;
 function frame(now) {
   resize();
+  if (now - lastProbe > 250) {   // 4× a second is enough to judge dark or lit
+    lastProbe = now;
+    for (const s of slots) {
+      if (!s.item) continue;
+      measureLit(s);
+      s.darkSince = s.lit < MIN_LIT ? (s.darkSince ?? now) : null;
+    }
+  }
   const p = tick(now);
   const blending = show.phase === 'blend';
   const from = show.cur, to = 1 - show.cur;
@@ -393,7 +429,7 @@ function frame(now) {
       : `next ${nxt ? nxt.label : ''} in ${Math.max(0, show.switchAt - bar).toFixed(1)} bars` +
         (show.phase === 'warm' ? ' (warming up)' : '');
     hud.textContent = `blend · ${params.bpm} bpm · bar ${Math.floor(bar) + 1}\n` +
-      `now ${curItem ? curItem.label : '—'}${slots[show.cur].ready ? '' : ' (loading)'}\n` +
+      `now ${curItem ? curItem.label : '—'}${slots[show.cur].ready ? '' : ' (loading)'} · lit ${(slots[show.cur].lit * 100).toFixed(0)}%\n` +
       `${state}\n${fps} fps · ${show.switches} switches`;
   }
   requestAnimationFrame(frame);

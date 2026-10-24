@@ -35,6 +35,7 @@ _None yet. No screenshot verdicts posted._
 - 2026-10-23 · 06 Lenia + effects (PR #19, bf80aa0): copy of 04 with bloom, emboss, sheen, palette, trail zoom, trail length, kick bulge sliders; bloom-on-kick and palette-drift toggles; looks clean / glow (default) / chrome / dream / pulse; Copy setup has an `fx …` line. 04 unchanged.
 - 2026-10-23 · User installed Termux so QA can run headless sweeps.
 - 2026-10-24 · Blending track (own branch, issues #27–#29). Blend 1 started: 08 Blend (branch blend-crossfade) plays a playlist of experiments in two hidden iframes, streams their canvases and switches on the downbeat with fade / dissolve / density / iris transitions (hold, warm-up, blend in bars).
+- 2026-10-24 · QA box on 08: switches on the downbeat at 60 fps, but 02 (slow from seed) and 04 (near-empty on main) left 40–60 of 240 samples dark. 08 now defaults to lit pages (06 looks, 05 soups), waits for the incoming page to be ≥ 8% lit before fading, and leaves a page that stays dark for a bar.
 
 ## Open
 - Step 3 Particle Lenia: queued.
