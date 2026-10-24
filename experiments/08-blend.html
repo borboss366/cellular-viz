@@ -24,7 +24,17 @@
     density   the incoming picture's own brightness is the mask, so its creatures
               appear first and the old ones fade between them (research's idea)
     iris      circle opening from the centre
-    random    a different one each switch
+    mask      (#31) a small Gray-Scott sim grows coral from 14 seeds during the switch;
+              wherever coral has been, the next page shows (falls back to dissolve
+              on phones without float render targets)
+    cut       (#34) a one-beat hard cut with a random radial / clock / spiral /
+              plasma edge, MilkDrop's fast blend
+    screen, color, difference   (#32) layer modes: the next page runs the whole
+              time and is layered on top (screen adds light, color puts its palette
+              on the current shapes, difference inverts where they overlap), its
+              weight breathing over 4 bars; the switch then fades to it. Two sims
+              run all the time with these.
+    random    a different switch kind (not a layer mode) each time
   ?list= sets the playlist: comma-separated items, each a file number with optional
   query after a colon, e.g. list=04,06:look=dream,05 . Default: 06 dream, 05 blobs,
   06 glow, 05 cells, 06 pulse (all lit from the start). Other params: bpm, hold,
@@ -103,7 +113,11 @@ const FILES = { '01': '01-gray-scott.html', '02': '02-lenia.html', '04': '04-len
 const DEFAULT_LIST = '06:look=dream,05:preset=blobs,06:look=glow,05:preset=cells,06:look=pulse';
 const MIN_LIT = 0.08;      // share of lit pixels a page needs to fade in, or to keep the screen
 const MAX_WAIT = 2;        // extra bars a switch waits for the incoming page before skipping it
-const KINDS = ['fade', 'dissolve', 'density', 'iris', 'random'];
+// Shader order matters: the index is uKind. mask = #31, cut = #34, screen/color/difference = #32.
+const KINDS = ['fade', 'dissolve', 'density', 'iris', 'mask', 'cut', 'screen', 'color', 'difference', 'random'];
+const SWITCH_KINDS = ['fade', 'dissolve', 'density', 'iris', 'mask', 'cut'];   // what random picks from
+const LAYER_KINDS = ['screen', 'color', 'difference'];   // the next page stays layered on top
+const CUT_BARS = 0.25;     // a cut is one beat long (~0.5 s at 120 bpm, MilkDrop's fast blend)
 
 const params = { bpm: 120, hold: 8, warm: 2, blend: 1, kind: 'fade', list: DEFAULT_LIST };   // fade: user picked it over density 2–0
 for (const k of ['bpm', 'hold', 'warm', 'blend']) {
@@ -203,8 +217,11 @@ void main() {
 const FRAG = `#version 300 es
 precision highp float;
 uniform sampler2D uFrom, uTo;
+uniform sampler2D uMask;   // Gray-Scott state for kind 4: b = how much coral has passed here
 uniform float uProgress;   // 0 = all from, 1 = all to
-uniform int uKind;         // 0 fade, 1 dissolve, 2 density, 3 iris
+uniform int uKind;         // index into KINDS
+uniform int uPattern;      // cut: 0 radial, 1 clock, 2 spiral, 3 plasma
+uniform float uLayer;      // layer kinds: weight of the blended layer while holding
 in vec2 vUv;
 out vec4 outColor;
 float hash(vec2 p) {
@@ -212,10 +229,37 @@ float hash(vec2 p) {
   p += dot(p, p + 45.32);
   return fract(p.x * p.y);
 }
+float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+// W3C 'color' blend: hue and saturation of s, brightness of d.
+vec3 setLum(vec3 s, float l) {
+  vec3 c = s + (l - lum(s));
+  float L = lum(c), n = min(min(c.r, c.g), c.b), x = max(max(c.r, c.g), c.b);
+  if (n < 0.0) c = L + (c - L) * L / max(L - n, 1e-4);
+  if (x > 1.0) c = L + (c - L) * (1.0 - L) / max(x - L, 1e-4);
+  return c;
+}
 void main() {
   vec3 a = texture(uFrom, vUv).rgb, b = texture(uTo, vUv).rgb;
   float p = uProgress, m;
-  if (uKind == 1) {
+  if (uKind >= 6) {   // layered: op(a, b) mixed in by uLayer, then the switch fades to b
+    vec3 l = uKind == 6 ? 1.0 - (1.0 - a) * (1.0 - b)
+           : uKind == 7 ? setLum(b, lum(a))
+           : abs(a - b);
+    outColor = vec4(mix(mix(a, clamp(l, 0.0, 1.0), uLayer), b, p), 1.0);
+    return;
+  }
+  if (uKind == 4) {
+    float seen = texture(uMask, vUv).b;
+    m = max(smoothstep(0.15, 0.5, seen), smoothstep(0.85, 1.0, p));   // coral reveals, the end finishes
+  } else if (uKind == 5) {
+    vec2 q = vUv - 0.5;
+    float d = length(q) * 1.42, ang = atan(q.y, q.x) / 6.2832 + 0.5, t;
+    if (uPattern == 0) t = d;
+    else if (uPattern == 1) t = ang;
+    else if (uPattern == 2) t = fract(ang + d * 1.5);
+    else t = 0.5 + 0.5 * sin(vUv.x * 9.0 + sin(vUv.y * 7.0) * 2.0) * cos(vUv.y * 8.0 - vUv.x * 3.0);
+    m = smoothstep(t - 0.03, t, p * 1.03);
+  } else if (uKind == 1) {
     float n = hash(floor(vUv * 96.0));
     m = smoothstep(n - 0.08, n + 0.08, p * 1.16 - 0.08);
   } else if (uKind == 2) {
@@ -242,8 +286,82 @@ gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
 gl.linkProgram(prog);
 if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(prog));
 const U = {};
-for (const n of ['uFrom', 'uTo', 'uProgress', 'uKind']) U[n] = gl.getUniformLocation(prog, n);
+for (const n of ['uFrom', 'uTo', 'uMask', 'uProgress', 'uKind', 'uPattern', 'uLayer']) U[n] = gl.getUniformLocation(prog, n);
 gl.bindVertexArray(gl.createVertexArray());
+
+// ---------- Mask kind (#31): a small Gray-Scott grows coral from a few seeds ----------
+// r = U, g = V, b = highest V seen so far (where coral has been, the next page shows).
+const GS_SIZE = 192, GS_STEPS = 32;
+const GS_FRAG = `#version 300 es
+precision highp float;
+uniform sampler2D uS;
+out vec4 outColor;
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy), s = ivec2(${GS_SIZE});
+  vec4 c = texelFetch(uS, p, 0);
+  vec2 lap = -c.rg
+    + 0.2 * (texelFetch(uS, (p + ivec2(1, 0) + s) % s, 0).rg + texelFetch(uS, (p + ivec2(-1, 0) + s) % s, 0).rg
+           + texelFetch(uS, (p + ivec2(0, 1) + s) % s, 0).rg + texelFetch(uS, (p + ivec2(0, -1) + s) % s, 0).rg)
+    + 0.05 * (texelFetch(uS, (p + ivec2(1, 1) + s) % s, 0).rg + texelFetch(uS, (p + ivec2(-1, 1) + s) % s, 0).rg
+            + texelFetch(uS, (p + ivec2(1, -1) + s) % s, 0).rg + texelFetch(uS, (p + ivec2(-1, -1) + s) % s, 0).rg);
+  float u = c.r, v = c.g, uvv = u * v * v;
+  const float F = 0.0545, K = 0.062;   // coral
+  u += 1.0 * lap.x - uvv + F * (1.0 - u);
+  v += 0.5 * lap.y + uvv - (F + K) * v;
+  outColor = vec4(clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0), max(c.b, v * 3.0), 1.0);
+}`;
+const gsProg = gl.createProgram();
+gl.attachShader(gsProg, compile(gl.VERTEX_SHADER, VERT));
+gl.attachShader(gsProg, compile(gl.FRAGMENT_SHADER, GS_FRAG));
+gl.linkProgram(gsProg);
+const gsU = gl.getUniformLocation(gsProg, 'uS');
+const gs = (() => {   // ping-pong float targets, or null when the phone can't render to floats
+  if (!gl.getExtension('EXT_color_buffer_float') && !gl.getExtension('EXT_color_buffer_half_float')) return null;
+  const list = [];
+  for (let i = 0; i < 2; i++) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, GS_SIZE, GS_SIZE, 0, gl.RGBA, gl.FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) return null;
+    list.push({ tex, fbo });
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { list, cur: 0 };
+})();
+// Clean field (U 1, V 0) with 14 seed spots of V.
+function gsSeed() {
+  const d = new Float32Array(GS_SIZE * GS_SIZE * 4);
+  for (let i = 0; i < GS_SIZE * GS_SIZE; i++) { d[i * 4] = 1; d[i * 4 + 3] = 1; }
+  for (let s = 0; s < 14; s++) {
+    const cx = Math.random() * GS_SIZE, cy = Math.random() * GS_SIZE;
+    for (let y = -4; y <= 4; y++) for (let x = -4; x <= 4; x++) {
+      if (x * x + y * y > 16) continue;
+      const i = ((Math.floor(cy + y) + GS_SIZE) % GS_SIZE * GS_SIZE + (Math.floor(cx + x) + GS_SIZE) % GS_SIZE) * 4;
+      d[i] = 0.5; d[i + 1] = 0.25; d[i + 2] = 1;
+    }
+  }
+  gl.bindTexture(gl.TEXTURE_2D, gs.list[gs.cur].tex);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, GS_SIZE, GS_SIZE, gl.RGBA, gl.FLOAT, d);
+}
+function gsStep(n) {
+  gl.useProgram(gsProg);
+  gl.viewport(0, 0, GS_SIZE, GS_SIZE);
+  gl.activeTexture(gl.TEXTURE2);
+  gl.uniform1i(gsU, 2);
+  for (let i = 0; i < n; i++) {
+    const next = 1 - gs.cur;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gs.list[next].fbo);
+    gl.bindTexture(gl.TEXTURE_2D, gs.list[gs.cur].tex);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gs.cur = next;
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
 
 const textures = slots.map(() => {
   const t = gl.createTexture();
@@ -267,15 +385,23 @@ function upload(i) {
 
 // ---------- The show: bar clock, playlist, switches ----------
 const clock = { playing: false, start: 0 };
-const show = { cur: 0, index: 0, skip: 1, phase: 'hold', switchAt: 0, warmedAt: 0, kind: 'fade', switches: 0, skipped: 0 };
+const show = { cur: 0, index: 0, skip: 1, phase: 'hold', switchAt: 0, warmedAt: 0, kind: 'fade', switches: 0, skipped: 0,
+               pattern: 0, len: 1, layerFrom: null };
+// pattern/len: the cut's shape and the blend's length in bars; layerFrom: bar the layer became visible.
 // skip: how far ahead in the playlist the incoming page is (grows when a dark page is skipped).
 // cur: slot showing; index: playlist position of what it shows; switchAt: bar the next blend starts.
 const barMs = () => 4 * 60000 / params.bpm;
 const barsNow = now => clock.playing ? (now - clock.start) / barMs() : 0;
 
 function pickKind() {
-  return params.kind === 'random' ? KINDS[Math.floor(Math.random() * 4)] : params.kind;
+  let k = params.kind === 'random' ? SWITCH_KINDS[Math.floor(Math.random() * SWITCH_KINDS.length)] : params.kind;
+  if (k === 'mask' && !gs) k = 'dissolve';   // no float targets on this phone
+  show.pattern = Math.floor(Math.random() * 4);
+  show.len = k === 'cut' ? CUT_BARS : params.blend;
+  if (k === 'mask') gsSeed();
+  return k;
 }
+const isLayer = () => LAYER_KINDS.includes(params.kind);
 function scheduleNext(fromBar) {
   show.switchAt = Math.ceil(fromBar + params.hold - 1e-6);   // always on a downbeat
   show.phase = 'hold';
@@ -287,7 +413,8 @@ function tick(now) {
   if (!clock.playing || playlist.length < 2) return 0;
   const bar = barsNow(now);
   const other = slots[1 - show.cur];
-  if (show.phase === 'hold' && bar >= show.switchAt - params.warm) {
+  // Layer kinds keep the next page running the whole time, so it can sit on top.
+  if (show.phase === 'hold' && (isLayer() || bar >= show.switchAt - params.warm)) {
     loadSlot(other, nextItem());
     show.phase = 'warm';
     show.warmedAt = bar;
@@ -315,8 +442,9 @@ function tick(now) {
     } else show.switchAt += 1;
   }
   if (show.phase === 'blend') {
-    const p = (bar - show.switchAt) / params.blend;
+    const p = (bar - show.switchAt) / show.len;
     if (p < 1) return p;
+    show.layerFrom = null;
     unloadSlot(slots[show.cur]);   // done: the old one goes
     show.cur = 1 - show.cur;
     show.index = (show.index + show.skip) % playlist.length;
@@ -416,17 +544,31 @@ function frame(now) {
   const from = show.cur, to = 1 - show.cur;
   upload(from);
   if (blending || show.phase === 'warm') upload(to);
+  if (blending && show.kind === 'mask') gsStep(GS_STEPS);
+  // Layer weight: fades in over a bar once the next page is lit, then breathes over 4 bars.
+  let layer = 0;
+  if (isLayer() && show.phase !== 'hold' && live(slots[to]) && slots[to].lit >= MIN_LIT) {
+    const bar = barsNow(now);
+    show.layerFrom ??= bar;
+    layer = Math.min(1, bar - show.layerFrom) * (0.45 + 0.35 * Math.sin(bar * Math.PI / 2));
+  }
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.useProgram(prog);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, textures[from]);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, textures[to]);
+  if (gs) { gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, gs.list[gs.cur].tex); }
   gl.uniform1i(U.uFrom, 0);
   gl.uniform1i(U.uTo, 1);
-  const eased = p * p * (3 - 2 * p);
+  gl.uniform1i(U.uMask, 2);
+  const eased = show.kind === 'cut' ? p : p * p * (3 - 2 * p);
   gl.uniform1f(U.uProgress, blending ? eased : 0);
-  gl.uniform1i(U.uKind, Math.max(0, KINDS.indexOf(show.kind)));
+  // While holding, a layer kind draws with its own index so the layer shows; otherwise fade.
+  const kindNow = blending ? show.kind : (isLayer() ? params.kind : 'fade');
+  gl.uniform1i(U.uKind, Math.max(0, KINDS.indexOf(kindNow)));
+  gl.uniform1i(U.uPattern, show.pattern);
+  gl.uniform1f(U.uLayer, layer);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 
   frames++;
