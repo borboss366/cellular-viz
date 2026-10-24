@@ -34,7 +34,7 @@
     }
    },
    "videoSize": 2926952,
-   "verdict": "",
+   "verdict": "dull",
    "series": [
     [
      0.02,
@@ -433,7 +433,8 @@
     ]
    ],
    "hud": "y² = x³+17 · 120 bpm · ▶\np 37 · #E 49 · a_p -11 (|a_p| ≤ 12.2) · Π N_p/p 11.07\nhops 30 · height 58 digits · O ×2\nx -5.2 … 30.3 · 420×420 · 60 fps",
-   "video": "videos/01-x3-17.webm"
+   "video": "videos/01-x3-17.webm",
+   "note": ""
   },
   {
    "label": "x3-25x",
@@ -457,7 +458,7 @@
     }
    },
    "videoSize": 3014716,
-   "verdict": "",
+   "verdict": "maybe",
    "series": [
     [
      0,
@@ -856,7 +857,8 @@
     ]
    ],
    "hud": "y² = x³−25x · 120 bpm · ▶\np 37 · #E 36 · a_p 2 (|a_p| ≤ 12.2) · Π N_p/p 3.43\nhops 30 · height 365 digits · O ×2\nx -6.5 … 13.7 · 420×420 · 60 fps",
-   "video": "videos/02-x3-25x.webm"
+   "video": "videos/02-x3-25x.webm",
+   "note": "good attempt"
   }
  ]
 }
