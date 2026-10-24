@@ -15,8 +15,9 @@
     blend bars of transition, starting on a downbeat; after it the old slot is
           unloaded to free the GPU
   Dark guard: each slot's picture is sampled 4× a second (share of lit pixels).
-  A switch waits, a bar at a time (up to 4 extra bars), until the incoming page is
-  at least 8% lit; a page that stays under 8% for a whole bar is switched away early.
+  A switch waits, a bar at a time (up to 2 extra bars), until the incoming page is
+  at least 8% lit, then skips it and warms up the next one. A page that stays under
+  8% for a whole bar while showing starts the next warm-up at once.
   Transitions, in the GL Transitions style: mix(from, to, m(uv, progress)).
     fade      plain crossfade
     dissolve  blocky noise threshold
@@ -101,7 +102,7 @@ const FILES = { '01': '01-gray-scott.html', '02': '02-lenia.html', '04': '04-len
 // seed and 04 sits near-empty until the Auto fix (#26) lands, so they are opt-in via ?list=.
 const DEFAULT_LIST = '06:look=dream,05:preset=blobs,06:look=glow,05:preset=cells,06:look=pulse';
 const MIN_LIT = 0.08;      // share of lit pixels a page needs to fade in, or to keep the screen
-const MAX_WAIT = 4;        // bars a switch waits for the incoming page to light up
+const MAX_WAIT = 2;        // extra bars a switch waits for the incoming page before skipping it
 const KINDS = ['fade', 'dissolve', 'density', 'iris', 'random'];
 
 const params = { bpm: 120, hold: 8, warm: 2, blend: 1, kind: 'density', list: DEFAULT_LIST };
@@ -266,7 +267,8 @@ function upload(i) {
 
 // ---------- The show: bar clock, playlist, switches ----------
 const clock = { playing: false, start: 0 };
-const show = { cur: 0, index: 0, phase: 'hold', switchAt: 0, warmedAt: 0, kind: 'fade', switches: 0 };
+const show = { cur: 0, index: 0, skip: 1, phase: 'hold', switchAt: 0, warmedAt: 0, kind: 'fade', switches: 0, skipped: 0 };
+// skip: how far ahead in the playlist the incoming page is (grows when a dark page is skipped).
 // cur: slot showing; index: playlist position of what it shows; switchAt: bar the next blend starts.
 const barMs = () => 4 * 60000 / params.bpm;
 const barsNow = now => clock.playing ? (now - clock.start) / barMs() : 0;
@@ -278,7 +280,7 @@ function scheduleNext(fromBar) {
   show.switchAt = Math.ceil(fromBar + params.hold - 1e-6);   // always on a downbeat
   show.phase = 'hold';
 }
-function nextItem() { return playlist[(show.index + 1) % playlist.length]; }
+function nextItem() { return playlist[(show.index + show.skip) % playlist.length]; }
 const live = s => s.ready && s.video.readyState >= 2 && s.video.videoWidth > 0;
 
 function tick(now) {
@@ -290,14 +292,25 @@ function tick(now) {
     show.phase = 'warm';
     show.warmedAt = bar;
   }
-  if (show.phase === 'hold' && slots[show.cur].darkSince !== null &&
-      now - slots[show.cur].darkSince > barMs() && bar < show.switchAt - params.warm - 1) {
-    show.switchAt = Math.floor(bar) + 1 + params.warm;   // dark for a bar: move on early
+  // Dark for a bar while holding: start warming the next page now instead of later.
+  if (show.phase === 'hold' && slots[show.cur].darkSince !== null && now - slots[show.cur].darkSince > barMs()) {
+    loadSlot(other, nextItem());
+    show.phase = 'warm';
+    show.warmedAt = bar;
+    show.switchAt = Math.min(show.switchAt, Math.floor(bar) + 1 + params.warm);
   }
   if (show.phase === 'warm' && bar >= show.switchAt) {
-    // Never fade into a page that is still dark: wait a bar at a time, up to MAX_WAIT bars.
+    // Never fade into a page that is still dark: wait a bar at a time, up to MAX_WAIT bars,
+    // then skip it and warm up the one after (every page dark: fade in anyway).
     const waited = bar - show.warmedAt;
-    if (live(other) && (other.lit >= MIN_LIT || waited > params.warm + MAX_WAIT)) {
+    if (live(other) && other.lit >= MIN_LIT) {
+      show.phase = 'blend'; show.kind = pickKind();
+    } else if (waited > params.warm + MAX_WAIT && show.skip < playlist.length - 1) {
+      show.skip++; show.skipped++;
+      loadSlot(other, nextItem());
+      show.warmedAt = bar;
+      show.switchAt = Math.floor(bar) + 1 + params.warm;
+    } else if (waited > params.warm + MAX_WAIT && live(other)) {
       show.phase = 'blend'; show.kind = pickKind();
     } else show.switchAt += 1;
   }
@@ -306,7 +319,8 @@ function tick(now) {
     if (p < 1) return p;
     unloadSlot(slots[show.cur]);   // done: the old one goes
     show.cur = 1 - show.cur;
-    show.index = (show.index + 1) % playlist.length;
+    show.index = (show.index + show.skip) % playlist.length;
+    show.skip = 1;
     show.switches++;
     scheduleNext(show.switchAt + params.blend);
   }
@@ -430,7 +444,7 @@ function frame(now) {
         (show.phase === 'warm' ? ' (warming up)' : '');
     hud.textContent = `blend · ${params.bpm} bpm · bar ${Math.floor(bar) + 1}\n` +
       `now ${curItem ? curItem.label : '—'}${slots[show.cur].ready ? '' : ' (loading)'} · lit ${(slots[show.cur].lit * 100).toFixed(0)}%\n` +
-      `${state}\n${fps} fps · ${show.switches} switches`;
+      `${state}\n${fps} fps · ${show.switches} switches${show.skipped ? ` · ${show.skipped} skipped dark` : ''}`;
   }
   requestAnimationFrame(frame);
 }

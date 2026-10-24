@@ -36,6 +36,7 @@ _None yet. No screenshot verdicts posted._
 - 2026-10-23 · User installed Termux so QA can run headless sweeps.
 - 2026-10-24 · Blending track (own branch, issues #27–#29). Blend 1 started: 08 Blend (branch blend-crossfade) plays a playlist of experiments in two hidden iframes, streams their canvases and switches on the downbeat with fade / dissolve / density / iris transitions (hold, warm-up, blend in bars).
 - 2026-10-24 · QA box on 08: switches on the downbeat at 60 fps, but 02 (slow from seed) and 04 (near-empty on main) left 40–60 of 240 samples dark. 08 now defaults to lit pages (06 looks, 05 soups), waits for the incoming page to be ≥ 8% lit before fading, and leaves a page that stays dark for a bar.
+- 2026-10-24 · Re-run: density dark samples 38 → 7, fade 60 → ~29, all from 06 glow/pulse (2–5% lit on main, the Auto collapse #26 fixes). The guard never fired with hold=4 and faded dark pages in after the wait. Now a dark page starts the next warm-up at once, and an incoming page still dark after 2 extra bars is skipped.
 
 ## Open
 - Step 3 Particle Lenia: queued.
