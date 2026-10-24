@@ -96,5 +96,21 @@
     "href": "/run/09-riemann/2026-10-24-1958/compare"
    }
   ]
+ },
+ {
+  "id": "10-bsd",
+  "from": "QA box",
+  "title": "10 Birch\u2013Swinnerton-Dyer: first look (PR #39) \u2014 all maths checks pass, 60 fps at 1080p",
+  "note": "A point hops along the curve each beat; the dust is the curve mod a new prime each bar. Press Fullscreen on the laptop.",
+  "links": [
+   {
+    "label": "\u25b6 watch",
+    "href": "/run/10-bsd/2026-10-24-2042"
+   },
+   {
+    "label": "\u21c4 x\u00b3+17 vs x\u00b3\u221225x",
+    "href": "/run/10-bsd/2026-10-24-2042/compare"
+   }
+  ]
  }
 ]

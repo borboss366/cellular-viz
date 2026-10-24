@@ -35,3 +35,16 @@ Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
 | screen | 6 | 60 / 60 | 60 / 60 | 17% | 18% | 0 |
 | color | 6 | 60 / 60 | 60 / 60 | 12% | 16% | 0 |
 | difference | 6 | 60 / 60 | 60 / 60 | 25% | 29% | 0 |
+
+## Pairwise ranking (user picks)
+
+10 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | screen | 1.954 | 3 | 1 | 1 |
+| 2 | difference | 1.722 | 2 | 1 | 1 |
+| 3 | fade | 1.509 | 1 | 1 | 1 |
+| 4 | color | 1.509 | 1 | 1 | 1 |
+| 5 | mask | 0.398 | 0 | 1 | 1 |
+| 6 | cut | 0.328 | 0 | 2 | 1 |

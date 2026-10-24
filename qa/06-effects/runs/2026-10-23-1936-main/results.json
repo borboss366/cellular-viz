@@ -34,7 +34,7 @@
     }
    },
    "videoSize": 14443071,
-   "verdict": "",
+   "verdict": "keep",
    "hud": "metronome · four · 120 bpm 4/4 · ▶\nkick  █······· 0.10   beat 0.58\nsnare ········ 0.06   bar  0.40\nhat   ██······ 0.26\npad   ███████· 0.90   14 blobs\nR 13 T 10 μ 0.1500 σ 0.0136\n256² f32 · 60 fps\nauto σ 0.0136 · cover 5% · mass 0.0% · moving 0.0% · regrowing · band 10–40% · 11 cuts · 6 reseeds\nfx dream · bloom 0.40 (kick) · emboss 0.00 sheen 0.00 · pal 3 (drift) · trails 1.012/0.960 · bulge 0.00",
    "autoSeries": [
     [
@@ -2690,7 +2690,8 @@
      0.6
     ]
    },
-   "video": "videos/01-look-dream.webm"
+   "video": "videos/01-look-dream.webm",
+   "note": ""
   },
   {
    "label": "look-glow",
@@ -2714,7 +2715,7 @@
     }
    },
    "videoSize": 17472851,
-   "verdict": "",
+   "verdict": "keep",
    "hud": "metronome · four · 120 bpm 4/4 · ▶\nkick  █······· 0.08   beat 0.66\nsnare ········ 0.05   bar  0.41\nhat   █······· 0.10\npad   ███████· 0.93   15 blobs\nR 13 T 10 μ 0.1500 σ 0.0200\n256² f32 · 60 fps\nauto σ 0.0200 · cover 5% · mass 0.7% · moving 195.2% · reseeded · band 10–40% · 10 cuts · 5 reseeds\nfx glow · bloom 0.60 (kick) · emboss 0.00 sheen 0.00 · pal 1 (drift) · trails 1.000/0.000 · bulge 0.00",
    "autoSeries": [
     [
@@ -5376,7 +5377,8 @@
      0.6
     ]
    },
-   "video": "videos/02-look-glow.webm"
+   "video": "videos/02-look-glow.webm",
+   "note": ""
   }
  ]
 }

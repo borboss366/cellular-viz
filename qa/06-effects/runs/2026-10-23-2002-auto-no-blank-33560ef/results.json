@@ -34,7 +34,7 @@
     }
    },
    "videoSize": 33508214,
-   "verdict": "",
+   "verdict": "keep",
    "hud": "metronome · four · 120 bpm 4/4 · ▶\nkick  ········ 0.06   beat 0.76\nsnare ········ 0.03   bar  0.44\nhat   ········ 0.03\npad   ████████ 0.96   5 blobs\nR 13 T 10 μ 0.1500 σ 0.0200\n256² f32 · 60 fps\nauto σ 0.0200 · cover 54% · mass 1.5% · moving 234.3% · catching · band 10–40% · 20 cuts · 4 reseeds\nfx glow · bloom 0.60 (kick) · emboss 0.00 sheen 0.00 · pal 1 (drift) · trails 1.000/0.000 · bulge 0.00",
    "autoSeries": [
     [
@@ -2689,7 +2689,8 @@
      0.6
     ]
    },
-   "video": "videos/01-look-dream.webm"
+   "video": "videos/01-look-dream.webm",
+   "note": "actually much better balance between full and empty"
   },
   {
    "label": "look-glow",
@@ -2713,7 +2714,7 @@
     }
    },
    "videoSize": 25969704,
-   "verdict": "",
+   "verdict": "keep",
    "hud": "metronome · four · 120 bpm 4/4 · ▶\nkick  █······· 0.12   beat 0.54\nsnare █······· 0.07   bar  0.38\nhat   ███····· 0.42\npad   ███████· 0.87   4 blobs\nR 13 T 10 μ 0.1500 σ 0.0200\n256² f32 · 60 fps\nauto σ 0.0200 · cover 44% · mass 5.5% · moving 102.1% · catching · band 10–40% · 20 cuts · 3 reseeds\nfx glow · bloom 0.60 (kick) · emboss 0.00 sheen 0.00 · pal 1 (drift) · trails 1.000/0.000 · bulge 0.00",
    "autoSeries": [
     [
@@ -5367,7 +5368,8 @@
      0.6
     ]
    },
-   "video": "videos/02-look-glow.webm"
+   "video": "videos/02-look-glow.webm",
+   "note": "looks quite good. maybe add some fluctuations to the cells when the screen is full - or they change color when the beats go"
   }
  ]
 }
