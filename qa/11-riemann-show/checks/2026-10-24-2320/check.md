@@ -14,3 +14,5 @@ Truth: LMFDB zeros (qa/data/lmfdb-zeta-zeros-1-40.txt) and a sieve here; the pag
 | page keeps animating (camera time moves) | ✅ | ribbon yes · march yes · scope yes · primes yes · canyon yes · map yes · auto yes |
 | fps at 1920×1080 per scene | ✅ | ribbon 60 (worst 16.8 ms) · march 60 (worst 16.8 ms) · scope 60 (worst 16.8 ms) · primes 60 (worst 16.8 ms) · canyon 60 (worst 16.8 ms) · map 60 (worst 16.8 ms) · auto 60 (worst 16.8 ms) |
 | page errors (thrown + caught in __qa.errors) | ✅ | thrown: none; caught: ribbon 0 · march 0 · scope 0 · primes 0 · canyon 0 · map 0 · auto 0 |
+
+PR #41 @fd01d0f. Canyon extras (qa/check-canyon41.mjs, canyon-extras-vs-0b42ff7.json): 30 s vsync 60 fps, worst 16.8 ms, 0 frames >20 ms; uncapped 113–136 fps vs 94 at 0b42ff7; 0.7 s screenshot change: mean |Δ| 29.9 vs 15.3 (0b42ff7), changed pixels 53% vs 49%; no shader/GL console messages.
