@@ -105,7 +105,7 @@ const MIN_LIT = 0.08;      // share of lit pixels a page needs to fade in, or to
 const MAX_WAIT = 2;        // extra bars a switch waits for the incoming page before skipping it
 const KINDS = ['fade', 'dissolve', 'density', 'iris', 'random'];
 
-const params = { bpm: 120, hold: 8, warm: 2, blend: 1, kind: 'density', list: DEFAULT_LIST };
+const params = { bpm: 120, hold: 8, warm: 2, blend: 1, kind: 'fade', list: DEFAULT_LIST };   // fade: user picked it over density 2–0
 for (const k of ['bpm', 'hold', 'warm', 'blend']) {
   const v = parseFloat(query.get(k));
   if (Number.isFinite(v)) params[k] = v;
