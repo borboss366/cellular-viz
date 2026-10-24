@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>QA beat-sync reference</title>
+<!-- Calibration page for qa/check-pulse.mjs: a WebGL canvas that is black except for the
+     first 2 rendered frames after every beat, when it is white. Its beat is exactly at
+     phase 0 of window.__qa.bars, so whatever delay check-pulse measures here is the
+     measuring pipeline itself (render → captureStream → video → readback), not the page. -->
+<style>html,body{margin:0;background:#000;height:100%}#wrap{position:relative;width:100vw;height:100vh}canvas{width:100%;height:100%;display:block}</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<button id="play" style="position:fixed;left:4px;top:4px">▶ Play</button>
+<script>
+const params = { bpm: +(new URLSearchParams(location.search).get('bpm') || 120), bpb: 4 };
+const c = document.getElementById('c');
+const gl = c.getContext('webgl2', { antialias: false, alpha: false });
+let t0 = null, lastBeat = -1, bright = 0;
+window.__qa = { bars: null, beats: [] };
+document.getElementById('play').onclick = () => { t0 = performance.now(); };
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (c.width !== c.clientWidth) { c.width = c.clientWidth; c.height = c.clientHeight; }
+  if (t0 !== null) {
+    const beats = Math.max(0, (now - t0) / (60000 / params.bpm));
+    __qa.bars = beats / params.bpb;
+    const b = Math.floor(beats);
+    if (b !== lastBeat) { lastBeat = b; bright = 2; __qa.beats.push(now); }
+  }
+  const v = bright > 0 ? 1 : 0; if (bright > 0) bright--;
+  gl.viewport(0, 0, c.width, c.height); gl.clearColor(v, v, v, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

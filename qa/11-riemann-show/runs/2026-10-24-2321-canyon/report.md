@@ -6,3 +6,12 @@
 | canyon-pulses | fd01d0f (PR #41) | 60 | 0.06612 | 63 ms | 2.02 |
 
 Motion sampled per captured frame (~26 Hz through captureStream; includes the capture's own 1–2 frame delay), binned over the beat (20 bins of 25 ms at 120 bpm). Tool: qa/check-pulse.mjs.
+
+## Pairwise ranking (user picks)
+
+2 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | canyon-pulses | 2.751 | 2 | 0 | 0 |
+| 2 | canyon-before | 0.363 | 0 | 2 | 0 |
