@@ -445,10 +445,10 @@ float ripple(vec2 xz) {
   for (int k = 0; k < 8; k++) {
     float d = length(vec2(xz.x, xz.y - uZ[k] * SZ));
     if (d > 18.0) continue;
-    float r1 = beat * 6.0, r2 = (beat + 1.0) * 6.0, R = bar * 16.0;
-    s += exp(-pow((d - r1) * 2.2, 2.0)) * (1.0 - 0.6 * beat)
-       + exp(-pow((d - r2) * 2.2, 2.0)) * 0.4 * (1.0 - beat)
-       + 1.6 * exp(-pow((d - R) * 1.4, 2.0)) * (1.0 - bar);
+    float a1 = (d - beat * 6.0) * 2.2, a2 = (d - (beat + 1.0) * 6.0) * 2.2, a3 = (d - bar * 16.0) * 1.4;
+    s += exp(-a1 * a1) * (1.0 - 0.6 * beat)            // squares, not pow(): pow of a negative is undefined in GLSL
+       + exp(-a2 * a2) * 0.4 * (1.0 - beat)
+       + 1.6 * exp(-a3 * a3) * (1.0 - bar);
   }
   return s;
 }
