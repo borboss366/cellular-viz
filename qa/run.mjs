@@ -105,7 +105,8 @@ await page.click('#run');
 const frame = page.frameLocator('#frame');
 const stills = new Set();
 const huds = {};
-const series = {}; // label → page Auto state over the recording: [t s, cover, coverSmooth, sigma]
+const series = {};
+const blends = {}; // label → [t s, phase, fps, switches] from 08 Blend // label → page Auto state over the recording: [t s, cover, coverSmooth, sigma]
 let lastStatus = '';
 const deadline = Date.now() + nVariants * (warm + dur + 30) * 1000 + 60000;
 while (Date.now() < deadline) {
@@ -127,6 +128,10 @@ while (Date.now() < deadline) {
     const a = f && await f.evaluate(() => typeof auto === 'undefined' ? null
       : [+(auto.cover ?? -1).toFixed(4), +(auto.coverSmooth ?? -1).toFixed(4), +(auto.sigma ?? 0).toFixed(5)]).catch(() => null);
     if (a) (series[m[2]] ??= { t0: Date.now(), pts: [] }).pts.push([+((Date.now() - series[m[2]].t0) / 1000).toFixed(2), ...a]);
+    // 08 Blend: phase of the show and its own fps
+    const b = f && await f.evaluate(() => typeof show === 'undefined' || typeof fps === 'undefined' ? null
+      : [show.phase, fps, show.switches]).catch(() => null);
+    if (b) (blends[m[2]] ??= { t0: Date.now(), pts: [] }).pts.push([+((Date.now() - blends[m[2]].t0) / 1000).toFixed(2), ...b]);
   }
   if (m && +m[3] >= dur / 2 && !stills.has(m[1])) {
     stills.add(m[1]);
@@ -152,6 +157,7 @@ const videos = await page.evaluate(async () => Promise.all(results.map(async r =
 results.forEach((r, i) => {
   if (huds[r.label]) r.hud = huds[r.label];
   if (series[r.label]) { r.autoSeries = series[r.label].pts; r.coverStats = coverStats(r.autoSeries); }
+  if (blends[r.label]) { r.blendSeries = blends[r.label].pts; r.blendStats = blendStats(r.blendSeries, r.series || []); }
   if (!videos[i]) return;
   const f = `${pad(i + 1)}-${r.label.replace(/[^\w-]+/g, '-')}.webm`;
   fs.writeFileSync(path.join(out, 'videos', f), Buffer.from(videos[i], 'base64'));
@@ -168,12 +174,18 @@ fs.writeFileSync(path.join(out, 'report.md'),
   `# ${exp} · headless run ${stamp}\n\n` +
   `- box: ${meta.host} · ${meta.cpu}\n- GPU: ${meta.gpu}\n- Chromium ${meta.chromium} · ${renderer}\n- warm-up ${warm}s · record ${dur}s\n` +
   (meta.note ? `- ⚠ ${meta.note}\n` : '') + `\n${reportMd}\n\nStills: \`stills/\` · videos stay on the box (\`videos/\`, git-ignored).\n`);
-const withCover = results.filter(r => r.coverStats);
+const withCover = results.filter(r => r.coverStats);  // null when the page never measured
 if (withCover.length) fs.appendFileSync(path.join(out, 'report.md'),
   `\n## Cover over time (page's own Auto cover, sampled ~5×/s)\n\n` +
   `| variant | mean | min | time < 10% | longest < 10% | time < 3% | longest < 3% | 40→10% drops (s) |\n|---|---|---|---|---|---|---|---|\n` +
   withCover.map(r => { const c = r.coverStats;
     return `| ${r.label} | ${c.mean}% | ${c.min}% | ${c.under10}% | ${c.longest10} s | ${c.under3}% | ${c.longest3} s | ${c.drops.length ? c.drops.join(', ') : '—'} |`; }).join('\n') + '\n');
+const withBlend = results.filter(r => r.blendStats);
+if (withBlend.length) fs.appendFileSync(path.join(out, 'report.md'),
+  `\n## Switches (08 Blend; picture sampled 4×/s, page fps 5×/s)\n\n` +
+  `| variant | switches | fps hold (median / min) | fps during switch (median / min) | lit min, hold | lit min, switch | samples < 3% lit |\n|---|---|---|---|---|---|---|\n` +
+  withBlend.map(r => { const b = r.blendStats;
+    return `| ${r.label} | ${b.switches} | ${b.fpsHold.join(' / ')} | ${b.fpsBlend.join(' / ')} | ${b.litHold}% | ${b.litBlend}% | ${b.dark} |`; }).join('\n') + '\n');
 fs.writeFileSync(path.join(out, 'console.log'), log.join('\n') + '\n');
 
 await browser.close();
@@ -182,6 +194,8 @@ console.log(out);
 
 // share of time under a cover level, longest stretch under it, and how long each fall from ≥40% to <10% took
 function coverStats(pts) {
+  pts = pts.filter(p => p[1] >= 0);                 // -1 = page hasn't measured yet
+  if (!pts.length) return null;
   const t = pts.map(p => p[0]), c = pts.map(p => p[1]);
   const span = (t.at(-1) - t[0]) || 1;
   const under = lvl => { let tot = 0, run = 0, best = 0;
@@ -196,4 +210,16 @@ function coverStats(pts) {
   const [u10, l10] = under(0.10), [u3, l3] = under(0.03);
   return { samples: c.length, mean: +(100 * c.reduce((a, b) => a + b, 0) / c.length).toFixed(1), min: +(100 * Math.min(...c)).toFixed(1),
     max: +(100 * Math.max(...c)).toFixed(1), under10: u10, longest10: l10, under3: u3, longest3: l3, drops };
+}
+
+function blendStats(bs, lum) {
+  const med = a => a.length ? [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] : '—';
+  const pick = ph => bs.filter(p => (p[1] === 'blend') === ph).map(p => p[2]).filter(x => x > 0);
+  const phaseAt = t => { let ph = bs[0]?.[1]; for (const p of bs) { if (p[0] > t) break; ph = p[1]; } return ph; };
+  const litIn = blend => lum.filter(l => (phaseAt(l[0]) === 'blend') === blend).map(l => l[1]);
+  const mn = a => a.length ? +(100 * Math.min(...a)).toFixed(0) : '—';
+  return { switches: (bs.at(-1)?.[3] ?? 0) - (bs[0]?.[3] ?? 0),
+    fpsHold: [med(pick(false)), pick(false).length ? Math.min(...pick(false)) : '—'],
+    fpsBlend: [med(pick(true)), pick(true).length ? Math.min(...pick(true)) : '—'],
+    litHold: mn(litIn(false)), litBlend: mn(litIn(true)), dark: lum.filter(l => l[1] < 0.03).length };
 }

@@ -194,7 +194,7 @@ async function runOne(v, i, n) {
   const t0 = performance.now();
   let prev = null; const samples = [];
   while (performance.now() - t0 < dur) {
-    const s = sample(src, prev);
+    const s = sample(src, prev); s.t = (performance.now() - t0) / 1000;
     samples.push(s); prev = s.ys;
     status(`[${i+1}/${n}] ${v.label}\nrecording ${(((performance.now()-t0))/1000).toFixed(0)}/${dur/1000}s · cover ${(s.coverage*100).toFixed(0)}% · motion ${s.motion.toFixed(4)}`);
     await sleep(250);
@@ -219,7 +219,9 @@ async function runOne(v, i, n) {
     fps: +fps.toFixed(1)
   };
   const sc = score(agg);
-  results.push({ label: v.label, url, agg, score: sc, videoUrl, videoSize, verdict: '' });
+  // per-sample timeline (seconds from record start, luma coverage, brightness) for tests over time
+  const series = samples.map(s => [+s.t.toFixed(2), +s.coverage.toFixed(3), +s.brightness.toFixed(3)]);
+  results.push({ label: v.label, url, agg, score: sc, videoUrl, videoSize, verdict: '', series });
 }
 
 function fname(label) { return ($('exp').value.replace('.html','') + '_' + label).replace(/[^\w-]+/g, '-') + '.webm'; }

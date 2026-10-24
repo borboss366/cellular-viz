@@ -46,5 +46,21 @@
     "href": "/run/07-particle-lenia/2026-10-23-2124"
    }
   ]
+ },
+ {
+  "id": "08-blend-first",
+  "from": "QA box",
+  "title": "08 Blend (PR #30): watch the first switches \u2014 density vs fade",
+  "note": "Switches work at 60 fps on the box. Dark stretch ~36\u201346 s is 02 Lenia still growing from its seed, not the blend.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/08-blend/2026-10-24-1305/compare"
+   },
+   {
+    "label": "\u25b6 watch",
+    "href": "/run/08-blend/2026-10-24-1305"
+   }
+  ]
  }
 ]
