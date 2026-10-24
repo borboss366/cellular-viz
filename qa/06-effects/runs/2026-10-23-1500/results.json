@@ -1,0 +1,266 @@
+{
+ "meta": {
+  "exp": "06-lenia-effects.html",
+  "stamp": "2026-10-23-1500",
+  "warm": 4,
+  "dur": 12,
+  "host": "3a51036815f5",
+  "cpu": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
+  "gpu": "none (SwiftShader software GL)",
+  "chromium": "156.0.8078.4",
+  "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+  "note": "fps is software-rendered and says nothing about the phone"
+ },
+ "results": [
+  {
+   "label": "clean",
+   "url": "http://127.0.0.1:34921/experiments/06-lenia-effects.html?preset=four&sigma=0.02&look=clean",
+   "agg": {
+    "coverage": 0.20025499131944444,
+    "motion": 0.02306585053132335,
+    "motionStd": 0.018026879634877944,
+    "colour": 0.06087978565268701,
+    "contrast": 0.10425856374616753,
+    "fps": 15.9
+   },
+   "score": {
+    "total": 8.2,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.7609973206585876,
+     "fps": 0.06000000000000005
+    }
+   },
+   "videoSize": 929584,
+   "verdict": "",
+   "video": "videos/01-clean.webm"
+  },
+  {
+   "label": "bloom-mid",
+   "url": "http://127.0.0.1:34921/experiments/06-lenia-effects.html?preset=four&sigma=0.02&look=clean&fxBloom=0.6&fxBloomBeat=1",
+   "agg": {
+    "coverage": 0.4212091619318182,
+    "motion": 0.05281896125199005,
+    "motionStd": 0.043447201600243866,
+    "colour": 0.07218179323102346,
+    "contrast": 0.1805083683825923,
+    "fps": 16
+   },
+   "score": {
+    "total": 8.5,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.9022724153877932,
+     "fps": 0.06666666666666665
+    }
+   },
+   "videoSize": 1218333,
+   "verdict": "",
+   "video": "videos/02-bloom-mid.webm"
+  },
+  {
+   "label": "emboss",
+   "url": "http://127.0.0.1:34921/experiments/06-lenia-effects.html?preset=four&sigma=0.02&look=clean&fxEmboss=0.7&fxSheen=0.5",
+   "agg": {
+    "coverage": 0.4120551215277778,
+    "motion": 0.03471949889677984,
+    "motionStd": 0.0363170172603537,
+    "colour": 0.05432172521786492,
+    "contrast": 0.11590854247849089,
+    "fps": 15.5
+   },
+   "score": {
+    "total": 8.1,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.6790215652233115,
+     "fps": 0.033333333333333326
+    }
+   },
+   "videoSize": 1402435,
+   "verdict": "",
+   "video": "videos/03-emboss.webm"
+  },
+  {
+   "label": "palette",
+   "url": "http://127.0.0.1:34921/experiments/06-lenia-effects.html?preset=four&sigma=0.02&look=clean&fxPal=2&fxPalDrift=1",
+   "agg": {
+    "coverage": 0.4118707830255682,
+    "motion": 0.05745174039461019,
+    "motionStd": 0.0317864482622367,
+    "colour": 0.016794437945632797,
+    "contrast": 0.18172743908219066,
+    "fps": 16.2
+   },
+   "score": {
+    "total": 7.4,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.20993047432040995,
+     "fps": 0.07999999999999996
+    }
+   },
+   "videoSize": 1620514,
+   "verdict": "",
+   "video": "videos/04-palette.webm"
+  },
+  {
+   "label": "trails",
+   "url": "http://127.0.0.1:34921/experiments/06-lenia-effects.html?preset=four&sigma=0.02&look=clean&fxZoom=1.012&fxDecay=0.96",
+   "agg": {
+    "coverage": 0.41702473958333336,
+    "motion": 0.028022139607493855,
+    "motionStd": 0.012767357879429115,
+    "colour": 0.06167524793482206,
+    "contrast": 0.22058197880496727,
+    "fps": 15.9
+   },
+   "score": {
+    "total": 8.2,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.7709405991852758,
+     "fps": 0.06000000000000005
+    }
+   },
+   "videoSize": 996430,
+   "verdict": "",
+   "video": "videos/05-trails.webm"
+  },
+  {
+   "label": "bulge",
+   "url": "http://127.0.0.1:34921/experiments/06-lenia-effects.html?preset=four&sigma=0.02&look=clean&fxBulge=0.6",
+   "agg": {
+    "coverage": 0.028187144886363636,
+    "motion": 0.009101923653746553,
+    "motionStd": 0.0037758166617507163,
+    "colour": 0.05556262011196524,
+    "contrast": 0.041061575386295686,
+    "fps": 15.8
+   },
+   "score": {
+    "total": 6,
+    "parts": {
+     "motion": 1,
+     "coverage": 0.5127485795454545,
+     "pulse": 0.3775816661750716,
+     "colour": 0.6945327513995655,
+     "fps": 0.053333333333333344
+    }
+   },
+   "videoSize": 598851,
+   "verdict": "",
+   "video": "videos/06-bulge.webm"
+  },
+  {
+   "label": "look-glow",
+   "url": "http://127.0.0.1:34921/experiments/06-lenia-effects.html?preset=four&sigma=0.02&look=glow",
+   "agg": {
+    "coverage": 0.429454714752907,
+    "motion": 0.05608558006859744,
+    "motionStd": 0.04874916584459334,
+    "colour": 0.0605678787382201,
+    "contrast": 0.19046261684904553,
+    "fps": 16.5
+   },
+   "score": {
+    "total": 8.3,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.7570984842277513,
+     "fps": 0.09999999999999998
+    }
+   },
+   "videoSize": 1236081,
+   "verdict": "",
+   "video": "videos/07-look-glow.webm"
+  },
+  {
+   "label": "look-chrome",
+   "url": "http://127.0.0.1:34921/experiments/06-lenia-effects.html?preset=four&sigma=0.02&look=chrome",
+   "agg": {
+    "coverage": 0.5614790482954546,
+    "motion": 0.06390644333718931,
+    "motionStd": 0.06803461672333828,
+    "colour": 0.015268145610516936,
+    "contrast": 0.15680074533361446,
+    "fps": 15.5
+   },
+   "score": {
+    "total": 7,
+    "parts": {
+     "motion": 0.9023389165702671,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.1908518201314617,
+     "fps": 0.033333333333333326
+    }
+   },
+   "videoSize": 1673581,
+   "verdict": "",
+   "video": "videos/08-look-chrome.webm"
+  },
+  {
+   "label": "look-dream",
+   "url": "http://127.0.0.1:34921/experiments/06-lenia-effects.html?preset=four&sigma=0.02&look=dream",
+   "agg": {
+    "coverage": 0.5158040364583333,
+    "motion": 0.03853932492470653,
+    "motionStd": 0.01336657840119897,
+    "colour": 0.04834626906318083,
+    "contrast": 0.31014563355144653,
+    "fps": 16.5
+   },
+   "score": {
+    "total": 8.1,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.6043283632897604,
+     "fps": 0.09999999999999998
+    }
+   },
+   "videoSize": 1090329,
+   "verdict": "",
+   "video": "videos/09-look-dream.webm"
+  },
+  {
+   "label": "look-pulse",
+   "url": "http://127.0.0.1:34921/experiments/06-lenia-effects.html?preset=four&sigma=0.02&look=pulse",
+   "agg": {
+    "coverage": 0.09150390625,
+    "motion": 0.014474300692378915,
+    "motionStd": 0.005774965019373712,
+    "colour": 0.011870957584422658,
+    "contrast": 0.12543444208320562,
+    "fps": 15.9
+   },
+   "score": {
+    "total": 6.1,
+    "parts": {
+     "motion": 1,
+     "coverage": 0.7660156250000001,
+     "pulse": 0.5774965019373711,
+     "colour": 0.1483869698052832,
+     "fps": 0.06000000000000005
+    }
+   },
+   "videoSize": 791186,
+   "verdict": "",
+   "video": "videos/10-look-pulse.webm"
+  }
+ ]
+}

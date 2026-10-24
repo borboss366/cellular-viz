@@ -1,0 +1,67 @@
+[
+ {
+  "id": "06-fullness",
+  "from": "QA box",
+  "title": "06 Auto fix (PR #26): is a mostly full screen with quick dips what you want, or should it be less full?",
+  "note": "New version: never blank for more than 0.6 s, but about 85% full most of the time. Compare with the old one, then tell VIZ dev in the group.",
+  "links": [
+   {
+    "label": "new (auto-no-blank)",
+    "href": "/run/06-effects/2026-10-23-2002-auto-no-blank-33560ef"
+   },
+   {
+    "label": "old (main)",
+    "href": "/run/06-effects/2026-10-23-1936-main"
+   }
+  ]
+ },
+ {
+  "id": "07-rotor-spin",
+  "from": "QA box",
+  "title": "07 Particle Lenia (PR #21): does the shape spin, and is it worth keeping?",
+  "note": "VIZ dev moves the simulation to the GPU only if 07 is a keeper.",
+  "links": [
+   {
+    "label": "after 60 s warm-up",
+    "href": "/run/07-particle-lenia/2026-10-23-1851"
+   },
+   {
+    "label": "after 4 s",
+    "href": "/run/07-particle-lenia/2026-10-23-1850"
+   }
+  ],
+  "done": "2026-10-24T13:13:38.477Z"
+ },
+ {
+  "id": "07-creatures",
+  "from": "VIZ QA / QA box",
+  "title": "07 Particle Lenia: 12 new creatures \u2014 swipe 2 rounds (22 picks)",
+  "note": "Your top 4\u20135 become preset buttons. 20 s warm-up, 20 s each.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/07-particle-lenia/2026-10-23-2124/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/07-particle-lenia/2026-10-23-2124"
+   }
+  ]
+ },
+ {
+  "id": "08-blend-first",
+  "from": "QA box",
+  "title": "08 Blend (PR #30): watch the first switches \u2014 density vs fade",
+  "note": "Density on the new version has only short dark moments; fade still dips when 06 glow/pulse come in dark.",
+  "links": [
+   {
+    "label": "latest (5fe5a2b)",
+    "href": "/run/08-blend/2026-10-24-1315"
+   },
+   {
+    "label": "first (6d3f11d)",
+    "href": "/run/08-blend/2026-10-24-1305"
+   }
+  ]
+ }
+]
