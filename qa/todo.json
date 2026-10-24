@@ -80,5 +80,21 @@
     "href": "/run/08-blend/2026-10-24-1917"
    }
   ]
+ },
+ {
+  "id": "09-riemann",
+  "from": "QA box",
+  "title": "09 Riemann: first look (PR #38) \u2014 maths checks all pass, 60 fps at 1080p",
+  "note": "Every zero is a rainbow pinwheel on the line x = \u00bd. Clips are small here; on the laptop press Fullscreen.",
+  "links": [
+   {
+    "label": "\u25b6 watch",
+    "href": "/run/09-riemann/2026-10-24-1958"
+   },
+   {
+    "label": "\u21c4 travel vs overview",
+    "href": "/run/09-riemann/2026-10-24-1958/compare"
+   }
+  ]
  }
 ]
