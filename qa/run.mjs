@@ -130,7 +130,7 @@ while (Date.now() < deadline) {
     if (a) (series[m[2]] ??= { t0: Date.now(), pts: [] }).pts.push([+((Date.now() - series[m[2]].t0) / 1000).toFixed(2), ...a]);
     // 08 Blend: phase of the show and its own fps
     const b = f && await f.evaluate(() => typeof show === 'undefined' || typeof fps === 'undefined' ? null
-      : [show.phase, fps, show.switches]).catch(() => null);
+      : [show.phase, fps, show.switches, slots[show.cur]?.item?.label ?? '', +(slots[show.cur]?.lit ?? -1).toFixed(3)]).catch(() => null);
     if (b) (blends[m[2]] ??= { t0: Date.now(), pts: [] }).pts.push([+((Date.now() - blends[m[2]].t0) / 1000).toFixed(2), ...b]);
   }
   if (m && +m[3] >= dur / 2 && !stills.has(m[1])) {
