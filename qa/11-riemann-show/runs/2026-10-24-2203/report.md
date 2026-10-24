@@ -24,3 +24,16 @@ queries:
 - map: http://127.0.0.1:43319/experiments/11-riemann-show.html?scene=map
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+10 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | ribbon | 7.595 | 3 | 0 | 0 |
+| 2 | scope | 2.42 | 2 | 1 | 0 |
+| 3 | canyon | 1.132 | 2 | 2 | 0 |
+| 4 | march | 0.557 | 1 | 1 | 1 |
+| 5 | map | 0.399 | 1 | 2 | 0 |
+| 6 | primes | 0.216 | 0 | 3 | 1 |
