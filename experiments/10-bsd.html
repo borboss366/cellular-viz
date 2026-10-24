@@ -1,0 +1,536 @@
+<!doctype html>
+<!--
+  10 · Birch–Swinnerton-Dyer: chord and tangent, on a metronome   (Millennium track, #37)
+
+  An elliptic curve E: y² = x³ + ax + b, three layers:
+    curve   the real curve, glowing
+    hops    a point P jumps along the curve on the beat by the group law:
+            every beat P ← P + G (chord through P and G, third crossing R, reflect),
+            every downbeat P ← 2P (tangent at P). The chord and the reflection are
+            drawn for the latest hop, with a fading trail of earlier points.
+            Landing on the point at infinity O (the identity) flashes and reseeds;
+            so does a point whose height (digits of x) passes 400, since heights grow
+            ~k² for kP — the "size" BSD is about.
+    dust    each bar steps to the next good prime p, and the cells (x, y) mod p with
+            y² ≡ x³ + ax + b glow over the whole screen. #E(F_p) is counted, and
+            a_p = p + 1 − #E(F_p) (signed, |a_p| ≤ 2√p by Hasse) sets the dust
+            colour and brightness for that bar. The running product Π N_p / p over
+            good primes is the quantity BSD predicts grows like (log p)^rank.
+  Exact maths: every point is a pair of BigInt fractions, reduced; floats are only used
+  to draw. window.__qa exposes the points as "n/d" strings, the current p and counts,
+  a countPoints(a, b, p) function, the Hasse table so far, and `integral`: whole x in
+  [−2, 5234] with x³ + 17 a perfect square (exact BigInt square test).
+
+  Presets: x³+17 (rank 2, seeds (2,5) and G = (−1,4); its 8 integral points are ringed),
+  x³−2x (rank 1), x³−25x (the congruent-number curve for 5, rank 1), x³−x (rank 0:
+  only torsion, so P cycles and hits O). Laptop first: Fullscreen, native resolution.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>10 · Birch–Swinnerton-Dyer</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #9fb0c3; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0;
+      position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Curve</h3>
+  <div class="buttons" id="presets"></div>
+  <div class="buttons">
+    <button id="reseed">Reseed</button>
+    <button id="dust">dust</button>
+    <button id="pause">Pause</button>
+  </div>
+  <div class="row"><label for="pmax">largest p</label><input id="pmax" type="range" min="50" max="5000" step="50"><output id="pmaxOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="buttons">
+    <button id="copy" class="wide">Copy setup</button>
+  </div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+
+// ---------- Exact rationals (BigInt, always reduced, denominator > 0) ----------
+const babs = n => n < 0n ? -n : n;
+function bgcd(a, b) { a = babs(a); b = babs(b); while (b) [a, b] = [b, a % b]; return a; }
+function F(n, d = 1n) {
+  n = BigInt(n); d = BigInt(d);
+  if (d < 0n) { n = -n; d = -d; }
+  const g = bgcd(n, d) || 1n;
+  return { n: n / g, d: d / g };
+}
+const fadd = (p, q) => F(p.n * q.d + q.n * p.d, p.d * q.d);
+const fsub = (p, q) => F(p.n * q.d - q.n * p.d, p.d * q.d);
+const fmul = (p, q) => F(p.n * q.n, p.d * q.d);
+const fdiv = (p, q) => F(p.n * q.d, p.d * q.n);
+const feq = (p, q) => p.n === q.n && p.d === q.d;
+const fneg = p => ({ n: -p.n, d: p.d });
+const fstr = p => p.d === 1n ? `${p.n}` : `${p.n}/${p.d}`;
+const blen = n => babs(n).toString(2).length;
+// Float only for drawing: shift both parts down to ~60 bits first so nothing overflows.
+function fnum(p) {
+  const s = Math.max(0, Math.max(blen(p.n), blen(p.d)) - 60);
+  const n = Number(p.n >> BigInt(s)), d = Number(p.d >> BigInt(s));
+  return d === 0 ? Math.sign(n) * Infinity : n / d;
+}
+
+// ---------- The curve and its group law (null = the point at infinity O) ----------
+const PRESETS = {
+  'x³+17':  { a: 0,   b: 17, P: [2, 5],  G: [-1, 4] },
+  'x³−2x':  { a: -2,  b: 0,  P: [2, 2],  G: [-1, 1] },
+  'x³−25x': { a: -25, b: 0,  P: [-4, 6], G: [-4, 6] },
+  'x³−x':   { a: -1,  b: 0,  P: [0, 0],  G: [1, 0] },
+};
+const curve = { name: 'x³+17', a: 0, b: 17, A: F(0) };
+const onCurve = P => !P || feq(fmul(P.y, P.y), fadd(fadd(fmul(fmul(P.x, P.x), P.x), fmul(curve.A, P.x)), F(curve.b)));
+function dbl(P) {
+  if (!P || P.y.n === 0n) return { sum: null, s: null };   // vertical tangent: 2P = O
+  const s = fdiv(fadd(fmul(F(3), fmul(P.x, P.x)), curve.A), fmul(F(2), P.y));
+  return third(P, P, s);
+}
+function add(P, Q) {
+  if (!P) return { sum: Q, s: null };
+  if (!Q) return { sum: P, s: null };
+  if (feq(P.x, Q.x)) return feq(P.y, Q.y) ? dbl(P) : { sum: null, s: null };   // P + (−P) = O
+  return third(P, Q, fdiv(fsub(Q.y, P.y), fsub(Q.x, P.x)));
+}
+// Third crossing R of the line through P with slope s, and P+Q = −R.
+function third(P, Q, s) {
+  const xr = fsub(fsub(fmul(s, s), P.x), Q.x);
+  const yr = fadd(P.y, fmul(s, fsub(xr, P.x)));    // R on the line
+  return { sum: { x: xr, y: fneg(yr) }, R: { x: xr, y: yr }, s };
+}
+const pt = ([x, y]) => ({ x: F(x), y: F(y) });
+
+// ---------- Mod p: point counts, the dust, the Hasse table ----------
+function countPoints(a, b, p) {
+  const cnt = new Int32Array(p);
+  for (let y = 0; y < p; y++) cnt[(y * y) % p]++;
+  const am = ((a % p) + p) % p, bm = ((b % p) + p) % p;
+  let N = 1;   // the point at infinity
+  for (let x = 0; x < p; x++) N += cnt[((x * x % p) * x % p + am * x % p + bm) % p];
+  return N;
+}
+function cellsMod(a, b, p) {   // all (x, y) with y² ≡ x³ + ax + b (mod p)
+  const roots = Array.from({ length: p }, () => []);
+  for (let y = 0; y < p; y++) roots[(y * y) % p].push(y);
+  const am = ((a % p) + p) % p, bm = ((b % p) + p) % p, out = [];
+  for (let x = 0; x < p; x++) for (const y of roots[((x * x % p) * x % p + am * x % p + bm) % p]) out.push(x, y);
+  return out;
+}
+const PRIMES = (() => {   // sieve to 5000
+  const n = 5001, s = new Uint8Array(n), out = [];
+  for (let i = 2; i < n; i++) { if (s[i]) continue; out.push(i); for (let j = i * i; j < n; j += i) s[j] = 1; }
+  return out;
+})();
+const isBad = p => p === 2 || p === 3 || ((4 * curve.a ** 3 + 27 * curve.b ** 2) % p === 0);
+
+// Whole x in [lo, hi] with x³ + ax + b a perfect square (exact).
+function isqrt(n) {
+  if (n < 2n) return n;
+  let x = BigInt(Math.floor(Math.sqrt(Number(n))));
+  while (x * x > n) x--;
+  while ((x + 1n) * (x + 1n) <= n) x++;
+  return x;
+}
+function integralPoints(a, b, lo, hi) {
+  const out = [];
+  for (let x = BigInt(lo); x <= BigInt(hi); x++) {
+    const v = x * x * x + BigInt(a) * x + BigInt(b);
+    if (v < 0n) continue;
+    const r = isqrt(v);
+    if (r * r === v) out.push({ x: `${x}`, y: `${r}` });
+  }
+  return out;
+}
+const INTEGRAL_17 = integralPoints(0, 17, -2, 5234);
+
+// ---------- Metronome (same as 04, reduced) ----------
+const params = { bpm: 120, bpb: 4, pmax: 1500, dust: true, paused: false, muted: false,
+                 kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [],
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume();
+    this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+    this.playing = true;
+    this.timer = setInterval(() => this.schedule(), 25);
+    this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  schedule() {
+    while (this.nextTime < this.ctx.currentTime + 0.1) {
+      this.queueStep(this.step, this.nextTime);
+      this.nextTime += 60 / params.bpm / 4; this.step++;
+    }
+    const old = this.ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, time) {
+    const inBar = step % (params.bpb * 4);
+    this.steps.push({ time, step });
+    for (const lane of LANES) {
+      if (params[lane][inBar % 16] !== 'x') continue;
+      const vel = inBar === 0 ? 1.0 : 0.7;
+      this.hits.push({ lane, time, vel });
+      this.click(lane, time, vel);
+    }
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain();
+    g.connect(this.master);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') {
+      src = ctx.createOscillator();
+      src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08);
+      src.connect(g);
+    } else {
+      src = ctx.createBufferSource(); src.buffer = this.noise;
+      const f = ctx.createBiquadFilter();
+      f.type = lane === 'snare' ? 'bandpass' : 'highpass';
+      f.frequency.value = lane === 'snare' ? 1800 : 8000;
+      src.connect(f); f.connect(g);
+    }
+    const end = t + TAU[lane] * 4;
+    g.gain.exponentialRampToValueAtTime(0.001, end);
+    src.start(t); src.stop(end + 0.01);
+  },
+  // Levels plus the beat count so far (whole beats since Play), from the audio clock.
+  read() {
+    const out = { kick: 0, snare: 0, hat: 0, beats: -1 };
+    if (!this.ctx) return out;
+    const now = this.ctx.currentTime - Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0);
+    for (const h of this.hits) {
+      const dt = now - h.time;
+      if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane]));
+    }
+    let last = null;
+    for (const s of this.steps) if (s.time <= now) last = s;
+    if (last) out.beats = Math.floor(last.step / 4);
+    return out;
+  },
+};
+
+// ---------- State ----------
+const st = { P: null, G: null, P0: null, hops: 0, flashes: 0, flash: 0,
+             trail: [], last: null, lastAt: 0,
+             pIndex: -1, p: 0, cells: [], count: 0, ap: 0, product: 1, hasse: [],
+             beat: -1, clockBeats: 0, clockStart: performance.now() };
+function setCurve(name) {
+  const c = PRESETS[name] || PRESETS['x³+17'];
+  Object.assign(curve, { name: PRESETS[name] ? name : 'x³+17', a: c.a, b: c.b, A: F(c.a) });
+  st.P0 = pt(c.P); st.G = pt(c.G); st.P = st.P0;
+  st.trail = []; st.last = null; st.hops = 0;
+  st.pIndex = -1; st.product = 1; st.hasse = [];
+  nextPrime();
+  publish();
+}
+function reseed() { st.P = st.P0; st.flash = 1; st.flashes++; }
+function hop(double) {
+  const r = double ? dbl(st.P) : add(st.P, st.G);
+  if (!r.sum) { st.last = null; reseed(); publish(); return; }   // landed on O
+  st.last = { P: st.P, Q: double ? st.P : st.G, R: r.R, sum: r.sum, double };
+  st.lastAt = performance.now();
+  st.P = r.sum; st.hops++;
+  const xy = [fnum(st.P.x), fnum(st.P.y)];
+  st.trail.push({ x: xy[0], y: xy[1], t: performance.now() });
+  if (st.trail.length > 24) st.trail.shift();
+  if (blen(st.P.x.n) > 1330) reseed();   // ~400 decimal digits: height ceiling
+  publish();
+}
+function nextPrime() {
+  let i = st.pIndex;
+  for (let tries = 0; tries < PRIMES.length; tries++) {
+    i = (i + 1) % PRIMES.length;
+    if (PRIMES[i] > params.pmax || PRIMES[i] < 5) { if (PRIMES[i] > params.pmax) { i = -1; st.product = 1; } continue; }
+    if (!isBad(PRIMES[i])) break;
+  }
+  st.pIndex = i;
+  const p = st.p = PRIMES[i];
+  st.count = countPoints(curve.a, curve.b, p);
+  st.ap = p + 1 - st.count;
+  st.product *= st.count / p;
+  st.cells = params.dust ? cellsMod(curve.a, curve.b, p) : [];
+  st.hasse.push({ p, count: st.count, ap: st.ap, bound: 2 * Math.sqrt(p), ok: Math.abs(st.ap) <= 2 * Math.sqrt(p) });
+  if (st.hasse.length > 400) st.hasse.shift();
+}
+function publish() {
+  window.__qa = {
+    curve: { name: curve.name, a: curve.a, b: curve.b },
+    points: [st.P0, st.G, ...(st.last ? [st.last.P, st.last.sum] : []), st.P]
+      .filter(Boolean).map(q => ({ x: fstr(q.x), y: fstr(q.y), onCurve: onCurve(q) })),
+    p: st.p, count: st.count, ap: st.ap, hasse: st.hasse.slice(), product: st.product,
+    hops: st.hops, flashes: st.flashes, integral: INTEGRAL_17, countPoints,
+  };
+}
+
+// ---------- Drawing ----------
+const canvas = document.getElementById('c');
+const hud = document.getElementById('hud');
+const ctx = canvas.getContext('2d', { alpha: false });
+const cam = { half: 6 };
+const fx = x => x * x * x + curve.a * x + curve.b;
+// The leftmost real root of x³ + ax + b: scan right from −60 to the first sign change, then bisect.
+let rootCache = { key: '', x: 0 };
+function leftRoot() {
+  const key = `${curve.a},${curve.b}`;
+  if (rootCache.key === key) return rootCache.x;
+  let lo = -60;
+  while (fx(lo + 0.25) < 0 && lo < 60) lo += 0.25;
+  let hi = lo + 0.25;
+  for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (fx(m) < 0) lo = m; else hi = m; }
+  rootCache = { key, x: lo };
+  return lo;
+}
+function draw(now, L) {
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#04050a';
+  ctx.fillRect(0, 0, W, H);
+
+  // dust: the mod-p solutions over the whole screen, coloured by a_p
+  if (params.dust && st.cells.length) {
+    const t = Math.max(-1, Math.min(1, st.ap / (2 * Math.sqrt(st.p))));   // Hasse-normalised
+    const hue = t >= 0 ? 175 : 315, light = 45 + 15 * Math.abs(t);
+    ctx.fillStyle = `hsla(${hue}, 80%, ${light}%, ${0.35 + 0.25 * Math.abs(t) + 0.3 * L.snare})`;
+    const cw = W / st.p, ch = H / st.p, s = Math.max(1, Math.min(cw, ch) * 0.7);
+    for (let i = 0; i < st.cells.length; i += 2) ctx.fillRect(st.cells[i] * cw, H - (st.cells[i + 1] + 1) * ch, s, s);
+  }
+
+  // view: x from just left of the curve, wide enough for the current point
+  const target = Math.min(60, Math.max(5, 1.3 * Math.max(...st.trail.slice(-3).map(q => Math.abs(q.x)).filter(Number.isFinite), 3)));
+  cam.half += 0.05 * (target - cam.half);
+  const x0 = leftRoot() - 0.15 * cam.half, x1 = x0 + 2 * cam.half;
+  const yh = 1.1 * Math.sqrt(Math.max(1, fx(x0 + 1.6 * cam.half)));
+  const X = x => (x - x0) / (x1 - x0) * W;
+  const Y = y => H / 2 - y / yh * (H / 2);
+
+  // the real curve: both branches, sampled finely, glowing
+  ctx.save();
+  const glow = 0.6 + 0.4 * L.kick;
+  ctx.strokeStyle = `hsla(${200 + 40 * Math.sin(now / 4000)}, 90%, 75%, ${glow})`;
+  ctx.lineWidth = Math.max(1.5, W / 700);
+  ctx.shadowColor = '#7fd8ff'; ctx.shadowBlur = W / 120 * (1 + L.kick);
+  for (const sign of [1, -1]) {
+    ctx.beginPath();
+    let pen = false;
+    const N = 1600;
+    for (let i = 0; i <= N; i++) {
+      const x = x0 + (x1 - x0) * i / N, v = fx(x);
+      if (v < 0) { pen = false; continue; }
+      const y = sign * Math.sqrt(v);
+      if (!pen) ctx.moveTo(X(x), Y(y)); else ctx.lineTo(X(x), Y(y));
+      pen = true;
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // the latest hop: chord (or tangent) line, the third crossing R, the reflection to P+Q
+  const age = (now - st.lastAt) / (60000 / params.bpm);   // in beats
+  if (st.last && age < 1.5) {
+    const a = Math.max(0, 1 - age / 1.5);
+    const P = [fnum(st.last.P.x), fnum(st.last.P.y)], R = [fnum(st.last.R.x), fnum(st.last.R.y)];
+    const S = [fnum(st.last.sum.x), fnum(st.last.sum.y)];
+    if ([...P, ...R, ...S].every(Number.isFinite)) {
+      const dx = R[0] - P[0], dy = R[1] - P[1], k = 50;
+      ctx.strokeStyle = `rgba(255, 210, 120, ${0.7 * a})`;
+      ctx.lineWidth = Math.max(1, W / 1200);
+      ctx.beginPath(); ctx.moveTo(X(P[0] - k * dx), Y(P[1] - k * dy)); ctx.lineTo(X(P[0] + k * dx), Y(P[1] + k * dy)); ctx.stroke();
+      ctx.setLineDash([W / 200, W / 200]);
+      ctx.beginPath(); ctx.moveTo(X(R[0]), Y(R[1])); ctx.lineTo(X(S[0]), Y(S[1])); ctx.stroke();
+      ctx.setLineDash([]);
+      dot(X(R[0]), Y(R[1]), W / 220, `rgba(255, 210, 120, ${a})`, 0);
+    }
+  }
+
+  // integral points of x³+17, ringed
+  if (curve.name === 'x³+17') {
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = Math.max(1, W / 1400);
+    for (const q of INTEGRAL_17) for (const sg of [1, -1]) {
+      const x = Number(q.x), y = sg * Number(q.y);
+      if (x < x0 || x > x1 || Math.abs(y) > yh) continue;
+      ctx.beginPath(); ctx.arc(X(x), Y(y), W / 110, 0, 7); ctx.stroke();
+    }
+  }
+
+  // trail and the current point
+  for (const q of st.trail) {
+    const a = Math.max(0, 1 - (now - q.t) / 12000);
+    if (!Number.isFinite(q.x) || !Number.isFinite(q.y)) continue;
+    const sp = 1 + 0.8 * L.hat * Math.random();
+    dot(X(q.x), Y(q.y), W / 260 * sp, `hsla(28, 100%, 62%, ${a})`, W / 160);
+  }
+  const cx = fnum(st.P.x), cy = fnum(st.P.y);
+  if (Number.isFinite(cx) && Number.isFinite(cy)) dot(X(cx), Y(cy), W / 120 * (1 + 0.4 * L.kick), '#fff2d0', W / 60);
+
+  if (st.flash > 0) {   // O: the identity
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.5 * st.flash})`;
+    ctx.fillRect(0, 0, W, H);
+    st.flash = Math.max(0, st.flash - 0.04);
+  }
+  return { x0, x1, yh };
+}
+function dot(x, y, r, color, blur) {
+  ctx.save();
+  ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = blur;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+$('play').onclick = () => {
+  if (metronome.playing) metronome.stop(); else metronome.start();
+  st.beat = -1; st.clockStart = performance.now();   // both beat counts start again from 0
+  $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', metronome.playing);
+};
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('full').onclick = () => {
+  const w = $('wrap');
+  if (document.fullscreenElement) document.exitFullscreen();
+  else (w.requestFullscreen || w.webkitRequestFullscreen).call(w);
+};
+$('reseed').onclick = () => { reseed(); publish(); };
+$('dust').onclick = () => { params.dust = !params.dust; st.cells = params.dust ? cellsMod(curve.a, curve.b, st.p) : []; sync(); };
+$('pause').onclick = () => { params.paused = !params.paused; sync(); };
+for (const name of Object.keys(PRESETS)) {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.onclick = () => { setCurve(name); sync(); };
+  $('presets').appendChild(b);
+}
+for (const name of ['pmax', 'bpm']) {
+  $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name]; });
+}
+function sync() {
+  for (const name of ['pmax', 'bpm']) { $(name).value = params[name]; $(name + 'Out').textContent = params[name]; }
+  $('mute').classList.toggle('on', params.muted);
+  $('dust').classList.toggle('on', params.dust);
+  $('pause').classList.toggle('on', params.paused);
+  for (const b of $('presets').children) b.classList.toggle('on', b.textContent === curve.name);
+}
+const CURVE_KEYS = { 'x3+17': 'x³+17', 'x3-2x': 'x³−2x', 'x3-25x': 'x³−25x', 'x3-x': 'x³−x' };
+function setupLink() {
+  const key = Object.keys(CURVE_KEYS).find(k => CURVE_KEYS[k] === curve.name);
+  const q = new URLSearchParams({ curve: key, pmax: params.pmax, bpm: params.bpm, dust: params.dust ? 1 : 0 });
+  return location.origin + location.pathname + '?' + q;
+}
+$('copy').onclick = async e => {
+  const text = `10 · BSD · y² = ${curve.name} · p ${st.p} · #E ${st.count} · a_p ${st.ap}\n` +
+    `hops ${st.hops} · height ${st.P.x.n.toString().length} digits · Π N_p/p ${st.product.toFixed(2)}\n` + setupLink();
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    ok = document.execCommand('copy'); ta.remove();
+  }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓';
+  setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
+};
+
+// ---------- Main loop ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(3840, Math.round(canvas.clientWidth * dpr));
+  const h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
+function frame(now) {
+  resize();
+  const L = metronome.read();
+  // Beats from the metronome while it plays, else from a clock at the same tempo.
+  let beats = L.beats;
+  if (!metronome.playing) beats = Math.floor((now - st.clockStart) / (60000 / params.bpm));
+  if (!params.paused && beats > st.beat) {
+    for (let b = st.beat + 1; b <= beats && b <= st.beat + 4; b++) {
+      if (b % params.bpb === 0) { nextPrime(); hop(true); }   // downbeat: new prime, double
+      else hop(false);                                     // other beats: add G
+    }
+  }
+  st.beat = Math.max(st.beat, beats);
+  const v = draw(now, L);
+
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    hud.textContent = `y² = ${curve.name} · ${params.bpm} bpm · ${state}\n` +
+      `p ${st.p} · #E ${st.count} · a_p ${st.ap} (|a_p| ≤ ${(2 * Math.sqrt(st.p)).toFixed(1)}) · Π N_p/p ${st.product.toFixed(2)}\n` +
+      `hops ${st.hops} · height ${st.P.x.n.toString().length} digits · O ×${st.flashes}\n` +
+      `x ${v.x0.toFixed(1)} … ${v.x1.toFixed(1)} · ${canvas.width}×${canvas.height} · ${fps} fps`;
+  }
+  requestAnimationFrame(frame);
+}
+
+params.pmax = Number.isFinite(parseFloat(query.get('pmax'))) ? parseFloat(query.get('pmax')) : params.pmax;
+params.bpm = Number.isFinite(parseFloat(query.get('bpm'))) ? parseFloat(query.get('bpm')) : params.bpm;
+params.dust = query.get('dust') !== '0';
+params.muted = query.get('muted') === '1';
+setCurve(CURVE_KEYS[query.get('curve')] || 'x³+17');
+sync();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
