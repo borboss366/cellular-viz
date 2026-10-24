@@ -261,8 +261,23 @@ const float PI = 3.14159265, LN2 = 0.69314718, LNPI = 1.14472989;
 vec2 cmul(vec2 a, vec2 b) { return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x); }
 vec2 cdiv(vec2 a, vec2 b) { return vec2(a.x * b.x + a.y * b.y, a.y * b.x - a.x * b.y) / dot(b, b); }
 vec2 cexp(vec2 z) { return exp(z.x) * vec2(cos(z.y), sin(z.y)); }
-vec2 clog(vec2 z) { return vec2(log(length(z)), atan(z.y, z.x)); }
+// Scaled so |z|² never overflows float32 (it did for |z| > 1.8e19).
+vec2 clog(vec2 z) {
+  float m = max(abs(z.x), abs(z.y));
+  vec2 u = z / max(m, 1e-30);
+  return vec2(log(m) + 0.5 * log(dot(u, u)), atan(z.y, z.x));
+}
 vec2 csin(vec2 z) { return vec2(sin(z.x) * cosh(z.y), cos(z.x) * sinh(z.y)); }
+// log sin(z) without forming sin(z): for |Im z| > 1, sin z = (i/2) e^(−iz) (1 − e^(2iz)) (upper half;
+// lower half by conjugate symmetry). cosh(πy/2)² overflowed float32 from y ≈ 28.4.
+vec2 clogsin(vec2 z) {
+  if (abs(z.y) <= 1.0) return clog(csin(z));
+  float sg = sign(z.y);
+  vec2 w = vec2(z.x, abs(z.y));                       // upper half
+  vec2 e2 = cexp(vec2(-2.0 * w.y, 2.0 * w.x));         // e^(2iw), tiny
+  vec2 r = vec2(w.y - 0.69314718, 1.57079633 - w.x) + clog(vec2(1.0, 0.0) - e2);
+  return vec2(r.x, sg * r.y);
+}
 
 // η(s) by Borwein: −Σ (−1)^k c_k (k+1)^(−s), for Re s > 0.
 vec2 eta(vec2 s) {
@@ -293,7 +308,7 @@ vec2 logGamma(vec2 z) {
 vec2 logZeta(vec2 s) {
   if (s.x >= 0.5) return logZetaRight(s);
   vec2 r = vec2(1.0, 0.0) - s;   // reflection: everything in logs
-  return s * LN2 + (s - vec2(1.0, 0.0)) * LNPI + clog(csin(s * (PI * 0.5))) + logGamma(r) + logZetaRight(r);
+  return s * LN2 + (s - vec2(1.0, 0.0)) * LNPI + clogsin(s * (PI * 0.5)) + logGamma(r) + logZetaRight(r);
 }
 
 vec3 hsv(float h, float s, float v) {
