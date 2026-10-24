@@ -34,6 +34,7 @@ _None yet. No screenshot verdicts posted._
 - 2026-10-23 · New bot visualisation QA joined. QA harness qa/harness.html + qa/04, qa/05, qa/06 index folders (PR #18): records 12 s .webm per variant, measures coverage / motion / beat / colour / fps, scores 0–10.
 - 2026-10-23 · 06 Lenia + effects (PR #19, bf80aa0): copy of 04 with bloom, emboss, sheen, palette, trail zoom, trail length, kick bulge sliders; bloom-on-kick and palette-drift toggles; looks clean / glow (default) / chrome / dream / pulse; Copy setup has an `fx …` line. 04 unchanged.
 - 2026-10-23 · User installed Termux so QA can run headless sweeps.
+- 2026-10-24 · Blending track (own branch, issues #27–#29). Blend 1 started: 08 Blend (branch blend-crossfade) plays a playlist of experiments in two hidden iframes, streams their canvases and switches on the downbeat with fade / dissolve / density / iris transitions (hold, warm-up, blend in bars).
 
 ## Open
 - Step 3 Particle Lenia: queued.
