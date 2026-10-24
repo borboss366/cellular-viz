@@ -133,8 +133,14 @@ const FIELD = [64, 128, 192, 256, 384].includes(+query.get('field')) ? +query.ge
 const STRONG_KICK = 0.75;   // as in 04: only the bar's downbeat passes this
 const MAX_N = 800;
 
-// Creature presets. big = rotor scaled ×2 in space with 4× the points (same density).
+// Creature presets. The first four are the user's top picks from the 12-variant sweep
+// (qa/07-particle-lenia/runs/2026-10-23-2124, 55 swipes), each a small change from rotor.
+// big = rotor scaled ×2 in space with 4× the points (same density).
 const PRESETS = {
+  'small-ring': { N: 200, muK: 3, sigK: 0.7, wK: 0.04,  muG: 0.6,  sigG: 0.15, rep: 1,   dt: 0.1, steps: 5 },
+  dense:        { N: 300, muK: 4, sigK: 1,   wK: 0.022, muG: 0.6,  sigG: 0.15, rep: 1,   dt: 0.1, steps: 5 },
+  loose:        { N: 200, muK: 4, sigK: 1,   wK: 0.022, muG: 0.45, sigG: 0.2,  rep: 1,   dt: 0.1, steps: 5 },
+  'hard-rep':   { N: 200, muK: 4, sigK: 1,   wK: 0.022, muG: 0.6,  sigG: 0.15, rep: 1.8, dt: 0.1, steps: 5 },
   rotor: { N: 200, muK: 4, sigK: 1, wK: 0.022,  muG: 0.6, sigG: 0.15, rep: 1, dt: 0.1, steps: 5 },
   big:   { N: 800, muK: 8, sigK: 2, wK: 0.0055, muG: 0.6, sigG: 0.15, rep: 1, dt: 0.1, steps: 3 },
 };
@@ -146,7 +152,7 @@ const GROOVES = {
   waltz: { bpm: 90,  bpb: 3, swing: 0.1,  kick: 'x...............', snare: '....x...x.......', hat: 'x.x.x.x.x.x.....' },
 };
 
-const params = { preset: 'rotor', groove: 'four', ...PRESETS.rotor, ...GROOVES.four,
+const params = { preset: 'small-ring', groove: 'four', ...PRESETS['small-ring'], ...GROOVES.four,
                  human: 0, padBars: 1, muted: false, kickAmt: 2, paused: false,
                  view: 'field', hudShort: false };
 const maps = { mKickRep: true, mKickBurst: false, mPadMuG: true,
@@ -557,7 +563,7 @@ const creatureSliders = { N: 0, muK: 1, sigK: 2, wK: 4, muG: 2, sigG: 3, rep: 2,
 const grooveSliders = { bpm: 0, bpb: 0, swing: 2, human: 0 };
 const sliders = { ...creatureSliders, ...grooveSliders, kickAmt: 1 };   // name → decimals shown
 
-let basePreset = 'rotor', baseGroove = 'four';
+let basePreset = 'small-ring', baseGroove = 'four';
 function makeButtons(box, names, onPick) {
   for (const name of names) {
     const b = document.createElement('button');
@@ -686,7 +692,7 @@ $('copy').onclick = async e => {
 };
 
 function loadFromUrl() {
-  applyPreset(PRESETS[query.get('preset')] ? query.get('preset') : 'rotor');
+  applyPreset(PRESETS[query.get('preset')] ? query.get('preset') : 'small-ring');
   applyGroove(GROOVES[query.get('groove')] ? query.get('groove') : 'four');
   let creatureChanged = false, grooveChanged = false;
   for (const name of Object.keys(sliders)) {
