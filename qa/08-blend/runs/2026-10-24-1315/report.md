@@ -23,3 +23,12 @@ Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
 |---|---|---|---|---|---|---|
 | density-hold4 | 5 | 60 / 60 | 60 / 60 | 1% | 1% | 7 |
 | fade-hold4 | 5 | 60 / 60 | 60 / 60 | 0% | 3% | 31 |
+
+## Pairwise ranking (user picks)
+
+2 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | fade-hold4 | 2.751 | 2 | 0 | 0 |
+| 2 | density-hold4 | 0.363 | 0 | 2 | 0 |

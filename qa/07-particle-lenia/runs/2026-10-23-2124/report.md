@@ -36,3 +36,22 @@ queries:
 - rotor-break: http://127.0.0.1:41785/experiments/07-particle-lenia.html?preset=rotor&groove=break&mKickBurst=1
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+55 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | small-ring | 37.623 | 5 | 0 | 0 |
+| 2 | dense | 8.431 | 6 | 2 | 0 |
+| 3 | loose | 2.658 | 5 | 3 | 0 |
+| 4 | hard-rep | 1.805 | 7 | 4 | 0 |
+| 5 | rotor-break | 1.085 | 5 | 4 | 2 |
+| 6 | swarm-400 | 0.949 | 5 | 4 | 1 |
+| 7 | tolerant | 0.947 | 5 | 5 | 0 |
+| 8 | rotor-ref | 0.671 | 5 | 5 | 0 |
+| 9 | tight | 0.373 | 4 | 7 | 0 |
+| 10 | soft-rep | 0.319 | 3 | 6 | 1 |
+| 11 | wide-ring | 0.22 | 3 | 7 | 0 |
+| 12 | picky | 0.038 | 0 | 6 | 0 |

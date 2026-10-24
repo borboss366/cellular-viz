@@ -99,8 +99,8 @@ function indexPage() {
   const done = all.filter(r => r.s.graded);
   const other = all.filter(r => !r.s.graded && (r.s.software || r.s.n <= 1 || diag(r)));
   const body = `
-    <h2 style="font-size:16px">Waiting for you (${todo.length})</h2>${asks || '<p class="m">Nothing asked right now.</p>'}
-    <h2 style="font-size:16px">Runs to grade (${open.length})</h2>${open.length ? `<ul>${open.map(row).join('')}</ul>` : '<p class="m">All graded.</p>'}
+    <h2 style="font-size:16px">Waiting for you (${todo.length})</h2>${asks || '<div class="card">🎉 <b>You\'re all caught up.</b> <span class="m">Nothing is waiting for you; the bots will add things here.</span></div>'}
+    <h2 style="font-size:16px">Runs to grade (${open.length})</h2>${open.length ? `<ul>${open.map(row).join('')}</ul>` : '<div class="card">✅ <b>No runs left to grade.</b> <span class="m">New runs show up here by themselves.</span></div>'}
     <h2 style="font-size:16px">Graded (${done.length})</h2>${done.length ? `<ul>${done.map(row).join('')}</ul>` : '<p class="m">None yet.</p>'}
     <details><summary class="m">Other runs (${other.length}): branch checks, software-only, single variant</summary><ul>${other.map(row).join('')}</ul></details>
     <h2 style="font-size:16px">Elsewhere</h2><ul>
@@ -169,7 +169,13 @@ function compareRoute(req, res, exp, stamp, dir, action) {
     const pair = nextPair(labels, comps);
     const info = l => { const i = data.results.findIndex(r => r.label === l), r = data.results[i];
       return { label: l, setup: su[l], video: `/file/${exp}/${stamp}/${r.video}`, still: stillOf(dir, i, l, exp, stamp) }; };
-    return json({ pair: pair && pair.map(info), count: comps.length, round: Math.floor(comps.length / per) + 1, inRound: comps.length % per, perRound: per, ranking: ranking(labels, comps) });
+    // after two rounds the run counts as graded: say so, and point at the next thing to grade
+    const target = per * 2;
+    const next = runs().map(r => ({ ...r, s: runState(r) }))
+      .find(r => !(r.exp === exp && r.stamp === stamp) && !r.s.graded && !r.s.software && r.s.n > 1 && !r.s.tag);
+    return json({ pair: pair && pair.map(info), count: comps.length, round: Math.floor(comps.length / per) + 1, inRound: comps.length % per, perRound: per,
+      target, done: comps.length >= target, nextRun: next ? `/run/${next.exp}/${next.stamp}/compare` : null,
+      openAsks: loadTodo().filter(t => !t.done).length, ranking: ranking(labels, comps) });
   }
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
   if (action === 'undo') { undoPick(dir, labels); return json({ ok: true }); }

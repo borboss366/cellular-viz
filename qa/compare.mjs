@@ -115,21 +115,32 @@ export function comparePage(exp, stamp) {
 table{border-collapse:collapse;width:100%;font-size:13px;margin-top:6px}td,th{border-bottom:1px solid #2c3850;padding:5px;text-align:left}
 </style>
 <p class="m" id="info">loading…</p>
+<div class="card" id="done" style="display:none"></div>
 <div class="pair" id="pair"></div>
 <div class="bar"><button id="tie">≈ same</button><button id="skip">skip</button><button id="undo">↶ undo</button></div>
 <p class="m">Tap the better one, or swipe it right (swipe left = the other one wins). Setups show only what differs.</p>
 <h3 style="font-size:15px;margin:18px 0 0">Ranking so far</h3><div id="rank"></div>
 <script>
 const base = location.pathname.replace(/\\/compare$/, '');
-let cur = null, busy = false;
+let cur = null, busy = false, more = false;
 const $ = id => document.getElementById(id);
 async function load() {
   const d = await (await fetch(base + '/compare/next')).json();
   cur = d.pair;
-  $('info').textContent = d.count + ' picks · round ' + d.round + ' (' + d.inRound + '/' + d.perRound + ')';
+  $('info').textContent = d.count + ' of ' + d.target + ' picks · round ' + d.round + ' (' + d.inRound + '/' + d.perRound + ')';
   $('rank').innerHTML = '<table><tr><th>#</th><th>variant</th><th>strength</th><th>W–L–T</th></tr>' +
     d.ranking.map((r, i) => '<tr><td>' + (i + 1) + '</td><td>' + r.label + '</td><td>' + r.strength + '</td><td>' + r.w + '–' + r.l + '–' + r.t + '</td></tr>').join('') + '</table>';
-  if (!cur) { $('pair').innerHTML = '<p>Need at least two variants with videos.</p>'; return; }
+  if (!cur) { $('pair').innerHTML = '<div class="card">Nothing to compare here: this run needs at least two variants with videos.</div>'; return; }
+  if (d.done && !more) {
+    $('pair').innerHTML = ''; document.querySelector('.bar').style.display = 'none';
+    $('done').style.display = '';
+    $('done').innerHTML = '🎉 <b>Done with this run.</b> ' + d.count + ' picks; your ranking is below and saved to the report.<div class="row">' +
+      (d.nextRun ? '<a href="' + d.nextRun + '"><button>Next run to grade →</button></a>' : '<span class="m">No other runs waiting.</span>') +
+      '<a href="/"><button>Back to the list' + (d.openAsks ? ' (' + d.openAsks + ' waiting)' : '') + '</button></a>' +
+      '<button id="more">Keep picking</button></div>';
+    $('more').onclick = () => { more = true; $('done').style.display = 'none'; document.querySelector('.bar').style.display = ''; load(); };
+    return;
+  }
   $('pair').innerHTML = cur.map((v, i) => '<div class="side" data-i="' + i + '">' +
     '<video src="' + v.video + '" poster="' + (v.still || '') + '" autoplay loop muted playsinline></video>' +
     '<div class="cap"><b>' + v.label + '</b><br><span class="m">' + v.setup + '</span></div></div>').join('');
