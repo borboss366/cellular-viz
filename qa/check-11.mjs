@@ -81,19 +81,51 @@ const primesRes = {
 };
 
 // ---- beat lock in the ribbon scene ----
+// Every frame (rAF, after the page's own draw): bars and tCam. The k-th zero belongs on downbeat k, so on
+// the first frame after each downbeat, tCam − u·(γ[k+1] − γ[k]) (u = how far past the downbeat) must be γ[k].
+// We use LMFDB's γ, not the page's. Also every frame: tCam vs the LMFDB warped clock at that bars value.
 const lock = await page.evaluate(async ms => {
   const out = []; const t0 = performance.now();
-  while (performance.now() - t0 < ms) {
-    const b = __qa.bars, t = __qa.tCam;
-    if (b != null && t != null) out.push([b, t]);
-    await new Promise(r => setTimeout(r, 30));
-  }
+  await new Promise(res => { const f = () => { const b = __qa.bars, t = __qa.tCam; if (b != null && t != null) out.push([b, t]);
+    if (performance.now() - t0 < ms) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); });
   return out;
 }, 16000);
+const LOOP = Math.min(30, qa.zeros.length - 1);
+const TZ = TRUE.filter(t => t > 10);
+const warpTrue = b => { const bb = ((b % LOOP) + LOOP) % LOOP, k = Math.floor(bb), u = bb - k; return { k, u, t: TZ[k] + u * (TZ[k + 1] - TZ[k]) }; };
+const frameErr = lock.map(([b, t]) => Math.abs(t - warpTrue(b).t));
+const after = lock.filter(([b], i) => i > 0 && Math.floor(b) > Math.floor(lock[i - 1][0]));
+const atDown = after.map(([b, t]) => { const { k, u } = warpTrue(b); return { bar: Math.floor(b), u: +u.toFixed(4), err: Math.abs(t - u * (TZ[k + 1] - TZ[k]) - TZ[k]), nearestFrame: Math.abs(t - TZ[k]) }; });
 const downbeats = lock.filter(([b]) => { const f = b - Math.floor(b); return f < 0.015 || f > 0.985; });
 const lockErr = downbeats.map(([, t]) => Math.min(...TRUE120.map(z => Math.abs(z - t))));
-const lockRes = { samples: lock.length, downbeats: downbeats.length, worst: lockErr.length ? Math.max(...lockErr) : null, median: lockErr.length ? [...lockErr].sort((a, b) => a - b)[lockErr.length >> 1] : null };
+const lockRes = { samples: lock.length, frameWorst: Math.max(...frameErr), downbeats: atDown.length, worst: atDown.length ? Math.max(...atDown.map(d => d.err)) : null,
+  nearestFrameWorst: atDown.length ? Math.max(...atDown.map(d => d.nearestFrame)) : null, atDown,
+  windowSamples: downbeats.length, windowWorst: lockErr.length ? Math.max(...lockErr) : null, windowMedian: lockErr.length ? [...lockErr].sort((a, b) => a - b)[lockErr.length >> 1] : null };
 
+// ---- blank frames: screenshots every second per scene (HUD hidden), lit share and spread of luma ----
+async function lumaStats(buf) {
+  return page.evaluate(async b64 => {
+    const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+    const w = 480, h = 270, c = new OffscreenCanvas(w, h), x = c.getContext('2d'); x.drawImage(img, 0, 0, w, h);
+    const d = x.getImageData(0, 0, w, h).data; let lit = 0, s = 0, s2 = 0; const n = w * h;
+    for (let i = 0; i < d.length; i += 4) { const l = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]; if (l > 16) lit++; s += l; s2 += l * l; }
+    const m = s / n; return { lit: +(lit / n).toFixed(4), mean: +m.toFixed(1), sd: +Math.sqrt(Math.max(0, s2 / n - m * m)).toFixed(1) };
+  }, buf.toString('base64'));
+}
+const isBlank = v => v.lit < 0.005 || v.sd < 2;
+async function blankPass(q, n, every, scenesSeen) {
+  await open(q);
+  await page.addStyleTag({ content: '#hud{visibility:hidden !important}' });
+  const shots = [];
+  for (let i = 0; i < n; i++) {
+    await page.waitForTimeout(every);
+    const sc = await page.evaluate(() => [__qa.scene, +(__qa.bars ?? -1).toFixed(2)]);
+    const st = await lumaStats(await page.screenshot());
+    shots.push({ scene: sc[0], bars: sc[1], ...st, blank: isBlank(st) });
+    if (scenesSeen) scenesSeen.push(sc[0]);
+  }
+  return shots;
+}
 // ---- fps per scene ----
 const scenes = ['ribbon', 'march', 'scope', 'primes', 'canyon', 'map', 'auto'];
 const speed = {};
@@ -112,6 +144,12 @@ for (const s of scenes) {
   }, secs);
   await page.screenshot({ path: path.join(here, '11-riemann-show', `_${s}.png`) }).catch(() => {});
 }
+const blank = {};
+for (const sc of scenes.filter(x => x !== 'auto')) blank[sc] = await blankPass(`scene=${sc}`, 8, 1000);
+// auto with 1-bar sections (2 s at 120 bpm): every scene and its crossfade within ~12 s
+const autoSeen = [];
+blank['auto (1-bar sections)'] = await blankPass('scene=auto&bars=1', 24, 500, autoSeen);
+const autoOrder = autoSeen.filter((x, i) => x !== autoSeen[i - 1]);
 await browser.close(); server.close();
 
 const pass = {
@@ -119,7 +157,9 @@ const pass = {
   ribbon: !ribbonRes.missing.length && !ribbonRes.extra.length,
   scope: !scopeRes.missing.length && !scopeRes.extra.length,
   primes: primesRes.piExactOk && primesRes.approxWorst < 0.5 && primesRes.stepsArePrimes,
-  beatLock: lockRes.downbeats > 0 && lockRes.worst < 0.15,
+  beatLock: lockRes.downbeats > 0 && lockRes.worst < 1e-3 && lockRes.frameWorst < 1e-3,
+  noBlank: Object.values(blank).every(v => v.every(x => !x.blank)),
+  autoSwitch: ['ribbon', 'march', 'scope', 'primes', 'canyon'].every(x => autoSeen.includes(x)),
   pageLoopAlive: Object.values(speed).every(v => v.alive),
   fps60: Object.values(speed).every(v => v.fps >= 58),
   noErrors: errors.length === 0 && Object.values(speed).every(v => !v.caughtN),
@@ -128,7 +168,7 @@ const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':
 const out = path.join(here, '11-riemann-show', 'checks', stamp);
 fs.mkdirSync(out, { recursive: true });
 for (const s of scenes) { const f = path.join(here, '11-riemann-show', `_${s}.png`); if (fs.existsSync(f)) fs.renameSync(f, path.join(out, `${s}.png`)); }
-fs.writeFileSync(path.join(out, 'check.json'), JSON.stringify({ truth: 'LMFDB zeros 1–40', zerosRes, ribbonRes, scopeRes, primesRes, lockRes, speed, errors, pass }, null, 1));
+fs.writeFileSync(path.join(out, 'check.json'), JSON.stringify({ truth: 'LMFDB zeros 1–40', zerosRes, ribbonRes, scopeRes, primesRes, lockRes, speed, blank, autoOrder, errors, pass }, null, 1));
 const ok = v => v ? '✅' : '❌';
 fs.writeFileSync(path.join(out, 'check.md'), `# 11 Riemann show check · ${stamp}\n\nTruth: LMFDB zeros (qa/data/lmfdb-zeta-zeros-1-40.txt) and a sieve here; the page's numbers are compared, not trusted.\n\n` +
   `| check | result | detail |\n|---|---|---|\n` +
@@ -136,7 +176,9 @@ fs.writeFileSync(path.join(out, 'check.md'), `# 11 Riemann show check · ${stamp
   `| ribbon: |ζ| minima at the zeros | ${ok(pass.ribbon)} | ${ribbonRes.count} minima, missing ${ribbonRes.missing.length}, extra ${ribbonRes.extra.length}${ribbonRes.extra.length ? ' (' + ribbonRes.extra.join(', ') + ')' : ''}, largest |ζ| at a minimum ${ribbonRes.worstAbsZeta} |\n` +
   `| scope: Z crossings at the zeros | ${ok(pass.scope)} | ${scopeRes.count} crossings, worst ${scopeRes.worst.toExponential(1)}, missing ${scopeRes.missing.length}, extra ${scopeRes.extra.length} |\n` +
   `| primes: approxPi(x, all ${zerosRes.count}) vs π(x), x = 2.5…99.5 | ${ok(pass.primes)} | worst ${primesRes.approxWorst.toFixed(3)} (with 10 zeros: ${primesRes.approx10Worst.toFixed(2)}); steps ${primesRes.steps}${primesRes.approxBad.length ? '; off: ' + primesRes.approxBad.slice(0, 6).join(' ') : ''} |\n` +
-  `| beat lock: camera on a zero at each downbeat | ${ok(pass.beatLock)} | ${lockRes.downbeats} downbeat samples, worst ${lockRes.worst?.toFixed(3)}, median ${lockRes.median?.toFixed(3)} |\n` +
+  `| beat lock: camera on a zero at each downbeat | ${ok(pass.beatLock)} | ${lockRes.downbeats} downbeats seen frame by frame: worst ${lockRes.worst?.toExponential(1)} (tCam on the first frame after the downbeat, wound back by u·gap, vs LMFDB γ); every one of ${lockRes.samples} frames vs the LMFDB warped clock: worst ${lockRes.frameWorst.toExponential(1)}; raw nearest frame ${lockRes.nearestFrameWorst?.toFixed(3)} (one frame of camera travel); old ±0.015-bar window: worst ${lockRes.windowWorst?.toFixed(3)} |\n` +
+  `| no blank frames (screenshots, HUD hidden) | ${ok(pass.noBlank)} | ${Object.entries(blank).map(([k, v]) => `${k} ${v.filter(x => x.blank).length}/${v.length} blank (lit ≥ ${Math.min(...v.map(x => x.lit)).toFixed(2)}, sd ≥ ${Math.min(...v.map(x => x.sd))})`).join(' · ')} |\n` +
+  `| auto switches through every scene | ${ok(pass.autoSwitch)} | order seen with bars=1: ${autoOrder.join(' → ')} |\n` +
   `| page keeps animating (camera time moves) | ${ok(pass.pageLoopAlive)} | ${scenes.map(s => `${s} ${speed[s].alive ? 'yes' : '**FROZEN**'}`).join(' · ')} |\n` +
   `| fps at 1920×1080 per scene | ${ok(pass.fps60)} | ${scenes.map(s => `${s} ${speed[s].fps} (worst ${speed[s].worst} ms)`).join(' · ')} |\n` +
   `| page errors (thrown + caught in __qa.errors) | ${ok(pass.noErrors)} | thrown: ${errors.length ? errors.slice(0, 3).join('; ') : 'none'}; caught: ${scenes.map(s => `${s} ${speed[s].caughtN}`).join(' · ')}${scenes.some(s => speed[s].caughtN) ? ' — ' + scenes.flatMap(s => speed[s].caught).slice(0, 2).join('; ') : ''} |\n`);
