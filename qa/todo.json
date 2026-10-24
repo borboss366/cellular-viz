@@ -62,6 +62,23 @@
     "label": "first (6d3f11d)",
     "href": "/run/08-blend/2026-10-24-1305"
    }
+  ],
+  "done": "superseded by blend shootout"
+ },
+ {
+  "id": "blend-shootout-1",
+  "from": "VIZ QA / QA box",
+  "title": "Blend shootout round 1: fade vs mask vs cut vs screen vs color vs difference",
+  "note": "Same switch every time: 06 dream \u2194 07 small-ring, 60 s each. Swipe 2 rounds (10 picks). More methods join as they're built.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/08-blend/2026-10-24-1917/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/08-blend/2026-10-24-1917"
+   }
   ]
  }
 ]
