@@ -1,0 +1,407 @@
+<!doctype html>
+<!--
+  08 · Blend: crossfade between experiments on the beat   (issue #27, blending track)
+
+  A playlist of experiment pages runs in two hidden iframe slots. Each slot's canvas
+  is turned into a <video> with captureStream() (a WebGL canvas without
+  preserveDrawingBuffer reads back blank from outside its own frame, a stream does
+  not), and this page draws both videos through one transition shader.
+
+  Timing: a bar clock (BPM slider, 4/4) starts with ▶ Play, together with every
+  slot's own metronome (all slots get the same ?bpm=, clicks muted).
+    hold  bars showing one experiment
+    warm  bars before a switch, the next experiment loads and runs unseen, so it
+          has creatures by the time it fades in (both sims run then: fps dips)
+    blend bars of transition, starting on a downbeat; after it the old slot is
+          unloaded to free the GPU
+  Transitions, in the GL Transitions style: mix(from, to, m(uv, progress)).
+    fade      plain crossfade
+    dissolve  blocky noise threshold
+    density   the incoming picture's own brightness is the mask, so its creatures
+              appear first and the old ones fade between them (research's idea)
+    iris      circle opening from the centre
+    random    a different one each switch
+  ?list= sets the playlist: comma-separated items, each a file number with optional
+  query after a colon, e.g. list=04,06:look=dream,05 . Other params: bpm, hold,
+  warm, blend, kind.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>08 · Blend</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
+    margin: 0 auto; flex: none; z-index: 1; background: #05070c; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  /* Slots sit behind the page, in the viewport (offscreen frames may be throttled), invisible. */
+  .slot { position: fixed; left: 0; top: 0; width: 560px; height: 900px; border: 0;
+    opacity: 0; pointer-events: none; z-index: 0; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; position: relative; z-index: 1; background: #05070c; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .row input[type=text] { flex: 1; min-width: 0; padding: 6px; border: 1px solid #2a3647;
+    border-radius: 6px; background: #0b111a; color: inherit; font: 13px ui-monospace, Menlo, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0;
+      position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="skip">Next now</button>
+  </div>
+  <div class="buttons" id="kinds"></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="row"><label for="hold">hold bars</label><input id="hold" type="range" min="2" max="32" step="1"><output id="holdOut"></output></div>
+  <div class="row"><label for="warm">warm-up bars</label><input id="warm" type="range" min="1" max="8" step="1"><output id="warmOut"></output></div>
+  <div class="row"><label for="blend">blend bars</label><input id="blend" type="range" min="0.25" max="4" step="0.25"><output id="blendOut"></output></div>
+  <div class="row"><label for="list">playlist</label><input id="list" type="text" spellcheck="false" autocomplete="off"></div>
+  <div class="buttons">
+    <button id="copy" class="wide">Copy setup</button>
+  </div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+const FILES = { '01': '01-gray-scott.html', '02': '02-lenia.html', '04': '04-lenia-metronome.html',
+                '05': '05-flow-lenia.html', '06': '06-lenia-effects.html', '07': '07-particle-lenia.html' };
+const DEFAULT_LIST = '04,06:look=dream,05,06:look=glow,02';
+const KINDS = ['fade', 'dissolve', 'density', 'iris', 'random'];
+
+const params = { bpm: 120, hold: 8, warm: 2, blend: 1, kind: 'density', list: DEFAULT_LIST };
+for (const k of ['bpm', 'hold', 'warm', 'blend']) {
+  const v = parseFloat(query.get(k));
+  if (Number.isFinite(v)) params[k] = v;
+}
+if (KINDS.includes(query.get('kind'))) params.kind = query.get('kind');
+if (query.get('list')) params.list = query.get('list');
+
+// "06:look=dream" → { file, query, label }
+function parseList(s) {
+  return s.split(',').map(x => x.trim()).filter(Boolean).map(x => {
+    const [num, q = ''] = x.split(':');
+    const file = FILES[num.padStart(2, '0')];
+    return file ? { file, query: q, label: num.padStart(2, '0') + (q ? ' ' + q.replace(/&/g, ' ') : '') } : null;
+  }).filter(Boolean);
+}
+let playlist = parseList(params.list);
+if (!playlist.length) playlist = parseList(DEFAULT_LIST);
+
+// ---------- Slots: an iframe running one experiment, seen through a video ----------
+function makeSlot() {
+  const frame = document.createElement('iframe');
+  frame.className = 'slot';
+  frame.setAttribute('allow', 'autoplay');   // lets the slot's AudioContext start without its own tap
+  frame.setAttribute('tabindex', '-1');
+  frame.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(frame);
+  const video = document.createElement('video');
+  video.muted = true; video.playsInline = true;
+  return { frame, video, item: null, ready: false, loadedAt: 0 };
+}
+const slots = [makeSlot(), makeSlot()];
+
+function loadSlot(slot, item) {
+  slot.item = item; slot.ready = false; slot.video.srcObject = null;
+  slot.loadedAt = performance.now();
+  const q = new URLSearchParams(item.query);
+  q.set('bpm', params.bpm);
+  q.set('muted', '1');
+  q.set('hud', 'short');
+  slot.frame.onload = () => attach(slot);
+  slot.frame.src = item.file + '?' + q;
+}
+function unloadSlot(slot) {
+  slot.item = null; slot.ready = false; slot.video.srcObject = null;
+  slot.frame.onload = null;
+  slot.frame.src = 'about:blank';
+}
+// Once the page is in: press its Play if the show is running, and stream its canvas.
+function attach(slot) {
+  let doc;
+  try { doc = slot.frame.contentDocument; } catch { return; }
+  const cv = doc && doc.querySelector('canvas');
+  if (!cv) return;
+  if (clock.playing) pressPlay(slot);
+  try {
+    slot.video.srcObject = cv.captureStream(60);
+    slot.video.play().catch(() => {});
+    slot.ready = true;
+  } catch (e) { console.warn('captureStream failed', e); }
+}
+function pressPlay(slot) {
+  try {
+    const b = slot.frame.contentDocument.getElementById('play');
+    if (b && !b.classList.contains('on')) b.click();
+  } catch { /* not loaded yet */ }
+}
+
+// ---------- WebGL: two video textures through a transition ----------
+const canvas = document.getElementById('c');
+const hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+if (!gl) fail('WebGL2 is not available in this browser.');
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+
+const VERT = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+const FRAG = `#version 300 es
+precision highp float;
+uniform sampler2D uFrom, uTo;
+uniform float uProgress;   // 0 = all from, 1 = all to
+uniform int uKind;         // 0 fade, 1 dissolve, 2 density, 3 iris
+in vec2 vUv;
+out vec4 outColor;
+float hash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+void main() {
+  vec3 a = texture(uFrom, vUv).rgb, b = texture(uTo, vUv).rgb;
+  float p = uProgress, m;
+  if (uKind == 1) {
+    float n = hash(floor(vUv * 96.0));
+    m = smoothstep(n - 0.08, n + 0.08, p * 1.16 - 0.08);
+  } else if (uKind == 2) {
+    float l = clamp(dot(b, vec3(0.299, 0.587, 0.114)) * 1.6, 0.0, 1.0);   // bright creatures first
+    m = smoothstep(1.0 - l - 0.25, 1.0 - l + 0.05, p * 1.3);
+    m = max(m, smoothstep(0.75, 1.0, p));   // the dark background follows at the end
+  } else if (uKind == 3) {
+    float d = length(vUv - 0.5) * 1.42;
+    m = smoothstep(d - 0.12, d, p * 1.12);
+  } else {
+    m = p;
+  }
+  outColor = vec4(mix(a, b, m), 1.0);
+}`;
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(s));
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(prog));
+const U = {};
+for (const n of ['uFrom', 'uTo', 'uProgress', 'uKind']) U[n] = gl.getUniformLocation(prog, n);
+gl.bindVertexArray(gl.createVertexArray());
+
+const textures = slots.map(() => {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([5, 7, 12, 255]));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+});
+// Copy the slot's latest video frame; keep the last one if no frame is there yet.
+function upload(i) {
+  const v = slots[i].video;
+  if (!slots[i].ready || v.readyState < 2 || !v.videoWidth) return;
+  gl.bindTexture(gl.TEXTURE_2D, textures[i]);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, v);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+}
+
+// ---------- The show: bar clock, playlist, switches ----------
+const clock = { playing: false, start: 0 };
+const show = { cur: 0, index: 0, phase: 'hold', switchAt: 0, kind: 'fade', switches: 0 };
+// cur: slot showing; index: playlist position of what it shows; switchAt: bar the next blend starts.
+const barMs = () => 4 * 60000 / params.bpm;
+const barsNow = now => clock.playing ? (now - clock.start) / barMs() : 0;
+
+function pickKind() {
+  return params.kind === 'random' ? KINDS[Math.floor(Math.random() * 4)] : params.kind;
+}
+function scheduleNext(fromBar) {
+  show.switchAt = Math.ceil(fromBar + params.hold - 1e-6);   // always on a downbeat
+  show.phase = 'hold';
+}
+function nextItem() { return playlist[(show.index + 1) % playlist.length]; }
+const live = s => s.ready && s.video.readyState >= 2 && s.video.videoWidth > 0;
+
+function tick(now) {
+  if (!clock.playing || playlist.length < 2) return 0;
+  const bar = barsNow(now);
+  const other = slots[1 - show.cur];
+  if (show.phase === 'hold' && bar >= show.switchAt - params.warm) {
+    loadSlot(other, nextItem());
+    show.phase = 'warm';
+  }
+  if (show.phase === 'warm' && bar >= show.switchAt) {
+    // Never fade into a page that has no picture yet: wait a bar at a time.
+    if (live(other)) { show.phase = 'blend'; show.kind = pickKind(); }
+    else show.switchAt += 1;
+  }
+  if (show.phase === 'blend') {
+    const p = (bar - show.switchAt) / params.blend;
+    if (p < 1) return p;
+    unloadSlot(slots[show.cur]);   // done: the old one goes
+    show.cur = 1 - show.cur;
+    show.index = (show.index + 1) % playlist.length;
+    show.switches++;
+    scheduleNext(show.switchAt + params.blend);
+  }
+  return 0;
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+$('play').onclick = () => {
+  if (clock.playing) {   // stop: freeze the clock, keep the picture
+    clock.playing = false;
+  } else {
+    clock.playing = true;
+    clock.start = performance.now();
+    for (const s of slots) if (s.item) pressPlay(s);   // inside the tap, so audio may start
+    scheduleNext(0);
+  }
+  $('play').textContent = clock.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', clock.playing);
+};
+$('skip').onclick = () => {   // switch at the next downbeat, with the warm-up squeezed
+  if (!clock.playing || show.phase !== 'hold') return;
+  const bar = barsNow(performance.now());
+  show.switchAt = Math.floor(bar) + 1 + params.warm;
+};
+for (const k of KINDS) {
+  const b = document.createElement('button');
+  b.textContent = k;
+  b.onclick = () => { params.kind = k; syncControls(); };
+  $('kinds').appendChild(b);
+}
+const sliders = { bpm: 0, hold: 0, warm: 0, blend: 2 };
+for (const [name, dec] of Object.entries(sliders)) {
+  $(name).addEventListener('input', e => {
+    params[name] = parseFloat(e.target.value);
+    $(name + 'Out').textContent = params[name].toFixed(dec);
+  });
+}
+$('list').addEventListener('change', e => {
+  const next = parseList(e.target.value);
+  if (next.length) { playlist = next; params.list = e.target.value; }
+  e.target.value = params.list;
+});
+function syncControls() {
+  for (const [name, dec] of Object.entries(sliders)) {
+    $(name).value = params[name];
+    $(name + 'Out').textContent = Number(params[name]).toFixed(dec);
+  }
+  $('list').value = params.list;
+  for (const b of $('kinds').children) b.classList.toggle('on', b.textContent === params.kind);
+}
+
+function setupLink() {
+  const q = new URLSearchParams();
+  for (const k of ['bpm', 'hold', 'warm', 'blend', 'kind', 'list']) q.set(k, params[k]);
+  return location.origin + location.pathname + '?' + q;
+}
+$('copy').onclick = async e => {
+  const text = `08 · Blend · ${params.kind} · ${params.bpm} bpm · hold ${params.hold} · warm ${params.warm} · blend ${params.blend} bars\n` +
+    `playlist: ${playlist.map(p => p.label).join(' → ')}\n${fps} fps · ${show.switches} switches\n` + setupLink();
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    ok = document.execCommand('copy'); ta.remove();
+  }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓';
+  setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
+};
+
+// ---------- Main loop ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(1024, Math.round(canvas.clientWidth * dpr));
+  const h = Math.min(1024, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
+function frame(now) {
+  resize();
+  const p = tick(now);
+  const blending = show.phase === 'blend';
+  const from = show.cur, to = 1 - show.cur;
+  upload(from);
+  if (blending || show.phase === 'warm') upload(to);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(prog);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, textures[from]);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, textures[to]);
+  gl.uniform1i(U.uFrom, 0);
+  gl.uniform1i(U.uTo, 1);
+  const eased = p * p * (3 - 2 * p);
+  gl.uniform1f(U.uProgress, blending ? eased : 0);
+  gl.uniform1i(U.uKind, Math.max(0, KINDS.indexOf(show.kind)));
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  frames++;
+  if (now - lastFpsTime > 500) {
+    fps = Math.round(frames * 1000 / (now - lastFpsTime));
+    frames = 0; lastFpsTime = now;
+  }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const bar = barsNow(now);
+    const curItem = slots[show.cur].item, nxt = nextItem();
+    const state = !clock.playing ? 'tap ▶ Play'
+      : show.phase === 'blend' ? `${show.kind} → ${nxt ? nxt.label : ''} ${(p * 100).toFixed(0)}%`
+      : `next ${nxt ? nxt.label : ''} in ${Math.max(0, show.switchAt - bar).toFixed(1)} bars` +
+        (show.phase === 'warm' ? ' (warming up)' : '');
+    hud.textContent = `blend · ${params.bpm} bpm · bar ${Math.floor(bar) + 1}\n` +
+      `now ${curItem ? curItem.label : '—'}${slots[show.cur].ready ? '' : ' (loading)'}\n` +
+      `${state}\n${fps} fps · ${show.switches} switches`;
+  }
+  requestAnimationFrame(frame);
+}
+
+syncControls();
+loadSlot(slots[0], playlist[0]);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
