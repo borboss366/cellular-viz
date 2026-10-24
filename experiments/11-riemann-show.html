@@ -1048,11 +1048,12 @@ function draw(now) {
   gl.bindVertexArray(emptyVao);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 
+  // Every frame, so a reading taken on a downbeat isn't up to 200 ms stale.
+  window.__qa.scene = cur; window.__qa.tCam = tc; window.__qa.bars = bars;
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
   if (now - lastHud > 200) {
     lastHud = now;
-    window.__qa.scene = cur; window.__qa.tCam = tc; window.__qa.bars = bars;
     const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
     hud.textContent = `Riemann show · ${cur}${prev ? ` ← ${prev}` : ''} · ${params.bpm} bpm · ${state}\n` +
       `t ${tc.toFixed(2)} · last zero ${zeroLabel(ZEROS[lz.k])} · ${ZEROS.length} zeros to t=${T_MAX}\n` +
