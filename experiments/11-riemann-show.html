@@ -829,13 +829,13 @@ function sceneScope(slot, S) {
   return false;
 }
 
-const primesCache = { K: -1, pts: null, x1: 60 };
+const primesCache = { K: null, pts: null, x1: 60 };
 function scenePrimes(slot, S) {
   const { W, H, L, bars, sectionBars } = S, c = slot.ctx;
   const beatsIn = sectionBars * params.bpb, buildBeats = Math.max(4, (params.bars - 2) * params.bpb);
   const Kmax = Math.min(30, ZEROS.length);
   const drop = beatsIn >= buildBeats;
-  const K = drop ? Kmax : Math.min(Kmax, Math.floor(beatsIn * Kmax / buildBeats));
+  const K = drop ? Kmax : Math.max(0, Math.min(Kmax, Math.floor(beatsIn * Kmax / buildBeats)));
   const x0 = 1.5, x1 = primesCache.x1, yMax = piExact(x1) + 1.5;
   if (primesCache.K !== K) {
     const n = 900, pts = new Float32Array(n * 2);
@@ -998,10 +998,22 @@ function resize() {
 }
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
 let lastK = -1, flash = 0;
+// The next frame is booked first, and a frame that throws is reported and skipped,
+// so one bad frame can never stop the show (it froze on frame 1 before: QA box, #40).
+const errors = [];
 function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); }
+  catch (e) {
+    if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); }
+    hud.textContent = `frame error: ${e && e.message}`;
+  }
+}
+function draw(now) {
   resize();
   const L = metronome.read();
-  const bars = metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb;
+  // rAF's timestamp can be a little older than clockStart on the first frame: never negative.
+  const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb);
   const tc = tAtBars(bars);
   const lz = lastZero(bars);
   if (lz.k !== lastK) { flash = 1; lastK = lz.k; }   // a zero on the downbeat
@@ -1046,7 +1058,6 @@ function frame(now) {
       `t ${tc.toFixed(2)} · last zero ${zeroLabel(ZEROS[lz.k])} · ${ZEROS.length} zeros to t=${T_MAX}\n` +
       `${W}×${H} · ${fps} fps`;
   }
-  requestAnimationFrame(frame);
 }
 
 // QA: everything the checks need, from the same data the scenes draw.
@@ -1058,7 +1069,7 @@ for (let i = 1; i < NS; i++) {
 window.__qa = {
   zeros: ZEROS.map(z => +z.toFixed(6)), ribbonMinima, scopeCrossings,
   primeSteps: PRIMES.filter(p => p <= primesCache.x1), approxPi, piExact, hardyZ, zetaHalf,
-  scene: null, tCam: null, bars: null,
+  scene: null, tCam: null, bars: null, errors,
 };
 
 const q = k => query.get(k);
