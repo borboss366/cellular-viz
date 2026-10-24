@@ -34,6 +34,8 @@ _None yet. No screenshot verdicts posted._
 - 2026-10-23 · New bot visualisation QA joined. QA harness qa/harness.html + qa/04, qa/05, qa/06 index folders (PR #18): records 12 s .webm per variant, measures coverage / motion / beat / colour / fps, scores 0–10.
 - 2026-10-23 · 06 Lenia + effects (PR #19, bf80aa0): copy of 04 with bloom, emboss, sheen, palette, trail zoom, trail length, kick bulge sliders; bloom-on-kick and palette-drift toggles; looks clean / glow (default) / chrome / dream / pulse; Copy setup has an `fx …` line. 04 unchanged.
 - 2026-10-23 · User installed Termux so QA can run headless sweeps.
+- 2026-10-23 · User ranked the 06 run by swipes (dream > glow > trails > pulse …). In all of them a full screen collapsed to blank and stayed empty. Cause: Auto's σ only recovered below 10% cover, cuts were big and kept going on a 2 s-lagged cover. Fix on 04 and 06 (branch auto-no-blank): σ floor 75%, σ recovers whenever not crowded, smaller cuts that stop once really thinned, refill judged on current cover, at once and 2–3× bigger when sparse, plus a "catching" drop when cover falls fast.
+- 2026-10-23 · QA box 90 s test: main boom-bust (<10% cover 44–46% of the time, empty up to 7.8 s); first fix overcorrected (~99.8% full; σ floor 0.6–0.75 never thins). Second try on the same branch: σ creeps down slowly while crowded (floor back to 50%), jumps up as soon as cover falls fast, holds in the band; tuning via URL (aStep, aFloor, aKick, aFall, aCut) so QA box can sweep it.
 
 ## Open
 - Step 3 Particle Lenia: queued.
