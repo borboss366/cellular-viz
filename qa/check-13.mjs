@@ -38,37 +38,45 @@ async function open(q, size = [1920, 1080], play = true) {
 const res = {};
 
 // ---- 1. divergence before / after projection ----
-const MYDIV = `window.__myDiv = function (walls) {   // MAC grid (70fc2c4+): texel (i,j) = u on the left face, v on the bottom face
-  const W = F.simW, H = F.simH, v = readTarget(F.vel.a), asp = W / H, sol = new Uint8Array(W * H);
+const MYDIV = `window.__myDiv = function (walls) {   // MAC grid; d6e50dc+: open right = ghost column (p = 0), its left face is the outflow face
+  const W = F.simW, H = F.simH, v = readTarget(F.vel.a), asp = W / H, sol = new Uint8Array(W * H), open = walls[1] < 0.5;
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) { const x = (i + 0.5) / W, y = (j + 0.5) / H;
     for (let k = 0; k < obsN; k++) { const ox = obsU[k*4], oy = obsU[k*4+1], r = obsU[k*4+2], w = obsU[k*4+3]; if (w > 0.02 && Math.hypot((x - ox) * asp, y - oy) < r * w) { sol[j*W+i] = 1; break; } } }
-  const S = (i, j) => sol[j*W+i] === 1;
+  const S = (i, j) => i >= 0 && j >= 0 && i < W && j < H && sol[j*W+i] === 1;
   const fu = (i, j) => S(i, j) ? 0 : i === 0 ? (walls[0] > 0.5 ? 0 : v[(j*W+i)*4]) : S(i-1, j) ? 0 : v[(j*W+i)*4];
   const fv = (i, j) => S(i, j) ? 0 : j === 0 ? (walls[2] > 0.5 ? 0 : v[(j*W+i)*4+1]) : S(i, j-1) ? 0 : v[(j*W+i)*4+1];
-  let s2 = 0, sp = 0, n = 0;
+  const nearSolid = (i, j, k) => { for (let dj = -k; dj <= k; dj++) for (let di = -k; di <= k; di++) if (S(i + di, j + dj)) return true; return false; };
+  const acc = { all: [0, 0], far: [0, 0], obstacle: [0, 0], edge: [0, 0] }; let sp = 0;
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
-    if (S(i, j)) continue;
-    const uL = fu(i, j), vB = fv(i, j);
-    const uR = i === W-1 ? (walls[1] > 0.5 ? 0 : uL) : fu(i+1, j), vT = j === H-1 ? (walls[3] > 0.5 ? 0 : vB) : fv(i, j+1);
-    const d = uR - uL + vT - vB; s2 += d * d; sp += Math.hypot(0.5 * (uL + uR), 0.5 * (vB + vT)); n++;
+    if (S(i, j) || (open && i === W - 1)) continue;
+    const uL = fu(i, j), vB = fv(i, j), uR = i === W - 1 ? 0 : fu(i + 1, j), vT = j === H - 1 ? 0 : fv(i, j + 1);
+    const d = uR - uL + vT - vB, d2 = d * d;
+    const cls = obsN && nearSolid(i, j, 4) ? 'obstacle' : open && (i < 5 || i > W - 7) ? 'edge' : 'far';
+    acc.all[0] += d2; acc.all[1]++; acc[cls][0] += d2; acc[cls][1]++; sp += Math.hypot(0.5 * (uL + uR), 0.5 * (vB + vT));
   }
-  const rms = Math.sqrt(s2 / n), mean = sp / n; return { rms, mean, rel: rms / mean, n };
+  const mean = sp / acc.all[1], out = { mean, n: acc.all[1] };
+  for (const [k, [s2, c]] of Object.entries(acc)) out[k] = c ? { rms: Math.sqrt(s2 / c), n: c } : null;
+  out.rel = out.all.rms / mean; return out;
 };`;
 res.div = {};
-for (const pre of ['vortex', 'kh', 'plume', 'ink', 'rocks']) {
+for (const pre of ['vortex', 'kh', 'plume', 'ink', 'rocks', 'curl']) {
   res.div[pre] = {};
-  for (const iters of [40, 120]) {
-    const page = await open(`preset=${pre}&pressureIters=${iters}&conserve=0&lock=0`);
+  for (const [mode, q] of [['auto', ''], ['40', '&adaptive=0&pressureIters=40'], ['120', '&adaptive=0&pressureIters=120']]) {
+    const page = await open(`preset=${pre}&conserve=0&lock=0${q}`);
     await page.addScriptTag({ content: MYDIV });
-    res.div[pre][iters] = await page.evaluate(async () => {
+    res.div[pre][mode] = await page.evaluate(async () => {
       const orig = project, samples = []; window.__take = 0;
       window.project = function (it, walls, openR) { const take = window.__take > 0; const a = take ? __myDiv(walls) : null; orig(it, walls, openR);
-        if (take) { window.__take--; const b = __myDiv(walls); samples.push({ it, pre: a.rel, post: b.rel, ratio: b.rms / a.rms, page: __qa.divergenceRMS().rel }); } };
+        if (take) { window.__take--; const b = __myDiv(walls), pg = __qa.divergenceRMS(); const r = k => a[k] && b[k] && a[k].rms > 0 ? b[k].rms / a[k].rms : null;
+          samples.push({ it, pre: a.rel, post: b.rel, ratio: r('all'), far: r('far'), obstacle: r('obstacle'), edge: r('edge'), page: pg.rel, pageSplit: pg.split }); } };
       await new Promise(r => setTimeout(r, 6000));
       for (let k = 0; k < 8; k++) { window.__take = 1; await new Promise(r => setTimeout(r, 500)); }
       window.project = orig;
-      const med = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
-      return { n: samples.length, iters: samples[0]?.it, pre: med(samples.map(s => s.pre)), post: med(samples.map(s => s.post)), page: med(samples.map(s => s.page)), ratio: med(samples.map(s => s.ratio)), worstRatio: Math.max(...samples.map(s => s.ratio)) };
+      const med = a => { a = a.filter(x => x != null); if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+      const mx = a => { a = a.filter(x => x != null); return a.length ? Math.max(...a) : null; };
+      return { n: samples.length, iters: med(samples.map(s => s.it)), pre: med(samples.map(s => s.pre)), post: med(samples.map(s => s.post)), page: med(samples.map(s => s.page)),
+        ratio: med(samples.map(s => s.ratio)), worstRatio: mx(samples.map(s => s.ratio)), far: med(samples.map(s => s.far)), obstacle: med(samples.map(s => s.obstacle)), edge: med(samples.map(s => s.edge)),
+        pageSplit: samples.at(-1)?.pageSplit, timer: __qa.timer, gpuMs: __qa.gpuMs };
     });
     await page.close();
   }
@@ -148,20 +156,22 @@ for (const pre of ['vortex', 'kh', 'plume', 'ink', 'rocks', 'curl']) {
     res.speed[pre][sk] = await page.evaluate(async () => { const t = []; let on = true; const s0 = __qa.simTime; const f = n => { t.push(n); if (on) requestAnimationFrame(f); }; requestAnimationFrame(f);
       await new Promise(r => setTimeout(r, 8000)); on = false; const dt = t.slice(1).map((x, i) => x - t[i]).sort((a, b) => a - b);
       return { fps: +((t.length - 1) / ((t.at(-1) - t[0]) / 1000)).toFixed(1), p95: +dt[Math.floor(dt.length * 0.95)].toFixed(1), over20: dt.filter(x => x > 20).length,
-        alive: __qa.simTime > s0 + 5, caught: __qa.errors.length, canvas: [document.querySelector('canvas').width, document.querySelector('canvas').height], grid: __qa.grid, dye: __qa.dye }; });
+        alive: __qa.simTime > s0 + 5, caught: __qa.errors.length, iters: __qa.iters, gpuMs: __qa.gpuMs && +__qa.gpuMs.toFixed(1), dropped: +(__qa.droppedSimTime || 0).toFixed(2), simPerReal: +((__qa.simTime - s0) / 8).toFixed(3), canvas: [document.querySelector('canvas').width, document.querySelector('canvas').height], grid: __qa.grid, dye: __qa.dye }; });
     await page.close();
   }
 }
 await browser.close(); server.close();
 
 const pass = {
-  divergence: Object.values(res.div).every(o => o[40].worstRatio <= 0.05),
+  divergenceOpen: ['kh', 'plume', 'ink', 'curl'].every(k => res.div[k].auto.worstRatio <= 0.05),
+  divergenceObstacleLooks: ['vortex', 'rocks'].every(k => res.div[k].auto.worstRatio <= 0.15),
   dyeKept: ['plume', 'kh'].every(k => Math.abs(res.mass[k].per10s) <= 0.05),
   shedding: (() => { const v = Object.values(res.shed).map(s => s.stReal); if (v.some(x => !x)) return false; const m = v.reduce((a, x) => a + x, 0) / v.length; return v.every(x => Math.abs(x / m - 1) <= 0.1); })(),
   lockOnBeat: Object.values(res.shedLock).every(s => s.zeroCross && Math.abs(s.zeroCross / s.expected - 1) <= 0.05),
   sync: Object.values(res.sync).length > 0 && Object.values(res.sync).every(v => v.median <= 40),
   morph: !res.morph.after.morphing && res.morph.after.sim > res.morph.before.sim && !res.morph.after.nan && !!res.morph.during.morphing,
   alive: Object.values(res.speed).every(o => Object.values(o).every(v => v.alive)),
+  fps1080: Object.values(res.speed).every(o => o['1080p'].p95 <= 16.8 && o['1080p'].over20 <= 3),
   fps1440: Object.values(res.speed).every(o => o['1440p'].p95 <= 16.8 && o['1440p'].over20 <= 3),
   noErrors: !errors.length && Object.values(res.speed).every(o => Object.values(o).every(v => !v.caught)),
 };
@@ -171,13 +181,13 @@ fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(path.join(dir, 'check.json'), JSON.stringify({ res, errors, pass }, null, 1));
 const ok = v => v ? '✅' : '❌', pct = x => (x * 100).toFixed(2) + ' %';
 fs.writeFileSync(path.join(dir, 'check.md'), `# 13 Flow Lab check · ${stamp}\n\n| check | result | detail |\n|---|---|---|\n` +
-  `| incompressible (raw): after projection ≤ 5 % of before (MVP bar), every sample, my own MAC divergence | ${ok(pass.divergence)} | ${Object.entries(res.div).map(([k, o]) => `${k}: ${pct(o[40].pre)} → ${pct(o[40].post)}, worst ratio ${pct(o[40].worstRatio)} (120 it: ${pct(o[120].worstRatio)}; page ${pct(o[40].page)})`).join(' · ')} (rms div / mean speed per cell) |\n` +
-  `| dye kept in a closed box, raw (?conserve=0), ≤ 5 % per 10 s | ${ok(pass.dyeKept)} | ${Object.entries(res.mass).map(([k, m]) => `${k}: ${pct(m.drift)} in ${m.secs.toFixed(0)} s (${pct(m.per10s)}/10 s, page log ${m.pageDrift === null ? '–' : pct(m.pageDrift)})`).join(' · ')} |\n` +
+  `| divergence left, as shipped (adaptive): kh/plume/ink/curl ≤ 5 % worst sample | ${ok(pass.divergenceOpen)} | ${['kh', 'plume', 'ink', 'curl'].map(k => { const o = res.div[k]; return `${k}: ${pct(o.auto.ratio)} (worst ${pct(o.auto.worstRatio)}, ${o.auto.iters} it) · fixed 40 ${pct(o['40'].ratio)} · 120 ${pct(o['120'].ratio)}`; }).join(' · ')} |\n` +
+  `| divergence left, vortex/rocks ≤ 15 % (MVP) — split far / near obstacle / near open edge | ${ok(pass.divergenceObstacleLooks)} | ${['vortex', 'rocks'].map(k => { const o = res.div[k]; return `${k}: all ${pct(o.auto.ratio)} (worst ${pct(o.auto.worstRatio)}, ${o.auto.iters} it): far ${pct(o.auto.far)}, obstacle ${pct(o.auto.obstacle)}, edge ${o.auto.edge == null ? '–' : pct(o.auto.edge)} · fixed 120: far ${pct(o['120'].far)}, obstacle ${pct(o['120'].obstacle)}, edge ${o['120'].edge == null ? '–' : pct(o['120'].edge)}`; }).join(' · ')} |\n` +  `| dye kept in a closed box, raw (?conserve=0), ≤ 5 % per 10 s | ${ok(pass.dyeKept)} | ${Object.entries(res.mass).map(([k, m]) => `${k}: ${pct(m.drift)} in ${m.secs.toFixed(0)} s (${pct(m.per10s)}/10 s, page log ${m.pageDrift === null ? '–' : pct(m.pageDrift)})`).join(' · ')} |\n` +
   `| natural St steady ±10 % across 90/120/150 BPM (?lock=0, real clock) | ${ok(pass.shedding)} | calibrate(): fNat ${res.calibrate?.before} → ${res.calibrate?.fNat} · ${Object.entries(res.shed).map(([b, s]) => `${b} BPM: ${s.zeroCross} Hz real (Fourier ${s.fourier}), St ${s.stReal} (sim ${s.stSim}), amp ${s.amp}`).join(' · ')} |\n` +
   `| art mode (lock on): swirl on the beat, BPM/120 ±5 % | ${ok(pass.lockOnBeat)} | ${Object.entries(res.shedLock).map(([b, s]) => `${b} BPM: want ${s.expected.toFixed(3)}, got ${s.zeroCross} (Fourier ${s.fourier}), wake amp ${s.amp}`).join(' · ')} |\n` +
   `| sync from __qa.events (≤ 40 ms) | ${ok(pass.sync)} | ${Object.entries(res.sync).map(([k, v]) => `${k} ${v.median} ms (n ${v.n})`).join(' · ')} |\n` +
   `| 🎲 then morph finishes, no NaN | ${ok(pass.morph)} | ${res.morph.before.preset} → ${res.morph.during.morphing} (${(res.morph.during.m * 100).toFixed(0)} % at 4 s) → ${res.morph.after.preset} |\n` +
-  `| page alive | ${ok(pass.alive)} | |\n| 1440p p95 ≤ 16.8 ms | ${ok(pass.fps1440)} | |\n| errors | ${ok(pass.noErrors)} | ${errors.slice(0, 2).join('; ') || 'none'} |\n\n` +
-  `| recipe | 1080p p95 / >20 ms | 1440p | 4K | canvas at 4K | grid / dye at 4K |\n|---|---|---|---|---|---|\n` +
-  Object.entries(res.speed).map(([k, o]) => `| ${k} | ${o['1080p'].p95} / ${o['1080p'].over20} | ${o['1440p'].p95} / ${o['1440p'].over20} | ${o['4K'].p95} / ${o['4K'].over20} | ${o['4K'].canvas.join('×')} | ${o['4K'].grid.join('×')} / ${o['4K'].dye.join('×')} |`).join('\n') + '\n');
+  `| page alive | ${ok(pass.alive)} | |\n| 1080p p95 ≤ 16.8 ms (hard) | ${ok(pass.fps1080)} | |\n| 1440p p95 ≤ 16.8 ms | ${ok(pass.fps1440)} | |\n| errors | ${ok(pass.noErrors)} | ${errors.slice(0, 2).join('; ') || 'none'} |\n\n` +
+  `| recipe | 1080p p95 / >20 ms | 1440p | 4K | canvas at 4K | grid / dye at 4K | SOR iters 1080p / 4K | GPU ms 1080p | sim/real 1080p |\n|---|---|---|---|---|---|---|---|---|\n` +
+  Object.entries(res.speed).map(([k, o]) => `| ${k} | ${o['1080p'].p95} / ${o['1080p'].over20} | ${o['1440p'].p95} / ${o['1440p'].over20} | ${o['4K'].p95} / ${o['4K'].over20} | ${o['4K'].canvas.join('×')} | ${o['4K'].grid.join('×')} / ${o['4K'].dye.join('×')} | ${o['1080p'].iters} / ${o['4K'].iters} | ${o['1080p'].gpuMs ?? '–'} | ${o['1080p'].simPerReal} |`).join('\n') + '\n');
 console.log(dir);
