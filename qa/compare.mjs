@@ -67,7 +67,7 @@ export function nextPair(labels, comps) {
 
 export function savePick(dir, labels, pick) {
   const comps = loadComparisons(dir);
-  comps.push({ a: pick.a, b: pick.b, winner: pick.winner, at: new Date().toISOString() });
+  comps.push({ a: pick.a, b: pick.b, winner: pick.winner, ...(pick.note ? { note: pick.note } : {}), at: new Date().toISOString() });
   fs.writeFileSync(path.join(dir, FILE), JSON.stringify(comps, null, 1));
   writeRankingToReport(dir, labels, comps);
   return comps;
@@ -81,16 +81,24 @@ export function undoPick(dir, labels) {
   return comps;
 }
 
-function writeRankingToReport(dir, labels, comps) {
+export function writeRankingToReport(dir, labels, comps = loadComparisons(dir)) {
   const rp = path.join(dir, 'report.md');
   if (!fs.existsSync(rp)) return;
-  const head = '## Pairwise ranking (user picks)';
+  const head = '## Pairwise ranking (user picks)', nhead = '## User notes';
   let md = fs.readFileSync(rp, 'utf8');
-  const at = md.indexOf(head);
-  if (at >= 0) md = md.slice(0, at).trimEnd() + '\n';
+  for (const h of [head, nhead]) { const at = md.indexOf(h); if (at >= 0) md = md.slice(0, at).trimEnd() + '\n'; }
   if (comps.length) {
     md += `\n${head}\n\n${comps.length} picks, Bradley–Terry strength (1 = average).\n\n| # | variant | strength | won | lost | tie |\n|---|---|---|---|---|---|\n` +
       ranking(labels, comps).map((r, i) => `| ${i + 1} | ${r.label} | ${r.strength} | ${r.w} | ${r.l} | ${r.t} |`).join('\n') + '\n';
+  }
+  // notes typed on the compare or watch page: per look (verdicts.json) and per pick (comparisons.json)
+  let verdicts = {}; try { verdicts = JSON.parse(fs.readFileSync(path.join(dir, 'verdicts.json'), 'utf8')); } catch {}
+  const looks = labels.filter(l => verdicts[l] && verdicts[l].note);
+  const picks = comps.filter(c => c.note);
+  if (looks.length || picks.length) {
+    md += `\n${nhead}\n\n` +
+      (looks.length ? '**On each look**\n\n' + looks.map(l => `- **${l}**${verdicts[l].verdict ? ` (${verdicts[l].verdict})` : ''}: ${verdicts[l].note}`).join('\n') + '\n\n' : '') +
+      (picks.length ? '**On picks**\n\n' + picks.map(c => `- ${c.a} vs ${c.b} → ${c.winner === 'tie' ? 'same' : c.winner}: ${c.note}`).join('\n') + '\n' : '');
   }
   fs.writeFileSync(rp, md);
 }
@@ -112,14 +120,16 @@ export function comparePage(exp, stamp) {
 .side .cap{padding:6px 10px;background:#121724;font-size:13px}
 .side .cap b{font-size:15px}
 .side.win{border-color:#2bd96b}.side.lose{opacity:.35}
+.look{display:flex;flex-direction:column;gap:4px}.look input,#pnote{width:100%;box-sizing:border-box}.saved{color:#2bd96b;font-size:12px;min-height:14px}
 .bar{display:flex;gap:8px;margin-top:10px}.bar button{flex:1}
 table{border-collapse:collapse;width:100%;font-size:13px;margin-top:6px}td,th{border-bottom:1px solid #2c3850;padding:5px;text-align:left}
 </style>
 <p class="m" id="info">loading…</p>
 <div class="card" id="done" style="display:none"></div>
 <div class="pair" id="pair"></div>
+<input id="pnote" placeholder="note on this pick (optional, saved with the pick)">
 <div class="bar"><button id="tie">≈ same</button><button id="skip">skip</button><button id="undo">↶ undo</button></div>
-<p class="m">Tap the better one, or swipe it right (swipe left = the other one wins). Setups show only what differs.</p>
+<p class="m">Tap the better one, or swipe it right (swipe left = the other one wins). Setups show only what differs. Notes under a clip stay with that look; the pick note goes with your next pick. Both land in the report.</p>
 <h3 style="font-size:15px;margin:18px 0 0">Ranking so far</h3><div id="rank"></div>
 <script>
 const base = location.pathname.replace(/\\/compare$/, '');
@@ -142,9 +152,18 @@ async function load() {
     $('more').onclick = () => { more = true; $('done').style.display = 'none'; document.querySelector('.bar').style.display = ''; load(); };
     return;
   }
-  $('pair').innerHTML = cur.map((v, i) => '<div class="side" data-i="' + i + '">' +
+  const q = t => String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  $('pair').innerHTML = cur.map((v, i) => '<div class="look"><div class="side" data-i="' + i + '">' +
     '<video src="' + v.video + '" poster="' + (v.still || '') + '" autoplay loop muted playsinline></video>' +
-    '<div class="cap"><b>' + v.label + '</b><br><span class="m">' + v.setup + '</span></div></div>').join('');
+    '<div class="cap"><b>' + v.label + '</b><br><span class="m">' + v.setup + '</span></div></div>' +
+    '<input class="lnote" data-label="' + q(v.label) + '" placeholder="note on ' + q(v.label) + ' (saved with this look)" value="' + q(v.note) + '"><div class="saved"></div></div>').join('');
+  document.querySelectorAll('.lnote').forEach(inp => {
+    let t = null;
+    const save = () => fetch(base + '/compare/note', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ label: inp.dataset.label, note: inp.value }) })
+      .then(r => r.json()).then(j => { inp.nextElementSibling.textContent = j.ok ? 'saved' : 'not saved'; }).catch(() => { inp.nextElementSibling.textContent = 'not saved'; });
+    inp.addEventListener('input', () => { clearTimeout(t); inp.nextElementSibling.textContent = ''; t = setTimeout(save, 800); });
+    inp.addEventListener('change', () => { clearTimeout(t); save(); });
+  });
   const vids = [...document.querySelectorAll('.side video')];
   vids.forEach(v => v.addEventListener('loadeddata', () => { vids.forEach(x => { x.currentTime = 0; x.play().catch(() => {}); }); }, { once: true }));
   document.querySelectorAll('.side').forEach(el => {
@@ -163,8 +182,9 @@ async function load() {
 async function send(winner) {
   if (busy || !cur) return; busy = true;
   try {
-    const r = await fetch(base + '/compare/pick', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ a: cur[0].label, b: cur[1].label, winner }) });
+    const r = await fetch(base + '/compare/pick', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ a: cur[0].label, b: cur[1].label, winner, note: $('pnote').value }) });
     if (!r.ok) throw 0;
+    $('pnote').value = '';
   } catch { alert('not saved'); }
   busy = false; load();
 }

@@ -11,7 +11,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadComparisons, nextPair, ranking, savePick, undoPick, setups, comparePage } from './compare.mjs';
+import { loadComparisons, nextPair, ranking, savePick, undoPick, setups, comparePage, writeRankingToReport } from './compare.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
@@ -58,6 +58,7 @@ function saveVerdict(dir, label, verdict, note) {
     }).join('\n');
     fs.writeFileSync(rp, md);
   }
+  writeRankingToReport(dir, data.results.map(r => r.label));   // keeps the "User notes" section in step
 }
 
 const css = `:root{color-scheme:dark}body{margin:0;font:15px/1.45 system-ui,sans-serif;background:#0b0e14;color:#dde3ee}
@@ -168,7 +169,7 @@ function compareRoute(req, res, exp, stamp, dir, action) {
     const comps = loadComparisons(dir), su = setups(data.results), per = Math.max(1, labels.length - 1);
     const pair = nextPair(labels, comps);
     const info = l => { const i = data.results.findIndex(r => r.label === l), r = data.results[i];
-      return { label: l, setup: su[l], video: `/file/${exp}/${stamp}/${r.video}`, still: stillOf(dir, i, l, exp, stamp) }; };
+      return { label: l, setup: su[l], video: `/file/${exp}/${stamp}/${r.video}`, still: stillOf(dir, i, l, exp, stamp), note: (loadVerdicts(dir)[l] || {}).note || '' }; };
     // after two rounds the run counts as graded: say so, and point at the next thing to grade
     const target = per * 2;
     const next = runs().map(r => ({ ...r, s: runState(r) }))
@@ -184,9 +185,23 @@ function compareRoute(req, res, exp, stamp, dir, action) {
     req.on('data', c => { body += c; if (body.length > 1e4) req.destroy(); });
     req.on('end', () => {
       try {
-        const { a, b, winner } = JSON.parse(body);
+        const { a, b, winner, note } = JSON.parse(body);
         if (!labels.includes(a) || !labels.includes(b) || a === b || ![a, b, 'tie'].includes(winner)) throw new Error('bad pick');
-        savePick(dir, labels, { a, b, winner });
+        savePick(dir, labels, { a, b, winner, note: String(note || '').trim().slice(0, 500) });
+        json({ ok: true });
+      } catch (e) { json({ error: e.message }, 400); }
+    });
+    return;
+  }
+  if (action === 'note') {   // a note on one look from the compare page: kept with its keep/maybe/dull verdict
+    let body = '';
+    req.on('data', c => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on('end', () => {
+      try {
+        const { label, note } = JSON.parse(body);
+        if (!data.results.some(r => r.label === label)) throw new Error('bad label');
+        const old = loadVerdicts(dir)[label] || {};
+        saveVerdict(dir, label, old.verdict || '', String(note || '').trim().slice(0, 500));
         json({ ok: true });
       } catch (e) { json({ error: e.message }, 400); }
     });
@@ -235,7 +250,7 @@ const handler = (req, res) => {
           try {
             const { label, verdict, note } = JSON.parse(body);
             if (!VERDICTS.includes(verdict) || !load(dir).results.some(r => r.label === label)) throw new Error('bad verdict');
-            saveVerdict(dir, label, verdict, String(note || '').slice(0, 300));
+            saveVerdict(dir, label, verdict, String(note || '').slice(0, 500));
             res.writeHead(200); res.end('ok');
           } catch (e) { res.writeHead(400); res.end(String(e.message)); }
         });
