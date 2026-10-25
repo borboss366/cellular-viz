@@ -95,9 +95,10 @@
 
 const query = new URLSearchParams(location.search);
 // pace: 'chill' (default, the user's ask: "way slower, chill, slowly slides and sometimes jumps")
-// carves along the half-pipe and lands one trick every `trickBars` bars; 'beat' is the first
+// carves along the half-pipe and lands a trick on the schedule (trickOn, trickEvery); 'beat' is the first
 // version, one trick on every beat (?pace=beat).
-const params = { curve: 'x3-2x',   // the user's pick in the chill grades (3–0) bpm: 120, bpb: 4, hops: 24, pmax: 1500, muted: false,
+// curve: x3-2x is the user's pick in the chill grades (3–0)
+const params = { curve: 'x3-2x', bpm: 120, bpb: 4, hops: 24, pmax: 1500, muted: false,
                  pace: 'chill', trickEvery: 16, trickSpeed: 0.25, trickOn: 'sections', glideSpeed: 0.5, slide: 1.4, cam: 0.5,
                  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 
