@@ -262,5 +262,21 @@
     "href": "/run/19-skate-park/2026-10-25-1327"
    }
   ]
+ },
+ {
+  "id": "13-flow-lab-looks",
+  "from": "QA box",
+  "title": "13 Flow Lab: swipe the six looks (vortex, kh, plume, ink, rocks, curl)",
+  "note": "Navier\u2013Stokes page, build 40f2885. All run at 60 fps up to 4K and the vortex street lands on the beat. 40 s each, as shipped (colour top-up on). Curl's colour drifts with the top-up off; that's being looked at, but it doesn't show here.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/13-flow-lab/2026-10-25-1705/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/13-flow-lab/2026-10-25-1705"
+   }
+  ]
  }
 ]

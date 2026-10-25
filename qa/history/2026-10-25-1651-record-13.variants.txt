@@ -1,0 +1,6 @@
+1-vortex :: preset=vortex ::tap
+2-kh :: preset=kh ::tap
+3-plume :: preset=plume ::tap
+4-ink :: preset=ink ::tap
+5-rocks :: preset=rocks ::tap
+6-curl :: preset=curl ::tap
