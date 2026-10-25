@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
 const expDir = path.resolve(arg('experiments', path.join(here, '..', 'experiments')));
-const secs = +arg('secs', 75);
+const secs = +arg('secs', 75), extra = arg('query', '');
 const CURVES = { 'x3-25x': { a: -25n, b: 0n, G: [45n, 300n] }, 'x3+17': { a: 0n, b: 17n, G: [-1n, 4n] }, 'x3-2x': { a: -2n, b: 0n, G: [-1n, 1n] } };
 
 // exact rationals as [n, d] with d > 0, reduced
@@ -82,7 +82,7 @@ page.on('pageerror', e => errors.push(e.message));
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 const out = {};
 for (const key of Object.keys(CURVES)) {
-  await page.goto(`http://127.0.0.1:${server.address().port}/17-bsd-skater.html?curve=${encodeURIComponent(key)}`);
+  await page.goto(`http://127.0.0.1:${server.address().port}/17-bsd-skater.html?curve=${encodeURIComponent(key)}${extra ? '&' + extra : ''}`);
   await page.addStyleTag({ content: '#wrap{width:100vw !important;height:100vh !important;aspect-ratio:auto !important;margin:0 !important}' });
   await page.waitForTimeout(800);
   await page.click('#play').catch(() => {});
@@ -102,10 +102,10 @@ for (const key of Object.keys(CURVES)) {
     fps: r.fps, worst: r.worst, caught: r.caught, canvas: r.canvas };
 }
 await browser.close(); server.close();
-const pass = { groupLaw: Object.values(out).every(o => o.hops > 10 && o.nFail === 0), alive: Object.values(out).every(o => o.beatsMoved > 10),
+const pass = { groupLaw: Object.values(out).every(o => o.hops >= 5 && o.nFail === 0), alive: Object.values(out).every(o => o.beatsMoved > 10),
   fps60: Object.values(out).every(o => o.fps >= 58), noErrors: !errors.length && Object.values(out).every(o => !o.caught) };
 const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
-const dir = path.join(here, '17-bsd-skater', 'checks', stamp);
+const dir = path.join(here, '17-bsd-skater', 'checks', stamp + (extra ? '-' + extra.replace(/[^\w]+/g, '-') : ''));
 fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(path.join(dir, 'check.json'), JSON.stringify({ out, errors, pass }, null, 1));
 const ok = v => v ? '✅' : '❌';

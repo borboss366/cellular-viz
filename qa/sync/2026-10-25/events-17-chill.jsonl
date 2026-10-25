@@ -1,0 +1,1 @@
+{"label":"17 chill events","events":290,"byType":{"hop":{"n":10,"median":17.4,"p10":-1.7,"p90":18.4},"kick":{"n":80,"median":18,"p10":-0.5,"p90":19.3},"hat":{"n":160,"median":18,"p10":-0.5,"p90":19.3},"snare":{"n":40,"median":18.1,"p10":-0.4,"p90":19.4}},"errors":[]}

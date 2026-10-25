@@ -182,6 +182,23 @@
     "label": "\u25b6 watch all",
     "href": "/run/17-bsd-skater/2026-10-25-0855"
    }
+  ],
+  "done": "graded 6 picks (fast version); superseded by chill run"
+ },
+ {
+  "id": "17-skater-chill",
+  "from": "QA box",
+  "title": "17 Skater, chill pace (slow slide, a trick every 2 bars) on three curves vs old 10",
+  "note": "Your fast-version picks: skater beat old 10 every time (3\u20130). This is the slower version you asked for. 2 rounds = 6 picks.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/17-bsd-skater/2026-10-25-0925/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/17-bsd-skater/2026-10-25-0925"
+   }
   ]
  }
 ]
