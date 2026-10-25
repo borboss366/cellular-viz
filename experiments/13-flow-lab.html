@@ -270,11 +270,15 @@ float gnoise(vec2 p) {   // gradient noise (iq)
   return mix(mix(dot(hash2(i), f), dot(hash2(i + vec2(1, 0)), f - vec2(1, 0)), u.x),
              mix(dot(hash2(i + vec2(0, 1)), f - vec2(0, 1)), dot(hash2(i + vec2(1, 1)), f - vec2(1, 1)), u.x), u.y);
 }
-uniform float uOct, uTime, uSeed;
+uniform float uOct, uTime, uSeed, uNoiseScale;
 float psi(vec2 p) {
   float s = 0.0, a = 1.0;
   for (int k = 0; k < 5; k++) { if (float(k) >= uOct) break; s += a * gnoise(p + vec2(uSeed * 7.1 + 0.11 * uTime * float(k + 1), -0.07 * uTime + uSeed * 3.3)); p *= 2.03; a *= 0.5; }
   return s;
+}
+float psiW(vec2 uv) {   // the potential at a uv point, faded to 0 within 5 % of every wall
+  vec2 r = smoothstep(0.0, 0.05, uv) * smoothstep(0.0, 0.05, 1.0 - uv);
+  return psi(uv * vec2(uAspect, 1.0) * uNoiseScale) * r.x * r.y;
 }
 vec2 curlNoise(vec2 p) {   // u = (dψ/dy, −dψ/dx): divergence-free
   float e = 0.01;
@@ -322,11 +326,17 @@ void main() {
   }
 }`),
   forces: program(HEAD + NOISE + `
-uniform sampler2D uVel, uTemp; uniform float uDt, uWind, uNoiseScale, uBuoy, uKH, uKHU, uInflow, uU, uCurlEng, uCurlSpeed, uLockS;
+uniform sampler2D uVel, uTemp; uniform float uDt, uWind, uBuoy, uKH, uKHU, uInflow, uU, uCurlEng, uCurlSpeed, uLockS;
 uniform vec4 uLock;   // wake forcing (lock-in): x, y, radius (height units), acceleration
 void main() {
-  vec2 v = texture(uVel, vUv).xy, p = vUv * vec2(uAspect, 1.0) * uNoiseScale;
-  vec2 cn = curlNoise(p);
+  // Curl noise straight onto the MAC faces: ψ at the cell corners, u = Δψ along y, v = −Δψ along
+  // x, so the discrete divergence is exactly zero; ψ is ramped to 0 at the walls, so nothing flows
+  // through them. (QA box: curl lost 7.5–9 % dye per 10 s with a cell-centred field on faces.)
+  vec2 v = texture(uVel, vUv).xy;
+  vec2 c00 = vUv - 0.5 * uTexel, cu = c00 + vec2(0.0, uTexel.y), cv = c00 + vec2(uTexel.x, 0.0);
+  float dp = uNoiseScale * uTexel.y;
+  float p00 = psiW(c00), pu = psiW(cu), pv = psiW(cv);
+  vec2 cn = vec2(pu - p00, -(pv - p00)) / dp;
   v += uDt * uWind * cn;
   v = mix(v, cn * uCurlSpeed, uCurlEng);                       // engine B: the velocity is the curl field
   v.y += uDt * uBuoy * texture(uTemp, vUv).x;                  // buoyancy
@@ -615,9 +625,14 @@ function step(dt, eff, L) {
     gl.uniform4fv(u.uLock, lock); gl.uniform1f(u.uLockS, Math.sin(Math.PI * st.beats));   // sin 2π f t with f = BPM/120
   });
   F.vel.swap();
-  pass(P.advect, F.vel.b, (u, tex) => { tex('uVel', F.vel.a); tex('uSrc', F.vel.a); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uDiss, params.velDissipation); gl.uniform1i(u.uIsVel, 1); gl.uniform4fv(u.uWalls, walls); });
-  F.vel.swap();
-  const curlK = params.curl * (1 + 2 * st.curlBurst);
+  // engine B alone: the field is already exactly divergence-free and wall-tight, so it is not
+  // advected or projected (that only bent it away from the curl field)
+  const pureCurl = curlEng >= 0.999;
+  if (!pureCurl) {
+    pass(P.advect, F.vel.b, (u, tex) => { tex('uVel', F.vel.a); tex('uSrc', F.vel.a); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uDiss, params.velDissipation); gl.uniform1i(u.uIsVel, 1); gl.uniform4fv(u.uWalls, walls); });
+    F.vel.swap();
+  }
+  const curlK = pureCurl ? 0 : params.curl * (1 + 2 * st.curlBurst);
   if (curlK > 0) {
     pass(P.curl, F.curlT, (u, tex) => tex('uVel', F.vel.a));
     pass(P.vort, F.vel.b, (u, tex) => { tex('uVel', F.vel.a); tex('uCurl', F.curlT); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uCurlK, curlK); });
@@ -629,7 +644,7 @@ function step(dt, eff, L) {
     gl.blitFramebuffer(0, 0, F.simW, F.simH, 0, 0, F.simW, F.simH, gl.COLOR_BUFFER_BIT, gl.NEAREST);   // b = u before diffusion
     for (let i = 0; i < 12; i++) { pass(P.diffuse, F.vel.b, (u, tex) => { tex('uX', F.vel.a); tex('uB', F.div); gl.uniform1f(u.uAlpha, alpha); }); F.vel.swap(); }
   }
-  project(st.iters = itersNow(params), walls, openRight);
+  if (!pureCurl) project(st.iters = itersNow(params), walls, openRight); else st.iters = 0;
   st.walls = walls; st.openRight = openRight;
 
   // dye and temperature ride on the projected velocity
