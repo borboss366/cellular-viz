@@ -5,8 +5,9 @@
   17 kept the skater on the real picture of one elliptic curve. The user: "it is about the
   path", slower, the camera close to the ramp, and more complicated ramps even if they are not
   exact BSD. Three tracks, each a preset; `auto` moves on every 2 sections. The rider glides
-  slowly along a neon rail with a low camera close behind it; tricks (a slow 2-bar hang) come
-  only at section changes and at the drop.
+  slowly along a neon rail with a low camera close behind it. Tricks follow 17's schedule
+  (trickOn sections | bars | drops, trickEvery, trickSpeed: at 0.25 a 2-bar hang takes 8 bars,
+  never overlapping); a section change outside a trick is a low 1-bar transfer.
 
     torus  Over the complex numbers an elliptic curve is a torus. The donut glows with its
            period lattice, and the rail is a straight line on the flat torus, which in 3-D is a
@@ -80,7 +81,10 @@
   <h3>Track</h3>
   <div class="buttons" id="tracks"></div>
   <div class="row"><label for="bars">bars / section</label><input id="bars" type="range" min="4" max="32" step="1"><output id="barsOut"></output></div>
-  <div class="row"><label for="speed">speed</label><input id="speed" type="range" min="0.05" max="1.5" step="0.05"><output id="speedOut"></output></div>
+  <div class="row"><label for="glideSpeed">glide speed</label><input id="glideSpeed" type="range" min="0.25" max="2" step="0.05"><output id="glideSpeedOut"></output></div>
+  <div class="buttons" id="trickOn"><button data-on="sections">tricks on sections</button><button data-on="bars">every N bars</button><button data-on="drops">drops only</button></div>
+  <div class="row"><label for="trickEvery">trick every</label><input id="trickEvery" type="range" min="4" max="64" step="4"><output id="trickEveryOut"></output></div>
+  <div class="row"><label for="trickSpeed">trick speed</label><input id="trickSpeed" type="range" min="0.25" max="2" step="0.05"><output id="trickSpeedOut"></output></div>
   <div class="row"><label for="camD">cam distance</label><input id="camD" type="range" min="0.3" max="4" step="0.05"><output id="camDOut"></output></div>
   <div class="row"><label for="camH">cam height</label><input id="camH" type="range" min="0.05" max="2" step="0.05"><output id="camHOut"></output></div>
   <div class="row"><label for="trickLen">bars in air</label><input id="trickLen" type="range" min="1" max="4" step="1"><output id="trickLenOut"></output></div>
@@ -97,7 +101,8 @@
 const query = new URLSearchParams(location.search);
 const TRACKS = ['torus', 'morph', 'free'];
 // p, q = 0: the knot follows the sections ((2,3) → (3,5) → (5,8)); otherwise it is pinned.
-const params = { track: 'auto', bars: 16, bpm: 120, bpb: 4, muted: false, speed: 0.35, camD: 1.1, camH: 0.35,
+const params = { track: 'auto', bars: 16, bpm: 120, bpb: 4, muted: false, glideSpeed: 0.5, camD: 1.1, camH: 0.35,
+                 trickOn: 'sections', trickEvery: 16, trickSpeed: 0.25,   // user: tricks ~4× slower and rarer (spec on #45)
                  trickLen: 2, p: 0, q: 0, seed: 1,
                  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 const KNOTS = [[2, 3], [3, 5], [5, 8]];
@@ -477,18 +482,20 @@ for (const name of ['auto', ...TRACKS]) {
   b.onclick = () => { params.track = name; st.section = -1; sync(); };
   $('tracks').appendChild(b);
 }
-const SLIDERS = { bars: 0, speed: 2, camD: 2, camH: 2, trickLen: 0, p: 0, q: 0, bpm: 0 };
+const SLIDERS = { bars: 0, glideSpeed: 2, trickEvery: 0, trickSpeed: 2, camD: 2, camH: 2, trickLen: 0, p: 0, q: 0, bpm: 0 };
 for (const [name, dec] of Object.entries(SLIDERS)) $(name).addEventListener('input', e => {
   params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name].toFixed(dec);
   if (name === 'p' || name === 'q' || name === 'bars') st.section = -1;
 });
+for (const b of $('trickOn').children) b.onclick = () => { params.trickOn = b.dataset.on; st.lastTrick = null; sync(); };
 function sync() {
+  for (const b of $('trickOn').children) b.classList.toggle('on', b.dataset.on === params.trickOn);
   for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
   $('mute').classList.toggle('on', params.muted);
   for (const b of $('tracks').children) b.classList.toggle('on', b.textContent === params.track);
 }
 $('copy').onclick = async e => {
-  const q = new URLSearchParams({ track: params.track, bars: params.bars, speed: params.speed, camD: params.camD, camH: params.camH, trickLen: params.trickLen, p: params.p, q: params.q, bpm: params.bpm, seed: params.seed });
+  const q = new URLSearchParams({ track: params.track, bars: params.bars, glideSpeed: params.glideSpeed, trickOn: params.trickOn, trickEvery: params.trickEvery, trickSpeed: params.trickSpeed, camD: params.camD, camH: params.camH, trickLen: params.trickLen, p: params.p, q: params.q, bpm: params.bpm, seed: params.seed });
   const text = `19 · Skate Park · ${params.track}\n${location.origin + location.pathname}?${q}`;
   let ok = false;
   try { await navigator.clipboard.writeText(text); ok = true; } catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }
@@ -498,7 +505,7 @@ $('copy').onclick = async e => {
 const MODULE_INPUTS = [
   { name: 'track', type: 'long', values: ['auto', ...TRACKS], default: 'auto' },
   { name: 'p', type: 'long', default: 0, min: 0, max: 9 }, { name: 'q', type: 'long', default: 0, min: 0, max: 13 },
-  { name: 'speed', type: 'float', default: 0.35, min: 0.05, max: 1.5 },
+  { name: 'glideSpeed', type: 'float', default: 0.5, min: 0.25, max: 2 }, { name: 'trickEvery', type: 'long', default: 16, min: 4, max: 64 }, { name: 'trickSpeed', type: 'float', default: 0.25, min: 0.25, max: 2 }, { name: 'trickOn', type: 'long', values: ['sections', 'bars', 'drops'], default: 'sections' },
   { name: 'camD', type: 'float', default: 1.1, min: 0.3, max: 4 }, { name: 'camH', type: 'float', default: 0.35, min: 0.05, max: 2 },
   { name: 'trickLen', type: 'long', default: 2, min: 1, max: 4 }, { name: 'bars', type: 'long', default: 16, min: 4, max: 32 },
 ];
@@ -537,22 +544,26 @@ function draw(now) {
   const bars = beats / params.bpb, sec = sectionInfo(bars), H = Math.max(1, Math.round(params.trickLen));
   logHits(now);
 
-  // sections: a new track (or knot) and a trick at each section change, a trick at the drop
-  if (sec.k !== st.section) {
-    const first = st.section < 0;
-    enterSection(sec.k);
-    if (!first) { startJump(sec.k * params.bars, H); logAt('trick', sec.k * params.bars, { why: 'section' }, now); }
-    if (st.kind === 'torus') logAt('knot', sec.k * params.bars, { p: st.knot.p, q: st.knot.q }, now);
-  }
+  // sections: a new track (or knot) each section. Tricks come from the schedule (as 17: trickOn,
+  // trickEvery, 2/trickSpeed bars each, never overlapping); the morph's drop is the merge, not
+  // a trick. A section change outside a trick gets a low 1-bar transfer onto the new rail.
+  let changed = false, first = false;
+  if (sec.k !== st.section) { first = st.section < 0; enterSection(sec.k); changed = true;
+    if (st.kind === 'torus') logAt('knot', sec.k * params.bars, { p: st.knot.p, q: st.knot.q }, now); }
+  const dur = H / Math.max(0.05, params.trickSpeed);
+  const sch = trickSchedule(bars, { on: params.trickOn, every: Math.max(4, Math.round(params.trickEvery)), section: params.bars,
+                                    dropBars: sec.dropBars, dur, skipDrop: k => kindOf(k) === 'morph' });
+  if (sch.prev !== null && sch.prev !== st.lastTrick && bars < sch.prev + dur) {
+    st.lastTrick = sch.prev; startJump(sch.prev, dur, false);
+    logAt('trick', sch.prev, { why: (sch.prev % params.bars) === 0 ? 'section' : 'drop', dur }, now);
+  } else if (changed && !first && !st.jump) startJump(sec.k * params.bars, 1, true);
+  Object.assign(st, { trickPrev: sch.prev, trickNext: sch.next, trickDur: dur });
   const dropBar = sec.k * params.bars + sec.build;
-  if (sec.drop && st.kind !== 'morph' && (!st.jump || st.jump.bar0 < dropBar) && bars - dropBar < 0.5) {
-    startJump(dropBar, H); logAt('trick', dropBar, { why: 'drop' }, now);
-  }
   if (Math.floor(bars) !== lastBar) { lastBar = Math.floor(bars); nextCity(); }
 
   // the rail and where the rider is on it
   let rider;
-  const sAt = beats * params.speed;
+  const sAt = beats * params.glideSpeed;
   if (st.kind === 'morph') {
     const b = morphB(sec), rails = morphRails(b);
     const m = st.morph, disc = discOf(b), sign = Math.sign(disc) || 0;
@@ -566,12 +577,12 @@ function draw(now) {
     st.rails = rails; uploadRails(railMeshes[1], rails, true);
     const egg = rails.find(r => r.egg);
     if (!sec.drop && egg) {   // loop round the egg, back at its right end (the node to be) exactly at the drop
-      const loops = Math.max(1, Math.round(params.speed * sec.build * params.bpb / 6));
+      const loops = Math.max(1, Math.round(params.glideSpeed * sec.build * params.bpb / 6));
       const f = (loops * sec.buildPhase) % 1;
       rider = sampleRail(egg, f * egg.len); rider.rail = egg; m.onMain = false;
     } else {   // through the node and out along the main branch
       if (!m.onMain) { m.onMain = true; m.mainX0 = 1; }
-      const main = mainUpper(b, m.mainX0), ds = (bars - dropBar) * params.bpb * params.speed;
+      const main = mainUpper(b, m.mainX0), ds = (bars - dropBar) * params.bpb * params.glideSpeed;
       rider = sampleRail(main, Math.max(0, ds)); rider.rail = main;
     }
     st.rail = rider.rail;
@@ -586,7 +597,7 @@ function draw(now) {
       const e = ease(Math.max(0, w));
       air = Math.sin(Math.PI * Math.max(0, w));
       pos = add3(lerp3(st.jump.from, pos, e), mul3(lerp3(st.jump.up, rider.up, e), st.jump.height * air));
-      roll = 2 * Math.PI * ease(Math.min(1, Math.max(0, (w - 0.25) / 0.5)));
+      roll = st.jump.low ? 0 : 2 * Math.PI * ease(Math.min(1, Math.max(0, (w - 0.25) / 0.5)));
     }
   }
   st.riderPos = pos;
@@ -672,6 +683,7 @@ function draw(now) {
     knot: st.kind === 'torus' ? st.knot : null, torusError: st.checks && st.checks.torusError, winding: st.checks && st.checks.winding,
     morph: { a: MORPH_A, b: st.morph.b, disc: st.morph.disc, crossings: st.morph.crossings.slice() },
     rider: { track: st.kind, s: rider.s, pos, jumping: !!st.jump }, p: st.p, ap: st.ap,
+    trick: { on: params.trickOn, every: params.trickEvery, speed: params.trickSpeed, prev: st.trickPrev, next: st.trickNext, dur: st.trickDur, low: !!(st.jump && st.jump.low) },
   });
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
@@ -683,8 +695,30 @@ function draw(now) {
       `city mod ${st.p} · ${W}×${Hh} · ${fps} fps`;
   }
 }
-function startJump(bar0, len) {
-  st.jump = { bar0, len, from: st.riderPos || [0, 0, 0], up: st.cam.up.slice(), height: st.kind === 'torus' ? 1.6 : st.kind === 'morph' ? 1.2 : 1.4 };
+function startJump(bar0, len, low) {
+  const h = st.kind === 'torus' ? 1.6 : st.kind === 'morph' ? 1.2 : 1.4;
+  st.jump = { bar0, len, low, from: st.riderPos || [0, 0, 0], up: st.cam.up.slice(), height: low ? 0.3 * h : h };
+}
+// Trick schedule (the same as 17): candidates every `every` bars (on = bars), at each section
+// start and drop (sections) or at drops only (drops); one inside the last trick is skipped.
+function trickSchedule(bar, o) {
+  const S = o.on === 'bars' ? o.every : o.section;
+  let lastEnd = -Infinity, prev = null, next = null;
+  for (let k = 0; next === null && k < 1e5; k++) {
+    const c = [];
+    if (o.on === 'bars') c.push(k * S);
+    else {
+      const dropOk = o.dropBars > 0 && !(o.skipDrop && o.skipDrop(k));
+      if (o.on === 'sections' || !dropOk) c.push(k * S);
+      if (dropOk) c.push(k * S + S - o.dropBars);
+    }
+    for (const t of c) {
+      if (t < lastEnd) continue;
+      lastEnd = t + o.dur;
+      if (t <= bar) prev = t; else if (next === null) next = t;
+    }
+  }
+  return { prev, next };
 }
 
 window.__qa = {
@@ -695,6 +729,8 @@ const q = k => query.get(k);
 if (q('track') && (q('track') === 'auto' || TRACKS.includes(q('track')))) params.track = q('track');
 for (const k of Object.keys(SLIDERS).concat(['seed'])) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
 params.muted = q('muted') === '1';
+if (['bars', 'sections', 'drops'].includes(q('trickOn'))) params.trickOn = q('trickOn');
+window.__qa.trickSchedule = trickSchedule;
 sync();
 requestAnimationFrame(frame);
 </script>
