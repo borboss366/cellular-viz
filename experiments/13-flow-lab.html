@@ -116,7 +116,7 @@ const query = new URLSearchParams(location.search);
 // at every tempo. fNat is calibrated with __qa.calibrate() (?probe=1&lock=0). lock: wake forcing
 // as a fraction of U (undefined = the recipe's, 0 = off, to see the natural shedding).
 const settings = { bpm: 120, bpb: 4, muted: false, res: 256, morphBars: 8, probe: false, conserve: true,
-                   Uref: 219, fNat: 1.3825, dtSim: 1 / 60, maxSteps: 2, omega: 1.85, lock: undefined, adaptive: true,
+                   Uref: 219, fNat: 1.1241, dtSim: 1 / 60, maxSteps: 2, omega: 1.85, lock: undefined, adaptive: true,
                    kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 const ST = 0.2;   // Strouhal number of a cylinder wake (≈ 0.2 for Re ~ 300 … 2·10⁵)
 
@@ -234,8 +234,10 @@ function program(fs) {
   for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name.replace('[0]', ''); u[nm] = gl.getUniformLocation(p, nm); }
   return { p, u };
 }
-// shared: grid spacing, aspect, solid discs (x, y, r, weight) in uv with r in units of height
-const HEAD = `#version 300 es
+// shared: grid spacing, aspect, solid discs (x, y, r, weight) in uv with r in units of height.
+// HEAD_A tests the discs directly (the mask bake, the display's rims); every sim pass uses HEAD,
+// which reads the mask baked once per step (QA box: the disc loop ran in all ~80 solver passes).
+const HEAD_A = `#version 300 es
 precision highp float;
 in vec2 vUv;
 out vec4 o;
@@ -251,6 +253,15 @@ float solid(vec2 uv) {
   }
   return 0.0;
 }
+`;
+const HEAD = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 o;
+uniform vec2 uTexel;
+uniform float uAspect;
+uniform sampler2D uSolidT;
+float solid(vec2 uv) { return texture(uSolidT, uv).r; }
 `;
 const NOISE = `
 vec2 hash2(vec2 p) { p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3))); return -1.0 + 2.0 * fract(sin(p) * 43758.5453123); }
@@ -271,6 +282,16 @@ vec2 curlNoise(vec2 p) {   // u = (dψ/dy, −dψ/dx): divergence-free
 }
 `;
 const P = {
+  mask: program(HEAD_A + `
+void main() { o = vec4(solid(vUv), 0.0, 0.0, 1.0); }`),
+  // all of a step's dye sources in one pass (they were one full-resolution pass each: kh drew 12)
+  sources: program(HEAD + `
+uniform sampler2D uTarget; uniform vec4 uS[24]; uniform vec3 uC[24]; uniform int uN;
+void main() {
+  vec3 c = texture(uTarget, vUv).xyz;
+  for (int i = 0; i < 24; i++) { if (i >= uN) break; vec2 p = vUv - uS[i].xy; p.x *= uAspect; c += exp(-dot(p, p) / uS[i].z) * uC[i]; }
+  o = vec4(c, 1.0);
+}`),
   splat: program(HEAD + `
 uniform sampler2D uTarget; uniform vec2 uPoint; uniform vec3 uValue; uniform float uRadius;
 void main() { vec2 p = vUv - uPoint; p.x *= uAspect; o = vec4(texture(uTarget, vUv).xyz + exp(-dot(p, p) / uRadius) * uValue, 1.0); }`),
@@ -393,7 +414,7 @@ void main() {
   if (solid(vUv) > 0.5 || (!edgeB && solid(b) > 0.5) || (edgeB && uWalls.z > 0.5)) v.y = 0.0;
   o = vec4(v, 0.0, 1.0);
 }`),
-  display: program(HEAD + `
+  display: program(HEAD_A + `
 uniform sampler2D uDye; uniform float uKick, uHat;
 void main() {
   vec3 c = texture(uDye, vUv).rgb;
@@ -431,6 +452,17 @@ function target(w, h) {
   gl.viewport(0, 0, w, h); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
   return { t, fbo, w, h };
 }
+function maskTarget(w, h) {   // the baked obstacles: R8, nearest
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, null);
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  gl.viewport(0, 0, w, h); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  return { t, fbo, w, h };
+}
 const pair = (w, h) => { const p = { a: target(w, h), b: target(w, h), w, h }; p.swap = () => { [p.a, p.b] = [p.b, p.a]; }; return p; };
 const F = { simW: 0, simH: 0, dyeW: 0, dyeH: 0 };
 function allocate() {
@@ -440,7 +472,8 @@ function allocate() {
   if (F.simW === sw && F.simH === sh && F.dyeW === dw && F.dyeH === dh) return;
   for (const k of ['vel', 'dye', 'temp', 'pres']) if (F[k]) for (const t of [F[k].a, F[k].b]) { gl.deleteTexture(t.t); gl.deleteFramebuffer(t.fbo); }
   for (const k of ['div', 'curlT']) if (F[k]) { gl.deleteTexture(F[k].t); gl.deleteFramebuffer(F[k].fbo); }
-  Object.assign(F, { simW: sw, simH: sh, dyeW: dw, dyeH: dh, vel: pair(sw, sh), temp: pair(sw, sh), pres: pair(sw, sh), dye: pair(dw, dh), div: target(sw, sh), curlT: target(sw, sh) });
+  if (F.mask) { gl.deleteTexture(F.mask.t); gl.deleteFramebuffer(F.mask.fbo); }
+  Object.assign(F, { simW: sw, simH: sh, dyeW: dw, dyeH: dh, vel: pair(sw, sh), temp: pair(sw, sh), pres: pair(sw, sh), dye: pair(dw, dh), div: target(sw, sh), curlT: target(sw, sh), mask: maskTarget(sw, sh) });
   st.massRef = null;
 }
 
@@ -454,6 +487,7 @@ function pass(prog, dst, set) {
   if (u.uTexel) gl.uniform2f(u.uTexel, 1 / F.simW, 1 / F.simH);
   if (u.uAspect) gl.uniform1f(u.uAspect, F.simW / F.simH);
   if (u.uObs) { gl.uniform4fv(u.uObs, obsU); gl.uniform1i(u.uObsN, obsN); }
+  if (u.uSolidT && F.mask) { gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D, F.mask.t); gl.uniform1i(u.uSolidT, 7); }
   let unit = 0;
   const tex = (name, t) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t.t); gl.uniform1i(u[name], unit); unit++; };
   set(u, tex);
@@ -551,15 +585,22 @@ function step(dt, eff, L) {
   obs.slice(0, 10).forEach((o, i) => obsU.set(o, i * 4));
   const walls = inflowW > 0.5 ? [0, 0, 1, 1] : [1, 1, 1, 1];
   const time = st.simTime;
+  pass(P.mask, F.mask, () => {});   // the obstacles, once per step
 
-  // sources (dye and heat), stronger on the kick when the recipe says so
-  const pulse = 1 + 2.5 * st.kickPulse;
+  // sources (dye and heat), stronger on the kick when the recipe says so; all dye in one pass
+  const pulse = 1 + 2.5 * st.kickPulse, srcS = [], srcC = [];
   if (st.sourcesOn) for (const [R, w] of layers) for (const s of R.sources) {
     const c = eff.palette[s.c % eff.palette.length], amt = s.rate * w * dt * pulse;
     if (s.band) {   // a whole band of colour (Kelvin–Helmholtz layers)
       const y = s.band === 'top' ? 0.85 : 0.15;
-      for (let k = 0; k < 6; k++) splat(F.dye, (k + 0.5) / 6, y, c.map(v => v * amt * 0.6), 0.012);
-    } else splat(F.dye, s.x, s.y, c.map(v => v * amt), s.r * s.r);
+      for (let k = 0; k < 6; k++) { srcS.push((k + 0.5) / 6, y, 0.012, 0); srcC.push(...c.map(v => v * amt * 0.6)); }
+    } else { srcS.push(s.x, s.y, s.r * s.r, 0); srcC.push(...c.map(v => v * amt)); }
+  }
+  const nSrc = Math.min(24, srcS.length / 4);
+  if (nSrc) {
+    const S4 = new Float32Array(96), C3 = new Float32Array(72); S4.set(srcS.slice(0, 96)); C3.set(srcC.slice(0, 72));
+    pass(P.sources, F.dye.b, (u, tex) => { tex('uTarget', F.dye.a); gl.uniform4fv(u.uS, S4); gl.uniform3fv(u.uC, C3); gl.uniform1i(u.uN, nSrc); });
+    F.dye.swap();
   }
   for (const h of heats) if (st.sourcesOn) splat(F.temp, h.x, h.y, [h.rate * h.w * dt * (1 + 4 * st.kickPulse), 0, 0], h.r * h.r);
 
@@ -601,8 +642,7 @@ function step(dt, eff, L) {
 }
 function project(iters, walls, openRight) {
   pass(P.divergence, F.div, (u, tex) => { tex('uVel', F.vel.a); gl.uniform4fv(u.uWalls, walls); });
-  pass(P.clear, F.pres.b, (u, tex) => { tex('uSrc', F.pres.a); gl.uniform1f(u.uK, 0.8); });   // warm start
-  F.pres.swap();
+  // warm start from the full previous pressure (it was scaled by 0.8)
   // red-black SOR: red cells from black neighbours, then black from the new red (ω ≈ 1.85);
   // far faster than Jacobi at the same pass count (QA box: Jacobi left 10–42 %)
   for (let i = 0; i < iters; i++) for (const parity of [0, 1]) {
