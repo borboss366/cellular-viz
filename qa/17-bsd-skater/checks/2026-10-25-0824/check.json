@@ -1,0 +1,69 @@
+{
+ "out": {
+  "x3-25x": {
+   "hops": 22,
+   "types": {
+    "dbl": 6,
+    "add": 14,
+    "air": 2
+   },
+   "bigAirs": 2,
+   "fails": [],
+   "nFail": 0,
+   "maxDigits": 37123,
+   "beatsMoved": 40.5,
+   "fps": 6.6,
+   "worst": 66680.6,
+   "caught": 0,
+   "canvas": [
+    1920,
+    1080
+   ]
+  },
+  "x3+17": {
+   "hops": 41,
+   "types": {
+    "dbl": 9,
+    "add": 32
+   },
+   "bigAirs": 0,
+   "fails": [],
+   "nFail": 0,
+   "maxDigits": 32767,
+   "beatsMoved": 71.2,
+   "fps": 10.7,
+   "worst": 35181.9,
+   "caught": 0,
+   "canvas": [
+    1920,
+    1080
+   ]
+  },
+  "x3-2x": {
+   "hops": 22,
+   "types": {
+    "dbl": 5,
+    "add": 17
+   },
+   "bigAirs": 0,
+   "fails": [],
+   "nFail": 0,
+   "maxDigits": 19695,
+   "beatsMoved": 132.8,
+   "fps": 4.3,
+   "worst": 22632.5,
+   "caught": 0,
+   "canvas": [
+    1920,
+    1080
+   ]
+  }
+ },
+ "errors": [],
+ "pass": {
+  "groupLaw": true,
+  "alive": true,
+  "fps60": false,
+  "noErrors": true
+ }
+}

@@ -75,7 +75,9 @@ const res = await page.evaluate(async secs => {
   const g = pc.getContext('2d', { willReadFrequently: true });
   // the page's beat clock against real time: sampled in a rAF callback queued after the page's own
   let clock = [], on = true;
-  const tick = now => { if (window.__qa && __qa.bars != null) clock.push([now, __qa.bars]); if (on) requestAnimationFrame(tick); };
+  const bpbP = (typeof params !== 'undefined' && params.bpb) || 4;
+  // pages expose bars (11, 12) or beats (17)
+  const tick = now => { const q = window.__qa; const b = q ? (q.bars != null ? q.bars : (q.beats != null ? q.beats / bpbP : null)) : null; if (b != null) clock.push([now, b]); if (on) requestAnimationFrame(tick); };
   requestAnimationFrame(tick);
   let prev = null; const rows = []; const t0 = performance.now();
   await new Promise(done => {
