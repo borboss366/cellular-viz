@@ -1,0 +1,748 @@
+<!doctype html>
+<!--
+  13 · Flow Lab   (Millennium track #37, Navier–Stokes; spec: #37 comment 6391682810)
+
+  One module, two engines, recipes as JSON presets you can tweak, randomise (🎲), save and morph.
+
+  Engine A, stable fluids (Stam 1999; on the GPU as in GPU Gems ch. 38): the incompressible
+  Navier–Stokes equations ∂u/∂t + (u·∇)u = −∇p + ν∇²u + f, ∇·u = 0, on a grid (velocity in
+  cells per second). Each step: forces → semi-Lagrangian advection → vorticity confinement →
+  viscous diffusion (Jacobi, if ν > 0) → pressure projection (Jacobi on ∇²p = ∇·u, then
+  u −= ∇p) → dye and temperature advected by the projected velocity. Obstacles are solid
+  discs (no-slip, Neumann pressure). Written fresh for this page; the structure follows
+  PavelDoGreat's MIT WebGL-Fluid-Simulation.
+  Engine B, curl noise (Bridson 2007): u = curl ψ = (∂ψ/∂y, −∂ψ/∂x) of an fBm potential, so it
+  is divergence-free by construction. Standalone, or as a "wind" force inside A.
+
+  Recipes:
+    vortex   uniform inflow past a cylinder: a Kármán street. Locked to the music with the
+             Strouhal number, St = f·d/U ≈ 0.2: U = f·d/0.2 with f = BPM/120, so a vortex peels
+             off on every beat (each side every other beat).
+    kh       Kelvin–Helmholtz: two layers sliding opposite ways, a sine nudge on the kick rolls
+             the interface into billows.
+    plume    smoke with buoyancy (GPU Gems 38.4.2): a heat source, f = σ·T·ŷ; the kick adds heat.
+    ink      big dye and velocity splats on the downbeat, small ones on kicks, a slow curl wind.
+    rocks    a stream through five rocks, dye streaks from upstream.
+    curl     engine B alone: curl-noise currents.
+  Morph: numeric params and the palette blend over `morphBars`; forces fade by weight and
+  rocks shrink out / grow in. Laptop extra (3-D smoke volume) is not built yet.
+
+  window.__qa: divergenceRMS() (after projection, over fluid cells), dyeMass(), probe(x, y),
+  strouhal {St, f, U, d}, wake (probe log of the sideways velocity behind the cylinder with
+  ?probe=1), sheddingHz(), set(params), preset(name), sourcesOff(), massLog, events, errors.
+  Modules: window.__modules['flow-lab'].inputs (ISF-style).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>13 · Flow Lab</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 16 / 9;
+    margin: 0 auto; flex: none; background: #000; touch-action: none; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #9fb0c3; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(62vw, calc(100vh * 16 / 9)); margin: 0; position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Recipe</h3>
+  <div class="buttons" id="presets"></div>
+  <div class="buttons">
+    <button id="rand">🎲 Randomise</button>
+    <button id="save">Save</button>
+    <button id="morph">Morph → next</button>
+  </div>
+  <div class="buttons" id="saved"></div>
+  <div class="row"><label for="curl">vorticity</label><input id="curl" type="range" min="0" max="40" step="0.5"><output id="curlOut"></output></div>
+  <div class="row"><label for="dissipation">dye fade</label><input id="dissipation" type="range" min="0" max="2" step="0.01"><output id="dissipationOut"></output></div>
+  <div class="row"><label for="viscosity">viscosity</label><input id="viscosity" type="range" min="0" max="20" step="0.5"><output id="viscosityOut"></output></div>
+  <div class="row"><label for="pressureIters">pressure iters</label><input id="pressureIters" type="range" min="5" max="120" step="1"><output id="pressureItersOut"></output></div>
+  <div class="row"><label for="splatRadius">splat size</label><input id="splatRadius" type="range" min="0.05" max="1.5" step="0.01"><output id="splatRadiusOut"></output></div>
+  <div class="row"><label for="wind">curl wind</label><input id="wind" type="range" min="0" max="200" step="1"><output id="windOut"></output></div>
+  <div class="row"><label for="noiseScale">noise scale</label><input id="noiseScale" type="range" min="0.5" max="8" step="0.1"><output id="noiseScaleOut"></output></div>
+  <div class="row"><label for="morphBars">morph bars</label><input id="morphBars" type="range" min="1" max="32" step="1"><output id="morphBarsOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="buttons"><button id="copy" class="wide">Copy setup (JSON)</button></div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+const settings = { bpm: 120, bpb: 4, muted: false, res: 256, morphBars: 8, probe: false, conserve: true,
+                   kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+const ST = 0.2;   // Strouhal number of a cylinder wake (≈ 0.2 for Re ~ 300 … 2·10⁵)
+
+// ---------- recipes (JSON presets) ----------
+const BASE = { viscosity: 0, curl: 6, dissipation: 0.15, velDissipation: 0.02, pressureIters: 30, splatRadius: 0.35, noiseScale: 2.5, octaves: 3, wind: 0, seed: 1 };
+const PRESETS = {
+  vortex: { name: 'vortex', engine: 'fluid',
+    forces: [{ type: 'inflow', U: 'strouhal' }], obstacles: [{ x: 0.2, y: 0.5, r: 0.07 }],
+    sources: [{ x: 0.2, y: 0.5 + 0.075, r: 0.012, c: 0, rate: 3 }, { x: 0.2, y: 0.5 - 0.075, r: 0.012, c: 1, rate: 3 },
+              { x: 0.02, y: 0.3, r: 0.006, c: 2, rate: 1.2 }, { x: 0.02, y: 0.7, r: 0.006, c: 2, rate: 1.2 }],
+    params: { ...BASE, curl: 2, dissipation: 0.25 }, palette: ['#ff4f6d', '#3fc8ff', '#f4e9b8'],
+    music: { kick: 'pulse', snare: 'none', downbeat: 'none' } },
+  kh: { name: 'kh', engine: 'fluid',
+    forces: [{ type: 'bands', U: 90 }], obstacles: [],
+    sources: [{ band: 'top', c: 0, rate: 1.5 }, { band: 'bottom', c: 1, rate: 1.5 }],
+    params: { ...BASE, curl: 10, dissipation: 0.05 }, palette: ['#ffb14a', '#4a7dff', '#ffffff'],
+    music: { kick: 'nudge', snare: 'curl', downbeat: 'none' } },
+  plume: { name: 'plume', engine: 'fluid',
+    forces: [{ type: 'buoyancy', sigma: 120, cool: 0.5, heat: { x: 0.5, y: 0.06, r: 0.03, rate: 2.5 } }, { type: 'wind', strength: 25 }], obstacles: [],
+    sources: [{ x: 0.5, y: 0.06, r: 0.025, c: 0, rate: 2 }],
+    params: { ...BASE, curl: 14, dissipation: 0.35, wind: 25 }, palette: ['#ff7a2f', '#ffd36b', '#8a5cff'],
+    music: { kick: 'heat', snare: 'curl', downbeat: 'none' } },
+  ink: { name: 'ink', engine: 'fluid',
+    forces: [{ type: 'wind', strength: 40 }], obstacles: [], sources: [],
+    params: { ...BASE, curl: 18, dissipation: 0.12, splatRadius: 0.5, wind: 40 }, palette: ['#ff3d9a', '#29e0c0', '#ffd23f', '#7b5cff'],
+    music: { kick: 'splat', snare: 'splat', downbeat: 'bigsplat' } },
+  rocks: { name: 'rocks', engine: 'fluid',
+    forces: [{ type: 'inflow', U: 110 }, { type: 'wind', strength: 15 }],
+    obstacles: [{ x: 0.3, y: 0.3, r: 0.06 }, { x: 0.38, y: 0.68, r: 0.08 }, { x: 0.56, y: 0.45, r: 0.05 }, { x: 0.7, y: 0.22, r: 0.07 }, { x: 0.78, y: 0.7, r: 0.055 }],
+    sources: [0.15, 0.3, 0.45, 0.6, 0.75, 0.9].map((y, i) => ({ x: 0.02, y, r: 0.008, c: i % 3, rate: 1.5 })),
+    params: { ...BASE, curl: 4, dissipation: 0.2, wind: 15 }, palette: ['#7cf29c', '#46b3ff', '#f2f2f2'],
+    music: { kick: 'pulse', snare: 'splat', downbeat: 'none' } },
+  curl: { name: 'curl', engine: 'curl',
+    forces: [], obstacles: [], sources: [{ x: 0.3, y: 0.5, r: 0.03, c: 0, rate: 1.2 }, { x: 0.7, y: 0.5, r: 0.03, c: 1, rate: 1.2 }, { x: 0.5, y: 0.25, r: 0.03, c: 2, rate: 1.2 }],
+    params: { ...BASE, curl: 0, dissipation: 0.3, noiseScale: 2.2, octaves: 4, wind: 90 }, palette: ['#ff6b6b', '#4ecdc4', '#ffe66d'],
+    music: { kick: 'speed', snare: 'none', downbeat: 'none' } },
+};
+const clone = o => JSON.parse(JSON.stringify(o));
+const hex = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
+const toHex = c => '#' + c.map(v => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')).join('');
+// safe ranges for 🎲 and for sliders (ISF-style inputs)
+const RANGES = { curl: [0, 40], dissipation: [0, 2], viscosity: [0, 20], pressureIters: [5, 120], splatRadius: [0.05, 1.5], noiseScale: [0.5, 8], wind: [0, 200], velDissipation: [0, 0.5], octaves: [1, 5] };
+const RAND = { curl: [1, 25], dissipation: [0.05, 0.6], viscosity: [0, 3], splatRadius: [0.15, 0.8], noiseScale: [1, 5], wind: [0, 80] };
+window.__modules = { 'flow-lab': { inputs: [
+  { name: 'preset', type: 'long', values: Object.keys(PRESETS), default: 'vortex' },
+  ...Object.entries(RANGES).map(([name, [min, max]]) => ({ name, type: 'float', default: BASE[name], min, max })),
+  { name: 'morphBars', type: 'long', default: 8, min: 1, max: 32 },
+] } };
+
+// ---------- metronome (as 11/19) ----------
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [],
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume(); this.master.gain.value = settings.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+    this.playing = true; this.timer = setInterval(() => this.schedule(), 25); this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  schedule() {
+    while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / settings.bpm / 4; this.step++; }
+    const old = this.ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, time) {
+    const inBar = step % (settings.bpb * 4); this.steps.push({ time, step });
+    for (const lane of LANES) { if (settings[lane][inBar % 16] !== 'x') continue; const vel = inBar === 0 ? 1 : 0.7; this.hits.push({ lane, time, vel, step }); this.click(lane, time, vel); }
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain(); g.connect(this.master);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') { src = ctx.createOscillator(); src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08); src.connect(g); }
+    else { src = ctx.createBufferSource(); src.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = lane === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = lane === 'snare' ? 1800 : 8000; src.connect(f); f.connect(g); }
+    const end = t + TAU[lane] * 4; g.gain.exponentialRampToValueAtTime(0.001, end); src.start(t); src.stop(end + 0.01);
+  },
+  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
+  read() {
+    const out = { kick: 0, snare: 0, hat: 0, beats: -1 };
+    if (!this.ctx) return out;
+    const now = this.ctx.currentTime - this.latency();
+    for (const h of this.hits) { const dt = now - h.time; if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane])); }
+    let last = null; for (const s of this.steps) if (s.time <= now) last = s;
+    if (last) out.beats = (last.step + Math.min(1, (now - last.time) / (60 / settings.bpm / 4))) / 4;
+    return out;
+  },
+};
+
+// ---------- WebGL ----------
+const canvas = document.getElementById('c');
+const hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false });
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+if (!gl) fail('WebGL2 is not available in this browser.');
+if (!gl.getExtension('EXT_color_buffer_float')) fail('This GPU cannot render to float textures.');
+gl.getExtension('OES_texture_float_linear');
+function compile(type, src) { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(sh)); return sh; }
+const FULL_VS = `#version 300 es
+out vec2 vUv;
+void main() { vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = p; gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+const vsShader = compile(gl.VERTEX_SHADER, FULL_VS);
+function program(fs) {
+  const p = gl.createProgram(); gl.attachShader(p, vsShader); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name.replace('[0]', ''); u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u };
+}
+// shared: grid spacing, aspect, solid discs (x, y, r, weight) in uv with r in units of height
+const HEAD = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 o;
+uniform vec2 uTexel;
+uniform float uAspect;
+uniform vec4 uObs[10];
+uniform int uObsN;
+float solid(vec2 uv) {
+  for (int i = 0; i < 10; i++) {
+    if (i >= uObsN) break;
+    vec2 d = (uv - uObs[i].xy) * vec2(uAspect, 1.0);
+    if (uObs[i].w > 0.02 && length(d) < uObs[i].z * uObs[i].w) return 1.0;
+  }
+  return 0.0;
+}
+`;
+const NOISE = `
+vec2 hash2(vec2 p) { p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3))); return -1.0 + 2.0 * fract(sin(p) * 43758.5453123); }
+float gnoise(vec2 p) {   // gradient noise (iq)
+  vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(dot(hash2(i), f), dot(hash2(i + vec2(1, 0)), f - vec2(1, 0)), u.x),
+             mix(dot(hash2(i + vec2(0, 1)), f - vec2(0, 1)), dot(hash2(i + vec2(1, 1)), f - vec2(1, 1)), u.x), u.y);
+}
+uniform float uOct, uTime, uSeed;
+float psi(vec2 p) {
+  float s = 0.0, a = 1.0;
+  for (int k = 0; k < 5; k++) { if (float(k) >= uOct) break; s += a * gnoise(p + vec2(uSeed * 7.1 + 0.11 * uTime * float(k + 1), -0.07 * uTime + uSeed * 3.3)); p *= 2.03; a *= 0.5; }
+  return s;
+}
+vec2 curlNoise(vec2 p) {   // u = (dψ/dy, −dψ/dx): divergence-free
+  float e = 0.01;
+  return vec2(psi(p + vec2(0, e)) - psi(p - vec2(0, e)), -(psi(p + vec2(e, 0)) - psi(p - vec2(e, 0)))) / (2.0 * e);
+}
+`;
+const P = {
+  splat: program(HEAD + `
+uniform sampler2D uTarget; uniform vec2 uPoint; uniform vec3 uValue; uniform float uRadius;
+void main() { vec2 p = vUv - uPoint; p.x *= uAspect; o = vec4(texture(uTarget, vUv).xyz + exp(-dot(p, p) / uRadius) * uValue, 1.0); }`),
+  advect: program(HEAD + `
+uniform sampler2D uVel, uSrc; uniform float uDt, uDiss; uniform int uIsVel;
+void main() {
+  vec2 c = vUv - uDt * texture(uVel, vUv).xy * uTexel;
+  o = texture(uSrc, c) / (1.0 + uDiss * uDt);
+  if (uIsVel == 1 && solid(vUv) > 0.5) o = vec4(0.0);
+}`),
+  forces: program(HEAD + NOISE + `
+uniform sampler2D uVel, uTemp; uniform float uDt, uWind, uNoiseScale, uBuoy, uKH, uKHU, uInflow, uU, uCurlEng, uCurlSpeed;
+void main() {
+  vec2 v = texture(uVel, vUv).xy, p = vUv * vec2(uAspect, 1.0) * uNoiseScale;
+  vec2 cn = curlNoise(p);
+  v += uDt * uWind * cn;
+  v = mix(v, cn * uCurlSpeed, uCurlEng);                       // engine B: the velocity is the curl field
+  v.y += uDt * uBuoy * texture(uTemp, vUv).x;                  // buoyancy
+  if (uKH > 0.0) {                                             // keep the two layers sliding
+    float target = vUv.y > 0.5 ? uKHU : -uKHU, band = smoothstep(0.32, 0.46, abs(vUv.y - 0.5));
+    v.x = mix(v.x, target, band * uKH * clamp(uDt * 6.0, 0.0, 1.0));
+  }
+  if (uInflow > 0.0 && vUv.x < 3.0 * uTexel.x) v = mix(v, vec2(uU, 0.0), uInflow);
+  if (solid(vUv) > 0.5) v = vec2(0.0);
+  o = vec4(v, 0.0, 1.0);
+}`),
+  curl: program(HEAD + `
+uniform sampler2D uVel;
+void main() {
+  float L = texture(uVel, vUv - vec2(uTexel.x, 0)).y, R = texture(uVel, vUv + vec2(uTexel.x, 0)).y;
+  float B = texture(uVel, vUv - vec2(0, uTexel.y)).x, T = texture(uVel, vUv + vec2(0, uTexel.y)).x;
+  o = vec4(0.5 * (R - L - T + B), 0.0, 0.0, 1.0);
+}`),
+  vort: program(HEAD + `
+uniform sampler2D uVel, uCurl; uniform float uDt, uCurlK;
+void main() {
+  float L = texture(uCurl, vUv - vec2(uTexel.x, 0)).x, R = texture(uCurl, vUv + vec2(uTexel.x, 0)).x;
+  float B = texture(uCurl, vUv - vec2(0, uTexel.y)).x, T = texture(uCurl, vUv + vec2(0, uTexel.y)).x, C = texture(uCurl, vUv).x;
+  vec2 f = 0.5 * vec2(abs(T) - abs(B), abs(R) - abs(L));
+  f /= length(f) + 1e-4; f *= uCurlK * C; f.y *= -1.0;
+  vec2 v = texture(uVel, vUv).xy + f * uDt;
+  if (solid(vUv) > 0.5) v = vec2(0.0);
+  o = vec4(v, 0.0, 1.0);
+}`),
+  diffuse: program(HEAD + `
+uniform sampler2D uX, uB; uniform float uAlpha;   // (I − ν dt ∇²) x = b, Jacobi
+void main() {
+  vec2 L = texture(uX, vUv - vec2(uTexel.x, 0)).xy, R = texture(uX, vUv + vec2(uTexel.x, 0)).xy;
+  vec2 B = texture(uX, vUv - vec2(0, uTexel.y)).xy, T = texture(uX, vUv + vec2(0, uTexel.y)).xy;
+  vec2 v = (texture(uB, vUv).xy + uAlpha * (L + R + B + T)) / (1.0 + 4.0 * uAlpha);
+  if (solid(vUv) > 0.5) v = vec2(0.0);
+  o = vec4(v, 0.0, 1.0);
+}`),
+  divergence: program(HEAD + `
+uniform sampler2D uVel; uniform vec4 uWalls;   // left, right, bottom, top: 1 = wall (reflect), 0 = open
+vec2 V(vec2 uv) { return solid(uv) > 0.5 ? vec2(0.0) : texture(uVel, uv).xy; }
+void main() {
+  vec2 C = V(vUv);
+  float L = V(vUv - vec2(uTexel.x, 0)).x, R = V(vUv + vec2(uTexel.x, 0)).x;
+  float B = V(vUv - vec2(0, uTexel.y)).y, T = V(vUv + vec2(0, uTexel.y)).y;
+  if (vUv.x - uTexel.x < 0.0) L = uWalls.x > 0.5 ? -C.x : C.x;
+  if (vUv.x + uTexel.x > 1.0) R = uWalls.y > 0.5 ? -C.x : C.x;
+  if (vUv.y - uTexel.y < 0.0) B = uWalls.z > 0.5 ? -C.y : C.y;
+  if (vUv.y + uTexel.y > 1.0) T = uWalls.w > 0.5 ? -C.y : C.y;
+  o = vec4(solid(vUv) > 0.5 ? 0.0 : 0.5 * (R - L + T - B), 0.0, 0.0, 1.0);
+}`),
+  pressure: program(HEAD + `
+uniform sampler2D uP, uDiv; uniform float uOpenRight;
+float Pn(vec2 uv, float pc) { return solid(uv) > 0.5 ? pc : texture(uP, uv).x; }
+void main() {
+  float pc = texture(uP, vUv).x;
+  float L = Pn(vUv - vec2(uTexel.x, 0), pc), R = Pn(vUv + vec2(uTexel.x, 0), pc);
+  float B = Pn(vUv - vec2(0, uTexel.y), pc), T = Pn(vUv + vec2(0, uTexel.y), pc);
+  if (uOpenRight > 0.5 && vUv.x + uTexel.x > 1.0) R = 0.0;     // outflow: p = 0
+  o = vec4(0.25 * (L + R + B + T - texture(uDiv, vUv).x), 0.0, 0.0, 1.0);
+}`),
+  gradient: program(HEAD + `
+uniform sampler2D uP, uVel; uniform float uOpenRight;
+float Pn(vec2 uv, float pc) { return solid(uv) > 0.5 ? pc : texture(uP, uv).x; }
+void main() {
+  float pc = texture(uP, vUv).x;
+  float L = Pn(vUv - vec2(uTexel.x, 0), pc), R = Pn(vUv + vec2(uTexel.x, 0), pc);
+  float B = Pn(vUv - vec2(0, uTexel.y), pc), T = Pn(vUv + vec2(0, uTexel.y), pc);
+  if (uOpenRight > 0.5 && vUv.x + uTexel.x > 1.0) R = 0.0;
+  vec2 v = texture(uVel, vUv).xy - 0.5 * vec2(R - L, T - B);
+  if (solid(vUv) > 0.5) v = vec2(0.0);
+  o = vec4(v, 0.0, 1.0);
+}`),
+  display: program(HEAD + `
+uniform sampler2D uDye; uniform float uKick, uHat;
+void main() {
+  vec3 c = texture(uDye, vUv).rgb;
+  vec2 e = vec2(1.0) / vec2(textureSize(uDye, 0));
+  float gx = dot(texture(uDye, vUv + vec2(e.x, 0)).rgb - texture(uDye, vUv - vec2(e.x, 0)).rgb, vec3(0.33));
+  float gy = dot(texture(uDye, vUv + vec2(0, e.y)).rgb - texture(uDye, vUv - vec2(0, e.y)).rgb, vec3(0.33));
+  c += vec3(0.25) * clamp(gx - gy, 0.0, 1.0);                     // a soft sheen on the folds
+  c = vec3(1.0) - exp(-c * (1.4 + 0.4 * uKick));
+  if (solid(vUv) > 0.5) {
+    float rim = 0.0;
+    for (int i = 0; i < 10; i++) { if (i >= uObsN) break; vec2 d = (vUv - uObs[i].xy) * vec2(uAspect, 1.0); float r = uObs[i].z * uObs[i].w; rim = max(rim, smoothstep(r - 0.006, r, length(d))); }
+    c = vec3(0.05, 0.06, 0.08) + vec3(0.5, 0.7, 1.0) * rim * (0.4 + 0.6 * uKick);
+  }
+  float vig = smoothstep(1.2, 0.35, length(vUv - 0.5) * 1.4);
+  o = vec4(c * (0.75 + 0.25 * vig) + uHat * 0.01, 1.0);
+}`),
+  clear: program(HEAD + `
+uniform sampler2D uSrc; uniform float uK;
+void main() { o = texture(uSrc, vUv) * uK; }`),
+};
+const emptyVao = gl.createVertexArray();
+
+function target(w, h) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  gl.viewport(0, 0, w, h); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  return { t, fbo, w, h };
+}
+const pair = (w, h) => { const p = { a: target(w, h), b: target(w, h), w, h }; p.swap = () => { [p.a, p.b] = [p.b, p.a]; }; return p; };
+const F = { simW: 0, simH: 0, dyeW: 0, dyeH: 0 };
+function allocate() {
+  const asp = canvas.width / Math.max(1, canvas.height);
+  const sh = Math.round(settings.res), sw = Math.max(16, Math.round(sh * asp));
+  const dh = Math.min(1080, Math.max(256, canvas.height)), dw = Math.max(16, Math.round(dh * asp));
+  if (F.simW === sw && F.simH === sh && F.dyeW === dw && F.dyeH === dh) return;
+  for (const k of ['vel', 'dye', 'temp', 'pres']) if (F[k]) for (const t of [F[k].a, F[k].b]) { gl.deleteTexture(t.t); gl.deleteFramebuffer(t.fbo); }
+  for (const k of ['div', 'curlT']) if (F[k]) { gl.deleteTexture(F[k].t); gl.deleteFramebuffer(F[k].fbo); }
+  Object.assign(F, { simW: sw, simH: sh, dyeW: dw, dyeH: dh, vel: pair(sw, sh), temp: pair(sw, sh), pres: pair(sw, sh), dye: pair(dw, dh), div: target(sw, sh), curlT: target(sw, sh) });
+  st.massRef = null;
+}
+
+// one full-screen pass into `dst` (a target) with `prog`; set() fills the uniforms
+let obsU = new Float32Array(40), obsN = 0;
+function pass(prog, dst, set) {
+  gl.useProgram(prog.p);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, dst ? dst.fbo : null);
+  gl.viewport(0, 0, dst ? dst.w : canvas.width, dst ? dst.h : canvas.height);
+  const u = prog.u;
+  if (u.uTexel) gl.uniform2f(u.uTexel, 1 / F.simW, 1 / F.simH);
+  if (u.uAspect) gl.uniform1f(u.uAspect, F.simW / F.simH);
+  if (u.uObs) { gl.uniform4fv(u.uObs, obsU); gl.uniform1i(u.uObsN, obsN); }
+  let unit = 0;
+  const tex = (name, t) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t.t); gl.uniform1i(u[name], unit); unit++; };
+  set(u, tex);
+  gl.bindVertexArray(emptyVao);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+function splat(field, x, y, value, radius) {
+  pass(P.splat, field.b, (u, tex) => { tex('uTarget', field.a); gl.uniform2f(u.uPoint, x, y); gl.uniform3fv(u.uValue, value); gl.uniform1f(u.uRadius, radius); });
+  field.swap();
+}
+
+// ---------- state: the current recipe, an optional morph, music hooks ----------
+const st = { cur: clone(PRESETS.vortex), next: null, morphStart: 0, saved: [], simTime: 0, kickPulse: 0, curlBurst: 0, speedPulse: 0,
+             wake: [], massRef: null, massLog: [], sourcesOn: true, lastMass: 0, steps: 0, idleBeat: -1, nudgeWake: true };
+try { st.saved = JSON.parse(localStorage.getItem('flowlab.saved') || '[]'); } catch { st.saved = []; }
+
+const lerp = (a, b, t) => a + (b - a) * t;
+function effective(bars) {   // the blended recipe for this frame
+  const A = st.cur, B = st.next;
+  let m = 0;
+  if (B) { m = Math.min(1, Math.max(0, (bars - st.morphStart) / settings.morphBars)); if (m >= 1) { st.cur = B; st.next = null; return effective(bars); } }
+  const layers = B ? [[A, 1 - m], [B, m]] : [[A, 1]];
+  const params = {};
+  for (const k of Object.keys(BASE)) params[k] = B ? lerp(A.params[k] ?? BASE[k], B.params[k] ?? BASE[k], m) : (A.params[k] ?? BASE[k]);
+  const palA = A.palette.map(hex), palB = B ? B.palette.map(hex) : palA;
+  const palette = palA.map((c, i) => B ? c.map((v, j) => lerp(v, palB[i % palB.length][j], m)) : c);
+  return { layers, params, palette, m };
+}
+function strouhal(eff) {   // U from St = f d / U, f = BPM/120: a vortex every beat
+  const cyl = st.cur.obstacles[0] || { r: 0.07 }, d = 2 * cyl.r * F.simH, f = settings.bpm / 120;
+  return { St: ST, f, d, U: f * d / ST };
+}
+
+// ---------- one simulation step ----------
+function step(dt, eff, L) {
+  const { params, layers } = eff;
+  // gather forces and obstacles from every layer (weight w)
+  let inflowU = 0, inflowW = 0, kh = 0, khU = 0, buoy = 0, wind = params.wind, curlEng = 0, openRight = 0;
+  const obs = [], heats = [];
+  for (const [R, w] of layers) {
+    if (R.engine === 'curl') curlEng += w;
+    for (const f of R.forces) {
+      if (f.type === 'inflow') { const U = f.U === 'strouhal' ? strouhal().U : f.U; inflowU += U * w; inflowW += w; }
+      if (f.type === 'bands') { kh += w; khU += f.U * w; }
+      if (f.type === 'buoyancy') { buoy += f.sigma * w; heats.push({ ...f.heat, w, cool: f.cool }); }
+    }
+    for (const ob of R.obstacles) obs.push([ob.x, ob.y, ob.r, w]);
+  }
+  if (inflowW > 0) { inflowU /= inflowW; openRight = 1; }
+  if (kh > 0) khU /= kh;
+  obsN = Math.min(10, obs.length); obsU = new Float32Array(40);
+  obs.slice(0, 10).forEach((o, i) => obsU.set(o, i * 4));
+  const walls = inflowW > 0.5 ? [0, 0, 1, 1] : [1, 1, 1, 1];
+  const time = st.simTime;
+
+  // sources (dye and heat), stronger on the kick when the recipe says so
+  const pulse = 1 + 2.5 * st.kickPulse;
+  if (st.sourcesOn) for (const [R, w] of layers) for (const s of R.sources) {
+    const c = eff.palette[s.c % eff.palette.length], amt = s.rate * w * dt * pulse;
+    if (s.band) {   // a whole band of colour (Kelvin–Helmholtz layers)
+      const y = s.band === 'top' ? 0.85 : 0.15;
+      for (let k = 0; k < 6; k++) splat(F.dye, (k + 0.5) / 6, y, c.map(v => v * amt * 0.6), 0.012);
+    } else splat(F.dye, s.x, s.y, c.map(v => v * amt), s.r * s.r);
+  }
+  for (const h of heats) if (st.sourcesOn) splat(F.temp, h.x, h.y, [h.rate * h.w * dt * (1 + 4 * st.kickPulse), 0, 0], h.r * h.r);
+
+  // forces → advect velocity → vorticity confinement → diffusion → projection
+  pass(P.forces, F.vel.b, (u, tex) => {
+    tex('uVel', F.vel.a); tex('uTemp', F.temp.a);
+    gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uWind, wind * (1 + st.speedPulse)); gl.uniform1f(u.uNoiseScale, params.noiseScale);
+    gl.uniform1f(u.uOct, Math.round(params.octaves)); gl.uniform1f(u.uTime, time); gl.uniform1f(u.uSeed, params.seed);
+    gl.uniform1f(u.uBuoy, buoy); gl.uniform1f(u.uKH, kh); gl.uniform1f(u.uKHU, khU);
+    gl.uniform1f(u.uInflow, Math.min(1, inflowW)); gl.uniform1f(u.uU, inflowU);
+    gl.uniform1f(u.uCurlEng, Math.min(1, curlEng)); gl.uniform1f(u.uCurlSpeed, wind * (1 + 1.5 * st.speedPulse));
+  });
+  F.vel.swap();
+  pass(P.advect, F.vel.b, (u, tex) => { tex('uVel', F.vel.a); tex('uSrc', F.vel.a); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uDiss, params.velDissipation); gl.uniform1i(u.uIsVel, 1); });
+  F.vel.swap();
+  const curlK = params.curl * (1 + 2 * st.curlBurst);
+  if (curlK > 0) {
+    pass(P.curl, F.curlT, (u, tex) => tex('uVel', F.vel.a));
+    pass(P.vort, F.vel.b, (u, tex) => { tex('uVel', F.vel.a); tex('uCurl', F.curlT); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uCurlK, curlK); });
+    F.vel.swap();
+  }
+  if (params.viscosity > 0) {
+    const alpha = params.viscosity * dt;   // ν in cells²/s
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, F.vel.a.fbo); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, F.div.fbo);
+    gl.blitFramebuffer(0, 0, F.simW, F.simH, 0, 0, F.simW, F.simH, gl.COLOR_BUFFER_BIT, gl.NEAREST);   // b = u before diffusion
+    for (let i = 0; i < 12; i++) { pass(P.diffuse, F.vel.b, (u, tex) => { tex('uX', F.vel.a); tex('uB', F.div); gl.uniform1f(u.uAlpha, alpha); }); F.vel.swap(); }
+  }
+  project(Math.round(params.pressureIters), walls, openRight);
+  st.walls = walls; st.openRight = openRight;
+
+  // dye and temperature ride on the projected velocity
+  pass(P.advect, F.dye.b, (u, tex) => { tex('uVel', F.vel.a); tex('uSrc', F.dye.a); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uDiss, params.dissipation); gl.uniform1i(u.uIsVel, 0); });
+  F.dye.swap();
+  const cool = heats.length ? heats.reduce((s, h) => s + h.cool * h.w, 0) : 1;
+  pass(P.advect, F.temp.b, (u, tex) => { tex('uVel', F.vel.a); tex('uSrc', F.temp.a); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uDiss, cool); gl.uniform1i(u.uIsVel, 0); });
+  F.temp.swap();
+  st.simTime += dt; st.steps++;
+}
+function project(iters, walls, openRight) {
+  pass(P.divergence, F.div, (u, tex) => { tex('uVel', F.vel.a); gl.uniform4fv(u.uWalls, walls); });
+  pass(P.clear, F.pres.b, (u, tex) => { tex('uSrc', F.pres.a); gl.uniform1f(u.uK, 0.8); });   // warm start
+  F.pres.swap();
+  for (let i = 0; i < iters; i++) { pass(P.pressure, F.pres.b, (u, tex) => { tex('uP', F.pres.a); tex('uDiv', F.div); gl.uniform1f(u.uOpenRight, openRight); }); F.pres.swap(); }
+  pass(P.gradient, F.vel.b, (u, tex) => { tex('uP', F.pres.a); tex('uVel', F.vel.a); gl.uniform1f(u.uOpenRight, openRight); });
+  F.vel.swap();
+}
+
+// ---------- music → flow ----------
+function onHit(h, eff) {
+  const R = st.cur, pal = eff.palette, rr = eff.params.splatRadius * 0.002;
+  const act = h.lane === 'kick' ? (h.vel >= 1 && R.music.downbeat !== 'none' ? R.music.downbeat : R.music.kick) : h.lane === 'snare' ? R.music.snare : 'none';
+  const rnd = Math.random;
+  if (act === 'pulse') st.kickPulse = 1;
+  if (act === 'heat') st.kickPulse = 1;
+  if (act === 'speed') st.speedPulse = 1;
+  if (act === 'curl') st.curlBurst = 1;
+  if (act === 'nudge') {   // a sine row of pushes along the interface
+    const k = 3 + Math.floor(rnd() * 4), A = 60 * h.vel;
+    for (let i = 0; i < 8; i++) { const x = (i + 0.5) / 8; splat(F.vel, x, 0.5, [0, A * Math.sin(2 * Math.PI * k * x + rnd()), 0], 0.0015); }
+  }
+  if (act === 'splat' || act === 'bigsplat') {
+    const big = act === 'bigsplat', n = big ? 3 : 1;
+    for (let i = 0; i < n; i++) {
+      const x = 0.15 + 0.7 * rnd(), y = 0.15 + 0.7 * rnd(), a = 2 * Math.PI * rnd(), sp = (big ? 900 : 450) * h.vel;
+      splat(F.vel, x, y, [Math.cos(a) * sp, Math.sin(a) * sp, 0], rr * (big ? 2 : 1));
+      const c = pal[Math.floor(rnd() * pal.length)];
+      splat(F.dye, x, y, c.map(v => v * (big ? 2.2 : 1.2)), rr * (big ? 2.5 : 1.2));
+    }
+  }
+}
+
+// ---------- QA read-backs ----------
+function readTarget(t) {
+  const out = new Float32Array(t.w * t.h * 4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
+  gl.readPixels(0, 0, t.w, t.h, gl.RGBA, gl.FLOAT, out);
+  return out;
+}
+function solidAt(x, y) {   // uv
+  for (let i = 0; i < obsN; i++) { const [ox, oy, r, w] = obsU.slice(i * 4, i * 4 + 4); if (w > 0.02 && Math.hypot((x - ox) * F.simW / F.simH, y - oy) < r * w) return true; }
+  return false;
+}
+function divergenceRMS() {
+  pass(P.divergence, F.div, (u, tex) => { tex('uVel', F.vel.a); gl.uniform4fv(u.uWalls, st.walls || [1, 1, 1, 1]); });
+  const d = readTarget(F.div), v = readTarget(F.vel.a);
+  let s2 = 0, n = 0, sp = 0;
+  for (let j = 1; j < F.simH - 1; j++) for (let i = 1; i < F.simW - 1; i++) {
+    const x = (i + 0.5) / F.simW, y = (j + 0.5) / F.simH;
+    if (solidAt(x, y) || solidAt(x + 1.5 / F.simW, y) || solidAt(x - 1.5 / F.simW, y) || solidAt(x, y + 1.5 / F.simH) || solidAt(x, y - 1.5 / F.simH)) continue;
+    const k = (j * F.simW + i) * 4; s2 += d[k] * d[k]; sp += Math.hypot(v[k], v[k + 1]); n++;
+  }
+  const rms = Math.sqrt(s2 / Math.max(1, n)), mean = sp / Math.max(1, n);
+  return { rms, meanSpeed: mean, rel: rms / Math.max(1e-9, mean), cells: n, iters: Math.round(effective(curBars).params.pressureIters) };
+}
+function dyeMass() { const d = readTarget(F.dye.a); let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]; return s / (F.dyeW * F.dyeH); }
+function probe(x, y) {
+  const px = new Float32Array(4), i = Math.min(F.simW - 1, Math.floor(x * F.simW)), j = Math.min(F.simH - 1, Math.floor(y * F.simH));
+  gl.bindFramebuffer(gl.FRAMEBUFFER, F.vel.a.fbo); gl.readPixels(i, j, 1, 1, gl.RGBA, gl.FLOAT, px);
+  return { u: px[0], v: px[1] };
+}
+function sheddingHz() {   // zero crossings of the wake's sideways velocity over the last 10 s
+  const w = st.wake.filter(p => p.t > st.simTime - 10);
+  if (w.length < 20) return null;
+  const mean = w.reduce((s, p) => s + p.v, 0) / w.length;
+  let ups = []; for (let i = 1; i < w.length; i++) if (w[i - 1].v < mean && w[i].v >= mean) ups.push(w[i].t);
+  return ups.length > 2 ? (ups.length - 1) / (ups[ups.length - 1] - ups[0]) : null;
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const SLIDERS = { curl: 1, dissipation: 2, viscosity: 1, pressureIters: 0, splatRadius: 2, wind: 0, noiseScale: 1 };
+function applyPreset(R, morph) {
+  if (morph) { st.next = clone(R); st.morphStart = curBars; }
+  else { st.cur = clone(R); st.next = null; st.wake = []; st.massRef = null; st.nudgeWake = true; }
+  sync();
+}
+function presetButtons() {
+  $('presets').innerHTML = '';
+  for (const key of Object.keys(PRESETS)) {
+    const b = document.createElement('button'); b.textContent = key; b.dataset.key = key;
+    b.onclick = () => applyPreset(PRESETS[key], false); $('presets').appendChild(b);
+  }
+  $('saved').innerHTML = '';
+  st.saved.forEach((R, i) => { const b = document.createElement('button'); b.textContent = `★ ${R.name}`; b.onclick = () => applyPreset(R, false); $('saved').appendChild(b); });
+}
+$('play').onclick = () => {
+  if (metronome.playing) metronome.stop(); else metronome.start();
+  clockStart = performance.now();
+  $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', metronome.playing);
+};
+$('mute').onclick = () => { settings.muted = !settings.muted; metronome.setMuted(settings.muted); sync(); };
+$('full').onclick = () => { const w = $('wrap'); if (document.fullscreenElement) document.exitFullscreen(); else (w.requestFullscreen || w.webkitRequestFullscreen).call(w); };
+$('rand').onclick = () => {   // 🎲 within safe ranges; keeps the recipe's forces, jitters its rocks
+  const R = clone(st.next || st.cur), r = (a, b) => a + (b - a) * Math.random();
+  for (const [k, [a, b]] of Object.entries(RAND)) R.params[k] = +r(a, b).toFixed(2);
+  R.params.seed = Math.floor(r(1, 999));
+  R.palette = R.palette.map(() => { const h = Math.random(), s = 0.6 + 0.4 * Math.random(); return toHex([0, 1, 2].map(k => { const x = Math.abs(((h * 6 + [0, 4, 2][k]) % 6) - 3) - 1; return 1 - s + s * Math.max(0, Math.min(1, x)); })); });
+  R.obstacles = R.obstacles.map(o => ({ x: +(o.x + r(-0.05, 0.05)).toFixed(3), y: +(o.y + r(-0.08, 0.08)).toFixed(3), r: +(o.r * r(0.7, 1.3)).toFixed(3) }));
+  R.name = `${(st.cur.name || 'flow').replace(/ 🎲.*/, '')} 🎲${R.params.seed}`;
+  applyPreset(R, true);
+};
+$('save').onclick = () => {
+  const R = clone(st.next || st.cur); R.name = R.name || 'saved';
+  st.saved.push(R); if (st.saved.length > 12) st.saved.shift();
+  try { localStorage.setItem('flowlab.saved', JSON.stringify(st.saved)); } catch {}
+  presetButtons();
+};
+$('morph').onclick = () => {
+  const keys = Object.keys(PRESETS), i = keys.indexOf(st.cur.name);
+  applyPreset(PRESETS[keys[(i + 1 + keys.length) % keys.length]], true);
+};
+for (const [name, dec] of Object.entries(SLIDERS)) $(name).addEventListener('input', e => {
+  const v = parseFloat(e.target.value); (st.next || st.cur).params[name] = v; st.cur.params[name] = v; $(name + 'Out').textContent = v.toFixed(dec);
+});
+for (const name of ['morphBars', 'bpm']) $(name).addEventListener('input', e => { settings[name] = parseFloat(e.target.value); $(name + 'Out').textContent = settings[name]; });
+function sync() {
+  const p = (st.next || st.cur).params;
+  for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = p[name] ?? BASE[name]; $(name + 'Out').textContent = Number(p[name] ?? BASE[name]).toFixed(dec); }
+  for (const name of ['morphBars', 'bpm']) { $(name).value = settings[name]; $(name + 'Out').textContent = settings[name]; }
+  $('mute').classList.toggle('on', settings.muted);
+  for (const b of $('presets').children) b.classList.toggle('on', b.dataset.key === st.cur.name);
+}
+$('copy').onclick = async e => {
+  const text = JSON.stringify(st.next || st.cur);
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓'; setTimeout(() => { e.target.textContent = 'Copy setup (JSON)'; }, 1500);
+};
+// drag to stir: velocity and dye along the stroke
+let drag = null;
+$('wrap').addEventListener('pointerdown', e => { drag = { x: e.offsetX, y: e.offsetY }; $('wrap').setPointerCapture(e.pointerId); });
+$('wrap').addEventListener('pointerup', () => { drag = null; });
+$('wrap').addEventListener('pointermove', e => {
+  if (!drag || !F.simW) return;
+  const w = $('wrap').clientWidth, h = $('wrap').clientHeight, dx = e.offsetX - drag.x, dy = e.offsetY - drag.y;
+  const x = e.offsetX / w, y = 1 - e.offsetY / h, eff = effective(curBars);
+  splat(F.vel, x, y, [dx / w * F.simW * 40, -dy / h * F.simH * 40, 0], eff.params.splatRadius * 0.001);
+  const c = eff.palette[Math.floor(performance.now() / 700) % eff.palette.length];
+  splat(F.dye, x, y, c.map(v => v * 0.8), eff.params.splatRadius * 0.0012);
+  drag = { x: e.offsetX, y: e.offsetY };
+});
+
+// ---------- main loop ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(3840, Math.round(canvas.clientWidth * dpr)), h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  allocate();
+}
+let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastNow = 0, curBars = 0, lastMassCheck = 0;
+const errors = [], events = [];
+function logEvent(e, now) {
+  e.tHeard = e.tBeat + metronome.latency();
+  e.perfHeard = performance.now() + (e.tHeard - metronome.ctx.currentTime) * 1000;
+  e.perfDrawn = now;
+  events.push(e); if (events.length > 256) events.shift();
+}
+function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
+}
+function draw(now) {
+  resize();
+  const dt = Math.min(1 / 30, Math.max(1 / 240, (now - (lastNow || now - 16)) / 1000)); lastNow = now;
+  const L = metronome.read();
+  const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * settings.bpm / 60);
+  curBars = beats / settings.bpb;
+  const eff = effective(curBars);
+  if (metronome.playing) {   // hits, on the frame they are heard
+    const heard = metronome.ctx.currentTime - metronome.latency();
+    for (const h of metronome.hits) { if (h.logged || h.time > heard) continue; h.logged = true; onHit(h, eff); logEvent({ type: h.lane, vel: h.vel, tBeat: h.time, act: h.lane === 'kick' ? st.cur.music.kick : st.cur.music.snare }, now); }
+  } else {                   // no audio yet: the same pattern on the page clock, so it is alive before Play
+    const b = Math.floor(beats);
+    if (b !== st.idleBeat) {
+      st.idleBeat = b;
+      if (settings.kick[(b * 4) % 16] === 'x') onHit({ lane: 'kick', vel: b % settings.bpb === 0 ? 1 : 0.7 }, eff);
+      if (settings.snare[(b * 4) % 16] === 'x') onHit({ lane: 'snare', vel: 0.7 }, eff);
+    }
+  }
+  if (st.nudgeWake) {   // break the symmetry once so the street starts shedding
+    st.nudgeWake = false;
+    for (const ob of st.cur.obstacles) splat(F.vel, ob.x + 1.5 * ob.r * F.simH / F.simW, ob.y + 0.3 * ob.r, [0, 60, 0], ob.r * ob.r * 0.5);
+  }
+  step(dt, eff, L);
+  st.kickPulse *= Math.exp(-dt / 0.15); st.curlBurst *= Math.exp(-dt / 0.25); st.speedPulse *= Math.exp(-dt / 0.3);
+
+  if (settings.probe && st.cur.forces.some(f => f.U === 'strouhal')) {   // wake probe: 3 diameters behind the cylinder
+    const c = st.cur.obstacles[0], d = 2 * c.r * F.simH / F.simW;
+    st.wake.push({ t: +st.simTime.toFixed(4), v: probe(c.x + 3 * d, c.y).v }); if (st.wake.length > 4096) st.wake.shift();
+  }
+  if (now - lastMassCheck > 1000) {   // dye mass: drift log, and the optional conservation fix
+    lastMassCheck = now;
+    if (!st.sourcesOn && eff.params.dissipation === 0) {
+      const m = dyeMass();
+      if (st.massRef === null) st.massRef = m;
+      st.massLog.push({ t: +st.simTime.toFixed(2), mass: m, drift: (m - st.massRef) / st.massRef }); if (st.massLog.length > 120) st.massLog.shift();
+      if (settings.conserve && m > 0) pass(P.clear, F.dye.b, (u, tex) => { tex('uSrc', F.dye.a); gl.uniform1f(u.uK, st.massRef / m); }), F.dye.swap();
+    }
+  }
+
+  pass(P.display, null, (u, tex) => { tex('uDye', F.dye.a); gl.uniform1f(u.uKick, L.kick); gl.uniform1f(u.uHat, L.hat); });
+
+  const S = strouhal();
+  Object.assign(window.__qa, { preset: st.cur.name, morphing: st.next ? st.next.name : null, m: eff.m, simTime: st.simTime, steps: st.steps,
+    grid: [F.simW, F.simH], dye: [F.dyeW, F.dyeH], strouhal: S, params: eff.params, recipe: st.next || st.cur });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    const extra = st.cur.forces.some(f => f.U === 'strouhal') ? ` · U ${S.U.toFixed(0)} cells/s = f·d/St, f ${S.f.toFixed(2)} Hz` : '';
+    hud.textContent = `Flow Lab · ${st.cur.name}${st.next ? ` → ${st.next.name} ${(eff.m * 100).toFixed(0)}%` : ''} · ${settings.bpm} bpm · ${state}${extra}\n` +
+      `grid ${F.simW}×${F.simH} · dye ${F.dyeW}×${F.dyeH} · ${canvas.width}×${canvas.height} · ${fps} fps`;
+  }
+}
+
+window.__qa = {
+  errors, events, divergenceRMS, dyeMass, probe, sheddingHz, St: ST,
+  get wake() { return st.wake.slice(); }, get massLog() { return st.massLog.slice(); },
+  set(p) { for (const [k, v] of Object.entries(p)) { if (k in BASE) { st.cur.params[k] = v; if (st.next) st.next.params[k] = v; } else if (k in settings) settings[k] = v; } sync(); },
+  preset(name) { if (PRESETS[name]) applyPreset(PRESETS[name], false); },
+  sourcesOff() { st.sourcesOn = false; st.massRef = null; st.massLog = []; },
+  sourcesOn() { st.sourcesOn = true; },
+};
+const q = k => query.get(k);
+presetButtons();
+if (q('preset') && PRESETS[q('preset')]) st.cur = clone(PRESETS[q('preset')]);
+if (q('recipe')) { try { st.cur = JSON.parse(q('recipe')); } catch { errors.push('bad ?recipe JSON'); } }
+for (const k of Object.keys(BASE)) { const v = parseFloat(q(k)); if (Number.isFinite(v)) st.cur.params[k] = v; }
+for (const k of ['bpm', 'res', 'morphBars']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) settings[k] = v; }
+settings.probe = q('probe') === '1'; settings.conserve = q('conserve') !== '0'; settings.muted = q('muted') === '1';
+sync();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

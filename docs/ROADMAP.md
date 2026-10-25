@@ -13,7 +13,7 @@ Build a wide set of good-looking MVPs, each one true to its source (maths or phy
 | Riemann | 09 phase portrait, **11 Riemann show** (ribbon, march, scope, primes, canyon, map) | ✅ MVP on main. User's ranking: ribbon > scope > canyon > march > map > primes. Auto-mix is deferred to phase 2 |
 | Birch–Swinnerton-Dyer | 10 first version, 17 Skater, **19 Skate Park** (torus, morph, free) | ✅ MVP. 19 won the final grade (#50). Later: the line looks like it ends right in front of the skater in one clip (effects) |
 | Yang–Mills | 12 Mass Gap, **18 Little Bang** (collide, strings, quench) | ✅ MVP (#43, #49) |
-| Navier–Stokes | 13 Flow Lab (stable fluids + curl noise, presets) | ⏳ spec on #37, next build |
+| Navier–Stokes | 13 Flow Lab (stable fluids + curl noise, presets) | 🔧 built (branch exp-13-flow-lab), waiting on QA box. 3-D smoke volume not built yet |
 | Poincaré | 14 Round Point (curve-shortening flow, neck pinch, Thurston fly-through) | ⏳ spec on #37 |
 | P vs NP | 15 Hard Problems (2-opt salesman, 3-SAT cliff at 4.26, Rule 110) | ⏳ spec on #37 |
 | Hodge | 16 Calabi–Yau (Fermat n=5 slice, Hodge diamond) | ⏳ spec on #37. Check the formula against Hanson 1994 before building |
