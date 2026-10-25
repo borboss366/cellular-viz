@@ -5,7 +5,10 @@
   The elliptic curve y² = x³ + ax + b becomes a glowing half-pipe and the camera is a skater
   riding it. Pace (the user: "way slower, chill"): by default the skater carves slowly along
   the pipe and lands one trick every 4 bars, each trick floating over 2 bars, with the camera
-  low over the ramp (?trickBars, ?trickLen, ?cam); a grind every 4th trick (?pace=beat is the first
+  low over the ramp (?cam). Trick pacing (user: still too often and too fast, ~4× slower):
+  trickOn = sections (a trick at each phrase's drop and change, phrase = trickEvery = 16 bars),
+  bars (every trickEvery bars) or drops; a trick lasts 2/trickSpeed bars (8 at 0.25), and one
+  that would overlap the last is skipped; glideSpeed sets the carving. A grind every 4th trick (?pace=beat is the first
   version: one trick per beat, a grind on each downbeat). The tricks are the group law, exact:
     add (every beat)   ollie along the chord from P through Q, land on the third crossing R,
                        then flip across the x-axis onto P + Q = −R
@@ -76,8 +79,10 @@
   <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
   <h3>Pace</h3>
   <div class="buttons"><button id="pace-chill">Chill: slide, trick now and then</button><button id="pace-beat">Trick every beat</button></div>
-  <div class="row"><label for="trickBars">bars / trick</label><input id="trickBars" type="range" min="1" max="8" step="1"><output id="trickBarsOut"></output></div>
-  <div class="row"><label for="trickLen">bars in air</label><input id="trickLen" type="range" min="1" max="4" step="1"><output id="trickLenOut"></output></div>
+  <div class="buttons" id="trickOn"><button data-on="sections">tricks on sections</button><button data-on="bars">every N bars</button><button data-on="drops">drops only</button></div>
+  <div class="row"><label for="trickEvery">trick every</label><input id="trickEvery" type="range" min="4" max="64" step="4"><output id="trickEveryOut"></output></div>
+  <div class="row"><label for="trickSpeed">trick speed</label><input id="trickSpeed" type="range" min="0.25" max="2" step="0.05"><output id="trickSpeedOut"></output></div>
+  <div class="row"><label for="glideSpeed">glide speed</label><input id="glideSpeed" type="range" min="0.25" max="2" step="0.05"><output id="glideSpeedOut"></output></div>
   <div class="row"><label for="cam">camera</label><input id="cam" type="range" min="0.2" max="1.5" step="0.05"><output id="camOut"></output></div>
   <div class="row"><label for="slide">slide</label><input id="slide" type="range" min="0" max="4" step="0.1"><output id="slideOut"></output></div>
   <div class="row"><label for="hops">hops / reseed</label><input id="hops" type="range" min="4" max="64" step="1"><output id="hopsOut"></output></div>
@@ -92,8 +97,8 @@ const query = new URLSearchParams(location.search);
 // pace: 'chill' (default, the user's ask: "way slower, chill, slowly slides and sometimes jumps")
 // carves along the half-pipe and lands one trick every `trickBars` bars; 'beat' is the first
 // version, one trick on every beat (?pace=beat).
-const params = { curve: 'x3-25x', bpm: 120, bpb: 4, hops: 24, pmax: 1500, muted: false,
-                 pace: 'chill', trickBars: 4, trickLen: 2, slide: 1.4, cam: 0.5,   // user: slower tricks, camera closer
+const params = { curve: 'x3-2x',   // the user's pick in the chill grades (3–0) bpm: 120, bpb: 4, hops: 24, pmax: 1500, muted: false,
+                 pace: 'chill', trickEvery: 16, trickSpeed: 0.25, trickOn: 'sections', glideSpeed: 0.5, slide: 1.4, cam: 0.5,
                  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 
 // ---------- exact rationals and the group law (as 10) ----------
@@ -433,6 +438,8 @@ function publish() {
   window.__qa = Object.assign(window.__qa || {}, {
     curve: { key: curve.key, a: curve.a, b: curve.b }, lastHop: st.lastHop, bigAirs: st.bigAirs.slice(-20), hops: st.hops,
     heightResets: st.heightResets, heightBits: Math.max(blen(st.P.x.n), blen(st.P.x.d)),
+    trick: { on: params.trickOn, every: params.trickEvery, speed: params.trickSpeed, start: st.trickStart, dur: st.trickDur, next: st.trickNext },
+    trickSchedule,
     p: st.p, count: st.count, ap: st.ap, hasse: st.hasse.slice(), countPoints,
   });
 }
@@ -451,10 +458,10 @@ function skaterAt(u, w, wt) {
     return { pos: [M(x), Y, 0.6 * Math.sin(Math.PI * wt)], roll: Math.PI * 2 * ease(Math.min(1, Math.max(0, (wt - 0.3) / 0.4))), air: Math.sin(Math.PI * wt) };
   }
   if (w > 0) {
-    const sl = st.slideAt, sway = Math.sin(Math.PI * w);
-    if (!sl) return { pos: [M(h.S[0]), M(h.S[1]) + 0.08 * sway, 0.15 * Math.sin(2 * Math.PI * w)], roll: 0 };
-    const p = alongTrack(sl.ln, sl.s + params.slide * Math.sin(2 * Math.PI * w) * sway);
-    return { pos: [p[0], p[1], 0.25 * Math.sin(4 * Math.PI * w) * sway], roll: 0.12 * Math.sin(2 * Math.PI * w) };
+    const sl = st.slideAt, sway = Math.sin(Math.PI * w), n = st.glideN || 1;
+    if (!sl) return { pos: [M(h.S[0]), M(h.S[1]) + 0.08 * sway, 0.15 * Math.sin(2 * Math.PI * n * w)], roll: 0 };
+    const p = alongTrack(sl.ln, sl.s + params.slide * Math.sin(2 * Math.PI * n * w) * sway);
+    return { pos: [p[0], p[1], 0.25 * Math.sin(4 * Math.PI * n * w) * sway], roll: 0.12 * Math.sin(2 * Math.PI * n * w) };
   }
   if (h.type === 'air') { const e = ease(Math.min(1, u * 1.2)); return { pos: [M(h.P[0]), M(h.P[1]) + 30 * e, 0.6 * Math.sin(Math.PI * e)], roll: 0, air: e }; }
   if (u < 0.55) {   // along the chord (or tangent) in real coordinates, squashed for drawing
@@ -484,16 +491,18 @@ for (const key of Object.keys(PRESETS)) {
   const b = document.createElement('button'); b.textContent = PRESETS[key].label; b.dataset.key = key;
   b.onclick = () => { setCurve(key); sync(); }; $('presets').appendChild(b);
 }
-const SLIDERS = ['bpm', 'hops', 'trickBars', 'trickLen', 'slide', 'cam'];
+const SLIDERS = ['bpm', 'hops', 'trickEvery', 'trickSpeed', 'glideSpeed', 'slide', 'cam'];
+for (const b of $('trickOn').children) b.onclick = () => { params.trickOn = b.dataset.on; st.hopBeat = -1; sync(); };
 for (const name of SLIDERS) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name]; });
 function sync() {
   for (const name of SLIDERS) { $(name).value = params[name]; $(name + 'Out').textContent = params[name]; }
   for (const pace of ['chill', 'beat']) $('pace-' + pace).classList.toggle('on', params.pace === pace);
+  for (const b of $('trickOn').children) b.classList.toggle('on', b.dataset.on === params.trickOn);
   $('mute').classList.toggle('on', params.muted);
   for (const b of $('presets').children) b.classList.toggle('on', b.dataset.key === curve.key);
 }
 $('copy').onclick = async e => {
-  const q = new URLSearchParams({ curve: curve.key, bpm: params.bpm, hops: params.hops, pace: params.pace, trickBars: params.trickBars, trickLen: params.trickLen, slide: params.slide, cam: params.cam });
+  const q = new URLSearchParams({ curve: curve.key, bpm: params.bpm, hops: params.hops, pace: params.pace, trickOn: params.trickOn, trickEvery: params.trickEvery, trickSpeed: params.trickSpeed, glideSpeed: params.glideSpeed, slide: params.slide, cam: params.cam });
   const text = `17 · BSD Skater · y² = ${PRESETS[curve.key].label} · p ${st.p} · a_p ${st.ap}\n${location.origin + location.pathname}?${q}`;
   let ok = false;
   try { await navigator.clipboard.writeText(text); ok = true; } catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }
@@ -532,6 +541,29 @@ function logBeats(beat, hopped, now) {
     if (s) logEvent({ type: st.lastHop && st.lastHop.type === 'air' ? 'air' : 'hop', beat, tBeat: s.time }, now);
   }
 }
+// Trick schedule (the same in 17 and 19). Candidates: every `every` bars (on = bars), or at each
+// section start and drop (sections), or at drops only (drops); a candidate that falls inside the
+// last accepted trick (start + dur) is skipped, so tricks never overlap. Returns the last
+// accepted start at or before `bar` and the next one after it (in bars).
+function trickSchedule(bar, o) {
+  const S = o.on === 'bars' ? o.every : o.section;
+  let lastEnd = -Infinity, prev = null, next = null;
+  for (let k = 0; next === null && k < 1e5; k++) {
+    const c = [];
+    if (o.on === 'bars') c.push(k * S);
+    else {
+      const dropOk = o.dropBars > 0 && !(o.skipDrop && o.skipDrop(k));
+      if (o.on === 'sections' || !dropOk) c.push(k * S);
+      if (dropOk) c.push(k * S + S - o.dropBars);
+    }
+    for (const t of c) {
+      if (t < lastEnd) continue;
+      lastEnd = t + o.dur;
+      if (t <= bar) prev = t; else if (next === null) next = t;
+    }
+  }
+  return { prev, next };
+}
 function frame(now) {
   requestAnimationFrame(frame);
   try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
@@ -540,20 +572,33 @@ function draw(now) {
   resize();
   const L = metronome.read();
   const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * params.bpm / 60);
-  // a cycle is one trick: one beat in beat pace; in chill pace `trickBars` bars, the trick
-  // taking the first bar and the slide the rest
+  // beat pace: one trick per beat. Chill: tricks from the schedule (trickOn, trickEvery), each
+  // lasting 2/trickSpeed bars, then a glide back to the exact point before the next one.
   const chill = params.pace === 'chill';
-  const C = chill ? Math.max(1, Math.round(params.trickBars)) * params.bpb : 1;
-  const TB = chill ? Math.min(C, Math.max(1, Math.round(params.trickLen)) * params.bpb) : 1;   // beats the trick itself takes
-  const cycle = Math.floor(beats / C), inCyc = beats - cycle * C;
-  const u = Math.min(1, inCyc / TB), w = C > TB && inCyc > TB ? (inCyc - TB) / (C - TB) : 0, wt = inCyc / C;
-  const hopped = cycle !== st.hopBeat;
-  if (hopped) {
-    const dblNow = chill ? cycle % 4 === 3 : cycle % params.bpb === 0;
-    const newCity = chill ? cycle > 0 : cycle % params.bpb === 0 && cycle > 0;
-    doHop(cycle * C, dblNow, newCity); st.hopBeat = cycle;
+  let u, w = 0, wt, key, startBeat;
+  if (chill) {
+    const bar = beats / params.bpb, dur = 2 / Math.max(0.05, params.trickSpeed), S = Math.max(4, Math.round(params.trickEvery));
+    const sch = trickSchedule(bar, { on: params.trickOn, every: S, section: S, dropBars: S >= 8 ? 4 : 0, dur });
+    if (sch.prev === null) { key = -1; u = 1; wt = 0; startBeat = 0; }   // drops only: glide-free wait for the first one
+    else {
+      const s0 = sch.prev, nx = sch.next ?? s0 + S, end = s0 + dur;
+      key = s0; startBeat = s0 * params.bpb;
+      u = Math.min(1, (bar - s0) / dur); wt = Math.min(1, (bar - s0) / (nx - s0));
+      w = bar > end && nx > end ? (bar - end) / (nx - end) : 0;
+      st.glideN = Math.max(1, Math.round(params.glideSpeed * (nx - end) / 4));
+      Object.assign(st, { trickStart: s0, trickDur: dur, trickNext: nx });
+    }
+  } else {
+    key = Math.floor(beats); startBeat = key; u = beats - key; wt = u;
   }
-  if (metronome.playing) logBeats(cycle * C, hopped, now);
+  const hopped = key >= 0 && key !== st.hopBeat;
+  if (hopped) {
+    st.tricks = (st.tricks || 0) + 1;
+    const dblNow = chill ? st.tricks % 4 === 0 : key % params.bpb === 0;
+    const newCity = chill ? st.tricks > 1 : key % params.bpb === 0 && key > 0;
+    doHop(startBeat, dblNow, newCity); st.hopBeat = key;
+  }
+  if (metronome.playing) logBeats(startBeat, hopped, now);
   const sk = skaterAt(u, w, wt);
   st.trail.push(sk.pos); if (st.trail.length > 40) st.trail.shift();
   st.flash = Math.max(0, st.flash - 0.03);
@@ -641,11 +686,12 @@ function draw(now) {
 }
 
 const q = k => query.get(k);
-for (const k of ['bpm', 'hops', 'trickBars', 'trickLen', 'slide', 'cam']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
+for (const k of ['bpm', 'hops', 'trickEvery', 'trickSpeed', 'glideSpeed', 'slide', 'cam']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
+if (['bars', 'sections', 'drops'].includes(q('trickOn'))) params.trickOn = q('trickOn');
 if (q('pace') === 'beat' || q('pace') === 'chill') params.pace = q('pace');
 params.muted = q('muted') === '1';
 window.__qa = { errors, events };
-setCurve(q('curve') || 'x3-25x');
+setCurve(q('curve') || params.curve);
 sync();
 requestAnimationFrame(frame);
 </script>
