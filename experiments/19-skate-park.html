@@ -1,0 +1,702 @@
+<!doctype html>
+<!--
+  19 · Skate Park   (Millennium track #37, BSD; spec: #37 comment 6396657302)
+
+  17 kept the skater on the real picture of one elliptic curve. The user: "it is about the
+  path", slower, the camera close to the ramp, and more complicated ramps even if they are not
+  exact BSD. Three tracks, each a preset; `auto` moves on every 2 sections. The rider glides
+  slowly along a neon rail with a low camera close behind it; tricks (a slow 2-bar hang) come
+  only at section changes and at the drop.
+
+    torus  Over the complex numbers an elliptic curve is a torus. The donut glows with its
+           period lattice, and the rail is a straight line on the flat torus, which in 3-D is a
+           (p, q) torus knot: ((R + r cos qt) cos pt, (R + r cos qt) sin pt, r sin qt). The beads
+           are the 24-torsion points n·P along that line, lit one per beat. The knot changes
+           every section, (2,3) → (3,5) → (5,8), and the rider jumps from the old knot onto the
+           new one; the drop trick is a hop along the knot.
+    morph  The family y² = x³ − 3x + b, drawn as rails in the plane. During the build-up b
+           rises from 0 to 2 and the rider loops round the egg as it swells toward the main
+           branch. On the drop b = 2: Δ = −16(4a³ + 27b²) = 0, the egg pinches into the main
+           branch at the node (1, 0) and the rider rides through it and out along the main
+           branch; after that the egg is gone (one real component), and the next section starts
+           a new one.
+    free   Art, "inspired by": a closed 3-D Fourier curve from a seed with corkscrews and banked
+           turns. No maths checks.
+  Under every track: 17's city of points of y² = x³ − 25x mod p (a new good prime each bar).
+
+  window.__qa: knot {p, q, R, r}, railPoint(t) (torus), torusError, winding {p, q, closure},
+  morph {a, b, disc, crossings[]}, rider {track, s, jumping}, events (kick/snare/hat, trick,
+  knot, merge with tBeat/tHeard/perfHeard/perfDrawn), errors. Modules: window.__modules.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>19 · Skate Park</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #9fb0c3; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0;
+      position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Track</h3>
+  <div class="buttons" id="tracks"></div>
+  <div class="row"><label for="bars">bars / section</label><input id="bars" type="range" min="4" max="32" step="1"><output id="barsOut"></output></div>
+  <div class="row"><label for="speed">speed</label><input id="speed" type="range" min="0.05" max="1.5" step="0.05"><output id="speedOut"></output></div>
+  <div class="row"><label for="camD">cam distance</label><input id="camD" type="range" min="0.3" max="4" step="0.05"><output id="camDOut"></output></div>
+  <div class="row"><label for="camH">cam height</label><input id="camH" type="range" min="0.05" max="2" step="0.05"><output id="camHOut"></output></div>
+  <div class="row"><label for="trickLen">bars in air</label><input id="trickLen" type="range" min="1" max="4" step="1"><output id="trickLenOut"></output></div>
+  <div class="row"><label for="p">knot p</label><input id="p" type="range" min="0" max="9" step="1"><output id="pOut"></output></div>
+  <div class="row"><label for="q">knot q</label><input id="q" type="range" min="0" max="13" step="1"><output id="qOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="buttons"><button id="copy" class="wide">Copy setup</button></div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+const TRACKS = ['torus', 'morph', 'free'];
+// p, q = 0: the knot follows the sections ((2,3) → (3,5) → (5,8)); otherwise it is pinned.
+const params = { track: 'auto', bars: 16, bpm: 120, bpb: 4, muted: false, speed: 0.35, camD: 1.1, camH: 0.35,
+                 trickLen: 2, p: 0, q: 0, seed: 1,
+                 kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+const KNOTS = [[2, 3], [3, 5], [5, 8]];
+const TOR_R = 4, TOR_r = 1.6, MORPH_A = -3, BEADS = 24;
+
+// ---------- metronome (as 17, with latency()) ----------
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [],
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume(); this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+    this.playing = true; this.timer = setInterval(() => this.schedule(), 25); this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  schedule() {
+    while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / params.bpm / 4; this.step++; }
+    const old = this.ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, time) {
+    const inBar = step % (params.bpb * 4); this.steps.push({ time, step });
+    for (const lane of LANES) { if (params[lane][inBar % 16] !== 'x') continue; const vel = inBar === 0 ? 1 : 0.7; this.hits.push({ lane, time, vel }); this.click(lane, time, vel); }
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain(); g.connect(this.master);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') { src = ctx.createOscillator(); src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08); src.connect(g); }
+    else { src = ctx.createBufferSource(); src.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = lane === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = lane === 'snare' ? 1800 : 8000; src.connect(f); f.connect(g); }
+    const end = t + TAU[lane] * 4; g.gain.exponentialRampToValueAtTime(0.001, end); src.start(t); src.stop(end + 0.01);
+  },
+  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
+  read() {   // levels and the beat position at the moment the listener hears them
+    const out = { kick: 0, snare: 0, hat: 0, beats: -1 };
+    if (!this.ctx) return out;
+    const now = this.ctx.currentTime - this.latency();
+    for (const h of this.hits) { const dt = now - h.time; if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane])); }
+    let last = null; for (const s of this.steps) if (s.time <= now) last = s;
+    if (last) out.beats = (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / 4;
+    return out;
+  },
+};
+
+// ---------- vectors and matrices ----------
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const mul3 = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm3 = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const lerp3 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+function perspective(fovy, aspect, near, far) { const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far); return new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0]); }
+function lookAt(eye, at, up) { const z = norm3(sub3(eye, at)), x = norm3(cross3(up, z)), y = cross3(z, x); return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot3(x, eye), -dot3(y, eye), -dot3(z, eye), 1]); }
+function mul4(a, b) { const o = new Float32Array(16); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + j] * b[i * 4 + k]; o[i * 4 + j] = s; } return o; }
+const ease = u => u * u * (3 - 2 * u);
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// ---------- rails: a polyline with arc length and an "up" for the rider and camera ----------
+function makeRail(pts, closed, upOf) {
+  const n = pts.length, cum = new Float64Array(n);
+  for (let i = 1; i < n; i++) cum[i] = cum[i - 1] + Math.hypot(...sub3(pts[i], pts[i - 1]));
+  const len = cum[n - 1] + (closed ? Math.hypot(...sub3(pts[0], pts[n - 1])) : 0);
+  const T = pts.map((p, i) => {
+    const a = pts[closed ? (i - 1 + n) % n : Math.max(0, i - 1)], b = pts[closed ? (i + 1) % n : Math.min(n - 1, i + 1)];
+    return norm3(sub3(b, a));
+  });
+  const ups = pts.map((p, i) => upOf(p, T[i], i, T));
+  return { pts, cum, len, closed, T, ups };
+}
+function sampleRail(r, s) {
+  const n = r.pts.length;
+  s = r.closed ? ((s % r.len) + r.len) % r.len : Math.max(0, Math.min(r.cum[n - 1], s));
+  let lo = 0, hi = n - 1;
+  if (s >= r.cum[n - 1]) { lo = n - 1; hi = r.closed ? 0 : n - 1; }
+  else while (hi - lo > 1) { const m = (lo + hi) >> 1; if (r.cum[m] <= s) lo = m; else hi = m; }
+  const segLen = (hi === 0 ? r.len : r.cum[hi]) - r.cum[lo], f = segLen > 0 ? (s - r.cum[lo]) / segLen : 0;
+  return { p: lerp3(r.pts[lo], r.pts[hi], f), T: norm3(lerp3(r.T[lo], r.T[hi], f)), up: norm3(lerp3(r.ups[lo], r.ups[hi], f)), s };
+}
+// up that leans gently into turns: world z, tilted toward the centre of curvature
+const bankedUp = (bank) => (p, t, i, T) => {
+  const n = T.length, a = T[(i - 2 + n) % n], b = T[(i + 2) % n];
+  let k = mul3(sub3(b, a), bank); const m = Math.hypot(...k); if (m > 0.8) k = mul3(k, 0.8 / m);   // lean, at most ~40°
+  let u = add3([0, 0, 1], k);
+  u = sub3(u, mul3(t, dot3(u, t)));
+  return Math.hypot(...u) < 1e-3 ? norm3(cross3(t, [1, 0, 0])) : norm3(u);
+};
+
+// ---------- track A: torus knots ----------
+const torusPoint = (p, q, t) => [(TOR_R + TOR_r * Math.cos(q * t)) * Math.cos(p * t), (TOR_R + TOR_r * Math.cos(q * t)) * Math.sin(p * t), TOR_r * Math.sin(q * t)];
+function torusRail(p, q) {
+  const N = 2400, pts = [];
+  for (let i = 0; i < N; i++) pts.push(torusPoint(p, q, 2 * Math.PI * i / N));
+  const rail = makeRail(pts, true, (P, t) => {   // between world up and "out of the tube"
+    const rho = Math.hypot(P[0], P[1]), c = [P[0] / rho * TOR_R, P[1] / rho * TOR_R, 0], out = norm3(sub3(P, c));
+    let u = add3([0, 0, 1], mul3(out, 0.5)); u = sub3(u, mul3(t, dot3(u, t)));
+    return norm3(u);
+  });
+  rail.knot = { p, q };
+  return rail;
+}
+function knotChecks(p, q) {   // what QA asks: on the torus, closes, winds p times round z and q round the tube
+  let err = 0, wz = 0, wt = 0, prevA = null, prevB = null;
+  const N = 4000;
+  for (let i = 0; i <= N; i++) {
+    const P = torusPoint(p, q, 2 * Math.PI * i / N), rho = Math.hypot(P[0], P[1]);
+    err = Math.max(err, Math.abs((rho - TOR_R) ** 2 + P[2] ** 2 - TOR_r ** 2));
+    const A = Math.atan2(P[1], P[0]), B = Math.atan2(P[2], rho - TOR_R);
+    if (prevA !== null) { wz += ((A - prevA + 3 * Math.PI) % (2 * Math.PI)) - Math.PI; wt += ((B - prevB + 3 * Math.PI) % (2 * Math.PI)) - Math.PI; }
+    prevA = A; prevB = B;
+  }
+  const closure = Math.hypot(...sub3(torusPoint(p, q, 0), torusPoint(p, q, 2 * Math.PI)));
+  return { torusError: err, winding: { p: wz / (2 * Math.PI), q: wt / (2 * Math.PI), closure } };
+}
+
+// ---------- track B: the morphing pipe y² = x³ − 3x + b ----------
+const MX0 = -2.6, MX1 = 3.4, MS = 1.15;   // x range, world scale
+const fm = (x, b) => x * x * x + MORPH_A * x + b;
+const discOf = b => -16 * (4 * MORPH_A ** 3 + 27 * b * b);
+function morphB(sec) {   // b over the section: 0 → 2 through the build-up (2 exactly at the drop), then on to 2.5
+  return sec.drop ? 2 + 0.5 * sec.dropPhase : 2 * sec.buildPhase;
+}
+function morphRails(b) {
+  const N = 1400, xs = [], runs = [];
+  const root = (lo, hi) => { for (let i = 0; i < 50; i++) { const m = (lo + hi) / 2; if ((fm(m, b) >= 0) === (fm(lo, b) >= 0)) lo = m; else hi = m; } return (lo + hi) / 2; };
+  let cur = null, prev = null;
+  for (let i = 0; i <= N; i++) {
+    const x = MX0 + (MX1 - MX0) * i / N;
+    if (fm(x, b) >= 0) { if (!cur) { cur = []; if (prev !== null) cur.push(root(prev, x)); } cur.push(x); }
+    else if (cur) { cur.push(root(cur[cur.length - 1], x)); runs.push(cur); cur = null; }
+    prev = x;
+  }
+  if (cur) runs.push(cur);
+  const P = (x, s) => [x * MS, s * Math.sqrt(Math.max(0, fm(x, b))) * MS, 0];
+  const up = () => [0, 0, 1];
+  return runs.map(xs => {
+    const closed = xs[xs.length - 1] < MX1 - 1e-6;
+    // the egg starts at its right end and goes over the top; the main branch runs bottom → top
+    const pts = closed ? [...xs.slice().reverse().map(x => P(x, 1)), ...xs.slice(1, -1).map(x => P(x, -1))]
+                       : [...xs.slice().reverse().map(x => P(x, -1)), ...xs.slice(1).map(x => P(x, 1))];
+    const r = makeRail(pts, closed, up); r.egg = closed; r.x0 = xs[0]; r.x1 = xs[xs.length - 1];
+    return r;
+  });
+}
+function mainUpper(b, x0) {   // the rider's way out through the node: the upper half from x0 to the end
+  const pts = [];
+  for (let i = 0; i <= 400; i++) { const x = x0 + (MX1 - x0) * i / 400; pts.push([x * MS, Math.sqrt(Math.max(0, fm(x, b))) * MS, 0]); }
+  return makeRail(pts, false, () => [0, 0, 1]);
+}
+
+// ---------- track C: free ride (art only) ----------
+function freeRail(seed) {
+  const rand = mulberry(seed * 9973 + 17), H = [];
+  for (let k = 1; k <= 4; k++) H.push({ k, ax: (rand() * 2 - 1) * 7 / k, ay: (rand() * 2 - 1) * 7 / k, az: (rand() * 2 - 1) * 2 / k,
+                                         px: rand() * 6.28, py: rand() * 6.28, pz: rand() * 6.28 });
+  H[0].ax = 7; H[0].ay = 5;   // a wide base loop so it never folds onto itself
+  const base = t => H.reduce((s, h) => [s[0] + h.ax * Math.cos(h.k * t + h.px), s[1] + h.ay * Math.sin(h.k * t + h.py), s[2] + h.az * Math.sin(h.k * t + h.pz)], [0, 0, 0]);
+  const N = 3000, pts = [];
+  const screws = [0, 1, 2].map(() => ({ c: rand(), w: 0.05 + 0.04 * rand(), turns: 2 + Math.floor(rand() * 3), r: 0.5 + 0.4 * rand() }));
+  for (let i = 0; i < N; i++) {
+    const t = 2 * Math.PI * i / N, p = base(t), d = norm3(sub3(base(t + 1e-3), base(t - 1e-3)));
+    const nrm = norm3(cross3(d, [0, 0, 1])), bin = cross3(nrm, d);
+    let off = [0, 0, 0];
+    for (const sc of screws) {   // corkscrews: a few turns around the path inside a smooth window
+      let u = (i / N - sc.c + 1) % 1; if (u > 0.5) u -= 1;
+      const wgt = Math.abs(u) < sc.w ? 0.5 + 0.5 * Math.cos(Math.PI * u / sc.w) : 0;
+      if (!wgt) continue;
+      const th = 2 * Math.PI * sc.turns * (u / sc.w + 1) / 2;
+      off = add3(off, mul3(add3(mul3(nrm, Math.sin(th)), mul3(bin, 1 - Math.cos(th))), sc.r * wgt));
+    }
+    pts.push(add3(p, off));
+  }
+  return makeRail(pts, true, bankedUp(30));
+}
+
+// ---------- mod-p city (as 17) on y² = x³ − 25x ----------
+const CITY_A = -25, CITY_B = 0;
+const PRIMES = (() => { const n = 600, s = new Uint8Array(n), o = []; for (let i = 2; i < n; i++) { if (s[i]) continue; o.push(i); for (let j = i * i; j < n; j += i) s[j] = 1; } return o; })()
+  .filter(p => p >= 7 && (4 * CITY_A ** 3 + 27 * CITY_B ** 2) % p !== 0);
+function cellsMod(a, b, p) {
+  const roots = Array.from({ length: p }, () => []); for (let y = 0; y < p; y++) roots[(y * y) % p].push(y);
+  const am = ((a % p) + p) % p, bm = ((b % p) + p) % p, out = [];
+  for (let x = 0; x < p; x++) for (const y of roots[((x * x % p) * x % p + am * x % p + bm) % p]) out.push(x, y);
+  return out;
+}
+
+// ---------- WebGL ----------
+const canvas = document.getElementById('c');
+const hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+if (!gl) fail('WebGL2 is not available in this browser.');
+function compile(type, src) { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(sh)); return sh; }
+function program(vs, fs) {
+  const p = gl.createProgram(); gl.attachShader(p, compile(gl.VERTEX_SHADER, vs)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name.replace('[0]', ''); u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u };
+}
+const skyProg = program(`#version 300 es
+out vec2 vUv;
+void main() { vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = p; gl_Position = vec4(p * 2.0 - 1.0, 0.999, 1.0); }`, `#version 300 es
+precision highp float;
+uniform float uFlash, uAir;
+in vec2 vUv; out vec4 o;
+void main() {
+  vec3 c = mix(vec3(0.01, 0.01, 0.03), vec3(0.06, 0.03, 0.11), vUv.y);
+  c += vec3(0.5, 0.6, 1.0) * uAir * 0.25 * smoothstep(0.3, 1.0, vUv.y);
+  o = vec4(c + uFlash * 0.25, 1.0);
+}`);
+// rails: neon tubes; pulses run along the rail on the beat
+const railProg = program(`#version 300 es
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNor;
+layout(location = 2) in float aS;
+uniform mat4 uVP;
+out vec3 vP; out vec3 vN; out float vS;
+void main() { vP = aPos; vN = aNor; vS = aS; gl_Position = uVP * vec4(aPos, 1.0); }`, `#version 300 es
+precision highp float;
+uniform vec3 uEye, uCol; uniform float uKick, uBeat, uAlpha, uRider;
+in vec3 vP; in vec3 vN; in float vS; out vec4 o;
+void main() {
+  float fog = exp(-length(uEye - vP) * 0.06);
+  float fres = pow(1.0 - abs(dot(normalize(vN), normalize(uEye - vP))), 1.5);
+  float pulse = smoothstep(0.85, 1.0, fract(vS * 0.25 - uBeat * 0.5)) * (0.4 + 1.2 * uKick);
+  float near = exp(-abs(vS - uRider) * 0.6);   // the rail lights up around the rider
+  vec3 c = uCol * (0.45 + 1.1 * fres) + vec3(1.0) * pulse * 0.6 + uCol * near * 0.8;
+  o = vec4(c * fog * uAlpha, 1.0);
+}`);
+// the torus: translucent, with its period lattice as glowing lines
+const surfProg = program(`#version 300 es
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec2 aUV;
+uniform mat4 uVP;
+out vec3 vP; out vec2 vUV;
+void main() { vP = aPos; vUV = aUV; gl_Position = uVP * vec4(aPos, 1.0); }`, `#version 300 es
+precision highp float;
+uniform vec3 uEye; uniform float uKick, uAlpha, uHat;
+in vec3 vP; in vec2 vUV; out vec4 o;
+float line(float x, float w) { float f = abs(fract(x) - 0.5); return smoothstep(0.5 - w, 0.5, f); }
+void main() {
+  float fog = exp(-length(uEye - vP) * 0.05);
+  float g = max(line(vUV.x * 24.0, 0.03), line(vUV.y * 12.0, 0.04));
+  vec3 c = vec3(0.35, 0.2, 0.9) * 0.06 + vec3(0.5, 0.4, 1.0) * g * (0.35 + 0.6 * uKick) + vec3(0.6, 0.8, 1.0) * uHat * 0.03;
+  o = vec4(c * fog * uAlpha, 1.0);
+}`);
+const pointProg = program(`#version 300 es
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec4 aCol;   // rgb, size
+uniform mat4 uVP; uniform float uScale;
+out vec3 vC;
+void main() { gl_Position = uVP * vec4(aPos, 1.0); gl_PointSize = clamp(aCol.a * uScale / gl_Position.w, 1.0, 96.0); vC = aCol.rgb; }`, `#version 300 es
+precision highp float;
+in vec3 vC; out vec4 o;
+void main() { float d = length(gl_PointCoord - 0.5) * 2.0; o = vec4(vC * (1.0 - smoothstep(0.1, 1.0, d)), 1.0); }`);
+const emptyVao = gl.createVertexArray();
+
+function makeMesh(attrs) {   // attrs: [{loc, size}] in separate buffers, plus an index buffer
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const bufs = attrs.map(a => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.enableVertexAttribArray(a.loc); gl.vertexAttribPointer(a.loc, a.size, gl.FLOAT, false, 0, 0); return b; });
+  const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
+  gl.bindVertexArray(null);
+  return { vao, bufs, ib, count: 0 };
+}
+function setMesh(m, arrays, idx, usage = gl.STATIC_DRAW) {
+  arrays.forEach((a, i) => { gl.bindBuffer(gl.ARRAY_BUFFER, m.bufs[i]); gl.bufferData(gl.ARRAY_BUFFER, a, usage); });
+  gl.bindVertexArray(m.vao); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, usage); gl.bindVertexArray(null);
+  m.count = idx.length;
+}
+const RING = 8;
+function tubeArrays(rails, radius) {   // one tube per rail, rings in a frame carried along the rail
+  let nv = 0, ni = 0;
+  for (const r of rails) { nv += r.pts.length * RING; ni += (r.pts.length - (r.closed ? 0 : 1)) * RING * 6; }
+  const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), sa = new Float32Array(nv), idx = new Uint32Array(ni);
+  let v = 0, k = 0;
+  for (const r of rails) {
+    const n = r.pts.length, base = v;
+    let N1 = norm3(cross3(r.T[0], Math.abs(r.T[0][2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]));
+    for (let i = 0; i < n; i++) {
+      const T = r.T[i]; N1 = norm3(sub3(N1, mul3(T, dot3(N1, T)))); const N2 = cross3(T, N1);
+      for (let j = 0; j < RING; j++) {
+        const a = j / RING * 2 * Math.PI, d = add3(mul3(N1, Math.cos(a)), mul3(N2, Math.sin(a)));
+        pos.set(add3(r.pts[i], mul3(d, radius)), v * 3); nor.set(d, v * 3); sa[v] = r.cum[i]; v++;
+      }
+    }
+    const segs = r.closed ? n : n - 1;
+    for (let i = 0; i < segs; i++) for (let j = 0; j < RING; j++) {
+      const i2 = (i + 1) % n, a = base + i * RING + j, b = base + i * RING + (j + 1) % RING, c = base + i2 * RING + j, d = base + i2 * RING + (j + 1) % RING;
+      idx.set([a, c, b, b, c, d], k); k += 6;
+    }
+  }
+  return { pos, nor, sa, idx };
+}
+const railMeshes = [makeMesh([{ loc: 0, size: 3 }, { loc: 1, size: 3 }, { loc: 2, size: 1 }]), makeMesh([{ loc: 0, size: 3 }, { loc: 1, size: 3 }, { loc: 2, size: 1 }])];
+function uploadRails(mesh, rails, dynamic) {
+  const t = tubeArrays(rails, 0.055);
+  setMesh(mesh, [t.pos, t.nor, t.sa], t.idx, dynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW);
+}
+const torusMesh = makeMesh([{ loc: 0, size: 3 }, { loc: 1, size: 2 }]);
+(function buildTorus() {
+  const NU = 160, NV = 48, pos = [], uv = [], idx = [];
+  for (let i = 0; i <= NU; i++) for (let j = 0; j <= NV; j++) {
+    const u = i / NU * 2 * Math.PI, w = j / NV * 2 * Math.PI, rr = TOR_R + (TOR_r - 0.02) * Math.cos(w);
+    pos.push(rr * Math.cos(u), rr * Math.sin(u), (TOR_r - 0.02) * Math.sin(w)); uv.push(i / NU, j / NV);
+  }
+  for (let i = 0; i < NU; i++) for (let j = 0; j < NV; j++) { const a = i * (NV + 1) + j, b = a + NV + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
+  setMesh(torusMesh, [new Float32Array(pos), new Float32Array(uv)], new Uint32Array(idx));
+})();
+function dynPoints() {
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0);
+  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 28, 12);
+  gl.bindVertexArray(null);
+  return { vao, buf, count: 0 };
+}
+const cityBuf = dynPoints(), fxBuf = dynPoints();
+function fillPoints(b, arr) { gl.bindBuffer(gl.ARRAY_BUFFER, b.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.DYNAMIC_DRAW); b.count = arr.length / 7; }
+
+// ---------- state ----------
+const st = { kind: null, section: -1, rail: null, rails: [], prevRails: [], prevKind: null, freeSeed: 0,
+             jump: null, trail: [], cam: { eye: null, at: null, up: [0, 0, 1] }, flash: 0, pIndex: -1, p: 0,
+             morph: { b: 0, disc: discOf(0), crossings: [], lastSign: 1, onMain: false, mainRail: null },
+             knot: null, checks: null };
+function sectionInfo(bars) {
+  const k = Math.floor(bars / params.bars), sb = bars - k * params.bars;
+  const dropBars = params.bars >= 8 ? 4 : 2, build = params.bars - dropBars, drop = sb >= build;
+  return { k, sb, drop, build, dropBars, buildPhase: Math.min(1, sb / build), dropPhase: drop ? (sb - build) / dropBars : 0 };
+}
+const kindOf = k => params.track === 'auto' ? TRACKS[Math.floor(k / 2) % TRACKS.length] : params.track;
+const knotOf = k => params.p > 0 && params.q > 0 ? [params.p, params.q] : KNOTS[k % KNOTS.length];
+function enterSection(k) {
+  const kind = kindOf(k);
+  st.prevRails = st.rails; st.prevKind = st.kind;
+  st.kind = kind; st.section = k;
+  if (kind === 'torus') {
+    const [p, q] = knotOf(k); st.rail = torusRail(p, q); st.rails = [st.rail];
+    st.knot = { p, q, R: TOR_R, r: TOR_r }; st.checks = knotChecks(p, q);
+    uploadRails(railMeshes[1], st.rails, false);
+  } else if (kind === 'free') {
+    st.freeSeed = params.seed * 1000 + k; st.rail = freeRail(st.freeSeed); st.rails = [st.rail];
+    uploadRails(railMeshes[1], st.rails, false);
+  } else { st.morph.onMain = false; st.rail = null; }
+  if (st.prevRails.length) uploadRails(railMeshes[0], st.prevRails, false);
+}
+function nextCity() {
+  st.pIndex = (st.pIndex + 1) % PRIMES.length; const p = st.p = PRIMES[st.pIndex];
+  const cells = cellsMod(CITY_A, CITY_B, p), arr = [], N = cells.length / 2;
+  const count = N + 1, ap = p + 1 - count, t = Math.max(-1, Math.min(1, ap / (2 * Math.sqrt(p))));
+  const col = t >= 0 ? [0.3, 0.9, 0.8] : [1.0, 0.45, 0.75], br = 0.35 + 0.4 * Math.abs(t);
+  for (let i = 0; i < cells.length; i += 2) arr.push(-9 + 18 * cells[i] / p, -9 + 18 * cells[i + 1] / p, -3.4, col[0] * br, col[1] * br, col[2] * br, 10);
+  fillPoints(cityBuf, arr); st.ap = ap;
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+$('play').onclick = () => {
+  if (metronome.playing) metronome.stop(); else metronome.start();
+  clockStart = performance.now(); st.section = -1;
+  $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', metronome.playing);
+};
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('full').onclick = () => { const w = $('wrap'); if (document.fullscreenElement) document.exitFullscreen(); else (w.requestFullscreen || w.webkitRequestFullscreen).call(w); };
+for (const name of ['auto', ...TRACKS]) {
+  const b = document.createElement('button'); b.textContent = name;
+  b.onclick = () => { params.track = name; st.section = -1; sync(); };
+  $('tracks').appendChild(b);
+}
+const SLIDERS = { bars: 0, speed: 2, camD: 2, camH: 2, trickLen: 0, p: 0, q: 0, bpm: 0 };
+for (const [name, dec] of Object.entries(SLIDERS)) $(name).addEventListener('input', e => {
+  params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name].toFixed(dec);
+  if (name === 'p' || name === 'q' || name === 'bars') st.section = -1;
+});
+function sync() {
+  for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
+  $('mute').classList.toggle('on', params.muted);
+  for (const b of $('tracks').children) b.classList.toggle('on', b.textContent === params.track);
+}
+$('copy').onclick = async e => {
+  const q = new URLSearchParams({ track: params.track, bars: params.bars, speed: params.speed, camD: params.camD, camH: params.camH, trickLen: params.trickLen, p: params.p, q: params.q, bpm: params.bpm, seed: params.seed });
+  const text = `19 · Skate Park · ${params.track}\n${location.origin + location.pathname}?${q}`;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓'; setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
+};
+const MODULE_INPUTS = [
+  { name: 'track', type: 'long', values: ['auto', ...TRACKS], default: 'auto' },
+  { name: 'p', type: 'long', default: 0, min: 0, max: 9 }, { name: 'q', type: 'long', default: 0, min: 0, max: 13 },
+  { name: 'speed', type: 'float', default: 0.35, min: 0.05, max: 1.5 },
+  { name: 'camD', type: 'float', default: 1.1, min: 0.3, max: 4 }, { name: 'camH', type: 'float', default: 0.35, min: 0.05, max: 2 },
+  { name: 'trickLen', type: 'long', default: 2, min: 1, max: 4 }, { name: 'bars', type: 'long', default: 16, min: 4, max: 32 },
+];
+window.__modules = { 'skate-park': { inputs: MODULE_INPUTS } };
+
+// ---------- main loop ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(3840, Math.round(canvas.clientWidth * dpr)), h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastBar = -1, frameNo = 0;
+const errors = [], events = [];
+function logEvent(e, now) {
+  if (!metronome.playing) return;
+  e.tHeard = e.tBeat + metronome.latency();
+  e.perfHeard = performance.now() + (e.tHeard - metronome.ctx.currentTime) * 1000;
+  e.perfDrawn = now;
+  events.push(e); if (events.length > 256) events.shift();
+}
+const stepTime = step => { const s = metronome.playing && metronome.steps.find(x => x.step === step); return s ? s.time : null; };
+function logHits(now) {
+  if (!metronome.playing) return;
+  const heard = metronome.ctx.currentTime - metronome.latency();
+  for (const h of metronome.hits) { if (h.logged || h.time > heard) continue; h.logged = true; logEvent({ type: h.lane, vel: h.vel, tBeat: h.time }, now); }
+}
+function logAt(type, bar, extra, now) { const t = stepTime(Math.round(bar * params.bpb * 4)); if (t !== null) logEvent({ type, bar, ...extra, tBeat: t }, now); }
+function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
+}
+function draw(now) {
+  resize(); frameNo++;
+  const L = metronome.read();
+  const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * params.bpm / 60);
+  const bars = beats / params.bpb, sec = sectionInfo(bars), H = Math.max(1, Math.round(params.trickLen));
+  logHits(now);
+
+  // sections: a new track (or knot) and a trick at each section change, a trick at the drop
+  if (sec.k !== st.section) {
+    const first = st.section < 0;
+    enterSection(sec.k);
+    if (!first) { startJump(sec.k * params.bars, H); logAt('trick', sec.k * params.bars, { why: 'section' }, now); }
+    if (st.kind === 'torus') logAt('knot', sec.k * params.bars, { p: st.knot.p, q: st.knot.q }, now);
+  }
+  const dropBar = sec.k * params.bars + sec.build;
+  if (sec.drop && st.kind !== 'morph' && (!st.jump || st.jump.bar0 < dropBar) && bars - dropBar < 0.5) {
+    startJump(dropBar, H); logAt('trick', dropBar, { why: 'drop' }, now);
+  }
+  if (Math.floor(bars) !== lastBar) { lastBar = Math.floor(bars); nextCity(); }
+
+  // the rail and where the rider is on it
+  let rider;
+  const sAt = beats * params.speed;
+  if (st.kind === 'morph') {
+    const b = morphB(sec), rails = morphRails(b);
+    const m = st.morph, disc = discOf(b), sign = Math.sign(disc) || 0;
+    if (sign !== m.lastSign) {
+      m.crossings.push({ frame: frameNo, bars: +bars.toFixed(4), dropBar, b: +b.toFixed(6), discBefore: m.lastSign, discAfter: sign });
+      if (m.crossings.length > 20) m.crossings.shift();
+      if (sign <= 0 && sec.drop) { st.flash = 1; logAt('merge', dropBar, { b }, now); }
+      m.lastSign = sign;
+    }
+    Object.assign(m, { b, disc });
+    st.rails = rails; uploadRails(railMeshes[1], rails, true);
+    const egg = rails.find(r => r.egg);
+    if (!sec.drop && egg) {   // loop round the egg, back at its right end (the node to be) exactly at the drop
+      const loops = Math.max(1, Math.round(params.speed * sec.build * params.bpb / 6));
+      const f = (loops * sec.buildPhase) % 1;
+      rider = sampleRail(egg, f * egg.len); rider.rail = egg; m.onMain = false;
+    } else {   // through the node and out along the main branch
+      if (!m.onMain) { m.onMain = true; m.mainX0 = 1; }
+      const main = mainUpper(b, m.mainX0), ds = (bars - dropBar) * params.bpb * params.speed;
+      rider = sampleRail(main, Math.max(0, ds)); rider.rail = main;
+    }
+    st.rail = rider.rail;
+  } else {
+    rider = sampleRail(st.rail, sAt); rider.rail = st.rail;
+  }
+  let pos = add3(rider.p, mul3(rider.up, 0.09)), roll = 0, air = 0;
+  if (st.jump) {   // a slow hang: lift off, drift to where the rail has moved on to, land
+    const w = (bars - st.jump.bar0) / st.jump.len;
+    if (w >= 1) st.jump = null;
+    else {
+      const e = ease(Math.max(0, w));
+      air = Math.sin(Math.PI * Math.max(0, w));
+      pos = add3(lerp3(st.jump.from, pos, e), mul3(lerp3(st.jump.up, rider.up, e), st.jump.height * air));
+      roll = 2 * Math.PI * ease(Math.min(1, Math.max(0, (w - 0.25) / 0.5)));
+    }
+  }
+  st.riderPos = pos;
+  st.trail.push(pos); if (st.trail.length > 90) st.trail.shift();
+  st.flash = Math.max(0, st.flash - 0.02);
+
+  // camera: low and close behind, a little lagged, banking with the rail's up
+  const back = rider.rail ? sampleRail(rider.rail, rider.s - params.camD) : rider, ahead = rider.rail ? sampleRail(rider.rail, rider.s + 1.6) : rider;
+  let eyeT = add3(back.p, mul3(back.up, params.camH + 0.5 * air * (st.jump ? st.jump.height : 0)));
+  if (st.jump) eyeT = lerp3(eyeT, add3(sub3(pos, mul3(rider.T, params.camD)), mul3(rider.up, params.camH + 0.3)), air);
+  const atT = lerp3(add3(ahead.p, mul3(ahead.up, 0.1)), pos, 0.35);
+  st.cam.eye = st.cam.eye ? lerp3(st.cam.eye, eyeT, 0.12) : eyeT;
+  st.cam.at = st.cam.at ? lerp3(st.cam.at, atT, 0.15) : atT;
+  st.cam.up = norm3(lerp3(st.cam.up, rider.up, 0.05));
+  const vd = norm3(sub3(st.cam.at, st.cam.eye));
+  let up = norm3(sub3(st.cam.up, mul3(vd, dot3(st.cam.up, vd))));
+  if (roll) up = norm3(add3(mul3(up, Math.cos(roll)), mul3(cross3(vd, up), Math.sin(roll))));
+  const W = canvas.width, Hh = canvas.height;
+  const vp = mul4(perspective(1.1, W / Hh, 0.02, 120), lookAt(st.cam.eye, st.cam.at, up));
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, W, Hh);
+  gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.disable(gl.DEPTH_TEST);
+  gl.useProgram(skyProg.p); gl.uniform1f(skyProg.u.uFlash, st.flash); gl.uniform1f(skyProg.u.uAir, air);
+  gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);   // the city below
+  gl.useProgram(pointProg.p); gl.uniformMatrix4fv(pointProg.u.uVP, false, vp); gl.uniform1f(pointProg.u.uScale, Hh / 160 * (1 + 0.3 * L.kick));
+  gl.bindVertexArray(cityBuf.vao); gl.drawArrays(gl.POINTS, 0, cityBuf.count);
+
+  gl.enable(gl.DEPTH_TEST);
+  const railCol = { torus: [1.0, 0.55, 0.2], morph: [0.25, 0.85, 1.0], free: [1.0, 0.3, 0.75] };
+  const drawRail = (mesh, kind, alpha) => {
+    if (!mesh.count || alpha <= 0) return;
+    gl.useProgram(railProg.p); gl.uniformMatrix4fv(railProg.u.uVP, false, vp); gl.uniform3fv(railProg.u.uEye, st.cam.eye);
+    gl.uniform3fv(railProg.u.uCol, railCol[kind] || railCol.free);
+    gl.uniform1f(railProg.u.uKick, L.kick); gl.uniform1f(railProg.u.uBeat, beats); gl.uniform1f(railProg.u.uAlpha, alpha);
+    gl.uniform1f(railProg.u.uRider, st.kind !== 'morph' && alpha === 1 ? rider.s : -1e3);
+    gl.bindVertexArray(mesh.vao); gl.drawElements(gl.TRIANGLES, mesh.count, gl.UNSIGNED_INT, 0);
+  };
+  gl.disable(gl.BLEND);
+  drawRail(railMeshes[1], st.kind, 1);
+  gl.enable(gl.BLEND);
+  if (st.jump && st.prevRails.length) drawRail(railMeshes[0], st.prevKind, 1 - ease(Math.min(1, (bars - st.jump.bar0) / st.jump.len)));
+  if (st.kind === 'torus' || (st.jump && st.prevKind === 'torus')) {   // the donut, translucent
+    const a = st.kind === 'torus' ? (st.jump && st.prevKind !== 'torus' ? ease(Math.min(1, (bars - st.jump.bar0) / st.jump.len)) : 1) : 1 - ease(Math.min(1, (bars - st.jump.bar0) / st.jump.len));
+    gl.depthMask(false);
+    gl.useProgram(surfProg.p); gl.uniformMatrix4fv(surfProg.u.uVP, false, vp); gl.uniform3fv(surfProg.u.uEye, st.cam.eye);
+    gl.uniform1f(surfProg.u.uKick, L.kick); gl.uniform1f(surfProg.u.uHat, L.hat); gl.uniform1f(surfProg.u.uAlpha, a);
+    gl.bindVertexArray(torusMesh.vao); gl.drawElements(gl.TRIANGLES, torusMesh.count, gl.UNSIGNED_INT, 0);
+    gl.depthMask(true);
+  }
+
+  // sprites: halo along the rail near the rider, torsion beads, the node, the rider and its trail
+  const sp = [];
+  const col = railCol[st.kind] || railCol.free;
+  if (rider.rail) for (let d = -6; d <= 10; d += 0.12) {
+    const q = sampleRail(rider.rail, rider.s + d), f = Math.exp(-Math.abs(d) * 0.35) * 0.35;
+    sp.push(...q.p, col[0] * f, col[1] * f, col[2] * f, 9);
+  }
+  if (st.kind === 'torus' && st.knot) {
+    const beat = Math.floor(beats);
+    for (let n = 0; n < BEADS; n++) {
+      const P = torusPoint(st.knot.p, st.knot.q, 2 * Math.PI * n / BEADS), lit = n === beat % BEADS ? 1 : 0;
+      sp.push(...P, 0.9 + lit, 0.85 + lit * 0.5, 0.5 + lit * 0.3, 7 + 14 * lit * (0.5 + L.kick));
+    }
+  }
+  if (st.kind === 'morph') {   // the node, where the egg will touch the main branch
+    const g = 0.4 + 1.6 * st.flash + 0.4 * Math.exp(-Math.abs(st.morph.b - 2) * 3);
+    sp.push(1 * MS, 0, 0, g, g * 0.95, g * 0.8, 16 + 30 * st.flash);
+  }
+  st.trail.forEach((q, i) => { const f = i / st.trail.length; sp.push(...q, 1.0 * f, 0.6 * f, 0.3 * f, 3 + 7 * f); });
+  sp.push(...pos, 1, 1, 1, 18 * (1 + 0.5 * L.kick));
+  fillPoints(fxBuf, sp);
+  gl.disable(gl.DEPTH_TEST);
+  gl.useProgram(pointProg.p); gl.uniformMatrix4fv(pointProg.u.uVP, false, vp); gl.uniform1f(pointProg.u.uScale, Hh / 160);
+  gl.bindVertexArray(fxBuf.vao); gl.drawArrays(gl.POINTS, 0, fxBuf.count);
+  gl.disable(gl.BLEND);
+
+  Object.assign(window.__qa, {
+    track: st.kind, section: sec.k, drop: sec.drop, bars, beats,
+    knot: st.kind === 'torus' ? st.knot : null, torusError: st.checks && st.checks.torusError, winding: st.checks && st.checks.winding,
+    morph: { a: MORPH_A, b: st.morph.b, disc: st.morph.disc, crossings: st.morph.crossings.slice() },
+    rider: { track: st.kind, s: rider.s, pos, jumping: !!st.jump }, p: st.p, ap: st.ap,
+  });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    const what = st.kind === 'torus' ? `(${st.knot.p},${st.knot.q}) torus knot` : st.kind === 'morph' ? `y² = x³ − 3x + ${st.morph.b.toFixed(2)} · Δ ${st.morph.disc > 0 ? '> 0' : st.morph.disc < 0 ? '< 0' : '= 0'}` : 'free ride (inspired by)';
+    hud.textContent = `Skate Park · ${what} · ${sec.drop ? 'DROP' : 'build-up'}${st.jump ? ' · trick' : ''} · ${state}\n` +
+      `city mod ${st.p} · ${W}×${Hh} · ${fps} fps`;
+  }
+}
+function startJump(bar0, len) {
+  st.jump = { bar0, len, from: st.riderPos || [0, 0, 0], up: st.cam.up.slice(), height: st.kind === 'torus' ? 1.6 : st.kind === 'morph' ? 1.2 : 1.4 };
+}
+
+window.__qa = {
+  errors, events, torusPoint, knotChecks, discOf, morphB: (buildPhase, drop = false, dropPhase = 0) => morphB({ buildPhase, drop, dropPhase }),
+  railPoint: t => st.knot ? torusPoint(st.knot.p, st.knot.q, t) : null, R: TOR_R, r: TOR_r, a: MORPH_A,
+};
+const q = k => query.get(k);
+if (q('track') && (q('track') === 'auto' || TRACKS.includes(q('track')))) params.track = q('track');
+for (const k of Object.keys(SLIDERS).concat(['seed'])) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
+params.muted = q('muted') === '1';
+sync();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
