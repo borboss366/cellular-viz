@@ -9,9 +9,9 @@ Motion sampled per captured frame (~26 Hz through captureStream; includes the ca
 
 ## Pairwise ranking (user picks)
 
-2 picks, Bradley–Terry strength (1 = average).
+5 picks, Bradley–Terry strength (1 = average).
 
 | # | variant | strength | won | lost | tie |
 |---|---|---|---|---|---|
-| 1 | canyon-pulses | 2.751 | 2 | 0 | 0 |
-| 2 | canyon-before | 0.363 | 0 | 2 | 0 |
+| 1 | canyon-pulses | 3.967 | 5 | 0 | 0 |
+| 2 | canyon-before | 0.252 | 0 | 5 | 0 |

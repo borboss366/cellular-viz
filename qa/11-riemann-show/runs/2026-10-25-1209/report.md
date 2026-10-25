@@ -16,3 +16,12 @@ queries:
 - ribbon-main: http://127.0.0.1:41123/experiments/11-riemann-show.html?scene=ribbon
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+2 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | canyon-main | 1 | 0 | 0 | 2 |
+| 2 | ribbon-main | 1 | 0 | 0 | 2 |

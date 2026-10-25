@@ -24,3 +24,16 @@ queries:
 - 6-curl: http://127.0.0.1:37677/experiments/13-flow-lab.html?preset=curl
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+10 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | 2-kh | 8.604 | 3 | 0 | 0 |
+| 2 | 4-ink | 3.233 | 3 | 1 | 0 |
+| 3 | 1-vortex | 1.101 | 1 | 2 | 0 |
+| 4 | 5-rocks | 0.713 | 2 | 2 | 0 |
+| 5 | 6-curl | 0.385 | 1 | 2 | 0 |
+| 6 | 3-plume | 0.119 | 0 | 3 | 0 |

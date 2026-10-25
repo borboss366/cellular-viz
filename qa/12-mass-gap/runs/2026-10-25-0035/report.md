@@ -20,3 +20,14 @@ queries:
 - lava: http://127.0.0.1:42661/experiments/12-mass-gap.html?scene=lava
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+6 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | field | 5.815 | 2 | 0 | 0 |
+| 2 | lava | 1.766 | 2 | 1 | 0 |
+| 3 | tube | 0.725 | 2 | 2 | 0 |
+| 4 | glueball | 0.134 | 0 | 3 | 0 |

@@ -23,3 +23,12 @@ Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
 |---|---|---|---|---|---|---|---|
 | look-dream | 39.9% | 0% | 44.1% | 7.8 s | 31.1% | 5.8 s | keep |
 | look-glow | 39.7% | 0% | 45.7% | 7.6 s | 35.8% | 5.7 s | keep |
+
+## Pairwise ranking (user picks)
+
+2 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | look-dream | 2.751 | 2 | 0 | 0 |
+| 2 | look-glow | 0.363 | 0 | 2 | 0 |
