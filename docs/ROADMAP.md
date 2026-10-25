@@ -11,7 +11,7 @@ Build a wide set of good-looking MVPs, each one true to its source (maths or phy
 | Problem | Page(s) | Status |
 |---|---|---|
 | Riemann | 09 phase portrait, **11 Riemann show** (ribbon, march, scope, primes, canyon, map) | ✅ MVP on main. User's ranking: ribbon > scope > canyon > march > map > primes. Auto-mix is deferred to phase 2 |
-| Birch–Swinnerton-Dyer | 10 first version, 17 Skater, **19 Skate Park** (torus, morph, free) | ✅ MVP. 19 won the final grade (#50). Later: the line looks like it ends right in front of the skater in one clip (effects) |
+| Birch–Swinnerton-Dyer | 10 first version, 17 Skater, **19 Skate Park** (torus, morph, free) | ✅ MVP, on main (#50 merged). 19 won the final grade. Later: the line looks like it ends right in front of the skater in one clip (effects) |
 | Yang–Mills | 12 Mass Gap, **18 Little Bang** (collide, strings, quench) | ✅ MVP (#43, #49) |
 | Navier–Stokes | 13 Flow Lab (stable fluids + curl noise, presets) | ⏳ spec on #37, next build |
 | Poincaré | 14 Round Point (curve-shortening flow, neck pinch, Thurston fly-through) | ⏳ spec on #37 |
