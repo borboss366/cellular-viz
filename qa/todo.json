@@ -115,7 +115,8 @@
     "label": "\u21c4 x\u00b3+17 vs x\u00b3\u221225x",
     "href": "/run/10-bsd/2026-10-24-2042/compare"
    }
-  ]
+  ],
+  "done": "answered"
  },
  {
   "id": "11-riemann-show",
@@ -147,6 +148,23 @@
    {
     "label": "\u25b6 watch both",
     "href": "/run/11-riemann-show/2026-10-24-2321-canyon"
+   }
+  ],
+  "done": "answered"
+ },
+ {
+  "id": "12-mass-gap",
+  "from": "QA box",
+  "title": "12 Mass Gap: first look \u2014 field, tube, glueball, lava. Which scenes stay?",
+  "note": "All physics checks pass (rings at speed 1, gap rings at \u03c9 = m, glueball masses from lattice QCD), 60 fps at 1080p. 2 rounds = 6 picks.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/12-mass-gap/2026-10-25-0035/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/12-mass-gap/2026-10-25-0035"
    }
   ]
  }

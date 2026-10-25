@@ -91,12 +91,13 @@ const res = await page.evaluate(async secs => {
     vid.requestVideoFrameCallback(step);
   });
   on = false;
+  const audioLatency = window.__qa && Number.isFinite(__qa.audioLatency) ? __qa.audioLatency : null;
   const bpb = (typeof params !== 'undefined' && params.bpb) || 4, bpm = (typeof params !== 'undefined' && params.bpm) || 120;
-  return { rows, bpb, bpm, clock };
+  return { rows, bpb, bpm, clock, audioLatency };
 }, secs);
 await browser.close(); server.close();
 
-const { rows, bpb, bpm, clock } = res;
+const { rows, bpb, bpm, clock, audioLatency } = res;
 const beatMs = 60000 / bpm;
 // least-squares line beats(t) through the page clock (tempo is constant in these tests)
 const cx = clock.map(c => c[0]), cy = clock.map(c => c[1] * bpb), n = cx.length;
@@ -120,6 +121,9 @@ const fps = rows.length / ((rows.at(-1)[0] - rows[0][0]) / 1000);
 const tempoBpm = slope * 60000;
 const out = { label, page: pageName, query, frames: rows.length, fps: +fps.toFixed(1), meanMotion: +mean(rows.map(r => r[2])).toFixed(5),
   // peakMs is already at render time; raw = what the capture saw before taking the lag off
+  // the page draws behind its scheduled beats by the speaker delay on purpose (picture matches what you hear)
+  audioLatencyMs: audioLatency == null ? null : +(audioLatency * 1000).toFixed(1),
+  vsSpeakersMs: audioLatency == null ? null : Math.round(peakMs - audioLatency * 1000),
   correctedMs: Math.round(peakMs), rawMs: Math.round(peakMs + cal.median), pipelineLagMs: cal,
   clockFit: { tempoBpm: +tempoBpm.toFixed(2), residualMs: +fitErrMs.toFixed(1), samples: n },
   binMs: +(beatMs / N).toFixed(1), pulseStrength: +(byPhase[peak] / median).toFixed(2),
