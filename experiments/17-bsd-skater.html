@@ -4,7 +4,8 @@
 
   The elliptic curve y² = x³ + ax + b becomes a glowing half-pipe and the camera is a skater
   riding it. Pace (the user: "way slower, chill"): by default the skater carves slowly along
-  the pipe and lands one trick every 2 bars, a grind every 4th trick (?pace=beat is the first
+  the pipe and lands one trick every 4 bars, each trick floating over 2 bars, with the camera
+  low over the ramp (?trickBars, ?trickLen, ?cam); a grind every 4th trick (?pace=beat is the first
   version: one trick per beat, a grind on each downbeat). The tricks are the group law, exact:
     add (every beat)   ollie along the chord from P through Q, land on the third crossing R,
                        then flip across the x-axis onto P + Q = −R
@@ -76,6 +77,8 @@
   <h3>Pace</h3>
   <div class="buttons"><button id="pace-chill">Chill: slide, trick now and then</button><button id="pace-beat">Trick every beat</button></div>
   <div class="row"><label for="trickBars">bars / trick</label><input id="trickBars" type="range" min="1" max="8" step="1"><output id="trickBarsOut"></output></div>
+  <div class="row"><label for="trickLen">bars in air</label><input id="trickLen" type="range" min="1" max="4" step="1"><output id="trickLenOut"></output></div>
+  <div class="row"><label for="cam">camera</label><input id="cam" type="range" min="0.2" max="1.5" step="0.05"><output id="camOut"></output></div>
   <div class="row"><label for="slide">slide</label><input id="slide" type="range" min="0" max="4" step="0.1"><output id="slideOut"></output></div>
   <div class="row"><label for="hops">hops / reseed</label><input id="hops" type="range" min="4" max="64" step="1"><output id="hopsOut"></output></div>
   <div class="buttons"><button id="copy" class="wide">Copy setup</button></div>
@@ -90,7 +93,7 @@ const query = new URLSearchParams(location.search);
 // carves along the half-pipe and lands one trick every `trickBars` bars; 'beat' is the first
 // version, one trick on every beat (?pace=beat).
 const params = { curve: 'x3-25x', bpm: 120, bpb: 4, hops: 24, pmax: 1500, muted: false,
-                 pace: 'chill', trickBars: 2, slide: 1.4,
+                 pace: 'chill', trickBars: 4, trickLen: 2, slide: 1.4, cam: 0.5,   // user: slower tricks, camera closer
                  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 
 // ---------- exact rationals and the group law (as 10) ----------
@@ -481,7 +484,7 @@ for (const key of Object.keys(PRESETS)) {
   const b = document.createElement('button'); b.textContent = PRESETS[key].label; b.dataset.key = key;
   b.onclick = () => { setCurve(key); sync(); }; $('presets').appendChild(b);
 }
-const SLIDERS = ['bpm', 'hops', 'trickBars', 'slide'];
+const SLIDERS = ['bpm', 'hops', 'trickBars', 'trickLen', 'slide', 'cam'];
 for (const name of SLIDERS) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name]; });
 function sync() {
   for (const name of SLIDERS) { $(name).value = params[name]; $(name + 'Out').textContent = params[name]; }
@@ -490,7 +493,7 @@ function sync() {
   for (const b of $('presets').children) b.classList.toggle('on', b.dataset.key === curve.key);
 }
 $('copy').onclick = async e => {
-  const q = new URLSearchParams({ curve: curve.key, bpm: params.bpm, hops: params.hops, pace: params.pace, trickBars: params.trickBars, slide: params.slide });
+  const q = new URLSearchParams({ curve: curve.key, bpm: params.bpm, hops: params.hops, pace: params.pace, trickBars: params.trickBars, trickLen: params.trickLen, slide: params.slide, cam: params.cam });
   const text = `17 · BSD Skater · y² = ${PRESETS[curve.key].label} · p ${st.p} · a_p ${st.ap}\n${location.origin + location.pathname}?${q}`;
   let ok = false;
   try { await navigator.clipboard.writeText(text); ok = true; } catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }
@@ -540,7 +543,8 @@ function draw(now) {
   // a cycle is one trick: one beat in beat pace; in chill pace `trickBars` bars, the trick
   // taking the first bar and the slide the rest
   const chill = params.pace === 'chill';
-  const C = chill ? Math.max(1, Math.round(params.trickBars)) * params.bpb : 1, TB = chill ? Math.min(C, params.bpb) : 1;
+  const C = chill ? Math.max(1, Math.round(params.trickBars)) * params.bpb : 1;
+  const TB = chill ? Math.min(C, Math.max(1, Math.round(params.trickLen)) * params.bpb) : 1;   // beats the trick itself takes
   const cycle = Math.floor(beats / C), inCyc = beats - cycle * C;
   const u = Math.min(1, inCyc / TB), w = C > TB && inCyc > TB ? (inCyc - TB) / (C - TB) : 0, wt = inCyc / C;
   const hopped = cycle !== st.hopBeat;
@@ -559,8 +563,9 @@ function draw(now) {
   const mv = sub3(sk.pos, prev);
   if (Math.hypot(mv[0], mv[1]) > 1e-4) st.cam.dir = norm3(lerp3(st.cam.dir, norm3([mv[0], mv[1], 0]), 0.15));
   const d = st.cam.dir, side = [-d[1], d[0], 0];
-  const eyeT = add3(add3(sub3(sk.pos, mul3(d, 2.4)), mul3(side, 0.5)), [0, 0, 2.2 + 0.2 * L.kick]);
-  const atT = add3(sk.pos, mul3(d, 1.6));
+  const cz = params.cam;   // 1 = the first version's distance; smaller rides closer to the ramp
+  const eyeT = add3(add3(sub3(sk.pos, mul3(d, 2.4 * cz)), mul3(side, 0.5 * cz)), [0, 0, (2.2 + 0.2 * L.kick) * cz + 0.15]);
+  const atT = add3(sk.pos, mul3(d, 1.2 + 0.4 * cz));
   st.cam.eye = st.cam.eye ? lerp3(st.cam.eye, eyeT, 0.12) : eyeT;
   st.cam.at = st.cam.at ? lerp3(st.cam.at, atT, 0.18) : atT;
   const viewDir = norm3(sub3(st.cam.at, st.cam.eye));
@@ -636,7 +641,7 @@ function draw(now) {
 }
 
 const q = k => query.get(k);
-for (const k of ['bpm', 'hops', 'trickBars', 'slide']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
+for (const k of ['bpm', 'hops', 'trickBars', 'trickLen', 'slide', 'cam']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
 if (q('pace') === 'beat' || q('pace') === 'chill') params.pace = q('pace');
 params.muted = q('muted') === '1';
 window.__qa = { errors, events };
