@@ -199,7 +199,8 @@
     "label": "\u25b6 watch all",
     "href": "/run/17-bsd-skater/2026-10-25-0925"
    }
-  ]
+  ],
+  "done": "superseded by 17-vs-19 run"
  },
  {
   "id": "fhp-pick",
@@ -210,6 +211,38 @@
    {
     "label": "\u2713 pick",
     "href": "/pick/fhp"
+   }
+  ]
+ },
+ {
+  "id": "19-vs-17",
+  "from": "QA box",
+  "title": "BSD: 19 Skate Park (torus, morph, free ride) vs 17 Skater chill \u2014 which ride do you want?",
+  "note": "Recorded with the current pacing; slower trick settings are coming from VIZ dev and I'll re-record then. 2 rounds = 10 picks.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/19-skate-park/2026-10-25-1209/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/19-skate-park/2026-10-25-1209"
+   }
+  ]
+ },
+ {
+  "id": "riemann-main",
+  "from": "QA box",
+  "title": "Riemann on main now: canyon (bumps + beat lead) and ribbon \u2014 watch what was built",
+  "note": "This is what's merged (#42 + #48). Canyon reacts 35 ms after the sound. Tap a video; 'watch all' plays both.",
+  "links": [
+   {
+    "label": "\u25b6 watch",
+    "href": "/run/11-riemann-show/2026-10-25-1209"
+   },
+   {
+    "label": "\u21c4 canyon vs ribbon",
+    "href": "/run/11-riemann-show/2026-10-25-1209/compare"
    }
   ]
  }
