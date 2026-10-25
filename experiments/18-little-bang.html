@@ -108,8 +108,10 @@ const query = new URLSearchParams(location.search);
 const SCENES = ['collide', 'strings', 'quench'];
 const COARSE = matchMedia('(pointer: coarse)').matches;
 // lead (ms): read the drums this far ahead of the heard clock, if QA box finds the picture late.
-const params = { scene: 'auto', bars: 8, bpm: 120, bpb: 4, muted: false, lead: 0, seed: 1,
-                 n: COARSE ? 30000 : 150000, gain: 1, tau: 0.08, loss: 0.06,
+// res: 'cap' draws the particles at up to 2560×1440 pixels and scales the glow up to the
+// screen (QA box: 30 fps at 1440p, 15 at 4K at full size); ?res=native draws every pixel.
+const params = { scene: 'auto', bars: 8, bpm: 120, bpb: 4, muted: false, lead: 0, seed: 1, res: 'cap',
+                 n: COARSE ? 30000 : 100000, gain: 1, tau: 0.08, loss: 0.06,
                  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 
 // ---------- physics constants ----------
@@ -120,7 +122,9 @@ const FBS = 0.045;          // world units per fm for the fireball and nuclei
 const FMC_S = 0.06;         // seconds of picture per fm/c of fireball time
 const DET_R = 2.5;          // m, drawn detector barrel
 const SPEED = 2.0;          // m per second of picture (tracks, slowed down)
-const TRAIL_K = 4, TRAIL_DT = 0.03;   // line segments per track, seconds each
+const TRAIL_K = 3, TRAIL_DT = 0.04;   // line segments per track, seconds each
+const TRACK_LIFE = 2.4;               // s; tracks fade from 1.4 s, so about one event's tracks are drawn at a time
+const FIRE_N = 24000;                 // fireball points
 const JET_N = 700;          // particles per jet
 const KAPPA = 1.0, MQ = 0.33, STR_FM = 0.12, STR_S = 0.12;   // strings: GeV/fm, GeV, units/fm, s per fm/c
 
@@ -399,7 +403,7 @@ void main() {
   float tin = emit.y + X * c - q * Y * sn, tout = emit.z + X * sn + q * Y * c;
   vec3 pos = vec3(emit.x + xl, 0.0, 0.0) + uEin * tin + uEout * tout;
   alpha *= 1.0 - smoothstep(uDet, uDet * 1.6, length(vec2(tin, tout)));
-  alpha *= (1.0 - smoothstep(2.2, 3.8, uT)) * step(0.0, tRaw) * (1.0 - 0.8 * float(seg + e) / float(uK));
+  alpha *= (1.0 - smoothstep(1.4, 2.4, uT)) * step(0.0, tRaw) * (1.0 - 0.8 * float(seg + e) / float(uK));
   vec3 col = q > 0.0 ? vec3(1.0, 0.42, 0.12) : (q < 0.0 ? vec3(0.18, 0.55, 1.0) : vec3(1.0, 0.9, 0.55));
   vC = vec4(col * bright, alpha * uGain);
   gl_Position = uVP * vec4(pos, 1.0);
@@ -575,6 +579,16 @@ function spawnCascade(E0) {
   strings.cascades.push(cas); strings.totalQuarks += 2;
   return cas;
 }
+function moveConst(q, F, h) { const e1 = endE(q); q.p += F * h; q.x += (endE(q) - e1) / F; }
+function fixEnergy(pc, E0) {
+  const target = E0 - KAPPA * Math.abs(pc.b.x - pc.a.x), pa = pc.a.p, pb = pc.b.p;
+  const f = s => Math.hypot(s * pa, MQ) + Math.hypot(s * pb, MQ) - target;
+  if (Math.abs(f(1)) < 1e-12) return;
+  if (target <= 2 * MQ) { pc.a.p = 0; pc.b.p = 0; return; }   // can't happen without a crossing; stop the ends
+  let lo = 0, hi = 1; while (f(hi) < 0 && hi < 1e6) hi *= 2;
+  for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (f(m) < 0) lo = m; else hi = m; }
+  const s = (lo + hi) / 2; pc.a.p = s * pa; pc.b.p = s * pb;
+}
 function stepStrings(dtS) {
   const dtFm = dtS / STR_S, SUB = Math.max(1, Math.ceil(dtFm / 0.02)), h = dtFm / SUB;
   for (const cas of strings.cascades) {
@@ -582,8 +596,12 @@ function stepStrings(dtS) {
     for (let it = 0; it < SUB; it++) {
       const born = [];
       for (const pc of cas.pieces) {
-        for (const [me, other] of [[pc.a, pc.b], [pc.b, pc.a]]) me.p += KAPPA * Math.sign(other.x - me.x) * h;
-        for (const me of [pc.a, pc.b]) me.x += me.p / endE(me) * h;
+        // Exact under a constant force F: p += F h and x moves by ΔE/F (since dE = F dx). That
+        // conserves E = Ea + Eb + κ|L| exactly while the ends don't cross; a yo-yo crossing
+        // inside the step is then put right by rescaling the momenta (QA box saw 3% drift).
+        const E0 = pieceE(pc), sa = Math.sign(pc.b.x - pc.a.x) || 1;
+        moveConst(pc.a, KAPPA * sa, h); moveConst(pc.b, -KAPPA * sa, h);
+        fixEnergy(pc, E0);
         if (pc.hadron) continue;
         if (pieceE(pc) < HADRON_E) { pc.hadron = true; continue; }
         const L = Math.abs(pc.b.x - pc.a.x), gapFm = 2 * MQ / KAPPA;
@@ -637,13 +655,13 @@ function stringsQA() {
 // ---------- modules (ISF-style inputs for the coming platform) ----------
 const MODULES = {
   collide: { inputs: [
-    { name: 'n', type: 'long', default: 150000, min: 10000, max: 1000000 },
+    { name: 'n', type: 'long', default: 100000, min: 10000, max: 1000000 },
     { name: 'gain', type: 'float', default: 1, min: 0.1, max: 3 },
     { name: 'loss', type: 'float', default: 0.06, min: 0, max: 0.3 },
     { name: 'tau', type: 'float', default: 0.08, min: 0, max: 0.4 } ] },
   strings: { inputs: [ { name: 'gain', type: 'float', default: 1, min: 0.1, max: 3 } ] },
   quench: { inputs: [
-    { name: 'n', type: 'long', default: 150000, min: 10000, max: 1000000 },
+    { name: 'n', type: 'long', default: 100000, min: 10000, max: 1000000 },
     { name: 'loss', type: 'float', default: 0.06, min: 0, max: 0.3 } ] },
 };
 window.__modules = Object.fromEntries(Object.entries(MODULES).map(([k, m]) => [k, { inputs: m.inputs }]));
@@ -727,7 +745,8 @@ function resize() {
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   const ow = Math.round(canvas.clientWidth * Math.min(dpr, 1.5)), oh = Math.round(canvas.clientHeight * Math.min(dpr, 1.5));
   if (ov.width !== ow || ov.height !== oh) { ov.width = ow; ov.height = oh; }
-  sizeTargets(canvas.width, canvas.height);
+  const cap = params.res === 'native' ? 1 : Math.min(1, Math.sqrt(2560 * 1440 / (canvas.width * canvas.height)));
+  sizeTargets(Math.round(canvas.width * cap), Math.round(canvas.height * cap));
 }
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastOv = 0, lastNow = 0;
 let lastBeat = -1;
@@ -754,7 +773,7 @@ function draw(now) {
   const beatSec = 60 / params.bpm, barSec = beatSec * params.bpb, tMus = bars * barSec;
   const n = Math.floor(bars), sec = sectionOf(n), beat = Math.floor(bars * params.bpb);
   const beatEdge = beat !== lastBeat; lastBeat = beat;
-  const W = canvas.width, H = canvas.height;
+  const W = rt.w, H = rt.h, CW = canvas.width, CH = canvas.height;   // particles at W×H, shown at CW×CH
 
   // strings: a new cascade on every kick of the strings scene
   if (beatEdge && sec.scene === 'strings' && params.kick[(beat * 4) % 16] === 'x') {
@@ -799,7 +818,7 @@ function draw(now) {
     if (t >= 0 && t < ev.fb.thS + 0.15) {   // the fireball
       const tf = t / FMC_S, A = fireballAxes(ev.fb, Math.min(tf, ev.fb.th)), T = fireballT(ev.fb, Math.min(tf, ev.fb.th));
       const fade = t < ev.fb.thS ? 1 : 1 - (t - ev.fb.thS) / 0.15;
-      const glow = Math.min(60, (T / T_C) ** 4) * 0.012 * fade;
+      const glow = Math.min(60, (T / T_C) ** 4) * 0.012 * (40000 / FIRE_N) * fade;
       flash = Math.max(flash, (ev.drop ? 0.3 : 0.12) * Math.min(1, (T / T_C) ** 4 / 40) * fade * Math.exp(-t / 0.12));
       gl.useProgram(fireProg.p);
       gl.uniformMatrix4fv(fireProg.u.uVP, false, vp);
@@ -810,19 +829,19 @@ function draw(now) {
       gl.uniform1f(fireProg.u.uBright, glow * fg * params.gain);
       gl.uniform1f(fireProg.u.uScale, H / 45);
       gl.uniform1f(fireProg.u.uTime, now / 1000);
-      gl.bindVertexArray(emptyVao); gl.drawArrays(gl.POINTS, 0, 40000);
+      gl.bindVertexArray(emptyVao); gl.drawArrays(gl.POINTS, 0, FIRE_N);
     }
     const tt = t - ev.fb.thS;
-    if (tt >= 0 && tt < 3.8) {   // hadrons: the bulk tracks
+    if (tt >= 0 && tt < TRACK_LIFE) {   // hadrons: the bulk tracks
       gl.useProgram(trackProg.p);
       setTrackUniforms(vp, ev, tt, 0, fg);
-      gl.uniform1f(trackProg.u.uGain, 0.9 * Math.sqrt(150000 / params.n) * fg * params.gain);
+      gl.uniform1f(trackProg.u.uGain, 0.9 * Math.sqrt(100000 / params.n) * fg * params.gain);
       gl.bindVertexArray(emptyVao); gl.drawArrays(gl.LINES, 0, params.n * TRAIL_K * 2);
       drawn += params.n;
     }
     for (const j of ev.jets) {   // jet pairs on the snares
       const tj = t - j.step * beatSec / 4;
-      if (tj < 0 || tj >= 3.8) continue;
+      if (tj < 0 || tj >= TRACK_LIFE) continue;
       if (metronome.playing && !logged.has(`j${m}.${j.step}`)) {
         logged.add(`j${m}.${j.step}`);
         const tb = stepTime(m * params.bpb * 4 + j.step);
@@ -854,7 +873,7 @@ function draw(now) {
   gl.bindVertexArray(emptyVao);
   const pass = (prog, dst, src, set) => {
     gl.bindFramebuffer(gl.FRAMEBUFFER, dst ? dst.fbo : null);
-    gl.viewport(0, 0, dst ? dst.w : W, dst ? dst.h : H);
+    gl.viewport(0, 0, dst ? dst.w : CW, dst ? dst.h : CH);
     gl.useProgram(prog.p);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.t); gl.uniform1i(prog.u.uSrc ?? prog.u.uAcc, 0);
     if (set) set(prog);
@@ -872,7 +891,7 @@ function draw(now) {
 
   qaState.scene = sec.scene; qaState.bar = n; qaState.drawnTracks = drawn;
   if (now - lastOv > 66) { lastOv = now; drawOverlay(sec, L); }
-  Object.assign(window.__qa, { scene: sec.scene, bars, drop: sec.drop, energy: sec.energy, drawnTracks: drawn,
+  Object.assign(window.__qa, { scene: sec.scene, bars, drop: sec.drop, energy: sec.energy, drawnTracks: drawn, render: [W, H], screen: [CW, CH],
     lastEvent: qaState.lastEvent && summary(qaState.lastEvent), lastJet: qaState.lastJet, strings: stringsQA(), latency: metronome.latency() });
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
@@ -880,7 +899,7 @@ function draw(now) {
     lastHud = now;
     const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
     hud.textContent = `Little Bang · ${sec.scene} · ${sec.drop ? 'DROP' : 'build-up'} · ${params.bpm} bpm · ${state}\n` +
-      `${drawn.toLocaleString()} tracks drawn · ${W}×${H} · ${fps} fps`;
+      `${drawn.toLocaleString()} tracks drawn · ${W}×${H}${W !== CW ? ` → ${CW}×${CH}` : ''} · ${fps} fps`;
   }
 }
 function setTrackUniforms(vp, ev, t, mode, fg) {
@@ -947,6 +966,7 @@ window.__qa = {
 const q = k => query.get(k);
 if (q('scene') && (q('scene') === 'auto' || SCENES.includes(q('scene')))) params.scene = q('scene');
 for (const k of ['bars', 'bpm', 'n', 'gain', 'tau', 'loss', 'lead', 'seed']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
+if (q('res') === 'native') params.res = 'native';
 params.n = Math.max(1000, Math.min(1000000, Math.round(params.n)));
 params.muted = q('muted') === '1';
 sync();
