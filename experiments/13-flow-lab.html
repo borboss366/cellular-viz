@@ -20,8 +20,9 @@
   Recipes:
     vortex   uniform inflow past a cylinder: a Kármán street. Locked to the music with the
              Strouhal number f = St·U/d, f = BPM/120, so a vortex peels off on every beat (each
-             side every other beat). St follows Roshko, 0.212 (1 − 21.2/Re), at the grid's
-             effective Re (~100, St ~0.165), and a small wake forcing at f keeps the phase.
+             side every other beat). By Strouhal similarity: one fixed flow (inflow Uref, fixed
+             step) whose sim clock runs at (BPM/120)/fNat, so St = fNat·d/Uref at every tempo;
+             a small wake forcing at the beat (lock-in) keeps the phase (?lock=0: natural).
     kh       Kelvin–Helmholtz: two layers sliding opposite ways, a sine nudge on the kick rolls
              the interface into billows.
     plume    smoke with buoyancy (GPU Gems 38.4.2): a heat source, f = σ·T·ŷ; the kick adds heat.
@@ -109,9 +110,13 @@
 'use strict';
 
 const query = new URLSearchParams(location.search);
-// nuEff: the grid's effective viscosity (cells²/s) for the Strouhal lock; lock: wake forcing as a
-// fraction of U (undefined = the recipe's, 0 = off, to see the natural shedding)
-const settings = { bpm: 120, bpb: 4, muted: false, res: 256, morphBars: 8, probe: false, conserve: true, nuEff: 85, lock: undefined,
+// Strouhal lock by similarity: the vortex recipe always runs the same flow (inflow Uref cells per
+// sim-second, fixed sim step dtSim), and the sim clock runs at (BPM/120)/fNat sim-seconds per real
+// second, so its natural shedding fNat (per sim-second) lands at BPM/120 Hz and St stays the same
+// at every tempo. fNat is calibrated with __qa.calibrate() (?probe=1&lock=0). lock: wake forcing
+// as a fraction of U (undefined = the recipe's, 0 = off, to see the natural shedding).
+const settings = { bpm: 120, bpb: 4, muted: false, res: 256, morphBars: 8, probe: false, conserve: true,
+                   Uref: 219, fNat: 1.07, dtSim: 1 / 120, omega: 1.85, lock: undefined,
                    kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 const ST = 0.2;   // Strouhal number of a cylinder wake (≈ 0.2 for Re ~ 300 … 2·10⁵)
 
@@ -119,7 +124,7 @@ const ST = 0.2;   // Strouhal number of a cylinder wake (≈ 0.2 for Re ~ 300 �
 const BASE = { viscosity: 0, curl: 6, dissipation: 0.15, velDissipation: 0.02, pressureIters: 40, splatRadius: 0.35, noiseScale: 2.5, octaves: 3, wind: 0, seed: 1 };
 const PRESETS = {
   vortex: { name: 'vortex', engine: 'fluid',
-    forces: [{ type: 'inflow', U: 'strouhal', lock: 0.06 }], obstacles: [{ x: 0.2, y: 0.5, r: 0.07 }],
+    forces: [{ type: 'inflow', U: 'strouhal', lock: 0.15 }], obstacles: [{ x: 0.2, y: 0.5, r: 0.07 }],
     sources: [{ x: 0.2, y: 0.5 + 0.075, r: 0.012, c: 0, rate: 3 }, { x: 0.2, y: 0.5 - 0.075, r: 0.012, c: 1, rate: 3 },
               { x: 0.02, y: 0.3, r: 0.006, c: 2, rate: 1.2 }, { x: 0.02, y: 0.7, r: 0.006, c: 2, rate: 1.2 }],
     params: { ...BASE, curl: 5, dissipation: 0.25 }, palette: ['#ff4f6d', '#3fc8ff', '#f4e9b8'],
@@ -273,7 +278,16 @@ void main() { vec2 p = vUv - uPoint; p.x *= uAspect; o = vec4(texture(uTarget, v
   // on its bottom face, so u is at the texel centre − ½ cell in x, v at − ½ cell in y.
   advect: program(HEAD + `
 uniform sampler2D uVel, uSrc; uniform float uDt, uDiss; uniform int uIsVel;
-vec2 velAt(vec2 p) { return vec2(texture(uVel, p + vec2(0.5 * uTexel.x, 0.0)).x, texture(uVel, p + vec2(0.0, 0.5 * uTexel.y)).y); }
+uniform vec4 uWalls;
+vec2 velAt(vec2 p) {
+  float u = texture(uVel, p + vec2(0.5 * uTexel.x, 0.0)).x, v = texture(uVel, p + vec2(0.0, 0.5 * uTexel.y)).y;
+  // the faces on a closed right or top wall are not stored: fall to 0 there instead of
+  // clamping to the last stored face (QA box: that leaked the dye out through those walls)
+  float N = 1.0 / uTexel.x, M = 1.0 / uTexel.y, fx = p.x * N, fy = p.y * M;
+  if (uWalls.y > 0.5 && fx > N - 1.0) u *= clamp(N - fx, 0.0, 1.0);
+  if (uWalls.w > 0.5 && fy > M - 1.0) v *= clamp(M - fy, 0.0, 1.0);
+  return vec2(u, v);
+}
 void main() {
   if (uIsVel == 1) {   // trace back from each face and read the same component there
     vec2 pu = vUv - vec2(0.5 * uTexel.x, 0.0), pv = vUv - vec2(0.0, 0.5 * uTexel.y);
@@ -353,14 +367,16 @@ void main() {
   o = vec4(solid(vUv) > 0.5 ? 0.0 : (uR - uL + vT - vB), 0.0, 0.0, 1.0);
 }`),
   pressure: program(HEAD + `
-uniform sampler2D uP, uDiv; uniform float uOpenRight;
+uniform sampler2D uP, uDiv; uniform float uOpenRight, uParity, uOmega;   // red-black SOR
 float Pn(vec2 uv, float pc) { return solid(uv) > 0.5 ? pc : texture(uP, uv).x; }
 void main() {
   float pc = texture(uP, vUv).x;
   float L = Pn(vUv - vec2(uTexel.x, 0), pc), R = Pn(vUv + vec2(uTexel.x, 0), pc);
   float B = Pn(vUv - vec2(0, uTexel.y), pc), T = Pn(vUv + vec2(0, uTexel.y), pc);
   if (uOpenRight > 0.5 && vUv.x + uTexel.x > 1.0) R = 0.0;     // outflow: p = 0
-  o = vec4(0.25 * (L + R + B + T - texture(uDiv, vUv).x), 0.0, 0.0, 1.0);
+  float gs = 0.25 * (L + R + B + T - texture(uDiv, vUv).x);
+  bool mine = mod(floor(gl_FragCoord.x) + floor(gl_FragCoord.y), 2.0) == uParity;
+  o = vec4(mine ? mix(pc, gs, uOmega) : pc, 0.0, 0.0, 1.0);
 }`),
   gradient: program(HEAD + `
 uniform sampler2D uP, uVel; uniform vec4 uWalls;
@@ -463,17 +479,16 @@ function effective(bars) {   // the blended recipe for this frame
   const palette = palA.map((c, i) => B ? c.map((v, j) => lerp(v, palB[i % palB.length][j], m)) : c);
   return { layers, params, palette, m };
 }
-// The shedding rate f = St·U/d with f = BPM/120 (a vortex every beat). St is not a constant:
-// at a cylinder's Reynolds number Re = U d / ν it follows Roshko (1954), St = 0.212 (1 − 21.2/Re).
-// The grid has an effective viscosity ν (numerical, plus any set), so Re here is ~100 and St ~0.165
-// (QA box measured 18 % slow with St = 0.2). Solving f = St(U)·U/d for U gives
-// U = (f d + 0.212·21.2 ν / d) / 0.212. ν defaults to 85 cells²/s, fitted to QA box's three tempos;
-// a small wake forcing at f (lock-in, as for an oscillating cylinder) keeps it on the beat.
+// The shedding rate f = St·U/d with f = BPM/120 (a vortex every beat). St depends on Re, and on
+// a grid Re itself moved with U (QA box: St 0.197 / 0.175 / 0.161 at 90 / 120 / 150 BPM). So the
+// flow is kept the same and only its clock changes with tempo: real-time U and f both scale by
+// simRate, Re stays put, and St = fNat·d/Uref is the same at every tempo (Strouhal similarity).
+// This replaces the Roshko fit with a fitted ν, which QA box showed was circular.
 function strouhal() {
-  const cyl = st.cur.obstacles[0] || { r: 0.07 }, d = 2 * cyl.r * F.simH, f = settings.bpm / 120;
-  const nu = settings.nuEff + (st.cur.params.viscosity || 0), U = (f * d + 0.212 * 21.2 * nu / d) / 0.212, Re = U * d / nu;
-  return { St0: ST, St: f * d / U, Re, nu, f, d, U, roshko: 0.212 * (1 - 21.2 / Re) };
+  const cyl = st.cur.obstacles[0] || { r: 0.07 }, d = 2 * cyl.r * F.simH, f = settings.bpm / 120, rate = f / settings.fNat;
+  return { St0: ST, St: settings.fNat * d / settings.Uref, f, d, U: settings.Uref, Ureal: settings.Uref * rate, simRate: rate, fNat: settings.fNat };
 }
+const simRate = () => (st.cur.forces.some(f => f.U === 'strouhal') ? 1 / settings.fNat : 1) * settings.bpm / 120;
 
 // ---------- one simulation step ----------
 function step(dt, eff, L) {
@@ -488,7 +503,7 @@ function step(dt, eff, L) {
         const U = f.U === 'strouhal' ? strouhal().U : f.U; inflowU += U * w; inflowW += w;
         if (f.lock && R.obstacles[0] && settings.lock !== 0) {   // wake forcing one diameter behind the first obstacle
           const ob = R.obstacles[0], fr = settings.bpm / 120;
-          lock = [ob.x + 2 * ob.r * F.simH / F.simW * 1.2, ob.y, ob.r * 0.8, (settings.lock ?? f.lock) * U * 2 * Math.PI * fr * w];
+          lock = [ob.x + 2 * ob.r * F.simH / F.simW * 1.2, ob.y, ob.r * 0.8, (settings.lock ?? f.lock) * U * 2 * Math.PI * settings.fNat * w];   // fNat per sim-second = the beat
         }
       }
       if (f.type === 'bands') { kh += w; khU += f.U * w; }
@@ -525,7 +540,7 @@ function step(dt, eff, L) {
     gl.uniform4fv(u.uLock, lock); gl.uniform1f(u.uLockS, Math.sin(Math.PI * st.beats));   // sin 2π f t with f = BPM/120
   });
   F.vel.swap();
-  pass(P.advect, F.vel.b, (u, tex) => { tex('uVel', F.vel.a); tex('uSrc', F.vel.a); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uDiss, params.velDissipation); gl.uniform1i(u.uIsVel, 1); });
+  pass(P.advect, F.vel.b, (u, tex) => { tex('uVel', F.vel.a); tex('uSrc', F.vel.a); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uDiss, params.velDissipation); gl.uniform1i(u.uIsVel, 1); gl.uniform4fv(u.uWalls, walls); });
   F.vel.swap();
   const curlK = params.curl * (1 + 2 * st.curlBurst);
   if (curlK > 0) {
@@ -543,10 +558,10 @@ function step(dt, eff, L) {
   st.walls = walls; st.openRight = openRight;
 
   // dye and temperature ride on the projected velocity
-  pass(P.advect, F.dye.b, (u, tex) => { tex('uVel', F.vel.a); tex('uSrc', F.dye.a); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uDiss, params.dissipation); gl.uniform1i(u.uIsVel, 0); });
+  pass(P.advect, F.dye.b, (u, tex) => { tex('uVel', F.vel.a); tex('uSrc', F.dye.a); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uDiss, params.dissipation); gl.uniform1i(u.uIsVel, 0); gl.uniform4fv(u.uWalls, walls); });
   F.dye.swap();
   const cool = heats.length ? heats.reduce((s, h) => s + h.cool * h.w, 0) : 1;
-  pass(P.advect, F.temp.b, (u, tex) => { tex('uVel', F.vel.a); tex('uSrc', F.temp.a); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uDiss, cool); gl.uniform1i(u.uIsVel, 0); });
+  pass(P.advect, F.temp.b, (u, tex) => { tex('uVel', F.vel.a); tex('uSrc', F.temp.a); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uDiss, cool); gl.uniform1i(u.uIsVel, 0); gl.uniform4fv(u.uWalls, walls); });
   F.temp.swap();
   st.simTime += dt; st.steps++;
 }
@@ -554,7 +569,12 @@ function project(iters, walls, openRight) {
   pass(P.divergence, F.div, (u, tex) => { tex('uVel', F.vel.a); gl.uniform4fv(u.uWalls, walls); });
   pass(P.clear, F.pres.b, (u, tex) => { tex('uSrc', F.pres.a); gl.uniform1f(u.uK, 0.8); });   // warm start
   F.pres.swap();
-  for (let i = 0; i < iters; i++) { pass(P.pressure, F.pres.b, (u, tex) => { tex('uP', F.pres.a); tex('uDiv', F.div); gl.uniform1f(u.uOpenRight, openRight); }); F.pres.swap(); }
+  // red-black SOR: red cells from black neighbours, then black from the new red (ω ≈ 1.85);
+  // far faster than Jacobi at the same pass count (QA box: Jacobi left 10–42 %)
+  for (let i = 0; i < iters; i++) for (const parity of [0, 1]) {
+    pass(P.pressure, F.pres.b, (u, tex) => { tex('uP', F.pres.a); tex('uDiv', F.div); gl.uniform1f(u.uOpenRight, openRight); gl.uniform1f(u.uParity, parity); gl.uniform1f(u.uOmega, settings.omega); });
+    F.pres.swap();
+  }
   pass(P.gradient, F.vel.b, (u, tex) => { tex('uP', F.pres.a); tex('uVel', F.vel.a); gl.uniform4fv(u.uWalls, walls); });
   F.vel.swap();
 }
@@ -612,11 +632,11 @@ function probe(x, y) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, F.vel.a.fbo); gl.readPixels(i, j, 1, 1, gl.RGBA, gl.FLOAT, px);
   return { u: px[0], v: px[1] };
 }
-function sheddingHz() {   // zero crossings of the wake's sideways velocity over the last 10 s
-  const w = st.wake.filter(p => p.t > st.simTime - 10);
+function sheddingHz(clock = 't') {   // zero crossings of the wake's sideways velocity over the last 10 s (real time; 'ts' = sim time)
+  const tEnd = st.wake.length ? st.wake[st.wake.length - 1].t : 0, w = st.wake.filter(p => p.t > tEnd - 10);
   if (w.length < 20) return null;
   const mean = w.reduce((s, p) => s + p.v, 0) / w.length;
-  let ups = []; for (let i = 1; i < w.length; i++) if (w[i - 1].v < mean && w[i].v >= mean) ups.push(w[i].t);
+  let ups = []; for (let i = 1; i < w.length; i++) if (w[i - 1].v < mean && w[i].v >= mean) ups.push(w[i][clock]);
   return ups.length > 2 ? (ups.length - 1) / (ups[ups.length - 1] - ups[0]) : null;
 }
 
@@ -737,12 +757,14 @@ function draw(now) {
     st.nudgeWake = false;
     for (const ob of st.cur.obstacles) splat(F.vel, ob.x + 1.5 * ob.r * F.simH / F.simW, ob.y + 0.3 * ob.r, [0, 60, 0], ob.r * ob.r * 0.5);
   }
-  step(dt, eff, L);
+  // fixed sim steps on a sim clock that runs at simRate(), so every tempo replays the same flow
+  st.simAcc = Math.min((st.simAcc || 0) + dt * simRate(), 4 * settings.dtSim);
+  while (st.simAcc >= settings.dtSim) { step(settings.dtSim, eff, L); st.simAcc -= settings.dtSim; }
   st.kickPulse *= Math.exp(-dt / 0.15); st.curlBurst *= Math.exp(-dt / 0.25); st.speedPulse *= Math.exp(-dt / 0.3);
 
   if (settings.probe && st.cur.forces.some(f => f.U === 'strouhal')) {   // wake probe: 3 diameters behind the cylinder
     const c = st.cur.obstacles[0], d = 2 * c.r * F.simH / F.simW;
-    st.wake.push({ t: +st.simTime.toFixed(4), v: probe(c.x + 3 * d, c.y).v }); if (st.wake.length > 4096) st.wake.shift();
+    st.wake.push({ t: +(now / 1000).toFixed(4), ts: +st.simTime.toFixed(4), v: probe(c.x + 3 * d, c.y).v }); if (st.wake.length > 4096) st.wake.shift();
   }
   if (now - lastMassCheck > 1000) {   // dye mass: drift log, and the optional conservation fix
     lastMassCheck = now;
@@ -764,7 +786,7 @@ function draw(now) {
   if (now - lastHud > 200) {
     lastHud = now;
     const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
-    const extra = st.cur.forces.some(f => f.U === 'strouhal') ? ` · U ${S.U.toFixed(0)} cells/s = f·d/St, f ${S.f.toFixed(2)} Hz` : '';
+    const extra = st.cur.forces.some(f => f.U === 'strouhal') ? ` · St ${S.St.toFixed(3)} · U ${S.Ureal.toFixed(0)} cells/s · f ${S.f.toFixed(2)} Hz` : '';
     hud.textContent = `Flow Lab · ${st.cur.name}${st.next ? ` → ${st.next.name} ${(eff.m * 100).toFixed(0)}%` : ''} · ${settings.bpm} bpm · ${state}${extra}\n` +
       `grid ${F.simW}×${F.simH} · dye ${F.dyeW}×${F.dyeH} · ${canvas.width}×${canvas.height} · ${fps} fps`;
   }
@@ -777,13 +799,16 @@ window.__qa = {
   preset(name) { if (PRESETS[name]) applyPreset(PRESETS[name], false); },
   sourcesOff() { st.sourcesOn = false; st.massRef = null; st.massLog = []; },
   sourcesOn() { st.sourcesOn = true; },
+  // with ?probe=1&lock=0 on the vortex recipe, after ~20 s: set fNat to the measured natural
+  // shedding per sim-second, so the street then lands on the beat without forcing
+  calibrate() { const ts = sheddingHz('ts'); if (!ts) return null; settings.fNat = +ts.toFixed(4); return { fNat: settings.fNat, St: strouhal().St }; },
 };
 const q = k => query.get(k);
 presetButtons();
 if (q('preset') && PRESETS[q('preset')]) st.cur = clone(PRESETS[q('preset')]);
 if (q('recipe')) { try { st.cur = JSON.parse(q('recipe')); } catch { errors.push('bad ?recipe JSON'); } }
 for (const k of Object.keys(BASE)) { const v = parseFloat(q(k)); if (Number.isFinite(v)) st.cur.params[k] = v; }
-for (const k of ['bpm', 'res', 'morphBars', 'nuEff', 'lock']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) settings[k] = v; }
+for (const k of ['bpm', 'res', 'morphBars', 'Uref', 'fNat', 'dtSim', 'omega', 'lock']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) settings[k] = v; }
 settings.probe = q('probe') === '1'; settings.conserve = q('conserve') !== '0'; settings.muted = q('muted') === '1';
 sync();
 requestAnimationFrame(frame);
