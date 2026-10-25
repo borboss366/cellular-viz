@@ -268,6 +268,7 @@ function mul4(a, b) { const o = new Float32Array(16); for (let i = 0; i < 4; i++
 
 // ---------- the track: branches of the real curve, squashed, as a half-pipe ----------
 const HALF = 0.45, RAIL_R = 0.045, XMAX = 400;
+const HEIGHT_BITS = 600;   // reseed once a point's x needs more than this many bits
 function branches() {   // polylines of [X, Y] in squashed space
   const X0 = M(-60), X1 = M(XMAX), N = 6000, runs = []; let cur = null;
   const root = (lo, hi) => { for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (Math.sign(fx(m)) === Math.sign(fx(lo))) lo = m; else hi = m; } return (lo + hi) / 2; };
@@ -341,7 +342,7 @@ const chordBuf = dynBuffer([{ loc: 0, size: 3 }]);
 function fill(b, arr) { gl.bindBuffer(gl.ARRAY_BUFFER, b.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.DYNAMIC_DRAW); }
 
 // ---------- state ----------
-const st = { P0: null, G: null, P: null, hop: null, hopBeat: -1, hops: 0, bigAirs: [], lastHop: null,
+const st = { P0: null, G: null, P: null, hop: null, hopBeat: -1, hops: 0, bigAirs: [], lastHop: null, heightResets: 0,
              pIndex: -1, p: 0, count: 0, ap: 0, hasse: [], coins: [], coinFlash: new Map(),
              trail: [], cam: { eye: null, at: null, dir: [1, 0, 0] }, flash: 0 };
 const W3 = (x, y, z = 0) => [M(x), M(y), z];
@@ -370,7 +371,11 @@ function nextPrime() {
 function doHop(beat) {
   const downbeat = beat % params.bpb === 0;
   if (downbeat && beat > 0) nextPrime();
-  if (st.hops >= params.hops) { st.P = st.P0; st.hops = 0; }   // keep the numbers drawable
+  // Keep the numbers small enough to stay live: reseed after `hops` tricks, or as soon as x
+  // passes 600 bits (~180 digits). Each downbeat doubling roughly quadruples the digits, so
+  // the hop count alone let x reach 37k digits and the frame rate fall to 4–11 fps (QA box).
+  const hx = Math.max(blen(st.P.x.n), blen(st.P.x.d));
+  if (st.hops >= params.hops || hx > HEIGHT_BITS) { st.P = st.P0; st.hops = 0; st.heightResets += hx > HEIGHT_BITS ? 1 : 0; }
   const type = downbeat ? 'dbl' : 'add';
   const P = st.P, Q = type === 'dbl' ? P : st.G;
   const r = type === 'dbl' ? dbl(P) : add(P, Q);
@@ -392,6 +397,7 @@ function doHop(beat) {
 function publish() {
   window.__qa = Object.assign(window.__qa || {}, {
     curve: { key: curve.key, a: curve.a, b: curve.b }, lastHop: st.lastHop, bigAirs: st.bigAirs.slice(-20), hops: st.hops,
+    heightResets: st.heightResets, heightBits: Math.max(blen(st.P.x.n), blen(st.P.x.d)),
     p: st.p, count: st.count, ap: st.ap, hasse: st.hasse.slice(), countPoints,
   });
 }
@@ -541,7 +547,7 @@ function draw(now) {
     const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
     const t = h ? (h.type === 'air' ? 'BIG AIR (sum = O)' : h.type === 'dbl' ? 'grind: 2P' : 'ollie: P + G') : '';
     hud.textContent = `BSD skater · y² = ${PRESETS[curve.key].label} · ${params.bpm} bpm · ${state}\n` +
-      `${t} · hop ${st.hops}/${params.hops} · height ${st.P.x.n.toString().length} digits\n` +
+      `${t} · hop ${st.hops}/${params.hops} · height ${Math.max(blen(st.P.x.n), blen(st.P.x.d))} bits\n` +
       `p ${st.p} · a_p ${st.ap} · ${W}×${H} · ${fps} fps`;
   }
 }
