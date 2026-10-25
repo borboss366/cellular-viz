@@ -513,6 +513,9 @@ void main() {
     // snare: bright bands sweep down the valley; hat: the surface twinkles
     col += vec3(0.7, 0.8, 1.0) * uSnare * smoothstep(0.92, 1.0, sin(p.z * 1.3 - uBeats * 6.2832)) * 0.8;
     col += vec3(1.0) * uHat * step(0.985, hash2(floor(p.xz * 14.0) + floor(uBeats * 4.0))) * 0.9;
+    // The whole ground flares with the kick envelope (5 ms attack), so the canyon's biggest
+    // change lands on the beat itself; the rings alone build up over the beat and read as late.
+    col *= 1.0 + 0.45 * uKick;
     col = mix(sky, col, exp(-b * 0.035));
   }
   o = vec4(col, 1.0);
