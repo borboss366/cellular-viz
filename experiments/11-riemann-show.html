@@ -451,7 +451,7 @@ vec2 ripple(vec2 xz) {
   return vec2(s, dmin);
 }`;
 // The ring sum costs 8 zeros × 3 exp, and inside every ray-march step it halved the canyon's
-// headroom (QA box: 141 → 67 fps uncapped at 1080p). So once a frame it is baked into a
+// headroom (QA box, uncapped at 1080p: 93 fps with it vs 338 for the plain canyon; 155 baked). So once a frame it is baked into a
 // world-space texture (x ∈ −20…20, z ∈ tc−8…tc+64; the rings reach 18 from a pit) and the
 // march reads that; the refine, the normal and the glow still use the exact ripple().
 const BUMP_W = 512, BUMP_H = 1024;
@@ -598,6 +598,10 @@ void main() {
   vec3 base = hsv(fract(vD.x * 0.015 + uPad * 0.3), 0.75, 1.0);
   vec3 col = base * (0.2 + 1.1 * fres) + vec3(1.0, 0.92, 0.75) * vD.y * (1.3 + 2.5 * uKick + 4.0 * uFlash);
   col *= exp(-length(uEye - vP) * 0.06);
+  // As in the canyon: the whole tube flares with the kick envelope (5 ms attack), so the
+  // ribbon's biggest change lands on the audible beat. Without it the smooth camera roll and
+  // approach dominated and QA box read the ribbon's onset ~27 ms before the speakers.
+  col *= 1.0 + 0.45 * uKick;
   o = vec4(col, 1.0);
 }`);
 const lineProg = program(`#version 300 es
