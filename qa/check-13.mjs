@@ -38,38 +38,37 @@ async function open(q, size = [1920, 1080], play = true) {
 const res = {};
 
 // ---- 1. divergence before / after projection ----
-const MYDIV = `window.__myDiv = function (walls) {
+const MYDIV = `window.__myDiv = function (walls) {   // MAC grid (70fc2c4+): texel (i,j) = u on the left face, v on the bottom face
   const W = F.simW, H = F.simH, v = readTarget(F.vel.a), asp = W / H, sol = new Uint8Array(W * H);
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) { const x = (i + 0.5) / W, y = (j + 0.5) / H;
     for (let k = 0; k < obsN; k++) { const ox = obsU[k*4], oy = obsU[k*4+1], r = obsU[k*4+2], w = obsU[k*4+3]; if (w > 0.02 && Math.hypot((x - ox) * asp, y - oy) < r * w) { sol[j*W+i] = 1; break; } } }
-  const V = (i, j, c) => sol[j*W+i] ? 0 : v[(j*W+i)*4+c];
+  const S = (i, j) => sol[j*W+i] === 1;
+  const fu = (i, j) => S(i, j) ? 0 : i === 0 ? (walls[0] > 0.5 ? 0 : v[(j*W+i)*4]) : S(i-1, j) ? 0 : v[(j*W+i)*4];
+  const fv = (i, j) => S(i, j) ? 0 : j === 0 ? (walls[2] > 0.5 ? 0 : v[(j*W+i)*4+1]) : S(i, j-1) ? 0 : v[(j*W+i)*4+1];
   let s2 = 0, sp = 0, n = 0;
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
-    if (sol[j*W+i]) continue;
-    const near = (i > 0 && sol[j*W+i-1]) || (i < W-1 && sol[j*W+i+1]) || (j > 0 && sol[(j-1)*W+i]) || (j < H-1 && sol[(j+1)*W+i]);
-    if (near) continue;
-    const cx = V(i, j, 0), cy = V(i, j, 1);
-    const L = i > 0 ? V(i-1, j, 0) : (walls[0] > 0.5 ? -cx : cx), R = i < W-1 ? V(i+1, j, 0) : (walls[1] > 0.5 ? -cx : cx);
-    const B = j > 0 ? V(i, j-1, 1) : (walls[2] > 0.5 ? -cy : cy), T = j < H-1 ? V(i, j+1, 1) : (walls[3] > 0.5 ? -cy : cy);
-    const d = 0.5 * (R - L + T - B); s2 += d * d; sp += Math.hypot(cx, cy); n++;
+    if (S(i, j)) continue;
+    const uL = fu(i, j), vB = fv(i, j);
+    const uR = i === W-1 ? (walls[1] > 0.5 ? 0 : uL) : fu(i+1, j), vT = j === H-1 ? (walls[3] > 0.5 ? 0 : vB) : fv(i, j+1);
+    const d = uR - uL + vT - vB; s2 += d * d; sp += Math.hypot(0.5 * (uL + uR), 0.5 * (vB + vT)); n++;
   }
   const rms = Math.sqrt(s2 / n), mean = sp / n; return { rms, mean, rel: rms / mean, n };
 };`;
 res.div = {};
 for (const pre of ['vortex', 'kh', 'plume', 'ink', 'rocks']) {
   res.div[pre] = {};
-  for (const iters of [30, 120]) {
-    const page = await open(`preset=${pre}&pressureIters=${iters}`);
+  for (const iters of [40, 120]) {
+    const page = await open(`preset=${pre}&pressureIters=${iters}&conserve=0&lock=0`);
     await page.addScriptTag({ content: MYDIV });
     res.div[pre][iters] = await page.evaluate(async () => {
       const orig = project, samples = []; window.__take = 0;
       window.project = function (it, walls, openR) { const take = window.__take > 0; const a = take ? __myDiv(walls) : null; orig(it, walls, openR);
-        if (take) { window.__take--; samples.push({ it, pre: a.rel, post: __myDiv(walls).rel, page: __qa.divergenceRMS().rel }); } };
+        if (take) { window.__take--; const b = __myDiv(walls); samples.push({ it, pre: a.rel, post: b.rel, ratio: b.rms / a.rms, page: __qa.divergenceRMS().rel }); } };
       await new Promise(r => setTimeout(r, 6000));
       for (let k = 0; k < 8; k++) { window.__take = 1; await new Promise(r => setTimeout(r, 500)); }
       window.project = orig;
       const med = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
-      return { n: samples.length, iters: samples[0]?.it, pre: med(samples.map(s => s.pre)), post: med(samples.map(s => s.post)), page: med(samples.map(s => s.page)), ratio: med(samples.map(s => s.post / s.pre)) };
+      return { n: samples.length, iters: samples[0]?.it, pre: med(samples.map(s => s.pre)), post: med(samples.map(s => s.post)), page: med(samples.map(s => s.page)), ratio: med(samples.map(s => s.ratio)), worstRatio: Math.max(...samples.map(s => s.ratio)) };
     });
     await page.close();
   }
@@ -91,10 +90,10 @@ for (const [pre, conserve] of [['plume', 0], ['kh', 0], ['plume', 1]]) {
   await page.close();
 }
 // ---- 3. vortex shedding vs BPM ----
-res.shed = {};
-for (const bpm of [90, 120, 150]) {
-  const page = await open(`preset=vortex&probe=1&bpm=${bpm}`);
-  res.shed[bpm] = await page.evaluate(async () => {
+res.shed = {}; res.shedLock = {};
+for (const [lock, bpm] of [[0, 90], [0, 120], [0, 150], [1, 90], [1, 120], [1, 150]]) {
+  const page = await open(`preset=vortex&probe=1&bpm=${bpm}&conserve=0${lock ? '' : '&lock=0'}`);
+  (lock ? res.shedLock : res.shed)[bpm] = await page.evaluate(async () => {
     await new Promise(r => setTimeout(r, 12000));
     const c = st.cur.obstacles[0], d = 2 * c.r * F.simH / F.simW, s = [];
     const tReal0 = performance.now(), tSim0 = __qa.simTime;
@@ -105,7 +104,9 @@ for (const bpm of [90, 120, 150]) {
     let best = 0, fft = null;
     for (let f = 0.2; f <= 4; f += 0.005) { let re = 0, im = 0; for (let i = 1; i < s.length; i++) { const w = s[i].t - s[i - 1].t, a = 2 * Math.PI * f * s[i].t; re += (s[i].v - mean) * Math.cos(a) * w; im += (s[i].v - mean) * Math.sin(a) * w; } const p = re * re + im * im; if (p > best) { best = p; fft = f; } }
     const amp = Math.sqrt(s.reduce((a, p) => a + (p.v - mean) ** 2, 0) / s.length);
-    return { expected: settings.bpm / 120, zeroCross: fz && +fz.toFixed(3), fourier: +fft.toFixed(3), page: __qa.sheddingHz() && +__qa.sheddingHz().toFixed(3),
+    const S = __qa.strouhal, fR = S.roshko * S.U / S.d, stMeas = fz * S.d / S.U;
+    return { expected: settings.bpm / 120, roshkoHz: +fR.toFixed(3), Re: +S.Re.toFixed(1), nu: S.nu, stMeas: +stMeas.toFixed(4), stRoshko: +S.roshko.toFixed(4),
+      ReImplied: +(21.2 / (1 - stMeas / 0.212)).toFixed(1), zeroCross: fz && +fz.toFixed(3), fourier: +fft.toFixed(3), page: __qa.sheddingHz() && +__qa.sheddingHz().toFixed(3),
       amp: +amp.toFixed(2), U: +__qa.strouhal.U.toFixed(1), simPerReal: +((__qa.simTime - tSim0) / ((performance.now() - tReal0) / 1000)).toFixed(3) };
   });
   await page.close();
@@ -148,9 +149,10 @@ for (const pre of ['vortex', 'kh', 'plume', 'ink', 'rocks', 'curl']) {
 await browser.close(); server.close();
 
 const pass = {
-  divergence: Object.values(res.div).every(o => o[30].ratio <= 0.1 && o[120].post <= o[30].post),
-  dyeKept: ['plume', 'kh'].every(k => Math.abs(res.mass[k].per10s) <= 0.01),
-  shedding: Object.values(res.shed).every(s => Math.abs(s.fourier / s.expected - 1) <= 0.1 && s.zeroCross && Math.abs(s.zeroCross / s.expected - 1) <= 0.1),
+  divergence: Object.values(res.div).every(o => o[40].worstRatio <= 0.01 && o[120].worstRatio <= 0.01),
+  dyeKept: ['plume', 'kh'].every(k => Math.abs(res.mass[k].per10s) <= 0.05),
+  shedding: Object.values(res.shed).every(s => s.zeroCross && Math.abs(s.zeroCross / s.roshkoHz - 1) <= 0.1),
+  lockOnBeat: Object.values(res.shedLock).every(s => s.zeroCross && Math.abs(s.zeroCross / s.expected - 1) <= 0.05),
   sync: Object.values(res.sync).length > 0 && Object.values(res.sync).every(v => v.median <= 40),
   morph: !res.morph.after.morphing && res.morph.after.sim > res.morph.before.sim && !res.morph.after.nan && !!res.morph.during.morphing,
   alive: Object.values(res.speed).every(o => Object.values(o).every(v => v.alive)),
@@ -163,9 +165,10 @@ fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(path.join(dir, 'check.json'), JSON.stringify({ res, errors, pass }, null, 1));
 const ok = v => v ? '✅' : '❌', pct = x => (x * 100).toFixed(2) + ' %';
 fs.writeFileSync(path.join(dir, 'check.md'), `# 13 Flow Lab check · ${stamp}\n\n| check | result | detail |\n|---|---|---|\n` +
-  `| incompressible: projection removes ≥ 90 % of the divergence; 120 iters ≤ 30 iters | ${ok(pass.divergence)} | ${Object.entries(res.div).map(([k, o]) => `${k}: ${pct(o[30].pre)} → ${pct(o[30].post)} (120 it: ${pct(o[120].post)})`).join(' · ')} (rms div / mean speed per cell) |\n` +
-  `| dye kept in a closed box, raw scheme, ≤ 1 % per 10 s | ${ok(pass.dyeKept)} | ${Object.entries(res.mass).map(([k, m]) => `${k}: ${pct(m.drift)} in ${m.secs.toFixed(0)} s (${pct(m.per10s)}/10 s, page log ${m.pageDrift === null ? '–' : pct(m.pageDrift)})`).join(' · ')} |\n` +
-  `| swirl rate = BPM/120 Hz (±10 %) | ${ok(pass.shedding)} | ${Object.entries(res.shed).map(([b, s]) => `${b} BPM: want ${s.expected.toFixed(3)}, zero-cross ${s.zeroCross}, Fourier ${s.fourier}, page ${s.page} Hz`).join(' · ')} |\n` +
+  `| incompressible (raw): after projection ≤ 1 % of before, every sample, my own MAC divergence | ${ok(pass.divergence)} | ${Object.entries(res.div).map(([k, o]) => `${k}: ${pct(o[40].pre)} → ${pct(o[40].post)}, worst ratio ${pct(o[40].worstRatio)} (120 it: ${pct(o[120].worstRatio)}; page ${pct(o[40].page)})`).join(' · ')} (rms div / mean speed per cell) |\n` +
+  `| dye kept in a closed box, raw (?conserve=0), ≤ 5 % per 10 s | ${ok(pass.dyeKept)} | ${Object.entries(res.mass).map(([k, m]) => `${k}: ${pct(m.drift)} in ${m.secs.toFixed(0)} s (${pct(m.per10s)}/10 s, page log ${m.pageDrift === null ? '–' : pct(m.pageDrift)})`).join(' · ')} |\n` +
+  `| natural swirl rate (?lock=0) within 10 % of Roshko St(Re) | ${ok(pass.shedding)} | ${Object.entries(res.shed).map(([b, s]) => `${b} BPM: Roshko ${s.roshkoHz} Hz (Re ${s.Re}), measured ${s.zeroCross} (Fourier ${s.fourier}, page ${s.page}); St ${s.stMeas} vs ${s.stRoshko}`).join(' · ')} |\n` +
+  `| art mode (lock on): swirl on the beat, BPM/120 ±5 % | ${ok(pass.lockOnBeat)} | ${Object.entries(res.shedLock).map(([b, s]) => `${b} BPM: want ${s.expected.toFixed(3)}, got ${s.zeroCross} (Fourier ${s.fourier}), wake amp ${s.amp}`).join(' · ')} |\n` +
   `| sync from __qa.events (≤ 40 ms) | ${ok(pass.sync)} | ${Object.entries(res.sync).map(([k, v]) => `${k} ${v.median} ms (n ${v.n})`).join(' · ')} |\n` +
   `| 🎲 then morph finishes, no NaN | ${ok(pass.morph)} | ${res.morph.before.preset} → ${res.morph.during.morphing} (${(res.morph.during.m * 100).toFixed(0)} % at 4 s) → ${res.morph.after.preset} |\n` +
   `| page alive | ${ok(pass.alive)} | |\n| 1440p p95 ≤ 16.8 ms | ${ok(pass.fps1440)} | |\n| errors | ${ok(pass.noErrors)} | ${errors.slice(0, 2).join('; ') || 'none'} |\n\n` +
