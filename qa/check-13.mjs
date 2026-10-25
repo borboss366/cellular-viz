@@ -101,7 +101,7 @@ for (const [pre, conserve] of [['plume', 0], ['kh', 0], ['ink', 0], ['curl', 0],
 const SHED = async () => {
   const c = st.cur.obstacles[0], d = 2 * c.r * F.simH / F.simW, s = [];
   const tReal0 = performance.now(), tSim0 = __qa.simTime;
-  await new Promise(done => { const f = () => { s.push({ t: performance.now() / 1000, ts: __qa.simTime, v: __qa.probe(c.x + 3 * d, c.y).v }); if (performance.now() - tReal0 < 24000) requestAnimationFrame(f); else done(); }; requestAnimationFrame(f); });
+  await new Promise(done => { const f = () => { s.push({ t: performance.now() / 1000, ts: __qa.simTime, v: __qa.probe(c.x + 3 * d, c.y).v }); if (performance.now() - tReal0 < 60000) requestAnimationFrame(f); else done(); }; requestAnimationFrame(f); });
   const mean = s.reduce((a, p) => a + p.v, 0) / s.length;
   const zc = key => { const ups = []; for (let i = 1; i < s.length; i++) if (s[i - 1].v < mean && s[i].v >= mean) ups.push(s[i - 1][key] + (mean - s[i - 1].v) / (s[i].v - s[i - 1].v) * (s[i][key] - s[i - 1][key])); return ups.length > 2 ? (ups.length - 1) / (ups.at(-1) - ups[0]) : null; };
   const fz = zc('t'), fzs = zc('ts');
