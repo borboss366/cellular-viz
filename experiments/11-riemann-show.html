@@ -1,0 +1,1116 @@
+<!doctype html>
+<!--
+  11 · Riemann, the show   (Millennium track #37, 09 take two; spec: #37 comment 6389364446)
+
+  09 stays as the calm, flat phase portrait. This page is the show: five scenes on the
+  beat, switching every `bars` bars with a one-bar fade (or pinned with ?scene=).
+  The art is in camera, light and timing; the maths underneath is exact.
+
+  Shared clock: the camera height t_cam is warped so the k-th non-trivial zero lands on
+  the k-th downbeat (linear in between), so every scene hits a zero on every "one".
+
+    ribbon  ζ(½+it) as a glowing 3-D tube: x = Re ζ, y = Im ζ, z = t. A chase camera
+            rides along it; the bass shakes and rolls it. The tube crosses the centre
+            axis exactly at the zeros: shockwave ring, flash and label there.
+    march   the zeros as runway lights marching up the critical line, one per beat;
+            their real, uneven gaps are the groove (they repel like eigenvalues).
+    scope   Hardy's Z(t) (real, with sign changes exactly at the zeros) as an
+            oscilloscope trace, sparking at each crossing, over the metronome's own
+            waveform from an AnalyserNode.
+    primes  Riemann's explicit formula: π(x) ≈ Σ μ(n)/n·Π₀(x^(1/n)),
+            Π₀(y) ≈ li(y) − Σ_ρ li(y^ρ) − log 2. One zero is added per beat during the
+            build-up, the curve sharpens into the prime staircase, and at the drop the
+            exact steps light up at 2, 3, 5, 7, 11, …
+    canyon  terrain height = log|ζ(σ+it)|, so the zeros are bottomless glowing pits on
+            the line σ = ½. A drone flies down the valley; the colours are 09's phases.
+    map     09's flat phase portrait, gliding with the same camera (the calm one).
+
+  Maths: ζ(½+it) and Z(t) = e^(iθ(t)) ζ(½+it) on the CPU in double precision (Borwein's
+  η with 160 terms, θ from a complex log Γ), sampled every 0.02 for 0 ≤ t ≤ 120; zeros
+  by bisection on Z. The map and the canyon's height texture use the GPU version
+  (128 terms, functional equation in logs). li(y^ρ) by the asymptotic series of Ei.
+  window.__qa: zeros, ribbon minima of |ζ| from the drawn samples, scope crossings from
+  the drawn samples, the prime steps, approxPi(x, K).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>11 · Riemann, the show</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #9fb0c3; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0;
+      position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">computing zeros…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Scene</h3>
+  <div class="buttons" id="scenes"></div>
+  <div class="row"><label for="bars">bars / scene</label><input id="bars" type="range" min="4" max="32" step="1"><output id="barsOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="buttons">
+    <button id="copy" class="wide">Copy setup</button>
+  </div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+const SCENES = ['ribbon', 'march', 'scope', 'primes', 'canyon', 'map'];
+const params = { scene: 'auto', bars: 8, bpm: 120, bpb: 4, muted: false,
+                 kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+
+// =====================================================================================
+// Maths on the CPU (double precision)
+// =====================================================================================
+const T_MAX = 120, DT = 0.02, NS = Math.round(T_MAX / DT) + 1;
+const LN2 = Math.log(2), SQRT2 = Math.SQRT2;
+
+function borweinCoeffs(n) {   // c_k = (d_k − d_n)/d_n
+  const d = new Float64Array(n + 1);
+  let term = 1 / n, sum = term;
+  d[0] = n * sum;
+  for (let i = 1; i <= n; i++) {
+    term *= 4 * (n + i - 1) * (n - i + 1) / ((2 * i) * (2 * i - 1));
+    sum += term; d[i] = n * sum;
+  }
+  const c = new Float64Array(n);
+  for (let k = 0; k < n; k++) c[k] = (d[k] - d[n]) / d[n];
+  return c;
+}
+const NB_CPU = 160, C_CPU = borweinCoeffs(NB_CPU);
+const W_CPU = new Float64Array(NB_CPU), L_CPU = new Float64Array(NB_CPU);
+for (let k = 0; k < NB_CPU; k++) {   // sign · c_k · (k+1)^(−½), and log(k+1)
+  L_CPU[k] = Math.log(k + 1);
+  W_CPU[k] = (k % 2 ? -1 : 1) * C_CPU[k] * Math.exp(-0.5 * L_CPU[k]);
+}
+// ζ(½ + it) = η / (1 − 2^(½−it)),  η = −Σ (−1)^k c_k (k+1)^(−½) e^(−it log(k+1))
+function zetaHalf(t) {
+  let er = 0, ei = 0;
+  for (let k = 0; k < NB_CPU; k++) { const a = t * L_CPU[k]; er += W_CPU[k] * Math.cos(a); ei -= W_CPU[k] * Math.sin(a); }
+  er = -er; ei = -ei;
+  const dr = 1 - SQRT2 * Math.cos(t * LN2), di = SQRT2 * Math.sin(t * LN2), q = dr * dr + di * di;
+  return [(er * dr + ei * di) / q, (ei * dr - er * di) / q];
+}
+const LG = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
+  -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+function lnGamma(zr, zi) {   // Lanczos, Re z ≥ ½
+  zr -= 1;
+  let xr = LG[0], xi = 0;
+  for (let k = 1; k < 9; k++) { const dr = zr + k, q = dr * dr + zi * zi; xr += LG[k] * dr / q; xi -= LG[k] * zi / q; }
+  const tr = zr + 7.5, ti = zi;
+  const ltr = 0.5 * Math.log(tr * tr + ti * ti), lti = Math.atan2(ti, tr);
+  const ar = zr + 0.5, ai = zi;
+  return [0.5 * Math.log(2 * Math.PI) + ar * ltr - ai * lti - tr + 0.5 * Math.log(xr * xr + xi * xi),
+          ar * lti + ai * ltr - ti + Math.atan2(xi, xr)];
+}
+// Riemann–Siegel θ(t) = arg Γ(¼ + it/2) − (t/2) log π   (Γ(z) = Γ(z+1)/z keeps Lanczos in range)
+function theta(t) {
+  return lnGamma(1.25, t / 2)[1] - Math.atan2(t / 2, 0.25) - t / 2 * Math.log(Math.PI);
+}
+function hardyZ(t) { const z = zetaHalf(t), th = theta(t); return Math.cos(th) * z[0] - Math.sin(th) * z[1]; }
+
+// Samples every DT, and the zeros by bisection on Z.
+const S_re = new Float64Array(NS), S_im = new Float64Array(NS), S_Z = new Float64Array(NS);
+for (let i = 0; i < NS; i++) {
+  const t = i * DT, z = zetaHalf(t), th = theta(t);
+  S_re[i] = z[0]; S_im[i] = z[1]; S_Z[i] = Math.cos(th) * z[0] - Math.sin(th) * z[1];
+}
+const ZEROS = [];
+for (let i = 1; i < NS; i++) {
+  if (i * DT < 10 || Math.sign(S_Z[i]) === Math.sign(S_Z[i - 1])) continue;
+  let lo = (i - 1) * DT, hi = i * DT, flo = S_Z[i - 1];
+  for (let k = 0; k < 50; k++) { const m = (lo + hi) / 2, fm = hardyZ(m); if (Math.sign(fm) === Math.sign(flo)) { lo = m; flo = fm; } else hi = m; }
+  ZEROS.push((lo + hi) / 2);
+}
+const sampleAt = (arr, t) => {   // linear interpolation in the samples
+  const f = Math.max(0, Math.min(NS - 1.001, t / DT)), i = Math.floor(f), u = f - i;
+  return arr[i] * (1 - u) + arr[i + 1] * u;
+};
+
+// Explicit formula: Π₀(y) ≈ li(y) − Σ_k 2·Re li(y^ρ_k) − log 2,  π(x) = Σ μ(n)/n Π₀(x^(1/n)).
+const EULER = 0.5772156649015329;
+function li(y) {   // real li(y) = Ei(log y), series
+  const u = Math.log(y);
+  let s = EULER + Math.log(Math.abs(u)), term = 1;
+  for (let k = 1; k < 80; k++) { term *= u / k; s += term / k; if (Math.abs(term / k) < 1e-17) break; }
+  return s;
+}
+// 2·Re Ei(z), z = (½ + iγ)u, by the asymptotic series e^z/z Σ m!/z^m (the iπ branch term is
+// imaginary and cancels with the conjugate zero).
+function twoReLiRho(gamma, u) {
+  const zr = 0.5 * u, zi = gamma * u, m2 = zr * zr + zi * zi, M = Math.min(30, Math.floor(Math.sqrt(m2)));
+  let sr = 1, si = 0, tr = 1, ti = 0;
+  for (let m = 1; m <= M; m++) {   // term *= m / z
+    const nr = (tr * zr + ti * zi) * m / m2, ni = (ti * zr - tr * zi) * m / m2;
+    tr = nr; ti = ni; sr += tr; si += ti;
+  }
+  const e = Math.exp(zr), er = e * Math.cos(zi), ei = e * Math.sin(zi);
+  const qr = (er * zr + ei * zi) / m2, qi = (ei * zr - er * zi) / m2;   // e^z / z
+  return 2 * (qr * sr - qi * si);
+}
+function Pi0(y, K) {
+  if (y < 2) return 0;
+  const u = Math.log(y);
+  let s = li(y) - LN2;
+  for (let k = 0; k < K && k < ZEROS.length; k++) s -= twoReLiRho(ZEROS[k], u);
+  return s;
+}
+const MOBIUS = [0, 1, -1, -1, 0, -1, 1, -1, 0, 0, 1];
+function approxPi(x, K) {
+  let s = 0;
+  for (let n = 1; n <= 10; n++) { if (!MOBIUS[n]) continue; const y = Math.pow(x, 1 / n); if (y < 2) break; s += MOBIUS[n] / n * Pi0(y, K); }
+  return s;
+}
+const PRIMES = []; for (let n = 2; n <= 100; n++) if (PRIMES.every(p => n % p)) PRIMES.push(n);
+const piExact = x => PRIMES.filter(p => p <= x).length;
+
+// =====================================================================================
+// Metronome (as 04) with an analyser for the scope's waveform
+// =====================================================================================
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, bus: null, analyser: null, noise: null, timer: 0, playing: false,
+  nextTime: 0, step: 0, hits: [], steps: [], wave: new Float32Array(2048),
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx;
+      this.bus = ctx.createGain(); this.master = ctx.createGain(); this.analyser = ctx.createAnalyser();
+      this.analyser.fftSize = 2048;
+      this.bus.connect(this.master); this.bus.connect(this.analyser); this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume();
+    this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+    this.playing = true;
+    this.timer = setInterval(() => this.schedule(), 25);
+    this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  schedule() {
+    while (this.nextTime < this.ctx.currentTime + 0.1) {
+      this.queueStep(this.step, this.nextTime);
+      this.nextTime += 60 / params.bpm / 4; this.step++;
+    }
+    const old = this.ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, time) {
+    const inBar = step % (params.bpb * 4);
+    this.steps.push({ time, step });
+    for (const lane of LANES) {
+      if (params[lane][inBar % 16] !== 'x') continue;
+      const vel = inBar === 0 ? 1.0 : 0.7;
+      this.hits.push({ lane, time, vel });
+      this.click(lane, time, vel);
+    }
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain();
+    g.connect(this.bus);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') {
+      src = ctx.createOscillator();
+      src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08);
+      src.connect(g);
+    } else {
+      src = ctx.createBufferSource(); src.buffer = this.noise;
+      const f = ctx.createBiquadFilter();
+      f.type = lane === 'snare' ? 'bandpass' : 'highpass';
+      f.frequency.value = lane === 'snare' ? 1800 : 8000;
+      src.connect(f); f.connect(g);
+    }
+    const end = t + TAU[lane] * 4;
+    g.gain.exponentialRampToValueAtTime(0.001, end);
+    src.start(t); src.stop(end + 0.01);
+  },
+  read() {
+    const out = { kick: 0, snare: 0, hat: 0, bars: -1 };
+    if (!this.ctx) return out;
+    const now = this.ctx.currentTime - Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0);
+    for (const h of this.hits) {
+      const dt = now - h.time;
+      if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane]));
+    }
+    let last = null;
+    for (const s of this.steps) if (s.time <= now) last = s;
+    if (last) {
+      const sixteenth = 60 / params.bpm / 4, frac = Math.min(1, (now - last.time) / sixteenth);
+      out.bars = (last.step + frac) / (params.bpb * 4);
+    }
+    if (this.analyser) this.analyser.getFloatTimeDomainData(this.wave);
+    return out;
+  },
+};
+
+// The warped clock: the k-th zero on the k-th downbeat.
+const LOOP_ZEROS = 30;
+function tAtBars(bars) {
+  const n = Math.min(LOOP_ZEROS, ZEROS.length - 1);
+  const b = ((bars % n) + n) % n, k = Math.floor(b), u = b - k;
+  return ZEROS[k] + u * (ZEROS[k + 1] - ZEROS[k]);
+}
+
+// =====================================================================================
+// WebGL
+// =====================================================================================
+const canvas = document.getElementById('c');
+const hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
+if (!gl) fail('WebGL2 is not available in this browser.');
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+const hasFloatRT = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
+
+function compile(type, src) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src); gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(sh));
+  return sh;
+}
+function program(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name.replace('[0]', ''); u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u };
+}
+const FULL_VS = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+// ---- GPU zeta (as 09, 128 terms) ----
+const NB_GPU = 128;
+const ZETA_GLSL = `
+const float PI = 3.14159265, LN2 = 0.69314718, LNPI = 1.14472989;
+uniform float uC[${NB_GPU}];
+vec2 cmul(vec2 a, vec2 b) { return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x); }
+vec2 cdiv(vec2 a, vec2 b) { return vec2(a.x * b.x + a.y * b.y, a.y * b.x - a.x * b.y) / dot(b, b); }
+vec2 cexp(vec2 z) { return exp(z.x) * vec2(cos(z.y), sin(z.y)); }
+vec2 clog(vec2 z) { float m = max(abs(z.x), abs(z.y)); vec2 u = z / max(m, 1e-30); return vec2(log(m) + 0.5 * log(dot(u, u)), atan(z.y, z.x)); }
+vec2 csin(vec2 z) { return vec2(sin(z.x) * cosh(z.y), cos(z.x) * sinh(z.y)); }
+vec2 clogsin(vec2 z) {
+  if (abs(z.y) <= 1.0) return clog(csin(z));
+  float sg = sign(z.y); vec2 w = vec2(z.x, abs(z.y));
+  vec2 e2 = cexp(vec2(-2.0 * w.y, 2.0 * w.x));
+  vec2 r = vec2(w.y - 0.69314718, 1.57079633 - w.x) + clog(vec2(1.0, 0.0) - e2);
+  return vec2(r.x, sg * r.y);
+}
+vec2 eta(vec2 s) {
+  vec2 acc = vec2(0.0);
+  for (int k = 0; k < ${NB_GPU}; k++) acc += (k % 2 == 0 ? 1.0 : -1.0) * uC[k] * cexp(-s * log(float(k + 1)));
+  return -acc;
+}
+vec2 logZetaRight(vec2 s) { return clog(cdiv(eta(s), vec2(1.0, 0.0) - cexp((vec2(1.0, 0.0) - s) * LN2))); }
+vec2 logGamma(vec2 z) {
+  float c[9] = float[9](0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
+    -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7);
+  z -= vec2(1.0, 0.0);
+  vec2 x = vec2(c[0], 0.0);
+  for (int i = 1; i < 9; i++) x += cdiv(vec2(c[i], 0.0), z + vec2(float(i), 0.0));
+  vec2 t = z + vec2(7.5, 0.0);
+  return vec2(0.5 * log(2.0 * PI), 0.0) + cmul(z + vec2(0.5, 0.0), clog(t)) - t + clog(x);
+}
+vec2 logZeta(vec2 s) {
+  if (s.x >= 0.5) return logZetaRight(s);
+  vec2 r = vec2(1.0, 0.0) - s;
+  return s * LN2 + (s - vec2(1.0, 0.0)) * LNPI + clogsin(s * (PI * 0.5)) + logGamma(r) + logZetaRight(r);
+}
+vec3 hsv(float h, float s, float v) {
+  vec3 k = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+  return v * mix(vec3(1.0), k, s);
+}
+vec3 phaseColour(vec2 lz, float pad) {
+  float band = fract(lz.x / LN2);
+  float ray = abs(fract(lz.y / (2.0 * PI) * 12.0 + 0.5) - 0.5);
+  float v = (0.55 + 0.4 * pow(band, 0.6)) * (1.0 - 0.18 * smoothstep(0.06, 0.0, ray));
+  return hsv(lz.y / (2.0 * PI) + pad * 0.25, 0.8, v);
+}`;
+const C_GPU = new Float32Array(borweinCoeffs(NB_GPU));
+
+// ---- map scene ----
+const mapProg = program(FULL_VS, `#version 300 es
+precision highp float;
+${ZETA_GLSL}
+uniform vec2 uCenter, uHalf;
+uniform float uKick, uPad;
+in vec2 vUv;
+out vec4 o;
+void main() {
+  vec2 s = uCenter + (vUv * 2.0 - 1.0) * uHalf;
+  vec3 col = phaseColour(logZeta(s), uPad) * (1.0 + 0.25 * uKick);
+  o = vec4(col, 1.0);
+}`);
+
+// ---- canyon: log ζ baked into a texture once, then ray-marched ----
+const LZ_W = 256, LZ_H = 2048, LZ_S0 = -1.5, LZ_S1 = 2.5;   // σ range; t: 0..T_MAX
+const bakeProg = program(FULL_VS, `#version 300 es
+precision highp float;
+${ZETA_GLSL}
+in vec2 vUv;
+out vec4 o;
+void main() {
+  vec2 s = vec2(mix(${LZ_S0.toFixed(2)}, ${LZ_S1.toFixed(2)}, vUv.x), vUv.y * ${T_MAX.toFixed(1)});
+  vec2 lz = logZeta(s);
+  o = vec4(clamp(lz.x, -12.0, 12.0), lz.y, 0.0, 1.0);
+}`);
+let lzTex = null;
+function bakeCanyon() {
+  if (lzTex || !hasFloatRT) return;
+  lzTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, lzTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, LZ_W, LZ_H, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, lzTex, 0);
+  gl.viewport(0, 0, LZ_W, LZ_H);
+  gl.useProgram(bakeProg.p);
+  gl.uniform1fv(bakeProg.u.uC, C_GPU);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.deleteFramebuffer(fbo);
+}
+const canyonProg = program(FULL_VS, `#version 300 es
+precision highp float;
+uniform sampler2D uLZ;
+uniform vec3 uEye, uFwd, uRight, uUp;
+uniform float uAspect, uKick, uPad, uFlash;
+uniform float uSnare, uHat, uBeats;   // uBeats: beats since start (fractional)
+uniform float uZ[8];                  // the zeros nearest the camera (heights t)
+in vec2 vUv;
+out vec4 o;
+const float SX = 4.0, SZ = 1.0, PI = 3.14159265;
+// Surface pulses (user: "canyon needs to be more alive"): from every zero pit a ring
+// rolls out on each beat and a bigger one on each downbeat. Light and bumps only: the
+// terrain the camera flies over stays log|ζ| exactly, so the pits stay where the zeros are.
+float ripple(vec2 xz) {
+  float beat = fract(uBeats), bar = fract(uBeats / 4.0), s = 0.0;
+  for (int k = 0; k < 8; k++) {
+    float d = length(vec2(xz.x, xz.y - uZ[k] * SZ));
+    if (d > 18.0) continue;
+    float a1 = (d - beat * 6.0) * 2.2, a2 = (d - (beat + 1.0) * 6.0) * 2.2, a3 = (d - bar * 16.0) * 1.4;
+    s += exp(-a1 * a1) * (1.0 - 0.6 * beat)            // squares, not pow(): pow of a negative is undefined in GLSL
+       + exp(-a2 * a2) * 0.4 * (1.0 - beat)
+       + 1.6 * exp(-a3 * a3) * (1.0 - bar);
+  }
+  return s;
+}
+float hash2(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+vec2 lzAt(vec2 xz) {   // world (x, z) → (log|ζ|, arg ζ); x = (σ − ½)·SX, z = t·SZ
+  vec2 uv = vec2((xz.x / SX + 0.5 - ${LZ_S0.toFixed(2)}) / ${(LZ_S1 - LZ_S0).toFixed(2)}, xz.y / SZ / ${T_MAX.toFixed(1)});
+  return texture(uLZ, uv).rg;
+}
+float H(vec2 xz) { return clamp(lzAt(xz).x, -6.0, 3.0) * 0.7 * (1.0 + 0.12 * uKick); }   // the valley breathes
+vec3 hsv(float h, float s, float v) {
+  vec3 k = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+  return v * mix(vec3(1.0), k, s);
+}
+void main() {
+  vec2 q = (vUv * 2.0 - 1.0) * vec2(uAspect, 1.0);
+  vec3 rd = normalize(uFwd * 1.6 + uRight * q.x + uUp * q.y);
+  vec3 sky = mix(vec3(0.02, 0.02, 0.06), vec3(0.08, 0.04, 0.14), clamp(rd.y * 2.0 + 0.5, 0.0, 1.0));
+  float d = 0.05, hitD = -1.0;
+  vec3 p;
+  for (int i = 0; i < 180; i++) {
+    p = uEye + rd * d;
+    float h = H(p.xz);
+    if (p.y < h) { hitD = d; break; }
+    d += max(0.03, (p.y - h) * 0.45);
+    if (d > 70.0) break;
+  }
+  vec3 col = sky;
+  if (hitD > 0.0) {
+    float a = hitD - max(0.03, 0.1), b = hitD;   // refine the crossing
+    for (int i = 0; i < 6; i++) { float m = 0.5 * (a + b); vec3 pm = uEye + rd * m; if (pm.y < H(pm.xz)) b = m; else a = m; }
+    p = uEye + rd * b;
+    vec2 e = vec2(0.04, 0.0);
+    vec3 n = normalize(vec3(H(p.xz - e.xy) - H(p.xz + e.xy), 2.0 * e.x, H(p.xz - e.yx) - H(p.xz + e.yx)));
+    float rp = ripple(p.xz);
+    vec2 e2 = vec2(0.08, 0.0);   // the rings tilt the normal like a wave on water
+    n = normalize(n + 0.35 * vec3(ripple(p.xz - e2.xy) - ripple(p.xz + e2.xy), 0.0, ripple(p.xz - e2.yx) - ripple(p.xz + e2.yx)));
+    vec2 lz = lzAt(p.xz);
+    float band = fract(lz.x / 0.6931);
+    vec3 base = hsv(lz.y / (2.0 * PI) + uPad * 0.25, 0.75, 0.55 + 0.35 * band);
+    float diff = max(0.0, dot(n, normalize(vec3(0.4, 0.8, -0.3))));
+    col = base * (0.18 + 0.82 * diff);
+    float pit = smoothstep(-2.0, -5.5, lz.x);                       // the zeros glow from below
+    col += vec3(1.0, 0.75, 0.45) * pit * (1.2 + 2.5 * uKick + 3.0 * uFlash);
+    // the ring crests glow in the surface's own phase colour, brighter on the kick
+    col += hsv(lz.y / (2.0 * PI) + uPad * 0.25 + 0.08, 0.6, 1.0) * rp * (0.55 + 1.4 * uKick);
+    // snare: bright bands sweep down the valley; hat: the surface twinkles
+    col += vec3(0.7, 0.8, 1.0) * uSnare * smoothstep(0.92, 1.0, sin(p.z * 1.3 - uBeats * 6.2832)) * 0.8;
+    col += vec3(1.0) * uHat * step(0.985, hash2(floor(p.xz * 14.0) + floor(uBeats * 4.0))) * 0.9;
+    col = mix(sky, col, exp(-b * 0.035));
+  }
+  o = vec4(col, 1.0);
+}`);
+
+// ---- ribbon: the tube ζ(½+it), the centre axis, shockwave rings ----
+const RIB_A = 1.2, RIB_K = 0.35, RING = 10, RIB_R = 0.035;
+const ribPos = i => [RIB_A * S_re[i], RIB_A * S_im[i], -RIB_K * i * DT];
+const ribbonProg = program(`#version 300 es
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNor;
+layout(location = 2) in vec2 aData;
+uniform mat4 uVP;
+out vec3 vN; out vec3 vP; out vec2 vD;
+void main() { vN = aNor; vP = aPos; vD = aData; gl_Position = uVP * vec4(aPos, 1.0); }`, `#version 300 es
+precision highp float;
+uniform vec3 uEye;
+uniform float uKick, uPad, uFlash;
+in vec3 vN; in vec3 vP; in vec2 vD;
+out vec4 o;
+vec3 hsv(float h, float s, float v) {
+  vec3 k = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+  return v * mix(vec3(1.0), k, s);
+}
+void main() {
+  vec3 V = normalize(uEye - vP);
+  float fres = pow(1.0 - abs(dot(normalize(vN), V)), 2.0);
+  vec3 base = hsv(fract(vD.x * 0.015 + uPad * 0.3), 0.75, 1.0);
+  vec3 col = base * (0.2 + 1.1 * fres) + vec3(1.0, 0.92, 0.75) * vD.y * (1.3 + 2.5 * uKick + 4.0 * uFlash);
+  col *= exp(-length(uEye - vP) * 0.06);
+  o = vec4(col, 1.0);
+}`);
+const lineProg = program(`#version 300 es
+layout(location = 0) in vec3 aPos;
+uniform mat4 uVP; uniform vec3 uOffset; uniform float uScale;
+void main() { gl_Position = uVP * vec4(aPos * vec3(uScale, uScale, 1.0) + uOffset, 1.0); }`, `#version 300 es
+precision highp float;
+uniform vec4 uColor;
+out vec4 o;
+void main() { o = uColor; }`);
+
+const ribbon = (() => {   // build the tube once, with parallel-transported frames
+  const n = NS, pos = new Float32Array(n * RING * 3), nor = new Float32Array(n * RING * 3), dat = new Float32Array(n * RING * 2);
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const norm = a => { const l = Math.hypot(...a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  let N = [1, 0, 0];
+  for (let i = 0; i < n; i++) {
+    const P = ribPos(i), T = norm(sub(ribPos(Math.min(n - 1, i + 1)), ribPos(Math.max(0, i - 1))));
+    const d = dot3(N, T); N = norm([N[0] - d * T[0], N[1] - d * T[1], N[2] - d * T[2]]);
+    const B = cross(T, N);
+    const glow = Math.exp(-4 * Math.hypot(S_re[i], S_im[i]));
+    for (let r = 0; r < RING; r++) {
+      const a = r / RING * Math.PI * 2, c = Math.cos(a), s = Math.sin(a), j = i * RING + r;
+      const nn = [c * N[0] + s * B[0], c * N[1] + s * B[1], c * N[2] + s * B[2]];
+      pos.set([P[0] + RIB_R * nn[0], P[1] + RIB_R * nn[1], P[2] + RIB_R * nn[2]], j * 3);
+      nor.set(nn, j * 3);
+      dat.set([i * DT, glow], j * 2);
+    }
+  }
+  const idx = new Uint32Array((n - 1) * RING * 6);
+  let k = 0;
+  for (let i = 0; i < n - 1; i++) for (let r = 0; r < RING; r++) {
+    const a = i * RING + r, b = i * RING + (r + 1) % RING, c = a + RING, d = b + RING;
+    idx.set([a, c, b, b, c, d], k); k += 6;
+  }
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  for (const [loc, data, size] of [[0, pos, 3], [1, nor, 3], [2, dat, 2]]) {
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
+  }
+  const ib = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+  gl.bindVertexArray(null);
+  return { vao, count: idx.length };
+})();
+const lines = (() => {   // the axis (2 points) and a unit circle (96 points) in one buffer
+  const circ = [];
+  for (let i = 0; i < 96; i++) { const a = i / 96 * Math.PI * 2; circ.push(Math.cos(a), Math.sin(a), 0); }
+  const data = new Float32Array([0, 0, 0, 0, 0, -RIB_K * T_MAX, ...circ]);
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+  return { vao };
+})();
+
+// ---- small 4×4 matrix helpers ----
+function perspective(fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+  return new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0]);
+}
+function lookAt(eye, at, up) {
+  const z = norm3(sub3(eye, at)), x = norm3(cross3(up, z)), y = cross3(z, x);
+  return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0,
+    -dot3(x, eye), -dot3(y, eye), -dot3(z, eye), 1]);
+}
+function mul4(a, b) {
+  const o = new Float32Array(16);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+    let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + j] * b[i * 4 + k]; o[i * 4 + j] = s;
+  }
+  return o;
+}
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm3 = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const lerp3 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+function project(vp, p, W, H) {   // world → canvas pixels (null when behind the camera)
+  const x = vp[0] * p[0] + vp[4] * p[1] + vp[8] * p[2] + vp[12];
+  const y = vp[1] * p[0] + vp[5] * p[1] + vp[9] * p[2] + vp[13];
+  const w = vp[3] * p[0] + vp[7] * p[1] + vp[11] * p[2] + vp[15];
+  if (w <= 0.01) return null;
+  return [(x / w * 0.5 + 0.5) * W, (1 - (y / w * 0.5 + 0.5)) * H, w];
+}
+
+// ---- composite: two scene slots with optional 2D overlays ----
+const compProg = program(FULL_VS, `#version 300 es
+precision highp float;
+uniform sampler2D uA, uB, uOA, uOB;
+uniform float uMix, uHasOA, uHasOB, uFlash;
+in vec2 vUv;
+out vec4 o;
+vec3 slot(sampler2D s, sampler2D ov, float has) {
+  vec3 c = texture(s, vUv).rgb;
+  vec4 v = texture(ov, vUv);
+  return mix(c, v.rgb, v.a * has);
+}
+void main() {
+  vec3 c = mix(slot(uA, uOA, uHasOA), slot(uB, uOB, uHasOB), uMix);
+  float vig = smoothstep(1.25, 0.35, length(vUv - 0.5) * 1.6);
+  c = c * (0.55 + 0.45 * vig) + uFlash * 0.25;
+  o = vec4(c, 1.0);
+}`);
+gl.useProgram(mapProg.p); gl.uniform1fv(mapProg.u.uC, C_GPU);
+
+function makeTex(w, h) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+const slots = [0, 1].map(() => ({ w: 0, h: 0, tex: null, fbo: null, depth: null, ovTex: null,
+  cv: document.createElement('canvas'), ctx: null }));
+for (const s of slots) s.ctx = s.cv.getContext('2d');
+function sizeSlots(w, h) {
+  for (const s of slots) {
+    if (s.w === w && s.h === h) continue;
+    if (s.tex) { gl.deleteTexture(s.tex); gl.deleteTexture(s.ovTex); gl.deleteFramebuffer(s.fbo); gl.deleteRenderbuffer(s.depth); }
+    s.w = w; s.h = h; s.cv.width = w; s.cv.height = h;
+    s.tex = makeTex(w, h); s.ovTex = makeTex(w, h);
+    s.depth = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, s.depth);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, w, h);
+    s.fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, s.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, s.tex, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, s.depth);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+}
+function upload(tex, cv) {
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, cv);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+}
+const emptyVao = gl.createVertexArray();
+
+// =====================================================================================
+// Scenes. Each draws into a slot and returns whether its 2D canvas is an overlay.
+// =====================================================================================
+const FONT = (px, w = 600) => `${w} ${Math.round(px)}px ui-monospace, Menlo, monospace`;
+const zeroLabel = t => t.toFixed(2);
+// how far (in beats) the camera is past the most recent zero, and which one
+function lastZero(bars) {
+  const n = Math.min(LOOP_ZEROS, ZEROS.length - 1), b = ((bars % n) + n) % n, k = Math.floor(b);
+  return { k, beatsSince: (b - k) * params.bpb };
+}
+const camState = { eye: null, at: null };
+const ribbonMinima = [];   // from the drawn samples, for QA
+for (let i = 1; i < NS - 1; i++) {
+  const a = Math.hypot(S_re[i - 1], S_im[i - 1]), b = Math.hypot(S_re[i], S_im[i]), c = Math.hypot(S_re[i + 1], S_im[i + 1]);
+  if (b < a && b < c && b < 0.05 && i * DT > 10) ribbonMinima.push({ t: +(i * DT).toFixed(2), absZeta: +b.toFixed(4) });
+}
+
+function sceneRibbon(slot, S) {
+  const { W, H, tc, L, bars, flash } = S;
+  const iAt = t => Math.max(0, Math.min(NS - 1, Math.round(t / DT)));
+  const ahead = ribPos(iAt(tc + 2.2)), here = ribPos(iAt(tc - 1.0));
+  const eyeT = [here[0] * 0.6, here[1] * 0.6 + 0.9, here[2] + 2.4];   // behind, above, pulled toward the axis
+  camState.eye = camState.eye ? lerp3(camState.eye, eyeT, 0.08) : eyeT;
+  camState.at = camState.at ? lerp3(camState.at, ahead, 0.1) : ahead;
+  const shake = 0.06 * L.kick;
+  const eye = [camState.eye[0] + shake * (Math.random() - 0.5), camState.eye[1] + shake * (Math.random() - 0.5), camState.eye[2]];
+  const roll = 0.12 * Math.sin(bars * Math.PI) * (0.3 + L.kick);
+  const vp = mul4(perspective(1.0, W / H, 0.05, 80), lookAt(eye, camState.at, [Math.sin(roll), Math.cos(roll), 0]));
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, slot.fbo);
+  gl.viewport(0, 0, W, H);
+  gl.clearColor(0.01, 0.012, 0.03, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
+  gl.useProgram(ribbonProg.p);
+  gl.uniformMatrix4fv(ribbonProg.u.uVP, false, vp);
+  gl.uniform3fv(ribbonProg.u.uEye, eye);
+  gl.uniform1f(ribbonProg.u.uKick, L.kick);
+  gl.uniform1f(ribbonProg.u.uPad, S.pad);
+  gl.uniform1f(ribbonProg.u.uFlash, flash);
+  gl.bindVertexArray(ribbon.vao);
+  gl.drawElements(gl.TRIANGLES, ribbon.count, gl.UNSIGNED_INT, 0);
+  gl.disable(gl.DEPTH_TEST);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+  gl.useProgram(lineProg.p);
+  gl.uniformMatrix4fv(lineProg.u.uVP, false, vp);
+  gl.bindVertexArray(lines.vao);
+  gl.uniform3f(lineProg.u.uOffset, 0, 0, 0); gl.uniform1f(lineProg.u.uScale, 1);
+  gl.uniform4f(lineProg.u.uColor, 0.6, 0.7, 1.0, 0.35);
+  gl.drawArrays(gl.LINES, 0, 2);
+  const lz = lastZero(bars);   // shockwave ring at the zero just passed
+  const age = lz.beatsSince;
+  if (age < 3) {
+    gl.uniform3f(lineProg.u.uOffset, 0, 0, -RIB_K * ZEROS[lz.k]);
+    for (let r = 0; r < 3; r++) {
+      gl.uniform1f(lineProg.u.uScale, 0.15 + (age + r * 0.25) * 0.9);
+      gl.uniform4f(lineProg.u.uColor, 1.0, 0.85, 0.6, Math.max(0, 0.9 - age / 3) * (1 - r * 0.3));
+      gl.drawArrays(gl.LINE_LOOP, 2, 96);
+    }
+  }
+  gl.disable(gl.BLEND);
+  gl.bindVertexArray(emptyVao);
+
+  // labels: every zero ahead of the camera, faded by distance
+  const c = slot.ctx;
+  c.clearRect(0, 0, W, H);
+  c.font = FONT(H / 40); c.textAlign = 'center';
+  for (let k = 0; k < ZEROS.length; k++) {
+    const dz = ZEROS[k] - tc;
+    if (dz < -1.5 || dz > 25) continue;
+    const p = project(vp, [0, 0, -RIB_K * ZEROS[k]], W, H);
+    if (!p) continue;
+    const a = Math.max(0, Math.min(1, 1 - dz / 25)) * (k === lz.k ? 1 : 0.7);
+    c.fillStyle = `rgba(255, 236, 200, ${a})`;
+    c.fillText(zeroLabel(ZEROS[k]), p[0], p[1] - H / 30);
+  }
+  return true;
+}
+
+function sceneMarch(slot, S) {
+  const { W, H, tc, L, bars } = S, c = slot.ctx;
+  const g = c.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#05030f'); g.addColorStop(0.4, '#120a2a'); g.addColorStop(1, '#03040a');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  const hz = H * 0.32, base = H * 0.98, k = 0.12;
+  const sy = d => hz + (base - hz) / (1 + Math.max(-0.9, d) * k);
+  const sw = d => (W * 0.42) / (1 + Math.max(-0.9, d) * k);
+  // the strip edges σ = 0 and σ = 1, and rungs every unit of t for motion
+  c.strokeStyle = 'rgba(140, 160, 255, 0.35)'; c.lineWidth = Math.max(1, W / 900);
+  for (const side of [-1, 1]) {
+    c.beginPath(); c.moveTo(W / 2 + side * sw(-0.8), sy(-0.8)); c.lineTo(W / 2 + side * sw(80), sy(80)); c.stroke();
+  }
+  for (let t = Math.ceil(tc - 0.8); t < tc + 60; t++) {
+    const d = t - tc, a = Math.max(0, 0.25 - d / 240);
+    c.strokeStyle = `rgba(120, 140, 220, ${a})`;
+    c.beginPath(); c.moveTo(W / 2 - sw(d), sy(d)); c.lineTo(W / 2 + sw(d), sy(d)); c.stroke();
+  }
+  c.strokeStyle = 'rgba(255, 255, 255, 0.25)';   // the critical line
+  c.beginPath(); c.moveTo(W / 2, sy(-0.8)); c.lineTo(W / 2, hz); c.stroke();
+  // beads
+  const lz = lastZero(bars);
+  c.textAlign = 'left';
+  for (let i = ZEROS.length - 1; i >= 0; i--) {
+    const d = ZEROS[i] - tc;
+    if (d < -0.8 || d > 70) continue;
+    const y = sy(d), r = (W / 30) / (1 + Math.max(0, d) * k) * (1 + 0.5 * L.kick * (i === lz.k ? 1 : 0.3));
+    const passed = i === lz.k && lz.beatsSince < 2;
+    const a = Math.min(1, 1.2 - d / 70);
+    const grd = c.createRadialGradient(W / 2, y, 0, W / 2, y, r * (passed ? 4 : 2.5));
+    grd.addColorStop(0, `rgba(255, 245, 220, ${a})`);
+    grd.addColorStop(0.3, `rgba(255, 170, 80, ${a * 0.8})`);
+    grd.addColorStop(1, 'rgba(255, 120, 40, 0)');
+    c.fillStyle = grd;
+    c.beginPath(); c.arc(W / 2, y, r * (passed ? 4 : 2.5), 0, 7); c.fill();
+    if (d < 30) {
+      c.fillStyle = `rgba(255, 236, 200, ${a * 0.9})`;
+      c.font = FONT(Math.max(10, r * 0.9));
+      c.fillText(zeroLabel(ZEROS[i]), W / 2 + r * 2.8, y + r * 0.3);
+    }
+  }
+  return false;
+}
+
+const scopeCrossings = [];
+function sceneScope(slot, S) {
+  const { W, H, tc, L, bars } = S, c = slot.ctx;
+  c.fillStyle = '#020407'; c.fillRect(0, 0, W, H);
+  const t0 = tc - 9, t1 = tc + 3, X = t => (t - t0) / (t1 - t0) * W;
+  const midY = H * 0.42, amp = H * 0.11;
+  c.strokeStyle = 'rgba(80, 255, 200, 0.12)'; c.lineWidth = 1;   // graticule
+  for (let i = 0; i <= 10; i++) { c.beginPath(); c.moveTo(i * W / 10, 0); c.lineTo(i * W / 10, H); c.stroke(); }
+  for (let i = 0; i <= 8; i++) { c.beginPath(); c.moveTo(0, i * H / 8); c.lineTo(W, i * H / 8); c.stroke(); }
+  c.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  c.beginPath(); c.moveTo(0, midY); c.lineTo(W, midY); c.stroke();
+  // Z(t), three passes for glow
+  const N = Math.min(2000, W);
+  for (const [lw, a] of [[W / 160, 0.08], [W / 400, 0.25], [Math.max(1.5, W / 1200), 1]]) {
+    c.strokeStyle = `rgba(110, 255, 210, ${a})`; c.lineWidth = lw;
+    c.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const t = t0 + (t1 - t0) * i / N, z = sampleAt(S_Z, Math.max(0, t));
+      const y = midY - Math.tanh(z / 2.5) * 2.5 * amp;
+      if (i === 0) c.moveTo(X(t), y); else c.lineTo(X(t), y);
+    }
+    c.stroke();
+  }
+  // crossings in view: tick, label, sparks just after the playhead passes
+  c.textAlign = 'center'; c.font = FONT(H / 45);
+  for (const z of ZEROS) {
+    if (z < t0 || z > t1) continue;
+    const x = X(z), past = tc - z;
+    c.strokeStyle = 'rgba(255, 220, 160, 0.6)';
+    c.beginPath(); c.moveTo(x, midY - H * 0.03); c.lineTo(x, midY + H * 0.03); c.stroke();
+    c.fillStyle = 'rgba(255, 230, 190, 0.85)';
+    c.fillText(zeroLabel(z), x, midY + H * 0.07);
+    if (past >= 0 && past < 1.2) {
+      const a = 1 - past / 1.2, n = 18;
+      c.strokeStyle = `rgba(255, 240, 200, ${a})`; c.lineWidth = Math.max(1, W / 900);
+      for (let i = 0; i < n; i++) {
+        const ang = i / n * Math.PI * 2, r0 = H * 0.01, r1 = H * (0.03 + 0.12 * past) * (1 + L.kick);
+        c.beginPath(); c.moveTo(x + Math.cos(ang) * r0, midY + Math.sin(ang) * r0);
+        c.lineTo(x + Math.cos(ang) * r1, midY + Math.sin(ang) * r1); c.stroke();
+      }
+    }
+  }
+  c.strokeStyle = 'rgba(255, 255, 255, 0.5)';   // playhead
+  c.beginPath(); c.moveTo(X(tc), 0); c.lineTo(X(tc), H); c.stroke();
+  // the metronome's own waveform underneath
+  const wv = metronome.wave, wy = H * 0.8, wa = H * 0.12;
+  c.strokeStyle = 'rgba(255, 90, 200, 0.7)'; c.lineWidth = Math.max(1, W / 1000);
+  c.beginPath();
+  for (let i = 0; i < wv.length; i += 2) { const x = i / wv.length * W, y = wy - wv[i] * wa * 3; if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); }
+  c.stroke();
+  c.fillStyle = 'rgba(110, 255, 210, 0.8)'; c.textAlign = 'left'; c.font = FONT(H / 40);
+  c.fillText('Z(t)', W * 0.02, H * 0.06);
+  c.fillStyle = 'rgba(255, 90, 200, 0.8)';
+  c.fillText('the beat', W * 0.02, H * 0.66);
+  return false;
+}
+
+const primesCache = { K: null, pts: null, x1: 60 };
+function scenePrimes(slot, S) {
+  const { W, H, L, bars, sectionBars } = S, c = slot.ctx;
+  const beatsIn = sectionBars * params.bpb, buildBeats = Math.max(4, (params.bars - 2) * params.bpb);
+  const Kmax = Math.min(30, ZEROS.length);
+  const drop = beatsIn >= buildBeats;
+  const K = drop ? Kmax : Math.max(0, Math.min(Kmax, Math.floor(beatsIn * Kmax / buildBeats)));
+  const x0 = 1.5, x1 = primesCache.x1, yMax = piExact(x1) + 1.5;
+  if (primesCache.K !== K) {
+    const n = 900, pts = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * i / (n - 1); pts[i * 2] = x; pts[i * 2 + 1] = approxPi(x, K); }
+    primesCache.K = K; primesCache.pts = pts;
+  }
+  const mx = W * 0.07, my = H * 0.1;
+  const X = x => mx + (x - x0) / (x1 - x0) * (W - 2 * mx), Y = y => H - my - y / yMax * (H - 2 * my);
+  c.fillStyle = '#04030a'; c.fillRect(0, 0, W, H);
+  // the exact staircase: dim during the build, bright at the drop
+  const da = drop ? 0.95 : 0.18;
+  c.strokeStyle = `rgba(255, 210, 120, ${da})`; c.lineWidth = Math.max(1.5, W / 700) * (drop ? 1.6 : 1);
+  c.beginPath(); c.moveTo(X(x0), Y(0));
+  let prev = 0;
+  for (const p of PRIMES) { if (p > x1) break; c.lineTo(X(p), Y(prev)); c.lineTo(X(p), Y(prev + 1)); prev++; }
+  c.lineTo(X(x1), Y(prev)); c.stroke();
+  // the approximation with K zeros
+  for (const [lw, a] of [[W / 150, 0.1], [W / 450, 0.35], [Math.max(1.5, W / 1100), 1]]) {
+    c.strokeStyle = `rgba(120, 200, 255, ${a})`; c.lineWidth = lw;
+    c.beginPath();
+    const pts = primesCache.pts;
+    for (let i = 0; i < pts.length; i += 2) { const x = X(pts[i]), y = Y(Math.max(-1, Math.min(yMax, pts[i + 1]))); if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); }
+    c.stroke();
+  }
+  // primes along the axis, flashing at the drop
+  c.textAlign = 'center'; c.font = FONT(H / 42);
+  for (const p of PRIMES) {
+    if (p > x1) break;
+    c.fillStyle = `rgba(255, 220, 150, ${drop ? 0.6 + 0.4 * L.kick : 0.35})`;
+    c.fillText(p, X(p), H - my * 0.35);
+  }
+  c.textAlign = 'left';
+  c.fillStyle = 'rgba(200, 225, 255, 0.9)'; c.font = FONT(H / 14, 700);
+  c.fillText(drop ? 'π(x)' : `${K} zeros`, mx, my * 1.1);
+  return false;
+}
+
+function sceneCanyon(slot, S) {
+  const { W, H, tc, L, bars, flash } = S;
+  bakeCanyon();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, slot.fbo);
+  gl.viewport(0, 0, W, H);
+  if (!lzTex) { gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); return false; }
+  const sway = 0.5 * Math.sin(bars * 0.4);
+  const eye = [sway + 0.04 * L.kick * (Math.random() - 0.5), 3.2 + 0.25 * L.kick, (tc - 5) * 1.0];
+  const at = [0, -1.2, (tc + 4) * 1.0];
+  // Screen right = +x (larger σ), as in the flat map: right = up×fwd, up = fwd×right.
+  const fwd = norm3(sub3(at, eye)), roll = 0.08 * Math.sin(bars * Math.PI) * (0.3 + L.kick);
+  const right = norm3(cross3([Math.sin(roll), Math.cos(roll), 0], fwd)), up = cross3(fwd, right);
+  gl.useProgram(canyonProg.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, lzTex);
+  gl.uniform1i(canyonProg.u.uLZ, 0);
+  gl.uniform3fv(canyonProg.u.uEye, eye);
+  gl.uniform3fv(canyonProg.u.uFwd, fwd);
+  gl.uniform3fv(canyonProg.u.uRight, right);
+  gl.uniform3fv(canyonProg.u.uUp, up);
+  gl.uniform1f(canyonProg.u.uAspect, W / H);
+  gl.uniform1f(canyonProg.u.uKick, L.kick);
+  gl.uniform1f(canyonProg.u.uPad, S.pad);
+  gl.uniform1f(canyonProg.u.uFlash, flash);
+  gl.uniform1f(canyonProg.u.uSnare, L.snare);
+  gl.uniform1f(canyonProg.u.uHat, L.hat);
+  gl.uniform1f(canyonProg.u.uBeats, bars * params.bpb);
+  const near = ZEROS.filter(z => z > tc - 8).slice(0, 8);   // pits behind and ahead
+  while (near.length < 8) near.push(-1000);
+  gl.uniform1fv(canyonProg.u.uZ, near);
+  gl.bindVertexArray(emptyVao);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  // labels on the zeros ahead
+  const c = slot.ctx;
+  c.clearRect(0, 0, W, H);
+  c.font = FONT(H / 40); c.textAlign = 'center';
+  // the same projection as the ray-marcher: rd = 1.6·fwd + q.x·right + q.y·up
+  for (const z of ZEROS) {
+    const dz = z - tc;
+    if (dz < -3 || dz > 30) continue;
+    const v = sub3([0, -1.8, z], eye), cz = dot3(v, fwd);
+    if (cz <= 0.1) continue;
+    const qx = 1.6 * dot3(v, right) / cz, qy = 1.6 * dot3(v, up) / cz;
+    c.fillStyle = `rgba(255, 230, 190, ${Math.max(0, 1 - dz / 30)})`;
+    c.fillText(zeroLabel(z), (qx / (W / H) * 0.5 + 0.5) * W, (1 - (qy * 0.5 + 0.5)) * H);
+  }
+  return true;
+}
+
+function sceneMap(slot, S) {
+  const { W, H, tc, L } = S;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, slot.fbo);
+  gl.viewport(0, 0, W, H);
+  gl.useProgram(mapProg.p);
+  const hx = 3.5 * (1 - 0.04 * L.kick);
+  gl.uniform2f(mapProg.u.uCenter, 0.5, tc);
+  gl.uniform2f(mapProg.u.uHalf, hx, hx * H / W);
+  gl.uniform1f(mapProg.u.uKick, L.kick);
+  gl.uniform1f(mapProg.u.uPad, S.pad);
+  gl.bindVertexArray(emptyVao);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  return false;
+}
+const SCENE_FN = { ribbon: sceneRibbon, march: sceneMarch, scope: sceneScope, primes: scenePrimes, canyon: sceneCanyon, map: sceneMap };
+const GL_SCENES = new Set(['ribbon', 'canyon', 'map']);
+
+// Draw one scene into a slot; 2D scenes go up as the slot's texture, GL ones keep their 2D canvas as overlay.
+function renderSlot(i, name, S) {
+  const slot = slots[i];
+  const overlay = SCENE_FN[name](slot, S);
+  if (!GL_SCENES.has(name)) upload(slot.tex, slot.cv);
+  else if (overlay) upload(slot.ovTex, slot.cv);
+  return GL_SCENES.has(name) && overlay;
+}
+
+// =====================================================================================
+// UI and the main loop
+// =====================================================================================
+const $ = id => document.getElementById(id);
+$('play').onclick = () => {
+  if (metronome.playing) metronome.stop(); else metronome.start();
+  clockStart = performance.now();
+  $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', metronome.playing);
+};
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('full').onclick = () => {
+  const w = $('wrap');
+  if (document.fullscreenElement) document.exitFullscreen();
+  else (w.requestFullscreen || w.webkitRequestFullscreen).call(w);
+};
+for (const name of ['auto', ...SCENES]) {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.onclick = () => { params.scene = name; sync(); };
+  $('scenes').appendChild(b);
+}
+for (const name of ['bars', 'bpm']) {
+  $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name]; });
+}
+function sync() {
+  for (const name of ['bars', 'bpm']) { $(name).value = params[name]; $(name + 'Out').textContent = params[name]; }
+  $('mute').classList.toggle('on', params.muted);
+  for (const b of $('scenes').children) b.classList.toggle('on', b.textContent === params.scene);
+}
+function setupLink() {
+  const q = new URLSearchParams({ scene: params.scene, bars: params.bars, bpm: params.bpm });
+  return location.origin + location.pathname + '?' + q;
+}
+$('copy').onclick = async e => {
+  const text = `11 · Riemann show · ${params.scene} · ${params.bpm} bpm · ${params.bars} bars/scene\n${setupLink()}`;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    ok = document.execCommand('copy'); ta.remove();
+  }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓';
+  setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
+};
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(2560, Math.round(canvas.clientWidth * dpr));
+  const h = Math.min(1440, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  sizeSlots(canvas.width, canvas.height);
+}
+let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
+let lastK = -1, flash = 0;
+// The next frame is booked first, and a frame that throws is reported and skipped,
+// so one bad frame can never stop the show (it froze on frame 1 before: QA box, #40).
+const errors = [];
+function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); }
+  catch (e) {
+    if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); }
+    hud.textContent = `frame error: ${e && e.message}`;
+  }
+}
+function draw(now) {
+  resize();
+  const L = metronome.read();
+  // rAF's timestamp can be a little older than clockStart on the first frame: never negative.
+  const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb);
+  const tc = tAtBars(bars);
+  const lz = lastZero(bars);
+  if (lz.k !== lastK) { flash = 1; lastK = lz.k; }   // a zero on the downbeat
+  flash = Math.max(0, flash - 0.05);
+  const W = canvas.width, H = canvas.height;
+  const pad = 0.5 - 0.5 * Math.cos(bars / 4 * Math.PI * 2);
+
+  // which scenes, and the fade between them
+  let cur, prev = null, mix = 1, sectionBars;
+  if (params.scene === 'auto') {
+    const idx = Math.floor(bars / params.bars);
+    cur = SCENES[idx % SCENES.length];
+    sectionBars = bars - idx * params.bars;
+    if (idx > 0 && sectionBars < 1) { prev = SCENES[(idx - 1) % SCENES.length]; mix = sectionBars; }
+  } else {
+    cur = params.scene;
+    sectionBars = bars % params.bars;
+  }
+  const S = { W, H, tc, L, bars, flash, pad, sectionBars };
+  const hasB = renderSlot(1, cur, S);
+  const hasA = prev ? renderSlot(0, prev, { ...S, sectionBars: params.bars - 1 + sectionBars }) : false;
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, W, H);
+  gl.useProgram(compProg.p);
+  const bind = (unit, tex, name) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(compProg.u[name], unit); };
+  bind(0, slots[0].tex, 'uA'); bind(1, slots[1].tex, 'uB'); bind(2, slots[0].ovTex, 'uOA'); bind(3, slots[1].ovTex, 'uOB');
+  gl.uniform1f(compProg.u.uMix, prev ? mix : 1);
+  gl.uniform1f(compProg.u.uHasOA, hasA ? 1 : 0);
+  gl.uniform1f(compProg.u.uHasOB, hasB ? 1 : 0);
+  gl.uniform1f(compProg.u.uFlash, flash * 0.6);
+  gl.bindVertexArray(emptyVao);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  // Every frame, so a reading taken on a downbeat isn't up to 200 ms stale.
+  window.__qa.scene = cur; window.__qa.tCam = tc; window.__qa.bars = bars;
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    hud.textContent = `Riemann show · ${cur}${prev ? ` ← ${prev}` : ''} · ${params.bpm} bpm · ${state}\n` +
+      `t ${tc.toFixed(2)} · last zero ${zeroLabel(ZEROS[lz.k])} · ${ZEROS.length} zeros to t=${T_MAX}\n` +
+      `${W}×${H} · ${fps} fps`;
+  }
+}
+
+// QA: everything the checks need, from the same data the scenes draw.
+for (let i = 1; i < NS; i++) {
+  if (i * DT < 10 || Math.sign(S_Z[i]) === Math.sign(S_Z[i - 1])) continue;
+  const t = (i - 1) * DT + DT * S_Z[i - 1] / (S_Z[i - 1] - S_Z[i]);   // linear, as drawn
+  scopeCrossings.push(+t.toFixed(4));
+}
+window.__qa = {
+  zeros: ZEROS.map(z => +z.toFixed(6)), ribbonMinima, scopeCrossings,
+  primeSteps: PRIMES.filter(p => p <= primesCache.x1), approxPi, piExact, hardyZ, zetaHalf,
+  scene: null, tCam: null, bars: null, errors,
+};
+
+const q = k => query.get(k);
+if (q('scene') && (q('scene') === 'auto' || SCENES.includes(q('scene')))) params.scene = q('scene');
+for (const k of ['bars', 'bpm']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
+params.muted = q('muted') === '1';
+sync();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,521 @@
+<!doctype html>
+<!--
+  09 · Riemann zeta, on a metronome   (Millennium track, issue #37)
+
+  A phase portrait ("domain colouring") of the Riemann zeta function ζ(s), s = x + iy,
+  computed per pixel on the GPU:
+    hue        = arg ζ(s)
+    brightness = bands of log2 |ζ(s)| (each band = |ζ| doubles), plus faint phase rays
+  Every zero is a point where all hues meet: a rainbow pinwheel. The Riemann
+  hypothesis says every non-trivial zero lies on the critical line x = ½ (drawn faint);
+  the first ones sit at y ≈ 14.1347, 21.0220, 25.0109, 30.4249, 32.9351. The trivial
+  zeros are at −2, −4, −6, … and the pole (all hues, the other way round) at s = 1.
+
+  Maths, all in the fragment shader:
+    x ≥ ½: ζ(s) = η(s) / (1 − 2^(1−s)), with the Dirichlet eta function η by Borwein's
+           alternating-series acceleration (n = 64 terms; coefficients (d_k − d_n)/d_n
+           worked out in double precision on the CPU), good to y ≈ 60
+    x < ½: the functional equation, in logs so nothing overflows:
+           log ζ(s) = s·log 2 + (s−1)·log π + log sin(πs/2) + log Γ(1−s) + log ζ(1−s)
+           with log Γ by Lanczos (g = 7, 9 terms).
+  Colour uses log ζ directly (real part = log |ζ|, imaginary part = arg ζ).
+
+  Camera: "travel" glides up and down the critical strip (0 ≤ y ≤ 50) at `speed`
+  height units per bar (?height=0…60 sets the start, e.g. with ?speed=0 to hold it); "overview" shows −21 ≤ x ≤ 19, −2 ≤ y ≤ 38 at once.
+  Music: 04's metronome. kick → brightness pulse and a small zoom punch, snare → flash
+  of saturation, hat → phase-ray shimmer, pad → slow hue turn.
+  "marks" circles the known zero heights (for checking, off by default).
+  Built for a laptop at a DJ set: Fullscreen fills the screen at native resolution.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>09 · Riemann zeta</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #9fb0c3; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .row input[type=text] { flex: 1; min-width: 0; padding: 6px; border: 1px solid #2a3647;
+    border-radius: 6px; background: #0b111a; color: inherit;
+    font: 14px ui-monospace, Menlo, monospace; letter-spacing: 1px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0;
+      position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>View</h3>
+  <div class="buttons">
+    <button id="vTravel">travel</button>
+    <button id="vOverview">overview</button>
+    <button id="marks">marks</button>
+    <button id="pause">Pause</button>
+  </div>
+  <div class="row"><label for="speed">speed</label><input id="speed" type="range" min="0" max="4" step="0.1"><output id="speedOut"></output></div>
+  <div class="row"><label for="zoom">strip width</label><input id="zoom" type="range" min="2" max="20" step="0.5"><output id="zoomOut"></output></div>
+  <div class="row"><label for="bands">bands</label><input id="bands" type="range" min="0.25" max="3" step="0.05"><output id="bandsOut"></output></div>
+  <h3>Groove</h3>
+  <div class="buttons" id="grooves"></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="row"><label for="bpb">beats/bar</label><input id="bpb" type="range" min="2" max="7" step="1"><output id="bpbOut"></output></div>
+  <div class="row"><label for="kick">kick</label><input id="kick" type="text" maxlength="16" spellcheck="false" autocomplete="off"></div>
+  <div class="row"><label for="snare">snare</label><input id="snare" type="text" maxlength="16" spellcheck="false" autocomplete="off"></div>
+  <div class="row"><label for="hat">hat</label><input id="hat" type="text" maxlength="16" spellcheck="false" autocomplete="off"></div>
+  <div class="buttons">
+    <button id="copy" class="wide">Copy setup</button>
+  </div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+const ZEROS = [14.134725, 21.022040, 25.010858, 30.424876, 32.935062, 37.586178, 40.918719,
+               43.327073, 48.005151, 49.773832];   // first ten non-trivial zero heights
+const GROOVES = {
+  four:  { bpm: 120, bpb: 4, swing: 0,    kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' },
+  break: { bpm: 96,  bpb: 4, swing: 0.15, kick: 'x.....x...x.....', snare: '....x.......x..x', hat: 'x.xxx.x.x.xxx.x.' },
+  half:  { bpm: 140, bpb: 4, swing: 0,    kick: 'x.........x.....', snare: '........x.......', hat: 'x.x.x.x.x.x.x.x.' },
+};
+const params = { groove: 'four', ...GROOVES.four, human: 0, padBars: 4, muted: false,
+                 view: 'travel', speed: 1, zoom: 7, bands: 1, marks: false, paused: false };
+
+// ---------- Metronome (same as 04) ----------
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, noise: null, timer: 0, playing: false,
+  nextTime: 0, step: 0, hits: [], steps: [],
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx;
+      this.master = ctx.createGain();
+      this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume();
+    this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05;
+    this.step = 0; this.hits = []; this.steps = [];
+    this.playing = true;
+    this.timer = setInterval(() => this.schedule(), 25);
+    this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  schedule() {
+    const ctx = this.ctx;
+    while (this.nextTime < ctx.currentTime + 0.1) {
+      this.queueStep(this.step, this.nextTime);
+      this.nextTime += 60 / params.bpm / 4;
+      this.step++;
+    }
+    const old = ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, gridTime) {
+    const sixteenth = 60 / params.bpm / 4;
+    const inBar = step % (params.bpb * 4);
+    const swung = gridTime + (step % 2 === 1 ? params.swing * sixteenth : 0);
+    this.steps.push({ time: gridTime, step });
+    for (const lane of LANES) {
+      if (params[lane][inBar % 16] !== 'x') continue;
+      const time = Math.max(this.ctx.currentTime, swung + (Math.random() * 2 - 1) * params.human / 1000);
+      const vel = inBar === 0 ? 1.0 : 0.7;
+      this.hits.push({ lane, time, vel });
+      this.click(lane, time, vel);
+    }
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain();
+    g.connect(this.master);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') {
+      src = ctx.createOscillator();
+      src.frequency.setValueAtTime(150, t);
+      src.frequency.exponentialRampToValueAtTime(60, t + 0.08);
+      src.connect(g);
+    } else {
+      src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      const f = ctx.createBiquadFilter();
+      f.type = lane === 'snare' ? 'bandpass' : 'highpass';
+      f.frequency.value = lane === 'snare' ? 1800 : 8000;
+      src.connect(f); f.connect(g);
+    }
+    const end = t + TAU[lane] * 4;
+    g.gain.exponentialRampToValueAtTime(0.001, end);
+    src.start(t); src.stop(end + 0.01);
+  },
+  read() {
+    const out = { kick: 0, snare: 0, hat: 0, pad: 0, beatPhase: 0, barPhase: 0, bars: 0 };
+    if (!this.ctx) return out;
+    const latency = Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0);
+    const now = this.ctx.currentTime - latency;
+    for (const h of this.hits) {
+      const dt = now - h.time;
+      if (dt < 0) continue;
+      out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane]));
+    }
+    let last = null;
+    for (const s of this.steps) if (s.time <= now) last = s;
+    if (last) {
+      const sixteenth = 60 / params.bpm / 4;
+      const frac = Math.min(1, (now - last.time) / sixteenth);
+      const stepsPerBar = params.bpb * 4;
+      const inBar = last.step % stepsPerBar;
+      out.beatPhase = ((inBar % 4) + frac) / 4;
+      out.barPhase = (inBar + frac) / stepsPerBar;
+      out.bars = Math.floor(last.step / stepsPerBar) + out.barPhase;
+      const bar = Math.floor(last.step / stepsPerBar) % params.padBars;
+      out.pad = 0.5 - 0.5 * Math.cos(2 * Math.PI * (bar + out.barPhase) / params.padBars);
+    }
+    return out;
+  },
+};
+
+// ---------- Borwein coefficients for η(s), in double precision ----------
+// d_k = n · Σ_{i≤k} (n+i−1)! 4^i / ((n−i)! (2i)!);  pass c_k = (d_k − d_n) / d_n, k < n.
+const NB = 64;
+const borwein = (() => {
+  const d = new Float64Array(NB + 1);
+  let term = 1 / NB, sum = term;   // i = 0: (n−1)!/n! = 1/n
+  d[0] = NB * sum;
+  for (let i = 1; i <= NB; i++) {
+    term *= 4 * (NB + i - 1) * (NB - i + 1) / ((2 * i) * (2 * i - 1));   // term_i / term_(i−1)
+    sum += term;
+    d[i] = NB * sum;
+  }
+  const c = new Float32Array(NB);
+  for (let k = 0; k < NB; k++) c[k] = (d[k] - d[NB]) / d[NB];
+  return c;
+})();
+
+// ---------- WebGL ----------
+const canvas = document.getElementById('c');
+const hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+if (!gl) fail('WebGL2 is not available in this browser.');
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+
+const VERT = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+const FRAG = `#version 300 es
+precision highp float;
+uniform vec2 uCenter, uHalf;        // view: centre and half-size in s-plane units (x, y)
+uniform float uC[${NB}];            // Borwein coefficients
+uniform vec2 uRes;                  // canvas size in pixels
+uniform float uKick, uSnare, uHat, uPad, uBands, uMarks, uTime;
+uniform float uZeros[10];
+in vec2 vUv;
+out vec4 outColor;
+
+const float PI = 3.14159265, LN2 = 0.69314718, LNPI = 1.14472989;
+vec2 cmul(vec2 a, vec2 b) { return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x); }
+vec2 cdiv(vec2 a, vec2 b) { return vec2(a.x * b.x + a.y * b.y, a.y * b.x - a.x * b.y) / dot(b, b); }
+vec2 cexp(vec2 z) { return exp(z.x) * vec2(cos(z.y), sin(z.y)); }
+// Scaled so |z|² never overflows float32 (it did for |z| > 1.8e19).
+vec2 clog(vec2 z) {
+  float m = max(abs(z.x), abs(z.y));
+  vec2 u = z / max(m, 1e-30);
+  return vec2(log(m) + 0.5 * log(dot(u, u)), atan(z.y, z.x));
+}
+vec2 csin(vec2 z) { return vec2(sin(z.x) * cosh(z.y), cos(z.x) * sinh(z.y)); }
+// log sin(z) without forming sin(z): for |Im z| > 1, sin z = (i/2) e^(−iz) (1 − e^(2iz)) (upper half;
+// lower half by conjugate symmetry). cosh(πy/2)² overflowed float32 from y ≈ 28.4.
+vec2 clogsin(vec2 z) {
+  if (abs(z.y) <= 1.0) return clog(csin(z));
+  float sg = sign(z.y);
+  vec2 w = vec2(z.x, abs(z.y));                       // upper half
+  vec2 e2 = cexp(vec2(-2.0 * w.y, 2.0 * w.x));         // e^(2iw), tiny
+  vec2 r = vec2(w.y - 0.69314718, 1.57079633 - w.x) + clog(vec2(1.0, 0.0) - e2);
+  return vec2(r.x, sg * r.y);
+}
+
+// η(s) by Borwein: −Σ (−1)^k c_k (k+1)^(−s), for Re s > 0.
+vec2 eta(vec2 s) {
+  vec2 acc = vec2(0.0);
+  for (int k = 0; k < ${NB}; k++) {
+    float l = log(float(k + 1));
+    vec2 p = cexp(-s * l);                 // (k+1)^(−s)
+    acc += (k % 2 == 0 ? 1.0 : -1.0) * uC[k] * p;
+  }
+  return -acc;
+}
+// log ζ(s) for Re s ≥ ½ (the pole at s = 1 gives log|ζ| → +∞).
+vec2 logZetaRight(vec2 s) {
+  vec2 den = vec2(1.0, 0.0) - cexp((vec2(1.0, 0.0) - s) * LN2);   // 1 − 2^(1−s)
+  return clog(cdiv(eta(s), den));
+}
+// log Γ(z), Lanczos g = 7, for Re z ≥ ½.
+vec2 logGamma(vec2 z) {
+  float c[9] = float[9](0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+    771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012,
+    9.9843695780195716e-6, 1.5056327351493116e-7);
+  z -= vec2(1.0, 0.0);
+  vec2 x = vec2(c[0], 0.0);
+  for (int i = 1; i < 9; i++) x += cdiv(vec2(c[i], 0.0), z + vec2(float(i), 0.0));
+  vec2 t = z + vec2(7.5, 0.0);
+  return vec2(0.5 * log(2.0 * PI), 0.0) + cmul(z + vec2(0.5, 0.0), clog(t)) - t + clog(x);
+}
+vec2 logZeta(vec2 s) {
+  if (s.x >= 0.5) return logZetaRight(s);
+  vec2 r = vec2(1.0, 0.0) - s;   // reflection: everything in logs
+  return s * LN2 + (s - vec2(1.0, 0.0)) * LNPI + clogsin(s * (PI * 0.5)) + logGamma(r) + logZetaRight(r);
+}
+
+vec3 hsv(float h, float s, float v) {
+  vec3 k = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+  return v * mix(vec3(1.0), k, s);
+}
+
+void main() {
+  vec2 s = uCenter + (vUv * 2.0 - 1.0) * uHalf;
+  vec2 lz = logZeta(s);
+  float l2 = lz.x / LN2 * uBands;                 // log2 |ζ| scaled
+  float hue = lz.y / (2.0 * PI) + uPad * 0.25;
+  float band = fract(l2);
+  float v = 0.55 + 0.4 * pow(band, 0.6);          // brighter as |ζ| grows within each doubling
+  float ray = abs(fract(lz.y / (2.0 * PI) * 12.0 + 0.5) - 0.5);   // 12 phase rays
+  v *= 1.0 - (0.18 + 0.25 * uHat) * smoothstep(0.06, 0.0, ray);
+  v *= 1.0 + 0.35 * uKick * (1.0 - band);
+  float sat = clamp(0.8 - 0.4 * uSnare, 0.0, 1.0);
+  vec3 col = hsv(hue, sat, v);
+  // Faint critical line x = ½ and real axis, about one pixel wide.
+  vec2 px = 2.0 * uHalf / uRes;   // s-plane units per pixel
+  col = mix(col, vec3(1.0), 0.25 * smoothstep(1.5, 0.0, abs(s.x - 0.5) / px.x));
+  col = mix(col, vec3(1.0), 0.15 * smoothstep(1.5, 0.0, abs(s.y) / px.y));
+  if (uMarks > 0.5) {
+    for (int i = 0; i < 10; i++) {
+      float d = length((s - vec2(0.5, uZeros[i])) / px);
+      col = mix(col, vec3(1.0), smoothstep(2.0, 0.0, abs(d - 9.0)));
+    }
+  }
+  outColor = vec4(col, 1.0);
+}`;
+
+function compile(type, src) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src); gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(sh));
+  return sh;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(prog));
+const U = {};
+for (const n of ['uCenter', 'uHalf', 'uC', 'uKick', 'uSnare', 'uHat', 'uPad', 'uBands', 'uMarks', 'uTime', 'uZeros', 'uRes'])
+  U[n] = gl.getUniformLocation(prog, n) || gl.getUniformLocation(prog, n + '[0]');
+gl.bindVertexArray(gl.createVertexArray());
+gl.useProgram(prog);
+gl.uniform1fv(U.uC, borwein);
+gl.uniform1fv(U.uZeros, new Float32Array(ZEROS));
+
+// ---------- Camera ----------
+// travel: centre on the critical line, height gliding 0 → 50 → 0 at `speed` units per bar.
+const cam = { y: 18, height: 0, dir: 1, lastBars: null, freeBars: 0, lastNow: performance.now() };
+function view(L, now, aspect) {
+  if (params.view === 'overview') return { cx: -1, cy: 18, hx: 20 * Math.max(1, aspect), hy: 20 / Math.min(1, aspect) };
+  // Time in bars: from the metronome when it plays, else from the clock at the same tempo.
+  const dtBars = (now - cam.lastNow) / 1000 * params.bpm / 60 / params.bpb;
+  cam.lastNow = now;
+  if (!params.paused && params.speed > 0) {   // held still, a ?height above 50 stays put
+    cam.height += cam.dir * params.speed * Math.min(dtBars, 0.25);
+    if (cam.height > 50) { cam.height = 50; cam.dir = -1; }
+    if (cam.height < 0) { cam.height = 0; cam.dir = 1; }
+  }
+  const hx = params.zoom / 2 * (1 - 0.04 * L.kick);   // kick punches in a little
+  const hy = hx / aspect;
+  return { cx: 0.5, cy: cam.height, hx, hy };
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+$('play').onclick = () => {
+  if (metronome.playing) metronome.stop(); else metronome.start();
+  $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', metronome.playing);
+};
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); syncButtons(); };
+$('full').onclick = () => {
+  const w = $('wrap');
+  if (document.fullscreenElement) document.exitFullscreen();
+  else (w.requestFullscreen || w.webkitRequestFullscreen).call(w);
+};
+$('vTravel').onclick = () => { params.view = 'travel'; syncButtons(); };
+$('vOverview').onclick = () => { params.view = 'overview'; syncButtons(); };
+$('marks').onclick = () => { params.marks = !params.marks; syncButtons(); };
+$('pause').onclick = () => { params.paused = !params.paused; syncButtons(); };
+for (const name of Object.keys(GROOVES)) {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.onclick = () => { Object.assign(params, GROOVES[name], { groove: name }); syncControls(); };
+  $('grooves').appendChild(b);
+}
+function cleanPattern(s) {
+  return (String(s).toLowerCase().replace(/[^x]/g, '.') + '.'.repeat(16)).slice(0, 16);
+}
+for (const lane of LANES) {
+  $(lane).addEventListener('input', e => { params[lane] = cleanPattern(e.target.value); params.groove = 'custom'; syncButtons(); });
+  $(lane).addEventListener('change', e => { e.target.value = params[lane]; });
+}
+const sliders = { speed: 1, zoom: 1, bands: 2, bpm: 0, bpb: 0 };
+for (const [name, dec] of Object.entries(sliders)) {
+  $(name).addEventListener('input', e => {
+    params[name] = parseFloat(e.target.value);
+    $(name + 'Out').textContent = params[name].toFixed(dec);
+    if (name === 'bpm' || name === 'bpb') { params.groove = 'custom'; syncButtons(); }
+  });
+}
+function syncControls() {
+  for (const [name, dec] of Object.entries(sliders)) {
+    $(name).value = params[name];
+    $(name + 'Out').textContent = Number(params[name]).toFixed(dec);
+  }
+  for (const lane of LANES) $(lane).value = params[lane];
+  syncButtons();
+}
+function syncButtons() {
+  $('mute').classList.toggle('on', params.muted);
+  $('vTravel').classList.toggle('on', params.view === 'travel');
+  $('vOverview').classList.toggle('on', params.view === 'overview');
+  $('marks').classList.toggle('on', params.marks);
+  $('pause').classList.toggle('on', params.paused);
+  for (const b of $('grooves').children) b.classList.toggle('on', b.textContent === params.groove);
+}
+
+function setupLink() {
+  const q = new URLSearchParams({ groove: params.groove === 'custom' ? 'four' : params.groove, view: params.view });
+  for (const k of Object.keys(sliders)) q.set(k, params[k]);
+  for (const lane of LANES) q.set(lane, params[lane]);
+  if (params.marks) q.set('marks', 1);
+  q.set('muted', params.muted ? 1 : 0);
+  return location.origin + location.pathname + '?' + q;
+}
+$('copy').onclick = async e => {
+  const text = `09 · Riemann zeta · ${params.view} · groove ${params.groove} ${params.bpm} bpm\n` +
+    `speed ${params.speed} · strip width ${params.zoom} · bands ${params.bands} · height ${cam.height.toFixed(2)}\n` +
+    `${canvas.width}×${canvas.height} · ${fps} fps\n` + setupLink();
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    ok = document.execCommand('copy'); ta.remove();
+  }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓';
+  setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
+};
+
+function loadFromUrl() {
+  if (GROOVES[query.get('groove')]) Object.assign(params, GROOVES[query.get('groove')], { groove: query.get('groove') });
+  for (const k of Object.keys(sliders)) {
+    const v = parseFloat(query.get(k));
+    if (Number.isFinite(v)) params[k] = v;
+  }
+  for (const lane of LANES) if (query.has(lane)) params[lane] = cleanPattern(query.get(lane));
+  if (query.get('view') === 'overview') params.view = 'overview';
+  params.marks = query.get('marks') === '1';
+  params.muted = query.get('muted') === '1';
+  // ?height= reaches up to 60 so a check can sweep Im s 0–60; travel itself still turns at 50.
+  const h = parseFloat(query.get('height'));
+  if (Number.isFinite(h)) cam.height = Math.max(0, Math.min(60, h));
+  syncControls();
+}
+
+// ---------- Main loop ----------
+// Laptop first: native resolution up to 4K wide (dpr capped at 2).
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(3840, Math.round(canvas.clientWidth * dpr));
+  const h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
+function frame(now) {
+  resize();
+  const L = metronome.read();
+  const v = view(L, now, canvas.width / canvas.height);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.uniform2f(U.uCenter, v.cx, v.cy);
+  gl.uniform2f(U.uHalf, v.hx, v.hy);
+  gl.uniform2f(U.uRes, canvas.width, canvas.height);
+  gl.uniform1f(U.uKick, L.kick);
+  gl.uniform1f(U.uSnare, L.snare);
+  gl.uniform1f(U.uHat, L.hat);
+  gl.uniform1f(U.uPad, L.pad);
+  gl.uniform1f(U.uBands, params.bands);
+  gl.uniform1f(U.uMarks, params.marks ? 1 : 0);
+  gl.uniform1f(U.uTime, now / 1000);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  frames++;
+  if (now - lastFpsTime > 500) {
+    fps = Math.round(frames * 1000 / (now - lastFpsTime));
+    frames = 0; lastFpsTime = now;
+  }
+  if (now - lastHud > 150) {
+    lastHud = now;
+    const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    hud.textContent = `ζ(s) · ${params.view} · ${params.groove} ${params.bpm} bpm · ${state}\n` +
+      `x ${(v.cx - v.hx).toFixed(2)} … ${(v.cx + v.hx).toFixed(2)}   y ${(v.cy - v.hy).toFixed(2)} … ${(v.cy + v.hy).toFixed(2)}\n` +
+      `${canvas.width}×${canvas.height} · ${fps} fps`;
+  }
+  requestAnimationFrame(frame);
+}
+
+loadFromUrl();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
