@@ -56,11 +56,12 @@ export function nextPair(labels, comps) {
   let best = null, bestV = -1;
   for (let i = 0; i < labels.length; i++) for (let j = i + 1; j < labels.length; j++) {
     const a = labels[i], b = labels[j], k = [a, b].sort().join('\u0000');
-    if (last && [last.a, last.b].sort().join('\u0000') === k) continue; // never the same pair twice in a row
+    if (labels.length > 2 && last && [last.a, last.b].sort().join('\u0000') === k) continue; // never the same pair twice in a row (unless it is the only pair)
     const p = s[a] / (s[a] + s[b]);
     const v = (p * (1 - p)) / (1 + (n[k] || 0)) / (1 + 0.15 * (per[a] + per[b])) * (1 + Math.random() * 0.05);
     if (v > bestV) { bestV = v; best = [a, b]; }
   }
+  if (!best) return null;
   return Math.random() < 0.5 ? best : [best[1], best[0]]; // random top/bottom against position bias
 }
 
