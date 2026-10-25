@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
 const expDir = path.resolve(arg('experiments', path.join(here, '..', 'experiments')));
+const metric = arg('metric', 'motion');   // motion (|Δluma| frame to frame) or lum (mean brightness: flashes)
 const pageName = arg('page', '11-riemann-show.html'), query = arg('query', 'scene=canyon'), secs = +arg('secs', 60), label = arg('label', query), N = +arg('bins', 50);
 
 const server = http.createServer((req, res) => {
@@ -68,7 +69,7 @@ await page.waitForTimeout(800);
 await page.click('#play');
 await page.waitForTimeout(2000);
 
-const res = await page.evaluate(async secs => {
+const res = await page.evaluate(async ([secs, metric]) => {
   const cv = document.querySelector('canvas');
   const vid = document.createElement('video'); vid.muted = true; vid.srcObject = cv.captureStream(60); await vid.play();
   const W = 96, H = 54, pc = document.createElement('canvas'); pc.width = W; pc.height = H;
@@ -85,7 +86,9 @@ const res = await page.evaluate(async secs => {
       g.drawImage(vid, 0, 0, W, H);
       const d = g.getImageData(0, 0, W, H).data, y = new Float32Array(W * H);
       let m = 0;
-      for (let i = 0, j = 0; i < d.length; i += 4, j++) { y[j] = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255; if (prev) m += Math.abs(y[j] - prev[j]); }
+      let lum = 0;
+      for (let i = 0, j = 0; i < d.length; i += 4, j++) { y[j] = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255; lum += y[j]; if (prev) m += Math.abs(y[j] - prev[j]); }
+      if (metric === 'lum') m = lum;
       if (prev) rows.push([performance.now(), null, m / (W * H)]);
       prev = y;
       if (performance.now() - t0 < secs * 1000) vid.requestVideoFrameCallback(step); else done();
@@ -96,7 +99,7 @@ const res = await page.evaluate(async secs => {
   const audioLatency = window.__qa && Number.isFinite(__qa.audioLatency) ? __qa.audioLatency : null;
   const bpb = (typeof params !== 'undefined' && params.bpb) || 4, bpm = (typeof params !== 'undefined' && params.bpm) || 120;
   return { rows, bpb, bpm, clock, audioLatency };
-}, secs);
+}, [secs, metric]);
 await browser.close(); server.close();
 
 const { rows, bpb, bpm, clock, audioLatency } = res;
@@ -121,11 +124,12 @@ let peakMs = ((peak + 0.5 + shift) / N) * beatMs;
 if (peakMs > beatMs / 2) peakMs -= beatMs;          // a peak just before the beat reads as negative
 const fps = rows.length / ((rows.at(-1)[0] - rows[0][0]) / 1000);
 const tempoBpm = slope * 60000;
-const out = { label, page: pageName, query, frames: rows.length, fps: +fps.toFixed(1), meanMotion: +mean(rows.map(r => r[2])).toFixed(5),
+const out = { label, metric, page: pageName, query, frames: rows.length, fps: +fps.toFixed(1), meanMotion: +mean(rows.map(r => r[2])).toFixed(5),
   // peakMs is already at render time; raw = what the capture saw before taking the lag off
-  // the page draws behind its scheduled beats by the speaker delay on purpose (picture matches what you hear)
+  // Pages read their beat clock as audio currentTime − outputLatency (11: metronome.read), so __qa.bars
+  // already ticks when the sound is heard: the phase here IS "after the speakers". Don't subtract
+  // audioLatency again (that was a double count before 2026-10-25 11:00). It is kept only for the record.
   audioLatencyMs: audioLatency == null ? null : +(audioLatency * 1000).toFixed(1),
-  vsSpeakersMs: audioLatency == null ? null : Math.round(peakMs - audioLatency * 1000),
   correctedMs: Math.round(peakMs), rawMs: Math.round(peakMs + cal.median), pipelineLagMs: cal,
   clockFit: { tempoBpm: +tempoBpm.toFixed(2), residualMs: +fitErrMs.toFixed(1), samples: n },
   binMs: +(beatMs / N).toFixed(1), pulseStrength: +(byPhase[peak] / median).toFixed(2),

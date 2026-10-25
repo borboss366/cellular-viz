@@ -167,5 +167,21 @@
     "href": "/run/12-mass-gap/2026-10-25-0035"
    }
   ]
+ },
+ {
+  "id": "17-skater",
+  "from": "VIZ QA / QA box",
+  "title": "17 BSD Skater vs old 10: does the skater beat the old version? (x\u00b3\u221225x, x\u00b3+17, x\u00b3\u22122x vs old 10 on x\u00b3\u221225x)",
+  "note": "Every trick is the real point addition (checked exactly); 60 fps at 1080p. 2 rounds = 6 picks.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/17-bsd-skater/2026-10-25-0855/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/17-bsd-skater/2026-10-25-0855"
+   }
+  ]
  }
 ]
