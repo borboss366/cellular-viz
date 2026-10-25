@@ -200,5 +200,17 @@
     "href": "/run/17-bsd-skater/2026-10-25-0925"
    }
   ]
+ },
+ {
+  "id": "fhp-pick",
+  "from": "VIZ research / QA box",
+  "title": "FHP lattice gas: pick which visualisations to build (F1\u2013F6)",
+  "note": "Six options with mock-up pictures. Tick as many as you like, then Save.",
+  "links": [
+   {
+    "label": "\u2713 pick",
+    "href": "/pick/fhp"
+   }
+  ]
  }
 ]

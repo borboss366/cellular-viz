@@ -144,7 +144,7 @@ function stillOf(dir, i, label, exp, stamp) {
   return fs.existsSync(path.join(dir, 'stills', f)) ? `/file/${exp}/${stamp}/stills/${f}` : '';
 }
 
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.webm': 'video/webm', '.md': 'text/markdown; charset=utf-8', '.log': 'text/plain; charset=utf-8' };
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.webm': 'video/webm', '.md': 'text/markdown; charset=utf-8', '.log': 'text/plain; charset=utf-8' };
 function sendFile(req, res, p) {
   if (!fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.writeHead(404); return res.end('not found'); }
   const size = fs.statSync(p).size, type = types[path.extname(p)] || 'application/octet-stream';
@@ -195,6 +195,30 @@ function compareRoute(req, res, exp, stamp, dir, action) {
   json({ error: 'not found' }, 404);
 }
 
+// ---- proposals: "pick which to build" (qa/proposals/<id>/proposal.json + pictures; picks → picks.json) ----
+const PROP = path.join(here, 'proposals');
+function pickPage(id) {
+  const P = JSON.parse(fs.readFileSync(path.join(PROP, id, 'proposal.json'), 'utf8'));
+  let picks = {}; try { picks = JSON.parse(fs.readFileSync(path.join(PROP, id, 'picks.json'), 'utf8')); } catch {}
+  const chosen = new Set(picks.chosen || []);
+  const cards = P.items.map(it => `<label class="card" style="display:block;cursor:pointer">
+    <div class="row" style="margin:0 0 8px"><input type="checkbox" name="pick" value="${esc(it.id)}" ${chosen.has(it.id) ? 'checked' : ''} style="flex:none;width:28px;height:28px;min-width:0">
+      <b style="font-size:17px">${esc(it.id)} · ${esc(it.name)}</b></div>
+    <img src="/proposal/${esc(id)}/${esc(it.img)}" alt="" style="background:#05070c">
+    <p>${esc(it.see)}</p><p class="m"><b>Music:</b> ${esc(it.music)}<br><b>QA check:</b> ${esc(it.check)}</p></label>`).join('');
+  return page(P.title, `<p class="m">${esc(P.intro)}</p><p class="m"><i>${esc(P.note)}</i></p>${cards}
+    ${P.combos ? `<p class="m">${esc(P.combos)}</p>` : ''}
+    <div class="card"><input id="note" placeholder="note for the bots (optional)" value="${esc(picks.note || '')}" style="width:100%;box-sizing:border-box">
+    <div class="row"><button class="on" id="save">Save my picks</button><span class="m" id="st">${picks.at ? 'saved ' + esc(picks.at.slice(0, 16).replace('T', ' ')) + ' UTC: ' + esc((picks.chosen || []).join(', ') || 'none') : ''}</span></div></div>
+    <p class="m">Source: ${esc(P.source)}</p>
+    <script>document.getElementById('save').onclick = () => {
+      const chosen = [...document.querySelectorAll('input[name=pick]:checked')].map(x => x.value);
+      fetch(location.pathname, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chosen, note: document.getElementById('note').value }) })
+        .then(r => r.ok ? r.text() : Promise.reject()).then(() => { document.getElementById('st').textContent = 'saved: ' + (chosen.join(', ') || 'none'); })
+        .catch(() => alert('not saved'));
+    };</script>`);
+}
+
 const handler = (req, res) => {
   const url = new URL(req.url, 'http://x');
   const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
@@ -227,6 +251,19 @@ const handler = (req, res) => {
       fs.writeFileSync(TODO, JSON.stringify(t, null, 1));
       res.writeHead(200); return res.end('ok');
     }
+    if (parts[0] === 'pick' && parts.length === 2 && safe(parts[1]) && fs.existsSync(path.join(PROP, parts[1], 'proposal.json'))) {
+      if (req.method === 'POST') {
+        let body = ''; req.on('data', c => { body += c; if (body.length > 1e4) req.destroy(); });
+        req.on('end', () => { try {
+          const { chosen, note } = JSON.parse(body); const ids = JSON.parse(fs.readFileSync(path.join(PROP, parts[1], 'proposal.json'), 'utf8')).items.map(i => i.id);
+          if (!Array.isArray(chosen) || chosen.some(c => !ids.includes(c))) throw new Error('bad pick');
+          fs.writeFileSync(path.join(PROP, parts[1], 'picks.json'), JSON.stringify({ chosen, note: String(note || '').slice(0, 500), at: new Date().toISOString() }, null, 1));
+          res.writeHead(200); res.end('ok'); } catch (e) { res.writeHead(400); res.end(e.message); } });
+        return;
+      }
+      return html(pickPage(parts[1]));
+    }
+    if (parts[0] === 'proposal' && parts.length === 3 && safe(parts[1]) && safe(parts[2])) return sendFile(req, res, path.join(PROP, parts[1], parts[2]));
     if (parts[0] === 'file' && parts.length >= 4 && safe(parts[1]) && safe(parts[2]) && parts.slice(3).every(safe)) {
       return sendFile(req, res, path.join(here, parts[1], 'runs', parts[2], ...parts.slice(3)));
     }
