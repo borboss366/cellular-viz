@@ -96,7 +96,10 @@
 
 const query = new URLSearchParams(location.search);
 const SCENES = ['ribbon', 'march', 'scope', 'primes', 'canyon', 'map'];
-const params = { scene: 'auto', bars: 8, bpm: 120, bpb: 4, muted: false,
+// canyonLead (ms): the canyon reads the drums this far ahead of the heard clock. Its march is
+// the heaviest pass, and QA box timed its kick flare ~65 ms after the sound vs ~5–15 ms for
+// the ribbon's flashes; a 40 ms lead should land it ~25 ms after (hits are booked 75–100 ms ahead).
+const params = { scene: 'auto', bars: 8, bpm: 120, bpb: 4, muted: false, canyonLead: 40,
                  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 
 // =====================================================================================
@@ -271,10 +274,12 @@ const metronome = {
     g.gain.exponentialRampToValueAtTime(0.001, end);
     src.start(t); src.stop(end + 0.01);
   },
-  read() {
+  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
+  // lead (s): read the drums that far ahead of the heard clock (hits are booked 100 ms ahead).
+  read(lead = 0) {
     const out = { kick: 0, snare: 0, hat: 0, bars: -1 };
     if (!this.ctx) return out;
-    const now = this.ctx.currentTime - Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0);
+    const now = this.ctx.currentTime - this.latency() + lead;
     for (const h of this.hits) {
       const dt = now - h.time;
       if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane]));
@@ -285,7 +290,7 @@ const metronome = {
       const sixteenth = 60 / params.bpm / 4, frac = Math.min(1, (now - last.time) / sixteenth);
       out.bars = (last.step + frac) / (params.bpb * 4);
     }
-    if (this.analyser) this.analyser.getFloatTimeDomainData(this.wave);
+    if (this.analyser && !lead) this.analyser.getFloatTimeDomainData(this.wave);
     return out;
   },
 };
@@ -971,7 +976,8 @@ function scenePrimes(slot, S) {
 }
 
 function sceneCanyon(slot, S) {
-  const { W, H, tc, L, bars, flash } = S;
+  const { W, H, tc, bars, flash } = S;
+  const L = metronome.playing && params.canyonLead ? metronome.read(params.canyonLead / 1000) : S.L;
   bakeCanyon();
   gl.bindFramebuffer(gl.FRAMEBUFFER, slot.fbo);
   gl.viewport(0, 0, W, H);
@@ -1108,6 +1114,31 @@ function resize() {
 }
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
 let lastK = -1, flash = 0;
+// window.__qa.events: one entry per drum hit and zero flash, on the frame it is first drawn,
+// so a sync check can time flashes instead of guessing from a camera that never stops.
+//   tBeat   when it was scheduled (AudioContext seconds)
+//   tHeard  when it comes out of the speakers = tBeat + latency (AudioContext seconds)
+//   perfHeard  tHeard on the performance.now() clock (ms), to line up with recorded frames
+//   perfDrawn  the rAF timestamp of the first frame that draws it
+//   lead    how far ahead of tHeard this scene reads the drums (ms)
+const events = [];
+function logEvent(e, now) {
+  const ctx = metronome.ctx, lat = metronome.latency();
+  e.tHeard = e.tBeat + lat;
+  e.perfHeard = performance.now() + (e.tHeard - ctx.currentTime) * 1000;
+  e.perfDrawn = now;
+  events.push(e);
+  if (events.length > 256) events.shift();
+}
+function logHits(scene, now) {
+  const lead = scene === 'canyon' ? (params.canyonLead || 0) / 1000 : 0;
+  const t = metronome.ctx.currentTime - metronome.latency() + lead;
+  for (const h of metronome.hits) {
+    if (h.logged || h.time > t) continue;
+    h.logged = true;
+    logEvent({ type: h.lane, vel: h.vel, tBeat: h.time, scene, lead: lead * 1000 }, now);
+  }
+}
 // The next frame is booked first, and a frame that throws is reported and skipped,
 // so one bad frame can never stop the show (it froze on frame 1 before: QA box, #40).
 const errors = [];
@@ -1126,7 +1157,13 @@ function draw(now) {
   const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb);
   const tc = tAtBars(bars);
   const lz = lastZero(bars);
-  if (lz.k !== lastK) { flash = 1; lastK = lz.k; }   // a zero on the downbeat
+  if (lz.k !== lastK) {   // a zero on the downbeat
+    flash = 1; lastK = lz.k;
+    if (metronome.playing) {
+      const s = metronome.steps.find(st => st.step === Math.floor(bars) * params.bpb * 4);
+      if (s) logEvent({ type: 'zero', k: lz.k, tBeat: s.time }, now);
+    }
+  }
   flash = Math.max(0, flash - 0.05);
   const W = canvas.width, H = canvas.height;
   const pad = 0.5 - 0.5 * Math.cos(bars / 4 * Math.PI * 2);
@@ -1143,6 +1180,7 @@ function draw(now) {
     sectionBars = bars % params.bars;
   }
   const S = { W, H, tc, L, bars, flash, pad, sectionBars };
+  if (metronome.playing) logHits(cur, now);
   const hasB = renderSlot(1, cur, S);
   const hasA = prev ? renderSlot(0, prev, { ...S, sectionBars: params.bars - 1 + sectionBars }) : false;
 
@@ -1184,12 +1222,12 @@ for (let i = 1; i < NS; i++) {
 window.__qa = {
   zeros: ZEROS.map(z => +z.toFixed(6)), ribbonMinima, scopeCrossings,
   primeSteps: PRIMES.filter(p => p <= primesCache.x1), approxPi, piExact, hardyZ, zetaHalf,
-  scene: null, tCam: null, bars: null, errors,
+  scene: null, tCam: null, bars: null, errors, events,
 };
 
 const q = k => query.get(k);
 if (q('scene') && (q('scene') === 'auto' || SCENES.includes(q('scene')))) params.scene = q('scene');
-for (const k of ['bars', 'bpm']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
+for (const k of ['bars', 'bpm', 'canyonLead']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
 params.muted = q('muted') === '1';
 sync();
 requestAnimationFrame(frame);
