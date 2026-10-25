@@ -234,6 +234,10 @@ const kg = [0, 1].map(() => {   // ping-pong: φ and φ_t in one framebuffer (tw
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, phi, 0);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, vel, 0);
   if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) fail('Field targets are not supported here.');
+  // Draw-buffer state belongs to each framebuffer: set it once here and never touch it again.
+  // (Setting it while another framebuffer was bound left one of these writing φ only, so the
+  // velocity was dropped every other step and no wave could form: QA box, #43.)
+  gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
   return { phi, vel, fbo };
 });
 let kgCur = 0;
@@ -291,7 +295,6 @@ function kgRun(m, k) {
   gl.uniform1i(kgStep.u.uPhi, 0);
   gl.uniform1i(kgStep.u.uVel, 1);
   gl.viewport(0, 0, N, N);
-  gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
   for (let s = 0; s < SUBSTEPS; s++) {
     const sp = s === 0 ? field.pending.shift() : null;
     gl.uniform4f(kgStep.u.uSplat, ...(sp ? [sp.x, sp.y, sp.r, sp.a] : [0, 0, 1, 0]));
@@ -304,16 +307,13 @@ function kgRun(m, k) {
     kgCur = 1 - kgCur;
     field.simTime += DT;
   }
-  gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
 }
 function kgClear() {
   for (const t of kg) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
-    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
     gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 1]);
     gl.clearBufferfv(gl.COLOR, 1, [0, 0, 0, 1]);
   }
-  gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   field.pending = [];
 }
