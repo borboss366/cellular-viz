@@ -313,15 +313,25 @@ vec2 velAt(vec2 p) {
   if (uWalls.w > 0.5 && fy > M - 1.0) v *= clamp(M - fy, 0.0, 1.0);
   return vec2(u, v);
 }
+// Back-trace with RK3 (Ralston) instead of one Euler step. A one-step trace x − dt·u maps area by
+// det(I − dt∇u) = 1 − dt∇·u + dt² det∇u, so even an exactly divergence-free field gains or loses
+// dye at second order where it swirls hard (QA box: curl −9 %/10 s with the sign flipping with
+// wind and scale). RK3 pushes that error to fourth order for three more texture reads.
+vec2 trace(vec2 p) {
+  vec2 k1 = velAt(p);
+  vec2 k2 = velAt(p - 0.5 * uDt * k1 * uTexel);
+  vec2 k3 = velAt(p - 0.75 * uDt * k2 * uTexel);
+  return p - uDt * (2.0 * k1 + 3.0 * k2 + 4.0 * k3) / 9.0 * uTexel;
+}
 void main() {
   if (uIsVel == 1) {   // trace back from each face and read the same component there
     vec2 pu = vUv - vec2(0.5 * uTexel.x, 0.0), pv = vUv - vec2(0.0, 0.5 * uTexel.y);
-    vec2 su = pu - uDt * velAt(pu) * uTexel, sv = pv - uDt * velAt(pv) * uTexel;
+    vec2 su = trace(pu), sv = trace(pv);
     vec2 v = vec2(texture(uSrc, su + vec2(0.5 * uTexel.x, 0.0)).x, texture(uSrc, sv + vec2(0.0, 0.5 * uTexel.y)).y);
     o = vec4(v / (1.0 + uDiss * uDt), 0.0, 1.0);
     if (solid(vUv) > 0.5) o = vec4(0.0);
   } else {             // cell-centred dye and temperature
-    vec2 c = vUv - uDt * velAt(vUv) * uTexel;
+    vec2 c = trace(vUv);
     o = texture(uSrc, c) / (1.0 + uDiss * uDt);
   }
 }`),
