@@ -1,0 +1,238 @@
+{
+ "renderer": "ANGLE (AMD, AMD Radeon Graphics (gfx1103_r1 LLVM 15.0.6 DRM 3.64 7.0.0-31-generic), OpenGL ES 3.2)",
+ "viewport": [
+  1920,
+  1080
+ ],
+ "canvas": [
+  1920,
+  1080
+ ],
+ "view": {
+  "cx": -1,
+  "cy": 18,
+  "hx": 35.55555555555556,
+  "hy": 20
+ },
+ "expected": [
+  {
+   "what": "zero ½+14.134725i",
+   "x": 0.5,
+   "y": 14.134725,
+   "want": 1,
+   "w": 1,
+   "raw": "1/1/1/1",
+   "miss": 0,
+   "radii": 4
+  },
+  {
+   "what": "zero ½+21.02204i",
+   "x": 0.5,
+   "y": 21.02204,
+   "want": 1,
+   "w": 1,
+   "raw": "1/1/1/1",
+   "miss": 0,
+   "radii": 4
+  },
+  {
+   "what": "zero ½+25.010858i",
+   "x": 0.5,
+   "y": 25.010858,
+   "want": 1,
+   "w": 1,
+   "raw": "1/1/1/1",
+   "miss": 0,
+   "radii": 4
+  },
+  {
+   "what": "zero ½+30.424876i",
+   "x": 0.5,
+   "y": 30.424876,
+   "want": 1,
+   "w": 1,
+   "raw": "1/1/1/1",
+   "miss": 0,
+   "radii": 4
+  },
+  {
+   "what": "zero ½+32.935062i",
+   "x": 0.5,
+   "y": 32.935062,
+   "want": 1,
+   "w": 1,
+   "raw": "1/1/1/1",
+   "miss": 0,
+   "radii": 4
+  },
+  {
+   "what": "trivial zero -2",
+   "x": -2,
+   "y": 0,
+   "want": 1,
+   "w": 1,
+   "raw": "1/1/1/1",
+   "miss": 0,
+   "radii": 4
+  },
+  {
+   "what": "trivial zero -4",
+   "x": -4,
+   "y": 0,
+   "want": 1,
+   "w": 1,
+   "raw": "1/1/1/1",
+   "miss": 0,
+   "radii": 4
+  },
+  {
+   "what": "trivial zero -6",
+   "x": -6,
+   "y": 0,
+   "want": 1,
+   "w": 1,
+   "raw": "1/1/1/1",
+   "miss": 0,
+   "radii": 4
+  },
+  {
+   "what": "trivial zero -8",
+   "x": -8,
+   "y": 0,
+   "want": 1,
+   "w": 1,
+   "raw": "1/1/1/1",
+   "miss": 0,
+   "radii": 4
+  },
+  {
+   "what": "trivial zero -10",
+   "x": -10,
+   "y": 0,
+   "want": 1,
+   "w": 1,
+   "raw": "1/1/1/1",
+   "miss": 0,
+   "radii": 4
+  },
+  {
+   "what": "pole s=1",
+   "x": 1,
+   "y": 0,
+   "want": -1,
+   "w": -1,
+   "raw": "-1/-1/-1/-1",
+   "miss": 0,
+   "radii": 4
+  }
+ ],
+ "scan": [
+  {
+   "x": -10.25,
+   "y": 0,
+   "w": 1,
+   "n": 2,
+   "match": "trivial -10"
+  },
+  {
+   "x": -8.25,
+   "y": 0,
+   "w": 1,
+   "n": 2,
+   "match": "trivial -8"
+  },
+  {
+   "x": -6.25,
+   "y": 0,
+   "w": 1,
+   "n": 2,
+   "match": "trivial -6"
+  },
+  {
+   "x": 0.75,
+   "y": 0,
+   "w": -1,
+   "n": 2,
+   "match": "pole s=1"
+  },
+  {
+   "x": -4,
+   "y": 0.25,
+   "w": 1,
+   "n": 2,
+   "match": "trivial -4"
+  },
+  {
+   "x": -2,
+   "y": 0.25,
+   "w": 1,
+   "n": 2,
+   "match": "trivial -2"
+  },
+  {
+   "x": 0.5,
+   "y": 14.25,
+   "w": 1,
+   "n": 2,
+   "match": "zero 14.134725"
+  },
+  {
+   "x": 0.5,
+   "y": 21.25,
+   "w": 1,
+   "n": 2,
+   "match": "zero 21.02204"
+  },
+  {
+   "x": 0.25,
+   "y": 25,
+   "w": 1,
+   "n": 2,
+   "match": "zero 25.010858"
+  },
+  {
+   "x": 0.5,
+   "y": 30.25,
+   "w": 1,
+   "n": 2,
+   "match": "zero 30.424876"
+  },
+  {
+   "x": 0.5,
+   "y": 32.75,
+   "w": 1,
+   "n": 2,
+   "match": "zero 32.935062"
+  }
+ ],
+ "speed": {
+  "travel": {
+   "fps": 60,
+   "p50ms": 16.7,
+   "p99ms": 16.8,
+   "worstMs": 16.8,
+   "canvas": [
+    1920,
+    1080
+   ]
+  },
+  "overview": {
+   "fps": 60,
+   "p50ms": 16.7,
+   "p99ms": 16.8,
+   "worstMs": 16.8,
+   "canvas": [
+    1920,
+    1080
+   ]
+  }
+ },
+ "errors": [],
+ "pass": {
+  "zerosOnLine": true,
+  "trivialAndPole": true,
+  "noStray": true,
+  "fps60": true,
+  "noErrors": true
+ }
+}
