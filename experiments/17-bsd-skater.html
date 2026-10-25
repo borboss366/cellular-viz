@@ -457,6 +457,29 @@ function resize() {
 }
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
 const errors = [];
+// window.__qa.events: each drum hit and each hop (a trick lands on every beat), logged on the
+// frame that first draws it, so sync is timed from flashes, not the always-moving camera.
+//   tBeat  scheduled (AudioContext s) · tHeard = tBeat + output latency · perfHeard: tHeard on
+//   the performance.now() clock (ms) · perfDrawn: rAF timestamp of the first frame drawing it
+const events = [];
+const latency = () => metronome.ctx ? Math.min(0.3, metronome.ctx.outputLatency || metronome.ctx.baseLatency || 0) : 0;
+function logEvent(e, now) {
+  e.tHeard = e.tBeat + latency();
+  e.perfHeard = performance.now() + (e.tHeard - metronome.ctx.currentTime) * 1000;
+  e.perfDrawn = now;
+  events.push(e); if (events.length > 256) events.shift();
+}
+function logBeats(beat, hopped, now) {
+  const heard = metronome.ctx.currentTime - latency();
+  for (const h of metronome.hits) {
+    if (h.logged || h.time > heard) continue;
+    h.logged = true; logEvent({ type: h.lane, vel: h.vel, tBeat: h.time }, now);
+  }
+  if (hopped) {
+    const s = metronome.steps.find(x => x.step === beat * 4);
+    if (s) logEvent({ type: st.lastHop && st.lastHop.type === 'air' ? 'air' : 'hop', beat, tBeat: s.time }, now);
+  }
+}
 function frame(now) {
   requestAnimationFrame(frame);
   try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
@@ -466,7 +489,9 @@ function draw(now) {
   const L = metronome.read();
   const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * params.bpm / 60);
   const beat = Math.floor(beats), u = beats - beat;
-  if (beat !== st.hopBeat) doHop(beat);
+  const hopped = beat !== st.hopBeat;
+  if (hopped) doHop(beat);
+  if (metronome.playing) logBeats(beat, hopped, now);
   const sk = skaterAt(u);
   st.trail.push(sk.pos); if (st.trail.length > 40) st.trail.shift();
   st.flash = Math.max(0, st.flash - 0.03);
@@ -555,7 +580,7 @@ function draw(now) {
 const q = k => query.get(k);
 for (const k of ['bpm', 'hops']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
 params.muted = q('muted') === '1';
-window.__qa = { errors };
+window.__qa = { errors, events };
 setCurve(q('curve') || 'x3-25x');
 sync();
 requestAnimationFrame(frame);
