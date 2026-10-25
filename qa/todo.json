@@ -277,6 +277,23 @@
     "label": "\u25b6 watch all",
     "href": "/run/13-flow-lab/2026-10-25-1705"
    }
+  ],
+  "done": "superseded by the ccad444 run"
+ },
+ {
+  "id": "13-flow-lab-final",
+  "from": "QA box",
+  "title": "13 Flow Lab, final build: swipe the six looks (vortex, kh, plume, ink, rocks, curl)",
+  "note": "Build ccad444 passes every check: 60 fps up to 4K, colour holds on every look, and the vortex street lands on the beat within 0.1 % at 90/120/150 BPM. 40 s each.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/13-flow-lab/2026-10-25-1957/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/13-flow-lab/2026-10-25-1957"
+   }
   ]
  }
 ]
