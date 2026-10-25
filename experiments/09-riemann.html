@@ -21,7 +21,7 @@
   Colour uses log ζ directly (real part = log |ζ|, imaginary part = arg ζ).
 
   Camera: "travel" glides up and down the critical strip (0 ≤ y ≤ 50) at `speed`
-  height units per bar; "overview" shows −21 ≤ x ≤ 19, −2 ≤ y ≤ 38 at once.
+  height units per bar (?height=0…60 sets the start, e.g. with ?speed=0 to hold it); "overview" shows −21 ≤ x ≤ 19, −2 ≤ y ≤ 38 at once.
   Music: 04's metronome. kick → brightness pulse and a small zoom punch, snare → flash
   of saturation, hat → phase-ray shimmer, pad → slow hue turn.
   "marks" circles the known zero heights (for checking, off by default).
@@ -368,7 +368,7 @@ function view(L, now, aspect) {
   // Time in bars: from the metronome when it plays, else from the clock at the same tempo.
   const dtBars = (now - cam.lastNow) / 1000 * params.bpm / 60 / params.bpb;
   cam.lastNow = now;
-  if (!params.paused) {
+  if (!params.paused && params.speed > 0) {   // held still, a ?height above 50 stays put
     cam.height += cam.dir * params.speed * Math.min(dtBars, 0.25);
     if (cam.height > 50) { cam.height = 50; cam.dir = -1; }
     if (cam.height < 0) { cam.height = 0; cam.dir = 1; }
@@ -467,8 +467,9 @@ function loadFromUrl() {
   if (query.get('view') === 'overview') params.view = 'overview';
   params.marks = query.get('marks') === '1';
   params.muted = query.get('muted') === '1';
+  // ?height= reaches up to 60 so a check can sweep Im s 0–60; travel itself still turns at 50.
   const h = parseFloat(query.get('height'));
-  if (Number.isFinite(h)) cam.height = Math.max(0, Math.min(50, h));
+  if (Number.isFinite(h)) cam.height = Math.max(0, Math.min(60, h));
   syncControls();
 }
 
