@@ -448,7 +448,10 @@ vec2 ripple(vec2 xz) {
     float d = length(vec2(xz.x, xz.y - uZ[k] * SZ));
     dmin = min(dmin, d);
     if (d > 18.0) continue;
-    float a1 = (d - beat * 6.0) * 2.2, a2 = (d - (beat + 1.0) * 6.0) * 2.2, a3 = (d - bar * 16.0) * 1.4;
+    // Rings are born at radius 1.2, where the damping around the pit has just let go, so a
+    // ring is visible the instant its beat lands (born at 0 it stayed hidden for ~0.2 beat:
+    // QA box measured the bumps ~95 ms late).
+    float a1 = (d - 1.2 - beat * 6.0) * 2.2, a2 = (d - 1.2 - (beat + 1.0) * 6.0) * 2.2, a3 = (d - 1.2 - bar * 16.0) * 1.4;
     s += exp(-a1 * a1) * (1.0 - 0.6 * beat)            // squares, not pow(): pow of a negative is undefined in GLSL
        + exp(-a2 * a2) * 0.4 * (1.0 - beat)
        + 1.6 * exp(-a3 * a3) * (1.0 - bar);
@@ -460,11 +463,18 @@ vec2 lzAt(vec2 xz) {   // world (x, z) → (log|ζ|, arg ζ); x = (σ − ½)·S
   vec2 uv = vec2((xz.x / SX + 0.5 - ${LZ_S0.toFixed(2)}) / ${(LZ_S1 - LZ_S0).toFixed(2)}, xz.y / SZ / ${T_MAX.toFixed(1)});
   return texture(uLZ, uv).rg;
 }
+float baseH(vec2 xz) { return clamp(lzAt(xz).x, -6.0, 3.0) * 0.7 * (1.0 + 0.12 * uKick); }   // the valley breathes
+const float BUMP_MAX = 1.8;   // the lift never exceeds this, so far above the ground the rings can be skipped
 float H(vec2 xz) {
-  float base = clamp(lzAt(xz).x, -6.0, 3.0) * 0.7 * (1.0 + 0.12 * uKick);   // the valley breathes
   vec2 r = ripple(xz);
   float goose = uHat * 0.06 * sin(xz.x * 9.0) * sin(xz.y * 9.0 + uBeats * 3.0);
-  return base + (0.32 * r.x * (0.6 + uKick) + goose) * smoothstep(0.0, 1.2, r.y);
+  return baseH(xz) + min(BUMP_MAX, 0.32 * r.x * (0.6 + uKick) + goose) * smoothstep(0.0, 1.2, r.y);
+}
+// For the march: only pay for the rings when the ray is near enough to the ground to touch them.
+// Far above, return the highest the bumped ground could be, so the step can't jump a crest.
+float Hmarch(vec3 p) {
+  float b = baseH(p.xz);
+  return p.y - b > BUMP_MAX + 0.1 ? b + BUMP_MAX : H(p.xz);
 }
 vec3 hsv(float h, float s, float v) {
   vec3 k = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
@@ -478,7 +488,7 @@ void main() {
   vec3 p;
   for (int i = 0; i < 180; i++) {
     p = uEye + rd * d;
-    float h = H(p.xz);
+    float h = Hmarch(p);
     if (p.y < h) { hitD = d; break; }
     d += max(0.03, (p.y - h) * 0.45);
     if (d > 70.0) break;
