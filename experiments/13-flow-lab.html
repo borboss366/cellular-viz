@@ -116,7 +116,7 @@ const query = new URLSearchParams(location.search);
 // at every tempo. fNat is calibrated with __qa.calibrate() (?probe=1&lock=0). lock: wake forcing
 // as a fraction of U (undefined = the recipe's, 0 = off, to see the natural shedding).
 const settings = { bpm: 120, bpb: 4, muted: false, res: 256, morphBars: 8, probe: false, conserve: true,
-                   Uref: 219, fNat: 1.1241, dtSim: 1 / 60, maxSteps: 2, omega: 1.85, lock: undefined, adaptive: true,
+                   Uref: 219, fNat: 1.2081, dtSim: 1 / 60, maxSteps: 2, omega: 1.85, lock: undefined, adaptive: true,
                    kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 const ST = 0.2;   // Strouhal number of a cylinder wake (≈ 0.2 for Re ~ 300 … 2·10⁵)
 
