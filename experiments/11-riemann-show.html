@@ -1098,6 +1098,10 @@ function draw(now) {
 
   // Every frame, so a reading taken on a downbeat isn't up to 200 ms stale.
   window.__qa.scene = cur; window.__qa.tCam = tc; window.__qa.bars = bars;
+  // The visuals run this far behind the audio clock on purpose, so the picture matches what
+  // comes out of the speakers. A beat-sync check timed against the scheduled beats should
+  // subtract it.
+  window.__qa.audioLatency = metronome.ctx ? Math.min(0.3, metronome.ctx.outputLatency || metronome.ctx.baseLatency || 0) : null;
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
   if (now - lastHud > 200) {
