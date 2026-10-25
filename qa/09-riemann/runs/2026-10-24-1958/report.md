@@ -19,9 +19,9 @@ Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
 
 ## Pairwise ranking (user picks)
 
-1 picks, Bradley–Terry strength (1 = average).
+2 picks, Bradley–Terry strength (1 = average).
 
 | # | variant | strength | won | lost | tie |
 |---|---|---|---|---|---|
-| 1 | travel | 1 | 0 | 0 | 1 |
-| 2 | overview | 1 | 0 | 0 | 1 |
+| 1 | travel | 1.521 | 1 | 0 | 1 |
+| 2 | overview | 0.657 | 0 | 1 | 1 |
