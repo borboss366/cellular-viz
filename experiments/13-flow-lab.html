@@ -8,16 +8,20 @@
   Navier–Stokes equations ∂u/∂t + (u·∇)u = −∇p + ν∇²u + f, ∇·u = 0, on a grid (velocity in
   cells per second). Each step: forces → semi-Lagrangian advection → vorticity confinement →
   viscous diffusion (Jacobi, if ν > 0) → pressure projection (Jacobi on ∇²p = ∇·u, then
-  u −= ∇p) → dye and temperature advected by the projected velocity. Obstacles are solid
-  discs (no-slip, Neumann pressure). Written fresh for this page; the structure follows
+  u −= ∇p) → dye and temperature advected by the projected velocity. Velocity is staggered
+  (MAC: u on left faces, v on bottom faces), divergence is the forward difference and the
+  pressure gradient the backward one, so div∘grad is exactly the 5-point Laplacian the Jacobi
+  pass inverts. Fields are 32-bit floats where filterable. Obstacles are solid discs (faces next
+  to them shut, Neumann pressure). Written fresh for this page; the structure follows
   PavelDoGreat's MIT WebGL-Fluid-Simulation.
   Engine B, curl noise (Bridson 2007): u = curl ψ = (∂ψ/∂y, −∂ψ/∂x) of an fBm potential, so it
   is divergence-free by construction. Standalone, or as a "wind" force inside A.
 
   Recipes:
     vortex   uniform inflow past a cylinder: a Kármán street. Locked to the music with the
-             Strouhal number, St = f·d/U ≈ 0.2: U = f·d/0.2 with f = BPM/120, so a vortex peels
-             off on every beat (each side every other beat).
+             Strouhal number f = St·U/d, f = BPM/120, so a vortex peels off on every beat (each
+             side every other beat). St follows Roshko, 0.212 (1 − 21.2/Re), at the grid's
+             effective Re (~100, St ~0.165), and a small wake forcing at f keeps the phase.
     kh       Kelvin–Helmholtz: two layers sliding opposite ways, a sine nudge on the kick rolls
              the interface into billows.
     plume    smoke with buoyancy (GPU Gems 38.4.2): a heat source, f = σ·T·ŷ; the kick adds heat.
@@ -105,18 +109,20 @@
 'use strict';
 
 const query = new URLSearchParams(location.search);
-const settings = { bpm: 120, bpb: 4, muted: false, res: 256, morphBars: 8, probe: false, conserve: true,
+// nuEff: the grid's effective viscosity (cells²/s) for the Strouhal lock; lock: wake forcing as a
+// fraction of U (undefined = the recipe's, 0 = off, to see the natural shedding)
+const settings = { bpm: 120, bpb: 4, muted: false, res: 256, morphBars: 8, probe: false, conserve: true, nuEff: 85, lock: undefined,
                    kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 const ST = 0.2;   // Strouhal number of a cylinder wake (≈ 0.2 for Re ~ 300 … 2·10⁵)
 
 // ---------- recipes (JSON presets) ----------
-const BASE = { viscosity: 0, curl: 6, dissipation: 0.15, velDissipation: 0.02, pressureIters: 30, splatRadius: 0.35, noiseScale: 2.5, octaves: 3, wind: 0, seed: 1 };
+const BASE = { viscosity: 0, curl: 6, dissipation: 0.15, velDissipation: 0.02, pressureIters: 40, splatRadius: 0.35, noiseScale: 2.5, octaves: 3, wind: 0, seed: 1 };
 const PRESETS = {
   vortex: { name: 'vortex', engine: 'fluid',
-    forces: [{ type: 'inflow', U: 'strouhal' }], obstacles: [{ x: 0.2, y: 0.5, r: 0.07 }],
+    forces: [{ type: 'inflow', U: 'strouhal', lock: 0.06 }], obstacles: [{ x: 0.2, y: 0.5, r: 0.07 }],
     sources: [{ x: 0.2, y: 0.5 + 0.075, r: 0.012, c: 0, rate: 3 }, { x: 0.2, y: 0.5 - 0.075, r: 0.012, c: 1, rate: 3 },
               { x: 0.02, y: 0.3, r: 0.006, c: 2, rate: 1.2 }, { x: 0.02, y: 0.7, r: 0.006, c: 2, rate: 1.2 }],
-    params: { ...BASE, curl: 2, dissipation: 0.25 }, palette: ['#ff4f6d', '#3fc8ff', '#f4e9b8'],
+    params: { ...BASE, curl: 5, dissipation: 0.25 }, palette: ['#ff4f6d', '#3fc8ff', '#f4e9b8'],
     music: { kick: 'pulse', snare: 'none', downbeat: 'none' } },
   kh: { name: 'kh', engine: 'fluid',
     forces: [{ type: 'bands', U: 90 }], obstacles: [],
@@ -263,15 +269,26 @@ const P = {
   splat: program(HEAD + `
 uniform sampler2D uTarget; uniform vec2 uPoint; uniform vec3 uValue; uniform float uRadius;
 void main() { vec2 p = vUv - uPoint; p.x *= uAspect; o = vec4(texture(uTarget, vUv).xyz + exp(-dot(p, p) / uRadius) * uValue, 1.0); }`),
+  // Velocity lives on a staggered (MAC) grid: texel (i, j) holds u on the cell's left face and v
+  // on its bottom face, so u is at the texel centre − ½ cell in x, v at − ½ cell in y.
   advect: program(HEAD + `
 uniform sampler2D uVel, uSrc; uniform float uDt, uDiss; uniform int uIsVel;
+vec2 velAt(vec2 p) { return vec2(texture(uVel, p + vec2(0.5 * uTexel.x, 0.0)).x, texture(uVel, p + vec2(0.0, 0.5 * uTexel.y)).y); }
 void main() {
-  vec2 c = vUv - uDt * texture(uVel, vUv).xy * uTexel;
-  o = texture(uSrc, c) / (1.0 + uDiss * uDt);
-  if (uIsVel == 1 && solid(vUv) > 0.5) o = vec4(0.0);
+  if (uIsVel == 1) {   // trace back from each face and read the same component there
+    vec2 pu = vUv - vec2(0.5 * uTexel.x, 0.0), pv = vUv - vec2(0.0, 0.5 * uTexel.y);
+    vec2 su = pu - uDt * velAt(pu) * uTexel, sv = pv - uDt * velAt(pv) * uTexel;
+    vec2 v = vec2(texture(uSrc, su + vec2(0.5 * uTexel.x, 0.0)).x, texture(uSrc, sv + vec2(0.0, 0.5 * uTexel.y)).y);
+    o = vec4(v / (1.0 + uDiss * uDt), 0.0, 1.0);
+    if (solid(vUv) > 0.5) o = vec4(0.0);
+  } else {             // cell-centred dye and temperature
+    vec2 c = vUv - uDt * velAt(vUv) * uTexel;
+    o = texture(uSrc, c) / (1.0 + uDiss * uDt);
+  }
 }`),
   forces: program(HEAD + NOISE + `
-uniform sampler2D uVel, uTemp; uniform float uDt, uWind, uNoiseScale, uBuoy, uKH, uKHU, uInflow, uU, uCurlEng, uCurlSpeed;
+uniform sampler2D uVel, uTemp; uniform float uDt, uWind, uNoiseScale, uBuoy, uKH, uKHU, uInflow, uU, uCurlEng, uCurlSpeed, uLockS;
+uniform vec4 uLock;   // wake forcing (lock-in): x, y, radius (height units), acceleration
 void main() {
   vec2 v = texture(uVel, vUv).xy, p = vUv * vec2(uAspect, 1.0) * uNoiseScale;
   vec2 cn = curlNoise(p);
@@ -283,6 +300,7 @@ void main() {
     v.x = mix(v.x, target, band * uKH * clamp(uDt * 6.0, 0.0, 1.0));
   }
   if (uInflow > 0.0 && vUv.x < 3.0 * uTexel.x) v = mix(v, vec2(uU, 0.0), uInflow);
+  if (uLock.w != 0.0) { vec2 d = (vUv - uLock.xy) * vec2(uAspect, 1.0); v.y += uDt * uLock.w * uLockS * exp(-dot(d, d) / (uLock.z * uLock.z)); }
   if (solid(vUv) > 0.5) v = vec2(0.0);
   o = vec4(v, 0.0, 1.0);
 }`),
@@ -313,18 +331,26 @@ void main() {
   if (solid(vUv) > 0.5) v = vec2(0.0);
   o = vec4(v, 0.0, 1.0);
 }`),
+  // Divergence by forward differences of the face velocities and gradient by backward
+  // differences of p, so div(grad p) is exactly the 5-point Laplacian the Jacobi pass solves
+  // (QA box: the old 2-cell central pair left the grid-scale part, ~45 % removed).
   divergence: program(HEAD + `
-uniform sampler2D uVel; uniform vec4 uWalls;   // left, right, bottom, top: 1 = wall (reflect), 0 = open
-vec2 V(vec2 uv) { return solid(uv) > 0.5 ? vec2(0.0) : texture(uVel, uv).xy; }
+uniform sampler2D uVel; uniform vec4 uWalls;   // left, right, bottom, top: 1 = wall, 0 = open
+float fu(vec2 uv) {   // u on the left face of the cell at uv; a face next to a solid is shut
+  if (solid(uv) > 0.5) return 0.0;
+  if (uv.x - uTexel.x < 0.0) return uWalls.x > 0.5 ? 0.0 : texture(uVel, uv).x;
+  return solid(uv - vec2(uTexel.x, 0.0)) > 0.5 ? 0.0 : texture(uVel, uv).x;
+}
+float fv(vec2 uv) {   // v on the bottom face
+  if (solid(uv) > 0.5) return 0.0;
+  if (uv.y - uTexel.y < 0.0) return uWalls.z > 0.5 ? 0.0 : texture(uVel, uv).y;
+  return solid(uv - vec2(0.0, uTexel.y)) > 0.5 ? 0.0 : texture(uVel, uv).y;
+}
 void main() {
-  vec2 C = V(vUv);
-  float L = V(vUv - vec2(uTexel.x, 0)).x, R = V(vUv + vec2(uTexel.x, 0)).x;
-  float B = V(vUv - vec2(0, uTexel.y)).y, T = V(vUv + vec2(0, uTexel.y)).y;
-  if (vUv.x - uTexel.x < 0.0) L = uWalls.x > 0.5 ? -C.x : C.x;
-  if (vUv.x + uTexel.x > 1.0) R = uWalls.y > 0.5 ? -C.x : C.x;
-  if (vUv.y - uTexel.y < 0.0) B = uWalls.z > 0.5 ? -C.y : C.y;
-  if (vUv.y + uTexel.y > 1.0) T = uWalls.w > 0.5 ? -C.y : C.y;
-  o = vec4(solid(vUv) > 0.5 ? 0.0 : 0.5 * (R - L + T - B), 0.0, 0.0, 1.0);
+  float uL = fu(vUv), vB = fv(vUv);
+  float uR = vUv.x + uTexel.x > 1.0 ? (uWalls.y > 0.5 ? 0.0 : uL) : fu(vUv + vec2(uTexel.x, 0.0));   // open outflow: zero gradient
+  float vT = vUv.y + uTexel.y > 1.0 ? (uWalls.w > 0.5 ? 0.0 : vB) : fv(vUv + vec2(0.0, uTexel.y));
+  o = vec4(solid(vUv) > 0.5 ? 0.0 : (uR - uL + vT - vB), 0.0, 0.0, 1.0);
 }`),
   pressure: program(HEAD + `
 uniform sampler2D uP, uDiv; uniform float uOpenRight;
@@ -337,15 +363,15 @@ void main() {
   o = vec4(0.25 * (L + R + B + T - texture(uDiv, vUv).x), 0.0, 0.0, 1.0);
 }`),
   gradient: program(HEAD + `
-uniform sampler2D uP, uVel; uniform float uOpenRight;
-float Pn(vec2 uv, float pc) { return solid(uv) > 0.5 ? pc : texture(uP, uv).x; }
+uniform sampler2D uP, uVel; uniform vec4 uWalls;
 void main() {
   float pc = texture(uP, vUv).x;
-  float L = Pn(vUv - vec2(uTexel.x, 0), pc), R = Pn(vUv + vec2(uTexel.x, 0), pc);
-  float B = Pn(vUv - vec2(0, uTexel.y), pc), T = Pn(vUv + vec2(0, uTexel.y), pc);
-  if (uOpenRight > 0.5 && vUv.x + uTexel.x > 1.0) R = 0.0;
-  vec2 v = texture(uVel, vUv).xy - 0.5 * vec2(R - L, T - B);
-  if (solid(vUv) > 0.5) v = vec2(0.0);
+  vec2 l = vUv - vec2(uTexel.x, 0.0), b = vUv - vec2(0.0, uTexel.y);
+  bool edgeL = l.x < 0.0, edgeB = b.y < 0.0;
+  float pL = edgeL ? pc : texture(uP, l).x, pB = edgeB ? pc : texture(uP, b).x;
+  vec2 v = texture(uVel, vUv).xy - vec2(pc - pL, pc - pB);
+  if (solid(vUv) > 0.5 || (!edgeL && solid(l) > 0.5) || (edgeL && uWalls.x > 0.5)) v.x = 0.0;   // shut faces
+  if (solid(vUv) > 0.5 || (!edgeB && solid(b) > 0.5) || (edgeB && uWalls.z > 0.5)) v.y = 0.0;
   o = vec4(v, 0.0, 1.0);
 }`),
   display: program(HEAD + `
@@ -371,10 +397,14 @@ void main() { o = texture(uSrc, vUv) * uK; }`),
 };
 const emptyVao = gl.createVertexArray();
 
+// 32-bit floats where they can be filtered: half floats flushed faint dye to zero and
+// rounded every step (part of the dye loss QA box measured).
+const F32 = !!gl.getExtension('OES_texture_float_linear');
 function target(w, h) {
   const t = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, t);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  if (F32) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, null);
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
   for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
   const fbo = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
@@ -433,21 +463,34 @@ function effective(bars) {   // the blended recipe for this frame
   const palette = palA.map((c, i) => B ? c.map((v, j) => lerp(v, palB[i % palB.length][j], m)) : c);
   return { layers, params, palette, m };
 }
-function strouhal(eff) {   // U from St = f d / U, f = BPM/120: a vortex every beat
+// The shedding rate f = St·U/d with f = BPM/120 (a vortex every beat). St is not a constant:
+// at a cylinder's Reynolds number Re = U d / ν it follows Roshko (1954), St = 0.212 (1 − 21.2/Re).
+// The grid has an effective viscosity ν (numerical, plus any set), so Re here is ~100 and St ~0.165
+// (QA box measured 18 % slow with St = 0.2). Solving f = St(U)·U/d for U gives
+// U = (f d + 0.212·21.2 ν / d) / 0.212. ν defaults to 85 cells²/s, fitted to QA box's three tempos;
+// a small wake forcing at f (lock-in, as for an oscillating cylinder) keeps it on the beat.
+function strouhal() {
   const cyl = st.cur.obstacles[0] || { r: 0.07 }, d = 2 * cyl.r * F.simH, f = settings.bpm / 120;
-  return { St: ST, f, d, U: f * d / ST };
+  const nu = settings.nuEff + (st.cur.params.viscosity || 0), U = (f * d + 0.212 * 21.2 * nu / d) / 0.212, Re = U * d / nu;
+  return { St0: ST, St: f * d / U, Re, nu, f, d, U, roshko: 0.212 * (1 - 21.2 / Re) };
 }
 
 // ---------- one simulation step ----------
 function step(dt, eff, L) {
   const { params, layers } = eff;
   // gather forces and obstacles from every layer (weight w)
-  let inflowU = 0, inflowW = 0, kh = 0, khU = 0, buoy = 0, wind = params.wind, curlEng = 0, openRight = 0;
+  let inflowU = 0, inflowW = 0, kh = 0, khU = 0, buoy = 0, wind = params.wind, curlEng = 0, openRight = 0, lock = [0, 0, 0, 0];
   const obs = [], heats = [];
   for (const [R, w] of layers) {
     if (R.engine === 'curl') curlEng += w;
     for (const f of R.forces) {
-      if (f.type === 'inflow') { const U = f.U === 'strouhal' ? strouhal().U : f.U; inflowU += U * w; inflowW += w; }
+      if (f.type === 'inflow') {
+        const U = f.U === 'strouhal' ? strouhal().U : f.U; inflowU += U * w; inflowW += w;
+        if (f.lock && R.obstacles[0] && settings.lock !== 0) {   // wake forcing one diameter behind the first obstacle
+          const ob = R.obstacles[0], fr = settings.bpm / 120;
+          lock = [ob.x + 2 * ob.r * F.simH / F.simW * 1.2, ob.y, ob.r * 0.8, (settings.lock ?? f.lock) * U * 2 * Math.PI * fr * w];
+        }
+      }
       if (f.type === 'bands') { kh += w; khU += f.U * w; }
       if (f.type === 'buoyancy') { buoy += f.sigma * w; heats.push({ ...f.heat, w, cool: f.cool }); }
     }
@@ -479,6 +522,7 @@ function step(dt, eff, L) {
     gl.uniform1f(u.uBuoy, buoy); gl.uniform1f(u.uKH, kh); gl.uniform1f(u.uKHU, khU);
     gl.uniform1f(u.uInflow, Math.min(1, inflowW)); gl.uniform1f(u.uU, inflowU);
     gl.uniform1f(u.uCurlEng, Math.min(1, curlEng)); gl.uniform1f(u.uCurlSpeed, wind * (1 + 1.5 * st.speedPulse));
+    gl.uniform4fv(u.uLock, lock); gl.uniform1f(u.uLockS, Math.sin(Math.PI * st.beats));   // sin 2π f t with f = BPM/120
   });
   F.vel.swap();
   pass(P.advect, F.vel.b, (u, tex) => { tex('uVel', F.vel.a); tex('uSrc', F.vel.a); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uDiss, params.velDissipation); gl.uniform1i(u.uIsVel, 1); });
@@ -511,7 +555,7 @@ function project(iters, walls, openRight) {
   pass(P.clear, F.pres.b, (u, tex) => { tex('uSrc', F.pres.a); gl.uniform1f(u.uK, 0.8); });   // warm start
   F.pres.swap();
   for (let i = 0; i < iters; i++) { pass(P.pressure, F.pres.b, (u, tex) => { tex('uP', F.pres.a); tex('uDiv', F.div); gl.uniform1f(u.uOpenRight, openRight); }); F.pres.swap(); }
-  pass(P.gradient, F.vel.b, (u, tex) => { tex('uP', F.pres.a); tex('uVel', F.vel.a); gl.uniform1f(u.uOpenRight, openRight); });
+  pass(P.gradient, F.vel.b, (u, tex) => { tex('uP', F.pres.a); tex('uVel', F.vel.a); gl.uniform4fv(u.uWalls, walls); });
   F.vel.swap();
 }
 
@@ -676,7 +720,7 @@ function draw(now) {
   const dt = Math.min(1 / 30, Math.max(1 / 240, (now - (lastNow || now - 16)) / 1000)); lastNow = now;
   const L = metronome.read();
   const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * settings.bpm / 60);
-  curBars = beats / settings.bpb;
+  curBars = beats / settings.bpb; st.beats = beats;
   const eff = effective(curBars);
   if (metronome.playing) {   // hits, on the frame they are heard
     const heard = metronome.ctx.currentTime - metronome.latency();
@@ -739,7 +783,7 @@ presetButtons();
 if (q('preset') && PRESETS[q('preset')]) st.cur = clone(PRESETS[q('preset')]);
 if (q('recipe')) { try { st.cur = JSON.parse(q('recipe')); } catch { errors.push('bad ?recipe JSON'); } }
 for (const k of Object.keys(BASE)) { const v = parseFloat(q(k)); if (Number.isFinite(v)) st.cur.params[k] = v; }
-for (const k of ['bpm', 'res', 'morphBars']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) settings[k] = v; }
+for (const k of ['bpm', 'res', 'morphBars', 'nuEff', 'lock']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) settings[k] = v; }
 settings.probe = q('probe') === '1'; settings.conserve = q('conserve') !== '0'; settings.muted = q('muted') === '1';
 sync();
 requestAnimationFrame(frame);
