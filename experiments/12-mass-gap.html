@@ -1,0 +1,686 @@
+<!doctype html>
+<!--
+  12 · Mass Gap (Yang–Mills)   (Millennium track #37; spec: #37 comments 6391015455, 6391125957)
+
+  The Yang–Mills prize asks to prove that the lightest thing the strong force can make
+  has a minimum energy Δ > 0 above empty space: the mass gap. Four scenes, switching every
+  `bars` bars with a fade; each section is a build-up (all but the last 2 bars) and a drop.
+  Colour charge is drawn as real colour: pure red, green and blue light, additive, and
+  whatever survives as a stable blob is colour-neutral, i.e. white.
+
+    field     (main; an honest analogy, not QCD) three coupled 2-D Klein–Gordon fields, one
+              per colour, on a 512² GPU grid: φ_tt = ∇²φ − m²φ + κ(φ̄ − φ), symplectic
+              Euler, dt 0.5, absorbing edges. Kicks drop coloured impulses. Build-up: m = 0,
+              κ = 0, so ripples race away as coloured rings at speed 1. Drop: the gap
+              switches on (m = Δ, κ > 0): waves can't spread slowly any more (ω² = k² + m²),
+              so they ring in place as breathing blobs, and the colours lock into white.
+              Colour = energy density ½(φ_t² + |∇φ|² + m²φ²) per channel.
+    tube      two quarks (red and anti-red = cyan) joined by a flux tube of constant width;
+              the build-up pulls them apart and the energy readout E = σ·r grows linearly
+              (σ ≈ 0.9 GeV/fm). At the drop the tube snaps and a new pair sparks, so both
+              pieces stay colour-neutral.
+    glueball  an equaliser at the lattice glueball masses 0++ 1730, 2++ 2400, 0−+ 2590 MeV
+              (Morningstar–Peardon, via Wikipedia). The band from 0 to 1730 MeV stays dark:
+              that is the gap. Kick, snare and hat light the three bars.
+    lava      a slow lumpy "QCD vacuum" lava lamp (after Leinweber's renders) for calm parts.
+
+  Modules: each scene declares ISF-style inputs (name, type, default, min, max) in
+  MODULES[name].inputs, collected in window.__modules for the coming platform.
+  QA (window.__qa): mass, coupling, simTime, probe(x, y) → φ at a grid cell, splat(x, y,
+  colour, amount), setAuto(on), setMass(m), setCoupling(k), clear(), tube {r_fm, E_GeV},
+  glueballs, gapTop. ?auto=0 stops the automatic splats, ?m= and ?k= pin the gap.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>12 · Mass Gap</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #9fb0c3; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0;
+      position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Scene</h3>
+  <div class="buttons" id="scenes"></div>
+  <div class="row"><label for="bars">bars / scene</label><input id="bars" type="range" min="4" max="32" step="1"><output id="barsOut"></output></div>
+  <div class="row"><label for="gap">gap Δ</label><input id="gap" type="range" min="0.05" max="1" step="0.01"><output id="gapOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="buttons">
+    <button id="copy" class="wide">Copy setup</button>
+  </div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+const SCENES = ['field', 'tube', 'glueball', 'lava'];
+const params = { scene: 'auto', bars: 8, gap: 0.35, bpm: 120, bpb: 4, muted: false,
+                 kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+
+// ---------- Metronome (as 04) with an analyser ----------
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, bus: null, analyser: null, noise: null, timer: 0, playing: false,
+  nextTime: 0, step: 0, hits: [], steps: [], fft: new Float32Array(1024),
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx;
+      this.bus = ctx.createGain(); this.master = ctx.createGain(); this.analyser = ctx.createAnalyser();
+      this.analyser.fftSize = 2048;
+      this.bus.connect(this.master); this.bus.connect(this.analyser); this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume();
+    this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+    this.playing = true;
+    this.timer = setInterval(() => this.schedule(), 25);
+    this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  schedule() {
+    while (this.nextTime < this.ctx.currentTime + 0.1) {
+      this.queueStep(this.step, this.nextTime);
+      this.nextTime += 60 / params.bpm / 4; this.step++;
+    }
+    const old = this.ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, time) {
+    const inBar = step % (params.bpb * 4);
+    this.steps.push({ time, step });
+    for (const lane of LANES) {
+      if (params[lane][inBar % 16] !== 'x') continue;
+      const vel = inBar === 0 ? 1.0 : 0.7;
+      this.hits.push({ lane, time, vel });
+      this.click(lane, time, vel);
+    }
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain();
+    g.connect(this.bus);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') {
+      src = ctx.createOscillator();
+      src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08);
+      src.connect(g);
+    } else {
+      src = ctx.createBufferSource(); src.buffer = this.noise;
+      const f = ctx.createBiquadFilter();
+      f.type = lane === 'snare' ? 'bandpass' : 'highpass';
+      f.frequency.value = lane === 'snare' ? 1800 : 8000;
+      src.connect(f); f.connect(g);
+    }
+    const end = t + TAU[lane] * 4;
+    g.gain.exponentialRampToValueAtTime(0.001, end);
+    src.start(t); src.stop(end + 0.01);
+  },
+  read() {
+    const out = { kick: 0, snare: 0, hat: 0, bars: -1 };
+    if (!this.ctx) return out;
+    const now = this.ctx.currentTime - Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0);
+    for (const h of this.hits) {
+      const dt = now - h.time;
+      if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane]));
+    }
+    let last = null;
+    for (const s of this.steps) if (s.time <= now) last = s;
+    if (last) out.bars = (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / (params.bpb * 4);
+    if (this.analyser) this.analyser.getFloatFrequencyData(this.fft);
+    return out;
+  },
+};
+
+// ---------- WebGL basics ----------
+const canvas = document.getElementById('c');
+const hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+if (!gl) fail('WebGL2 is not available in this browser.');
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+if (!gl.getExtension('EXT_color_buffer_float') && !gl.getExtension('EXT_color_buffer_half_float')) fail('This GPU cannot render to float textures.');
+gl.getExtension('EXT_color_buffer_float');
+
+function compile(type, src) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src); gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(sh));
+  return sh;
+}
+function program(fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, FULL_VS));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name.replace('[0]', ''); u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u };
+}
+const FULL_VS = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+const emptyVao = gl.createVertexArray();
+gl.bindVertexArray(emptyVao);
+
+// =====================================================================================
+// field: three coupled Klein–Gordon fields (R, G, B) on the GPU
+// =====================================================================================
+const N = 512, DT = 0.5, SUBSTEPS = 4;
+function floatTex(w, h) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+const kg = [0, 1].map(() => {   // ping-pong: φ and φ_t in one framebuffer (two attachments)
+  const phi = floatTex(N, N), vel = floatTex(N, N), fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, phi, 0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, vel, 0);
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) fail('Field targets are not supported here.');
+  return { phi, vel, fbo };
+});
+let kgCur = 0;
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+const kgStep = program(`#version 300 es
+precision highp float;
+uniform sampler2D uPhi, uVel;
+uniform float uM2, uDt, uK;
+uniform vec4 uSplat;    // centre (cells), radius (cells), amount (0 = none)
+uniform vec3 uSplatCol;
+layout(location = 0) out vec4 oPhi;
+layout(location = 1) out vec4 oVel;
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy), s = textureSize(uPhi, 0);
+  vec3 c = texelFetch(uPhi, p, 0).rgb;
+  vec3 lap = texelFetch(uPhi, clamp(p + ivec2(1, 0), ivec2(0), s - 1), 0).rgb
+           + texelFetch(uPhi, clamp(p - ivec2(1, 0), ivec2(0), s - 1), 0).rgb
+           + texelFetch(uPhi, clamp(p + ivec2(0, 1), ivec2(0), s - 1), 0).rgb
+           + texelFetch(uPhi, clamp(p - ivec2(0, 1), ivec2(0), s - 1), 0).rgb - 4.0 * c;
+  vec3 v = texelFetch(uVel, p, 0).rgb;
+  float mean = (c.r + c.g + c.b) / 3.0;
+  v += uDt * (lap - uM2 * c + uK * (vec3(mean) - c));   // φ_tt = ∇²φ − m²φ + κ(φ̄ − φ)
+  vec2 q = vec2(p) / vec2(s);
+  float edge = smoothstep(0.0, 0.07, min(min(q.x, 1.0 - q.x), min(q.y, 1.0 - q.y)));
+  v *= mix(0.92, 1.0, edge);                              // absorbing border
+  if (uSplat.w != 0.0) { float d = length(vec2(p) - uSplat.xy) / uSplat.z; v += uSplatCol * uSplat.w * exp(-d * d); }
+  vec3 nc = (c + uDt * v) * mix(0.92, 1.0, edge);         // symplectic Euler: velocity first
+  oPhi = vec4(nc, 1.0); oVel = vec4(v, 1.0);
+}`);
+const fieldDraw = program(`#version 300 es
+precision highp float;
+uniform sampler2D uPhi, uVel;
+uniform float uM2, uKick, uAspect, uGain;
+in vec2 vUv;
+out vec4 o;
+void main() {
+  vec2 uv = vec2((vUv.x - 0.5) * uAspect + 0.5, vUv.y);   // square field, centred
+  if (uv.x < 0.0 || uv.x > 1.0) { o = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  vec2 tx = 1.0 / vec2(textureSize(uPhi, 0));
+  vec3 c = texture(uPhi, uv).rgb, v = texture(uVel, uv).rgb;
+  vec3 gx = (texture(uPhi, uv + vec2(tx.x, 0.0)).rgb - texture(uPhi, uv - vec2(tx.x, 0.0)).rgb) * 0.5;
+  vec3 gy = (texture(uPhi, uv + vec2(0.0, tx.y)).rgb - texture(uPhi, uv - vec2(0.0, tx.y)).rgb) * 0.5;
+  vec3 e = 0.5 * (v * v + gx * gx + gy * gy + uM2 * c * c);   // energy density per colour
+  vec3 col = 1.0 - exp(-e * uGain * (1.0 + 0.6 * uKick));
+  col += 0.06 * abs(c);
+  o = vec4(col, 1.0);
+}`);
+const field = { mass: params.gap, coupling: 0, auto: true, simTime: 0, pending: [] };
+const COLOURS = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+function kgRun(m, k) {
+  gl.useProgram(kgStep.p);
+  gl.uniform1f(kgStep.u.uM2, m * m);
+  gl.uniform1f(kgStep.u.uDt, DT);
+  gl.uniform1f(kgStep.u.uK, k);
+  gl.uniform1i(kgStep.u.uPhi, 0);
+  gl.uniform1i(kgStep.u.uVel, 1);
+  gl.viewport(0, 0, N, N);
+  gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+  for (let s = 0; s < SUBSTEPS; s++) {
+    const sp = s === 0 ? field.pending.shift() : null;
+    gl.uniform4f(kgStep.u.uSplat, ...(sp ? [sp.x, sp.y, sp.r, sp.a] : [0, 0, 1, 0]));
+    gl.uniform3fv(kgStep.u.uSplatCol, sp ? sp.c : [0, 0, 0]);
+    const src = kg[kgCur], dst = kg[1 - kgCur];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fbo);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.phi);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, src.vel);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    kgCur = 1 - kgCur;
+    field.simTime += DT;
+  }
+  gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+}
+function kgClear() {
+  for (const t of kg) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+    gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 1]);
+    gl.clearBufferfv(gl.COLOR, 1, [0, 0, 0, 1]);
+  }
+  gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  field.pending = [];
+}
+function splat(x, y, c, a, r = 6) { field.pending.push({ x, y, c, a, r }); }
+const probeBuf = new Float32Array(4);
+function probe(x, y) {   // φ at one cell (QA)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, kg[kgCur].fbo);
+  gl.readBuffer(gl.COLOR_ATTACHMENT0);
+  gl.readPixels(Math.round(x), Math.round(y), 1, 1, gl.RGBA, gl.FLOAT, probeBuf);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return Array.from(probeBuf.slice(0, 3));
+}
+kgClear();
+
+// =====================================================================================
+// tube, lava: fragment shaders; glueball: 2-D canvas
+// =====================================================================================
+const tubeProg = program(`#version 300 es
+precision highp float;
+uniform vec2 uA, uB, uP1, uP2;     // quarks; P1/P2 = the new pair after the snap
+uniform vec3 uCA, uCB;
+uniform float uSnap, uFade, uAspect, uKick, uTime, uW;
+in vec2 vUv;
+out vec4 o;
+float seg(vec2 p, vec2 a, vec2 b, out float h) { vec2 pa = p - a, ba = b - a; h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h); }
+vec3 tube(vec2 p, vec2 a, vec2 b, vec3 ca, vec3 cb) {
+  float h, d = seg(p, a, b, h);
+  float flux = 1.0 + 0.35 * sin(h * 46.0 - uTime * 9.0) * (0.5 + uKick);   // flux shimmering along the tube
+  return mix(ca, cb, h) * (exp(-d * d / (uW * uW)) * 1.3 * flux + 0.18 * exp(-d / (uW * 3.0)));
+}
+vec3 quark(vec2 p, vec2 c, vec3 col) { float d = length(p - c); return col * (0.02 / (d * d + 0.0015)) * 0.08 + vec3(1.0) * exp(-d * d / 0.0006) * 0.6; }
+void main() {
+  vec2 p = (vUv * 2.0 - 1.0) * vec2(uAspect, 1.0);
+  vec3 col = vec3(0.01, 0.01, 0.03);
+  if (uSnap < 0.5) col += tube(p, uA, uB, uCA, uCB);
+  else col += (tube(p, uA, uP1, uCA, uCB) + tube(p, uP2, uB, uCA, uCB)) * uFade;
+  col += quark(p, uA, uCA) + quark(p, uB, uCB);
+  if (uSnap > 0.5) col += (quark(p, uP1, uCB) + quark(p, uP2, uCA)) * uFade;
+  o = vec4(1.0 - exp(-col * 1.4), 1.0);
+}`);
+const lavaProg = program(`#version 300 es
+precision highp float;
+uniform float uTime, uAspect, uKick, uPad;
+in vec2 vUv;
+out vec4 o;
+float h(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float n(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * n(p); p *= 2.03; a *= 0.5; } return s; }
+void main() {
+  vec2 p = (vUv * 2.0 - 1.0) * vec2(uAspect, 1.0) * 1.6;
+  float t = uTime * 0.08;
+  vec2 w = vec2(fbm(p + t), fbm(p + vec2(5.2, 1.3) - t));            // domain warping
+  float f = fbm(p + 2.2 * w + vec2(0.0, t * 2.0));
+  float blob = smoothstep(0.48 - 0.05 * uKick, 0.66, f);               // lumps of action density
+  vec3 hot = mix(vec3(0.9, 0.25, 0.08), vec3(0.6, 0.1, 0.8), 0.5 + 0.5 * sin(uPad * 6.2832 + f * 3.0));
+  vec3 col = mix(vec3(0.02, 0.0, 0.05), hot, blob) + vec3(1.0, 0.8, 0.5) * pow(blob, 6.0) * 0.6;
+  o = vec4(col, 1.0);
+}`);
+const GLUEBALLS = [{ name: '0++', mev: 1730 }, { name: '2++', mev: 2400 }, { name: '0−+', mev: 2590 }];
+const GAP_TOP = 1730, AXIS_MAX = 3200;
+
+// =====================================================================================
+// Scene modules (ISF-style inputs for the coming platform)
+// =====================================================================================
+const SIGMA = 0.9, FM_PER_UNIT = 1.5;   // GeV/fm; screen units → fm
+const tubeState = { r_fm: 0, E_GeV: 0 };
+const MODULES = {
+  field: {
+    inputs: [
+      { name: 'gap', type: 'float', default: 0.35, min: 0.05, max: 1 },
+      { name: 'coupling', type: 'float', default: 0.06, min: 0, max: 0.3 },
+      { name: 'impulse', type: 'float', default: 1.2, min: 0, max: 3 },
+    ],
+    render(slot, S) {
+      const drop = S.drop;
+      field.mass = Number.isFinite(PIN.m) ? PIN.m : (drop ? params.gap : 0);
+      field.coupling = Number.isFinite(PIN.k) ? PIN.k : (drop ? 0.06 : 0);
+      if (field.auto && S.beatEdge) {   // one coloured impulse per beat, bigger on the downbeat
+        const c = COLOURS[Math.floor(Math.random() * 3)];
+        splat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), c, S.downbeat ? 1.6 : 1.0, S.downbeat ? 9 : 6);
+      }
+      if (field.auto && S.snareEdge) splat(80 + Math.random() * (N - 160), 80 + Math.random() * (N - 160), COLOURS[Math.floor(Math.random() * 3)], 0.6, 4);
+      kgRun(field.mass, field.coupling);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, slot.fbo);
+      gl.viewport(0, 0, S.W, S.H);
+      gl.useProgram(fieldDraw.p);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, kg[kgCur].phi);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, kg[kgCur].vel);
+      gl.uniform1i(fieldDraw.u.uPhi, 0); gl.uniform1i(fieldDraw.u.uVel, 1);
+      gl.uniform1f(fieldDraw.u.uM2, field.mass * field.mass);
+      gl.uniform1f(fieldDraw.u.uKick, S.L.kick);
+      gl.uniform1f(fieldDraw.u.uAspect, S.W / S.H);
+      gl.uniform1f(fieldDraw.u.uGain, 60);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      const c = slot.ctx; c.clearRect(0, 0, S.W, S.H);
+      c.font = font(S.H / 26, 700); c.textAlign = 'left';
+      c.fillStyle = drop ? 'rgba(255,255,255,0.9)' : 'rgba(180,200,255,0.75)';
+      c.fillText(drop ? `gap on · Δ = ${field.mass.toFixed(2)}` : 'm = 0 · ripples run free', S.W * 0.04, S.H * 0.08);
+      c.font = font(S.H / 50); c.fillStyle = 'rgba(200,210,230,0.5)';
+      c.fillText('analogy: three Klein–Gordon fields, not QCD itself', S.W * 0.04, S.H * 0.96);
+      return true;
+    },
+  },
+  tube: {
+    inputs: [
+      { name: 'width', type: 'float', default: 0.035, min: 0.01, max: 0.1 },
+      { name: 'stretch', type: 'float', default: 1.1, min: 0.2, max: 1.6 },
+    ],
+    render(slot, S) {
+      const asp = S.W / S.H, u = S.buildPhase, w = S.dropPhase;
+      const r = S.drop ? 0.25 + 1.1 : 0.25 + 1.1 * u;   // separation in screen units
+      const wob = 0.02 * Math.sin(S.bars * Math.PI * 2);
+      let A = [-r / 2, wob], B = [r / 2, -wob], P1 = [0, 0], P2 = [0, 0];
+      if (S.drop) {   // the snap: the pieces fly apart with a new pair at the break
+        const fly = 0.6 * w;
+        A = [-r / 2 - fly, 0]; B = [r / 2 + fly, 0];
+        P1 = [-0.06 - fly * 0.5, 0]; P2 = [0.06 + fly * 0.5, 0];
+      }
+      tubeState.r_fm = (S.drop ? 0.12 : r) * FM_PER_UNIT;
+      tubeState.E_GeV = SIGMA * tubeState.r_fm;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, slot.fbo);
+      gl.viewport(0, 0, S.W, S.H);
+      gl.useProgram(tubeProg.p);
+      gl.uniform2fv(tubeProg.u.uA, A); gl.uniform2fv(tubeProg.u.uB, B);
+      gl.uniform2fv(tubeProg.u.uP1, P1); gl.uniform2fv(tubeProg.u.uP2, P2);
+      gl.uniform3fv(tubeProg.u.uCA, [1, 0.12, 0.1]); gl.uniform3fv(tubeProg.u.uCB, [0.1, 0.95, 1]);   // red, anti-red
+      gl.uniform1f(tubeProg.u.uSnap, S.drop ? 1 : 0);
+      gl.uniform1f(tubeProg.u.uFade, 1 - 0.7 * w);
+      gl.uniform1f(tubeProg.u.uAspect, asp);
+      gl.uniform1f(tubeProg.u.uKick, S.L.kick);
+      gl.uniform1f(tubeProg.u.uTime, S.now / 1000);
+      gl.uniform1f(tubeProg.u.uW, 0.035 * (1 + 0.3 * S.L.kick));
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      const c = slot.ctx; c.clearRect(0, 0, S.W, S.H);
+      c.font = font(S.H / 22, 700); c.textAlign = 'left'; c.fillStyle = 'rgba(255,255,255,0.88)';
+      c.fillText(S.drop ? 'snap → new pair' : `E = σ·r = ${tubeState.E_GeV.toFixed(2)} GeV`, S.W * 0.04, S.H * 0.09);
+      c.font = font(S.H / 40); c.fillStyle = 'rgba(200,215,240,0.6)';
+      c.fillText(`r = ${tubeState.r_fm.toFixed(2)} fm · σ ≈ ${SIGMA} GeV/fm`, S.W * 0.04, S.H * 0.15);
+      return true;
+    },
+  },
+  glueball: {
+    inputs: [{ name: 'glow', type: 'float', default: 1, min: 0, max: 2 }],
+    render(slot, S) {
+      const c = slot.ctx, W = S.W, H = S.H;
+      c.fillStyle = '#030308'; c.fillRect(0, 0, W, H);
+      const mx = W * 0.08, base = H * 0.82, top = H * 0.16;
+      const X = m => mx + m / AXIS_MAX * (W - 2 * mx);
+      // the gap: 0 … 1730 MeV, always empty
+      const g = c.createLinearGradient(X(0), 0, X(GAP_TOP), 0);
+      g.addColorStop(0, 'rgba(10,10,30,0.9)'); g.addColorStop(1, 'rgba(40,20,60,0.6)');
+      c.fillStyle = g; c.fillRect(X(0), top, X(GAP_TOP) - X(0), base - top);
+      c.fillStyle = 'rgba(200,180,255,0.55)'; c.font = font(H / 18, 700); c.textAlign = 'center';
+      c.fillText('Δ', (X(0) + X(GAP_TOP)) / 2, (top + base) / 2);
+      c.font = font(H / 45); c.fillText('mass gap: nothing lighter', (X(0) + X(GAP_TOP)) / 2, (top + base) / 2 + H / 20);
+      // the bars, lit by kick / snare / hat, white (colour-neutral) with an RGB fringe
+      const lv = [S.L.kick, S.L.snare, S.L.hat];
+      GLUEBALLS.forEach((gb, i) => {
+        const level = 0.25 + 0.75 * lv[i] + (S.drop ? 0.25 : 0);
+        const h = (base - top) * Math.min(1, level), x = X(gb.mev), bw = W * 0.035;
+        for (const [dx, col] of [[-3, 'rgba(255,40,40,0.35)'], [3, 'rgba(40,120,255,0.35)'], [0, 'rgba(40,255,90,0.3)']]) {
+          c.fillStyle = col; c.fillRect(x - bw / 2 + dx * W / 1000, base - h, bw, h);
+        }
+        const gr = c.createLinearGradient(0, base - h, 0, base);
+        gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(1, 'rgba(255,255,255,0.35)');
+        c.fillStyle = gr; c.fillRect(x - bw / 2, base - h, bw, h);
+        c.fillStyle = 'rgba(255,255,255,0.85)'; c.font = font(H / 32, 700);
+        c.fillText(gb.name, x, base + H / 22);
+        c.font = font(H / 48); c.fillStyle = 'rgba(200,210,230,0.7)';
+        c.fillText(`${gb.mev}`, x, base + H / 13);
+      });
+      c.strokeStyle = 'rgba(200,210,230,0.4)'; c.lineWidth = Math.max(1, W / 900);
+      c.beginPath(); c.moveTo(X(0), base); c.lineTo(X(AXIS_MAX), base); c.stroke();
+      c.textAlign = 'left'; c.font = font(H / 40); c.fillStyle = 'rgba(200,210,230,0.6)';
+      c.fillText('glueball masses, MeV (lattice)', mx, H * 0.08);
+      return false;
+    },
+  },
+  lava: {
+    inputs: [{ name: 'speed', type: 'float', default: 0.08, min: 0.01, max: 0.3 }],
+    render(slot, S) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, slot.fbo);
+      gl.viewport(0, 0, S.W, S.H);
+      gl.useProgram(lavaProg.p);
+      gl.uniform1f(lavaProg.u.uTime, S.now / 1000);
+      gl.uniform1f(lavaProg.u.uAspect, S.W / S.H);
+      gl.uniform1f(lavaProg.u.uKick, S.L.kick);
+      gl.uniform1f(lavaProg.u.uPad, S.pad);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      return false;
+    },
+  },
+};
+const GL_SCENES = new Set(['field', 'tube', 'lava']);
+window.__modules = Object.fromEntries(Object.entries(MODULES).map(([k, m]) => [k, { inputs: m.inputs }]));
+const font = (px, w = 600) => `${w} ${Math.round(px)}px ui-monospace, Menlo, monospace`;
+
+// ---------- slots and composite (as 11) ----------
+function makeTex(w, h) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+const slots = [0, 1].map(() => ({ w: 0, h: 0, tex: null, fbo: null, ovTex: null, cv: document.createElement('canvas'), ctx: null }));
+for (const s of slots) s.ctx = s.cv.getContext('2d');
+function sizeSlots(w, h) {
+  for (const s of slots) {
+    if (s.w === w && s.h === h) continue;
+    if (s.tex) { gl.deleteTexture(s.tex); gl.deleteTexture(s.ovTex); gl.deleteFramebuffer(s.fbo); }
+    s.w = w; s.h = h; s.cv.width = w; s.cv.height = h;
+    s.tex = makeTex(w, h); s.ovTex = makeTex(w, h);
+    s.fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, s.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, s.tex, 0);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+function upload(tex, cv) {
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, cv);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+}
+const compProg = program(`#version 300 es
+precision highp float;
+uniform sampler2D uA, uB, uOA, uOB;
+uniform float uMix, uHasOA, uHasOB;
+in vec2 vUv;
+out vec4 o;
+vec3 slot(sampler2D s, sampler2D ov, float has) { vec4 v = texture(ov, vUv); return mix(texture(s, vUv).rgb, v.rgb, v.a * has); }
+void main() {
+  vec3 c = mix(slot(uA, uOA, uHasOA), slot(uB, uOB, uHasOB), uMix);
+  float vig = smoothstep(1.25, 0.35, length(vUv - 0.5) * 1.6);
+  o = vec4(c * (0.6 + 0.4 * vig), 1.0);
+}`);
+function renderSlot(i, name, S) {
+  const slot = slots[i], overlay = MODULES[name].render(slot, S);
+  if (!GL_SCENES.has(name)) upload(slot.tex, slot.cv);
+  else if (overlay) upload(slot.ovTex, slot.cv);
+  return GL_SCENES.has(name) && overlay;
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const PIN = { m: parseFloat(query.get('m')), k: parseFloat(query.get('k')) };
+$('play').onclick = () => {
+  if (metronome.playing) metronome.stop(); else metronome.start();
+  clockStart = performance.now();
+  $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', metronome.playing);
+};
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('full').onclick = () => {
+  const w = $('wrap');
+  if (document.fullscreenElement) document.exitFullscreen();
+  else (w.requestFullscreen || w.webkitRequestFullscreen).call(w);
+};
+for (const name of ['auto', ...SCENES]) {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.onclick = () => { params.scene = name; sync(); };
+  $('scenes').appendChild(b);
+}
+const sliders = { bars: 0, gap: 2, bpm: 0 };
+for (const [name, dec] of Object.entries(sliders)) {
+  $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name].toFixed(dec); });
+}
+function sync() {
+  for (const [name, dec] of Object.entries(sliders)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
+  $('mute').classList.toggle('on', params.muted);
+  for (const b of $('scenes').children) b.classList.toggle('on', b.textContent === params.scene);
+}
+function setupLink() {
+  const q = new URLSearchParams({ scene: params.scene, bars: params.bars, gap: params.gap, bpm: params.bpm });
+  return location.origin + location.pathname + '?' + q;
+}
+$('copy').onclick = async e => {
+  const text = `12 · Mass Gap · ${params.scene} · ${params.bpm} bpm · gap ${params.gap} · ${params.bars} bars/scene\n${setupLink()}`;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓';
+  setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
+};
+
+// ---------- main loop: book the next frame first, survive a bad frame ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(2560, Math.round(canvas.clientWidth * dpr));
+  const h = Math.min(1440, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  sizeSlots(canvas.width, canvas.height);
+}
+let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
+let lastBeat = -1, lastSnare = 0;
+const errors = [];
+function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); }
+  catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
+}
+function draw(now) {
+  resize();
+  const L = metronome.read();
+  const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb);
+  const beat = Math.floor(bars * params.bpb);
+  const beatEdge = beat !== lastBeat, downbeat = beatEdge && beat % params.bpb === 0;
+  lastBeat = beat;
+  const snareEdge = L.snare > 0.5 && lastSnare <= 0.5; lastSnare = L.snare;
+  const W = canvas.width, H = canvas.height;
+  let cur, prev = null, mix = 1, sectionBars;
+  if (params.scene === 'auto') {
+    const idx = Math.floor(bars / params.bars);
+    cur = SCENES[idx % SCENES.length];
+    sectionBars = bars - idx * params.bars;
+    if (idx > 0 && sectionBars < 1) { prev = SCENES[(idx - 1) % SCENES.length]; mix = sectionBars; }
+  } else { cur = params.scene; sectionBars = bars % params.bars; }
+  const buildBars = Math.max(1, params.bars - 2), drop = sectionBars >= buildBars;
+  const S = { W, H, L, bars, now, beatEdge, downbeat, snareEdge, drop,
+              buildPhase: Math.min(1, sectionBars / buildBars), dropPhase: drop ? (sectionBars - buildBars) / (params.bars - buildBars) : 0,
+              pad: 0.5 - 0.5 * Math.cos(bars / 4 * Math.PI * 2) };
+  // the field keeps running underneath even when another scene shows, so it's alive when it fades in
+  if (cur !== 'field' && prev !== 'field') { field.mass = 0; field.coupling = 0; if (field.auto && beatEdge) splat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), COLOURS[beat % 3], 1.0); kgRun(0, 0); }
+  const hasB = renderSlot(1, cur, S);
+  const hasA = prev ? renderSlot(0, prev, { ...S, beatEdge: false, snareEdge: false }) : false;
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, W, H);
+  gl.useProgram(compProg.p);
+  const bind = (unit, tex, name) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(compProg.u[name], unit); };
+  bind(0, slots[0].tex, 'uA'); bind(1, slots[1].tex, 'uB'); bind(2, slots[0].ovTex, 'uOA'); bind(3, slots[1].ovTex, 'uOB');
+  gl.uniform1f(compProg.u.uMix, prev ? mix : 1);
+  gl.uniform1f(compProg.u.uHasOA, hasA ? 1 : 0);
+  gl.uniform1f(compProg.u.uHasOB, hasB ? 1 : 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  Object.assign(window.__qa, { scene: cur, bars, drop, mass: field.mass, coupling: field.coupling, simTime: field.simTime,
+                               tube: { ...tubeState } });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    hud.textContent = `Mass Gap · ${cur}${prev ? ` ← ${prev}` : ''} · ${drop ? 'DROP' : 'build-up'} · ${params.bpm} bpm · ${state}\n` +
+      `m ${field.mass.toFixed(2)} · κ ${field.coupling.toFixed(2)} · sim t ${field.simTime.toFixed(0)}\n${W}×${H} · ${fps} fps`;
+  }
+}
+
+window.__qa = {
+  N, DT, SUBSTEPS, probe, splat, clear: kgClear, errors,
+  setAuto(on) { field.auto = !!on; }, setMass(m) { PIN.m = m; }, setCoupling(k) { PIN.k = k; },
+  glueballs: GLUEBALLS.map(g => ({ ...g })), gapTop: GAP_TOP, sigma: SIGMA,
+};
+const q = k => query.get(k);
+if (q('scene') && (q('scene') === 'auto' || SCENES.includes(q('scene')))) params.scene = q('scene');
+for (const k of ['bars', 'gap', 'bpm']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
+if (q('auto') === '0') field.auto = false;
+params.muted = q('muted') === '1';
+sync();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
