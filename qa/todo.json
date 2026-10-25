@@ -228,7 +228,8 @@
     "label": "\u25b6 watch all",
     "href": "/run/19-skate-park/2026-10-25-1209"
    }
-  ]
+  ],
+  "done": "superseded by slow-trick run"
  },
  {
   "id": "riemann-main",
@@ -243,6 +244,22 @@
    {
     "label": "\u21c4 canyon vs ribbon",
     "href": "/run/11-riemann-show/2026-10-25-1209/compare"
+   }
+  ]
+ },
+ {
+  "id": "19-vs-17-slow",
+  "from": "QA box",
+  "title": "BSD final: 19 Skate Park (torus, morph, free) vs 17 Skater on x\u00b3\u22122x, with the slow tricks",
+  "note": "Tricks are now 4\u00d7 slower and only at section changes. 64 s each so every clip has at least one trick. 2 rounds = 6 picks; the winner becomes the BSD page.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/19-skate-park/2026-10-25-1327/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/19-skate-park/2026-10-25-1327"
    }
   ]
  }

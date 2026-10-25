@@ -1,0 +1,1 @@
+{"label":"17 default events","events":493,"byType":{"hop":{"n":3,"median":18.2,"p10":-95.8,"p90":18.6},"kick":{"n":140,"median":18.2,"p10":-0.5,"p90":19.3},"hat":{"n":280,"median":18.2,"p10":-0.5,"p90":19.3},"snare":{"n":70,"median":18.1,"p10":-0.4,"p90":19.3}},"errors":[]}
