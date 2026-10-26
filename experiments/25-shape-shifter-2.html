@@ -35,7 +35,11 @@
   its axis, a slalom when g ≥ 2, then back to the base path). Positions and tangents match at
   both ends, so there are no cuts unless cutOnDrop is on. FOV kicks +8° on the drop. Through a
   ring the camera's path links the core loop once; through the trefoil's centre twice (the
-  knot winds twice round its axis).
+  knot winds twice round its axis). The orbit sits at 1.75× the shape's reach (so the shape fills
+  the frame's height); skim shares its azimuth and the two blend round the centre. The look aims
+  from the centre toward the path ahead, but never more than a cone off the centre (28°; in a
+  thread 0.6× the shape's angular radius + 12°), and it is a Hann-filtered mean of the raw aims
+  over ±0.35 bar, so it turns smoothly. Below 55 fps the render scale steps down (?dynres=0: off).
 
   Everything is a pure function of the bar position. window.__qa:
     sdf(x, y, z [, bars]), genus(n, bars) (cubical complex χ, as 23), totalK(n, bars),
@@ -123,7 +127,7 @@ const query = new URLSearchParams(location.search);
 // pace: 'auto' follows the song loop, or a fixed number of morphs per 4 bars (0.5, 1, 2, 4, 8).
 // res: 'cap' renders at most 1920×1080 pixels and lets the browser scale up; 'native' renders all.
 const params = { pace: 'auto', maxGenus: 3, camMode: 'auto', throughEvery: 8, slalom: true, bank: 15, cutOnDrop: false, squash: 0.04,
-                 palette: 'auto', bumpAmp: 0.5, curvColor: 0.7, orbitBars: 4, steps: 128, bpm: 120, bpb: 4, muted: false, res: 'cap', scale: 1,
+                 palette: 'auto', bumpAmp: 0.5, curvColor: 0.7, orbitBars: 4, steps: 128, bpm: 120, bpb: 4, muted: false, res: 'cap', scale: 1, dynres: true,
                  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 const PALETTES = ['ceramic', 'chrome', 'iridescent'];
 const PACES = [0.5, 1, 2, 4, 8];
@@ -606,6 +610,10 @@ float handleD(int i, vec3 p, out float tubeD, out float rl) {
   tubeD = 1e3; rl = 0.0;
   if (V.w <= 0.001) return 1e3;
   vec3 q = p - C.xyz;
+  // far from the handle (0.35 beyond its reach) its distance is bounded below by lq - ext and its bump caps
+  // do nothing, so skip the atan and the tube (a far-field bound only: the surface is the same as sdfJS's)
+  float ext = C.w + X.y + U.w * V.w, lq = length(q);
+  if (lq > ext + 0.35) return lq - ext;
   float a1 = dot(q, U.xyz), a2 = dot(q, V.xyz), a3 = dot(q, N.xyz);
   float al = atan(a2, a1), pin = 1.0 - N.w * exp(-(al * al) / 0.16), rho = length(vec2(a1, a2));
   float d, cutter;
@@ -666,9 +674,10 @@ void main() {
   float fpx = sdf(p + vec3(e, 0, 0)), fmx = sdf(p - vec3(e, 0, 0)), fpy = sdf(p + vec3(0, e, 0)), fmy = sdf(p - vec3(0, e, 0)), fpz = sdf(p + vec3(0, 0, e)), fmz = sdf(p - vec3(0, 0, e));
   vec3 g = vec3(fpx - fmx, fpy - fmy, fpz - fmz) / (2.0 * e);
   float fxx = (fpx - 2.0 * f0 + fmx) / (e * e), fyy = (fpy - 2.0 * f0 + fmy) / (e * e), fzz = (fpz - 2.0 * f0 + fmz) / (e * e);
-  float fxy = (sdf(p + vec3(e, e, 0)) - sdf(p + vec3(e, -e, 0)) - sdf(p + vec3(-e, e, 0)) + sdf(p + vec3(-e, -e, 0))) / (4.0 * e * e);
-  float fxz = (sdf(p + vec3(e, 0, e)) - sdf(p + vec3(e, 0, -e)) - sdf(p + vec3(-e, 0, e)) + sdf(p + vec3(-e, 0, -e))) / (4.0 * e * e);
-  float fyz = (sdf(p + vec3(0, e, e)) - sdf(p + vec3(0, e, -e)) - sdf(p + vec3(0, -e, e)) + sdf(p + vec3(0, -e, -e))) / (4.0 * e * e);
+  // mixed partials from 3 forward taps instead of 12 central ones (colour only; QA's curvature is curvJS)
+  float fxy = (sdf(p + vec3(e, e, 0)) - fpx - fpy + f0) / (e * e);
+  float fxz = (sdf(p + vec3(e, 0, e)) - fpx - fpz + f0) / (e * e);
+  float fyz = (sdf(p + vec3(0, e, e)) - fpy - fpz + f0) / (e * e);
   float A11 = fyy * fzz - fyz * fyz, A22 = fxx * fzz - fxz * fxz, A33 = fxx * fyy - fxy * fxy;
   float A12 = fxz * fyz - fxy * fzz, A13 = fxy * fyz - fxz * fyy, A23 = fxy * fxz - fxx * fyz;
   float g2 = dot(g, g);
@@ -677,7 +686,7 @@ void main() {
   float kt = K / (abs(K) + 4.0);
   vec3 curv = kt > 0.0 ? mix(vec3(0.9, 0.85, 0.8), vec3(1.0, 0.45, 0.15), kt) : mix(vec3(0.9, 0.85, 0.8), vec3(0.15, 0.45, 1.0), -kt);
   float sh = 1.0, st = 0.02;
-  for (int i = 0; i < 16; i++) { float h = sdf(p + n * 0.002 + l * st); sh = min(sh, 10.0 * h / st); st += clamp(h, 0.02, 0.2); if (sh < 0.02 || st > 2.0) break; }
+  for (int i = 0; i < 12; i++) { float h = sdf(p + n * 0.002 + l * st); sh = min(sh, 10.0 * h / st); st += clamp(h, 0.03, 0.25); if (sh < 0.02 || st > 2.0) break; }
   sh = clamp(sh, 0.0, 1.0);
   float ao = 0.0; for (int i = 1; i <= 4; i++) { float hh = 0.03 * float(i); ao += (hh - sdf(p + n * hh)) / hh; }
   ao = clamp(1.0 - 0.25 * ao, 0.2, 1.0);
@@ -710,12 +719,14 @@ function envR(P, dv) {   // a smooth envelope of the genus-0 body (superellipsoi
   const q = (dv[0] / ax) ** 4 + (dv[1] / ay) ** 4 + (dv[2] / az) ** 4;
   return 1 / Math.sqrt(Math.sqrt(q));
 }
-function orbitPos(bars, st) {   // distance follows the shape's size (it fills the picture); breathes every 2 bars
-  const cuts = params.cutOnDrop ? dropsUpTo(bars) : 0, c = st.center, bd = st.bound;
-  const th = 2 * Math.PI * bars / params.orbitBars + Math.PI * cuts;
-  const R = Math.max(bd + 0.25, bd * (1.4 + 0.15 * noise1(bars * 0.31) + 0.12 * Math.sin(Math.PI * bars)));
-  const h = bd * (0.2 + 0.45 * noise1(bars * 0.17 + 5));
-  return [c[0] + R * Math.sin(th), c[1] + h, c[2] + R * Math.cos(th)];
+const DEG = Math.PI / 180;
+function orbitTh(bars) { const cuts = params.cutOnDrop ? dropsUpTo(bars) : 0; return 2 * Math.PI * bars / params.orbitBars + Math.PI * cuts; }
+const fitR = st => Math.max(0.3, st.bound / (1 + st.sq) - st.wave.A - 0.15);   // the shape's reach from its centre (the bound without margins or squash)
+function orbitPos(bars, st) {   // on a sphere round the centre, near enough that the shape fills the frame's height; breathes every 2 bars
+  // QA #57 round 3: at 1.4× the bound (which has margins) the shape filled 21% of the frame on average
+  const c = st.center, rF = fitR(st), th = orbitTh(bars), el = 0.22 + 0.3 * noise1(bars * 0.17 + 5);
+  const D = Math.max(rF + 0.3, rF * (1.75 + 0.1 * noise1(bars * 0.31) + 0.06 * Math.sin(Math.PI * bars)));
+  return [c[0] + D * Math.cos(el) * Math.sin(th), c[1] + D * Math.sin(el), c[2] + D * Math.cos(el) * Math.cos(th)];
 }
 function skimWeight(bars) {
   if (params.camMode === 'skim') return 1;
@@ -723,8 +734,8 @@ function skimWeight(bars) {
   const r = ((bars % 32) + 32) % 32;
   return sstep(16, 17, r) * (1 - sstep(23.25, 24, r));
 }
-function skimPos(bars, st) {   // rides 0.3 above a smooth envelope of the body; rises over each handle's footprint
-  const th = 2 * Math.PI * bars / (params.orbitBars * 1.5) + 0.7, el = 0.45 * Math.sin(bars * 0.9);
+function skimPos(bars, st) {   // rides 0.3 above a smooth envelope of the body at the orbit's azimuth; rises over each handle's footprint
+  const th = orbitTh(bars), el = 0.45 * Math.sin(bars * 0.9);
   const dv = [Math.cos(el) * Math.sin(th), Math.sin(el), Math.cos(el) * Math.cos(th)];
   let s = envR(st.Pb, dv) + 0.3;
   for (const h of st.slots) {
@@ -738,7 +749,11 @@ function skimPos(bars, st) {   // rides 0.3 above a smooth envelope of the body;
 }
 function basePos(bars) {
   const st = stateAt(bars), o = orbitPos(bars, st), ws = skimWeight(bars);
-  return ws <= 0 ? o : lerp3(o, skimPos(bars, st), ws);
+  if (ws <= 0) return o;
+  // blend round the centre (direction on the sphere, then distance): a straight lerp between the two cut
+  // across the shape and swung the view (QA #57 round 3: jump at bar 55.53, the end of a skim)
+  const c = st.center, a = sub3(o, c), b = sub3(skimPos(bars, st), c);
+  return add3(c, mul3(slerpDir(norm3(a), norm3(b), ws), lerp(len3(a), len3(b), ws)));
 }
 const baseVel = bars => mul3(sub3(basePos(bars + 0.01), basePos(bars - 0.01)), 1 / 0.02);
 function threadWindow(bars) {
@@ -811,33 +826,64 @@ function slerpDir(a, b, k, maxAng = Math.PI) {   // turn unit vector a toward b 
   const ang = Math.min(th * Math.min(1, k), maxAng), ca = Math.cos(ang), sa = Math.sin(ang);
   return norm3(add3(add3(mul3(a, ca), mul3(cross3(axis, a), sa)), mul3(axis, dot3(axis, a) * (1 - ca))));
 }
-function cameraAt(bars) {
-  const st = stateAt(bars);
+function eyeAt(bars, st) {   // the eye on its path (thread or base), pushed out of the shape along the gradient
   const win = threadWindow(bars), plan = win && threadPlan(win);
   let eye = plan ? threadPos(bars, win, plan, st) : basePos(bars);
-  const ws = skimWeight(bars);
-  const wt = plan ? sstep(0, 0.5, bars - win.ts) * sstep(0, 1, win.te - bars) : 0;
-  const ahead = posAt(bars + 0.3), behind = posAt(bars - 0.05), next = posAt(bars + 0.05);
-  // never inside the shape: push out along the gradient
   let d = sdfJS(st, ...eye), pushes = 0;
   while (d < 0.08 && pushes < 20) {
     const e = 0.01, g = norm3([sdfJS(st, eye[0] + e, eye[1], eye[2]) - d, sdfJS(st, eye[0], eye[1] + e, eye[2]) - d, sdfJS(st, eye[0], eye[1], eye[2] + e) - d]);
     eye = add3(eye, mul3(g, 0.08 - d + 0.02)); d = sdfJS(st, ...eye); pushes++;
   }
-  // look: turn from the shape's centre toward the path ahead (directions blended, never points);
-  // only near a hole may the view leave the shape (28° from its centre otherwise, so it stays in shot)
+  return { eye, d, pushes, win, plan };
+}
+const threadWeight = (bars, win, plan) => plan ? sstep(0, 0.5, bars - win.ts) * sstep(0, 1, win.te - bars) : 0;
+function lookCone(eye, st, wt) {   // how far the view may turn off the shape's centre and keep the shape in shot
+  // 28° outside a thread; in one, 0.6× the shape's angular radius + 12° (QA #57 round 3: looking down the
+  // path past the last hole left the frame empty for up to 2.1 s)
+  const dist = len3(sub3(st.center, eye)), rho = Math.asin(Math.min(1, 0.6 * fitR(st) / Math.max(dist, 1e-6)));
+  return lerp(28 * DEG, 0.6 * rho + 12 * DEG, wt);
+}
+// The look is a pure function of the bar too, but filtered: a raw aim on a grid of LOOK_G bars, then a Hann
+// window of ±LOOK_W bars, so the view turns smoothly where the raw aim swings (QA #57 round 3: p99 223°/s).
+const LOOK_G = 1 / 32, LOOK_W = 0.35, lookCache = new Map();
+function rawLook(i) {   // the aim at grid point i: a direction near the shape's centre, and the bank (degrees)
+  let r = lookCache.get(i);
+  if (r) return r;
+  const bars = i * LOOK_G, st = stateAt(bars), { eye, win, plan } = eyeAt(bars, st);
+  const ws = skimWeight(bars), wt = threadWeight(bars, win, plan);
+  const ahead = posAt(bars + 0.3), behind = posAt(bars - 0.05), next = posAt(bars + 0.05);
+  // turn from the shape's centre toward the path ahead (directions blended, never points), within the cone
   const toC = norm3(sub3(st.center, eye));
   let toA = sub3(ahead, eye);
   toA = len3(toA) > 0.05 ? norm3(toA) : norm3(sub3(next, behind));
   let near = 0;
   if (plan) for (const j of plan.order) { const h = st.slots[j]; near = Math.max(near, 1 - sstep(0.8, 2.0, len3(sub3(eye, h.c)) / (h.R + h.Rk + 0.4))); }
-  near *= wt;
-  const fwd = slerpDir(toC, toA, Math.max(0.6 * ws, wt * Math.max(0.35, near)), (28 + 152 * near) * Math.PI / 180), at = add3(eye, fwd);
-  let right = norm3(cross3(fwd, [0, 1, 0])), up = cross3(right, fwd);
+  const dir = slerpDir(toC, toA, Math.max(0.6 * ws, wt * Math.max(0.35, near)), lookCone(eye, st, wt));
   // bank into turns: roll against the sideways acceleration of the path (deg per unit/bar²)
-  const acc = mul3(add3(sub3(next, mul3(eye, 2)), behind), 1 / (0.05 * 0.05));
-  const roll = Math.max(-params.bank, Math.min(params.bank, -1.5 * dot3(acc, right))) * Math.PI / 180;
-  const cr = Math.cos(roll), sr = Math.sin(roll);
+  const right = norm3(cross3(dir, [0, 1, 0])), acc = mul3(add3(sub3(next, mul3(eye, 2)), behind), 1 / (0.05 * 0.05));
+  r = { dir, roll: Math.max(-params.bank, Math.min(params.bank, -1.5 * dot3(acc, right))) };
+  lookCache.set(i, r);
+  if (lookCache.size > 1024) lookCache.delete(lookCache.keys().next().value);
+  return r;
+}
+function lookAt(bars) {   // the Hann-weighted mean of the raw aims within ±LOOK_W bars (weights reach 0 at the ends, so it is continuous)
+  const x = bars / LOOK_G, n = LOOK_W / LOOK_G, i0 = Math.ceil(x - n), i1 = Math.floor(x + n);
+  let s = [0, 0, 0], roll = 0, wsum = 0;
+  for (let i = i0; i <= i1; i++) {
+    const w = 0.5 + 0.5 * Math.cos(Math.PI * (i - x) / n);
+    if (w <= 1e-6) continue;
+    const r = rawLook(i);
+    s = add3(s, mul3(r.dir, w)); roll += w * r.roll; wsum += w;
+  }
+  return { dir: norm3(s), roll: wsum > 0 ? roll / wsum : 0 };
+}
+function cameraAt(bars) {
+  const st = stateAt(bars), { eye, d, pushes, win, plan } = eyeAt(bars, st);
+  const ws = skimWeight(bars), look = lookAt(bars), toC = norm3(sub3(st.center, eye));
+  // the filtered aim, kept within the cone (+8°) round the centre as seen from here
+  const fwd = slerpDir(toC, look.dir, 1, lookCone(eye, st, threadWeight(bars, win, plan)) + 8 * DEG), at = add3(eye, fwd);
+  let right = norm3(cross3(fwd, [0, 1, 0])), up = cross3(right, fwd);
+  const roll = look.roll * DEG, cr = Math.cos(roll), sr = Math.sin(roll);
   [right, up] = [add3(mul3(right, cr), mul3(up, sr)), sub3(mul3(up, cr), mul3(right, sr))];
   // FOV kick on the drop: +8°, easing back over one beat
   const r = ((bars % 32) + 32) % 32, tb = (r - DROP_BAR) * params.bpb;
@@ -887,8 +933,8 @@ for (const [box, list, key] of GROUPS) for (const val of list) {
 $('t-slalom').onclick = () => { params.slalom = !params.slalom; changed(); };
 $('t-cut').onclick = () => { params.cutOnDrop = !params.cutOnDrop; changed(); };
 const SLIDERS = { throughEvery: 0, orbitBars: 0, bank: 0, squash: 2, bumpAmp: 2, curvColor: 2, steps: 0, bpm: 0 };
-for (const [name, dec] of Object.entries(SLIDERS)) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name].toFixed(dec); planCache.clear(); });
-function changed() { planCache.clear(); sync(); }
+for (const [name, dec] of Object.entries(SLIDERS)) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name].toFixed(dec); planCache.clear(); lookCache.clear(); });
+function changed() { planCache.clear(); lookCache.clear(); sync(); }
 function sync() {
   for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
   for (const [box, , key] of GROUPS) for (const b of $(box).children) b.classList.toggle('on', b.dataset.v === String(params[key]));
@@ -921,9 +967,20 @@ window.__modules = { 'shape-shifter-2': { inputs: [
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
-  const cap = (params.res === 'native' ? 1 : Math.min(1, Math.sqrt(1920 * 1080 / (w * h)))) * params.scale;
+  const cap = (params.res === 'native' ? 1 : Math.min(1, Math.sqrt(1920 * 1080 / (w * h)))) * params.scale * dyn.scale;
   w = Math.max(1, Math.round(w * cap)); h = Math.max(1, Math.round(h * cap));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+// dynamic resolution (QA #57 round 3: native 4K ran at 51 fps): when frames average > 18 ms for a second, render
+// 7% fewer pixels a side, down to 0.7. It never scales back up by itself; a window resize or ?dynres=0 resets it.
+const dyn = { scale: 1, slowFor: 0, ema: 1 / 60, since: performance.now() };
+window.addEventListener('resize', () => { dyn.scale = 1; dyn.slowFor = 0; dyn.since = performance.now(); });
+function dynRes(dt, now) {
+  if (!params.dynres || dt <= 0 || now - dyn.since < 2000) return;
+  dyn.ema += (dt - dyn.ema) * 0.1;
+  if (dyn.ema <= 0.018) { dyn.slowFor = 0; return; }
+  dyn.slowFor += dt;
+  if (dyn.slowFor > 1 && dyn.scale > 0.7) { dyn.scale = Math.max(0.7, dyn.scale * 0.93); dyn.slowFor = 0; dyn.ema = 1 / 60; dyn.since = now; }
 }
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastNow = 0;
 const errors = [], events = [], logged = new Set(), angHistory = [];
@@ -948,6 +1005,7 @@ const nice = s => s.trim();
 function draw(now) {
   resize();
   const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
+  dynRes(dt, now);
   const mb = metronome.beats();
   const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60);
   const bars = beats / params.bpb, cam = cameraAt(bars), st = cam.st;
@@ -999,7 +1057,7 @@ function draw(now) {
   Object.assign(window.__qa, {
     bars, beats, genusNow: st.genus, shape: { from: nice(st.k0), to: nice(st.k1), u: st.u, step: st.step },
     cam: { pos: cam.eye, fwd: cam.fwd, mode: cam.mode, sdf: cam.sdf, pushes: cam.pushes, fov: cam.fov, roll: cam.roll },
-    palette: PALETTES[pal], song,
+    palette: PALETTES[pal], song, renderScale: dyn.scale, canvas: [W, H],
   });
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
@@ -1037,6 +1095,7 @@ for (const k of ['maxGenus', ...Object.keys(SLIDERS)]) { const v = parseFloat(q(
 if (q('res') === 'native') params.res = 'native';
 params.scale = Math.max(0.25, Math.min(1, parseFloat(q('scale')) || 1));
 params.muted = q('muted') === '1';
+params.dynres = q('dynres') !== '0';
 sync();
 requestAnimationFrame(frame);
 </script>
