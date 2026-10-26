@@ -14,7 +14,7 @@ Build a wide set of good-looking MVPs, each one true to its source (maths or phy
 | Birch–Swinnerton-Dyer | 10 first version, 17 Skater, **19 Skate Park** (torus, morph, free) | ✅ MVP, on main (#50 merged). 19 won the final grade. Later: the line looks like it ends right in front of the skater in one clip (effects) |
 | Yang–Mills | 12 Mass Gap, **18 Little Bang** (collide, strings, quench) | ✅ MVP (#43, #49) |
 | Navier–Stokes | 13 Flow Lab (stable fluids + curl noise, presets) | ✅ MVP, on main (#53): passes 60 fps to 4K, raw dye drift ≤ 0.7 %/10 s, swirls on the beat. User's picks: kh > ink > vortex > rocks > curl > plume. Next: living obstacles (#54); 3-D smoke and multigrid later |
-| Poincaré | 14 Round Point (curve-shortening flow, neck pinch, Thurston fly-through) | ⏳ spec on #37 |
+| Poincaré | 14 Round Point (curve-shortening flow, neck pinch; #55), **23 Shape Shifter** (SDF mug ↔ kettle ↔ doughnut, surgery on the drop, curvature colour, fly-through) | 🧪 14 passes its gates (#55). 23 in QA (genus constant between surgeries, Gauss–Bonnet, surgery on the drop) |
 | P vs NP | 15 Hard Problems (2-opt salesman, 3-SAT cliff at 4.26, Rule 110) | ⏳ spec on #37 |
 | Hodge | 16 Calabi–Yau (Fermat n=5 slice, Hodge diamond) | ⏳ spec on #37. Check the formula against Hanson 1994 before building |
 

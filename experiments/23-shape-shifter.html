@@ -1,0 +1,663 @@
+<!doctype html>
+<!--
+  23 · Shape Shifter   (Millennium track #37, Poincaré take two; spec: #37 comment 6412117304)
+
+  The user found 14's curve and pinch boring and asked for a sphere or torus that turns into a
+  kettle or a cup, changes colour, vibrates and bumps to the music, with a flying camera. 14 stays.
+
+  Topology stays honest: a shape only morphs into shapes with the same number of holes (genus).
+    genus 1  mug → kettle with handle → doughnut → ring → mug …  (the coffee mug = doughnut joke)
+    genus 0  kettle without handle → vase / bowl / apple → sphere ("round out")
+  The genus changes only at two logged events, Perelman's move of cutting a thin neck:
+    surgery  over the 2 bars before a genus-1 section's drop (bar S − 2) the handle's far point
+             thins with radius ∝ √(T − t), as in a Ricci-flow neck pinch, and reaches 0 exactly
+             on the drop; a cut opens there, the stubs cap off and are absorbed (genus 1 → 0)
+    attach   on a genus-0 section the stubs grow back with the cut open, the cut closes exactly
+             on the drop and the neck grows back as √τ (0 → 1)
+  Every shape is one signed distance function built from IQ primitives: a rounded, tapered body,
+  an optional top cavity (the body offset inward and lifted, so it opens only through the top),
+  a spout and a knob that grow out of the body, and a handle torus whose ring passes through
+  the body (its tube radius narrows at the far point, and a slab there cuts it open). Keyframes are
+  parameter sets, and morphs interpolate the parameters, never two SDFs, so every in-between
+  shape is a genus-0 body plus (or minus) one open handle.
+
+  Surface and music: displacement d − A·w with kick rings spreading from a point over ~1 beat,
+  a slow breathing swell, hat ripples and snare waves. A is capped at 0.4 × the local feature
+  thickness (handle tube, cup wall, spout), so bumps never change the genus.
+  Colour = Gaussian curvature K = (∇f·adj(H)·∇f)/|∇f|⁴ from the SDF's Hessian at the hit: warm
+  where K > 0, cool where K < 0 (Gauss–Bonnet: ∫K dA = 2πχ = 4π(1 − g)); glaze per section:
+  ceramic, chrome, iridescent. Camera: a slow orbit; on the bar before a surgery it dives through
+  the handle (only while the genus is 1).
+
+  Everything is a pure function of the bar position, so QA can rebuild any moment.
+  window.__qa: sdf(x, y, z [, bars]), genus(n, bars) (cubical complex of the solid on an n³ grid:
+  χ_solid = V − E + F − C, surface χ = 2χ_solid, g = 1 − χ_solid), totalK(n, bars) (co-area
+  integral of the same K), featureMin, bump {A, capRule}, cam {pos, sdf}, shape {from, to, u,
+  params, genus}, events (kick/snare/hat, morph, surgery, attach, fly), errors.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>23 · Shape Shifter</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 16 / 9;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #9fb0c3; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(62vw, calc(100vh * 16 / 9)); margin: 0; position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Family</h3>
+  <div class="buttons" id="families"></div>
+  <h3>Glaze</h3>
+  <div class="buttons" id="palettes"></div>
+  <div class="buttons">
+    <button id="t-fly" class="wide">fly through the handle before each surgery</button>
+  </div>
+  <div class="row"><label for="bumpAmp">bumps</label><input id="bumpAmp" type="range" min="0" max="1" step="0.05"><output id="bumpAmpOut"></output></div>
+  <div class="row"><label for="curvColor">curvature colour</label><input id="curvColor" type="range" min="0" max="1" step="0.05"><output id="curvColorOut"></output></div>
+  <div class="row"><label for="morphBars">morph bars</label><input id="morphBars" type="range" min="4" max="16" step="1"><output id="morphBarsOut"></output></div>
+  <div class="row"><label for="orbitBars">orbit bars</label><input id="orbitBars" type="range" min="4" max="64" step="4"><output id="orbitBarsOut"></output></div>
+  <div class="row"><label for="steps">march steps</label><input id="steps" type="range" min="48" max="160" step="8"><output id="stepsOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="buttons"><button id="copy" class="wide">Copy setup</button></div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+// family: auto alternates a genus-1 section (morphs, surgery on its drop) and a genus-0 section
+// (morphs to a sphere, attach on its drop); '1' / '0' hold one family without events.
+// res: 'cap' renders at most 1920×1080 pixels and lets the browser scale up; 'native' renders all.
+const params = { family: 'auto', palette: 'auto', fly: true, bumpAmp: 0.5, curvColor: 0.7,
+                 morphBars: 8, orbitBars: 16, steps: 128, bpm: 120, bpb: 4, muted: false, res: 'cap',
+                 kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+const PALETTES = ['ceramic', 'chrome', 'iridescent'];
+const THICK = 0.12, SPR = 0.09;
+
+// ---------- keyframes (parameter sets) ----------
+// ra, rb, h: rounded body (radius ra + rb, half height h + rb); taper: radius × (1 + taper·y);
+// dimple: apple top; cav: top cavity 0…1; spout, knob: grow out 0…1; handle torus in the xy plane
+// at (hx, hy) with ring radius Rh and tube rh. The ring always passes through the body (or, for
+// the torus shapes, the tiny body sits inside the tube), and the body never fills the hole.
+const KEYS = ['ra', 'rb', 'h', 'taper', 'dimple', 'cav', 'spout', 'knob', 'hx', 'hy', 'Rh', 'rh'];
+const HANDLE = { hx: 0.56, hy: 0.02, Rh: 0.27, rh: 0.09 };
+const KF = {
+  mug:      { ra: 0.40, rb: 0.06, h: 0.38, taper: 0,     dimple: 0, cav: 0.95, spout: 0, knob: 0, ...HANDLE },
+  kettle:   { ra: 0.05, rb: 0.47, h: 0.06, taper: 0.12,  dimple: 0, cav: 0,    spout: 1, knob: 1, hx: 0.55, hy: 0.08, Rh: 0.30, rh: 0.09 },
+  doughnut: { ra: 0,    rb: 0.10, h: 0,    taper: 0,     dimple: 0, cav: 0,    spout: 0, knob: 0, hx: 0.48, hy: 0, Rh: 0.48, rh: 0.24 },
+  ring:     { ra: 0,    rb: 0.06, h: 0,    taper: 0,     dimple: 0, cav: 0,    spout: 0, knob: 0, hx: 0.60, hy: 0, Rh: 0.60, rh: 0.09 },
+  kettle0:  { ra: 0.05, rb: 0.47, h: 0.06, taper: 0.12,  dimple: 0, cav: 0,    spout: 1, knob: 1, ...HANDLE },
+  vase:     { ra: 0.16, rb: 0.12, h: 0.46, taper: -0.55, dimple: 0, cav: 0.85, spout: 0, knob: 0, ...HANDLE },
+  bowl:     { ra: 0.42, rb: 0.08, h: 0.20, taper: 0.5,   dimple: 0, cav: 0.97, spout: 0, knob: 0, ...HANDLE },
+  apple:    { ra: 0,    rb: 0.50, h: 0,    taper: 0,     dimple: 1, cav: 0,    spout: 0, knob: 0, ...HANDLE },
+  sphere:   { ra: 0,    rb: 0.55, h: 0,    taper: 0,     dimple: 0, cav: 0,    spout: 0, knob: 0, ...HANDLE },
+};
+const G1 = ['mug', 'kettle', 'doughnut', 'ring'], G0 = ['kettle0', 'vase', 'bowl', 'apple'];
+
+// ---------- metronome (as 19) ----------
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [],
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume(); this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+    this.playing = true; this.timer = setInterval(() => this.schedule(), 25); this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  schedule() {
+    while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / params.bpm / 4; this.step++; }
+    const old = this.ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, time) {
+    const inBar = step % (params.bpb * 4); this.steps.push({ time, step });
+    for (const lane of LANES) { if (params[lane][inBar % 16] !== 'x') continue; const vel = inBar === 0 ? 1 : 0.7; this.hits.push({ lane, time, vel }); this.click(lane, time, vel); }
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain(); g.connect(this.master);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') { src = ctx.createOscillator(); src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08); src.connect(g); }
+    else { src = ctx.createBufferSource(); src.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = lane === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = lane === 'snare' ? 1800 : 8000; src.connect(f); f.connect(g); }
+    const end = t + TAU[lane] * 4; g.gain.exponentialRampToValueAtTime(0.001, end); src.start(t); src.stop(end + 0.01);
+  },
+  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
+  beats() {   // the beat position as heard
+    if (!this.ctx) return -1;
+    const now = this.ctx.currentTime - this.latency();
+    let last = null; for (const s of this.steps) if (s.time <= now) last = s;
+    return last ? (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / 4 : -1;
+  },
+};
+
+// ---------- the state at any bar position (pure, so QA can rebuild any moment) ----------
+const ease = u => u * u * (3 - 2 * u);
+const clamp01 = x => Math.max(0, Math.min(1, x));
+function hash(n) { let x = Math.imul(n | 0, 0x9E3779B1) >>> 0; x ^= x >>> 15; x = Math.imul(x, 0x85EBCA77) >>> 0; x ^= x >>> 13; return (x >>> 0) / 4294967296; }
+const S_BARS = () => 2 * params.morphBars;   // a section: two morphs
+function famOf(k) { return params.family === 'auto' ? (k % 2 === 0 ? 1 : 0) : +params.family; }
+function keysOfSection(k) {   // the two keyframes a section passes through (bar 0 and bar M)
+  const c = Math.floor(k / 2), f = famOf(k);
+  if (f === 1) { const i = (2 * (params.family === 'auto' ? c : k)) % G1.length; return [G1[i], G1[(i + 1) % G1.length]]; }
+  return [G0[(params.family === 'auto' ? c : k) % G0.length], params.family === 'auto' ? 'sphere' : G0[(k + 1) % G0.length]];
+}
+function lerpKF(A, B, u) { const o = {}; for (const key of KEYS) o[key] = A[key] + (B[key] - A[key]) * u; return o; }
+function stateAt(bars) {
+  const S = S_BARS(), M = params.morphBars, k = Math.max(0, Math.floor(bars / S)), sb = bars - k * S, fam = famOf(k);
+  const [k0, k1] = keysOfSection(k), next = keysOfSection(k + 1)[0];
+  const from = sb < M ? k0 : k1, to = sb < M ? k1 : next, u = ease(clamp01((sb < M ? sb : sb - M) / M));
+  const P = lerpKF(KF[from], KF[to], u);
+  // the handle: a = present (stubs absorbed as a → 0), p = neck pinch at the far point
+  // (neck radius rh·a·(1 − p)), w = half-width of the cut slab there (w > 0: the handle is open).
+  // The drop is bar S − 2 of each section. Surgery: p = 1 − √(1 − s) with s linear over the
+  // 2 bars before the drop, so the neck radius ∝ √(T − t) as in a Ricci-flow neck pinch, and it is
+  // 0 exactly on the drop; then the cut opens (w > 0) and the stubs cap off and are absorbed.
+  // Attach runs it backwards: the stubs grow with the cut open, the cut closes exactly on the
+  // drop with a pinched neck, and the neck grows back as √τ.
+  let a = fam === 1 ? 1 : 0, p = 0, w = 0, genus = fam;
+  const events = params.family === 'auto', tau = sb - (S - 2);
+  if (fam === 1 && events) {
+    if (tau < 0) p = 1 - Math.sqrt(1 - clamp01((sb - (S - 4)) / 2));
+    else { p = 1 - ease(clamp01(tau / 0.5)); w = 0.12 * ease(clamp01(tau / 0.25)); a = 1 - ease(clamp01((tau - 0.5) / 1.5)); genus = 0; }
+  }
+  if (fam === 0 && events) {
+    if (tau <= 0) { a = ease(clamp01((sb - (S - 6)) / 2)); w = 0.12 * (1 - ease(clamp01((sb - (S - 4)) / 2))); p = ease(clamp01(sb - (S - 4))); }
+    else { a = 1; p = 1 - Math.sqrt(clamp01(tau)); genus = 1; }
+  }
+  P.a = a; P.p = p; P.w = w;
+  const beats = bars * params.bpb;
+  // music, deterministic from the patterns: kick rings, breathing, hats, snare waves
+  const rings = [], spb = 60 / params.bpm;
+  for (let b = Math.floor(beats); b > beats - 3 && b >= 0 && rings.length < 4; b--) {
+    if (params.kick[(b * 4) % 16] !== 'x') continue;
+    const age = beats - b, th = hash(b) * 2 * Math.PI, z = hash(b + 7777) * 2 - 1, r = Math.sqrt(1 - z * z);
+    rings.push([Math.cos(th) * r * 0.7, z * 0.7, Math.sin(th) * r * 0.7, age]);
+  }
+  const env = (lane, tau) => {   // seconds since the lane's last step, as a decaying level
+    const step = Math.floor(beats * 4);
+    for (let s2 = step; s2 > step - 16 && s2 >= 0; s2--) if (params[lane][s2 % 16] === 'x') return Math.exp(-((beats * 4 - s2) * spb / 4) / tau);
+    return 0;
+  };
+  const wave = { A: params.bumpAmp * 0.16, bass: 0.5 + 0.5 * Math.sin(2 * Math.PI * beats / 8), hat: env('hat', 0.06), snare: env('snare', 0.15) };
+  const center = shapeCenter(P);
+  for (const rg of rings) { rg[0] += center[0]; rg[1] += center[1]; rg[2] += center[2]; }
+  const thin = [];
+  if (P.a > 0.001 && P.w === 0) thin.push(P.rh * P.a * (1 - P.p));
+  if (P.cav > 0.001) thin.push(THICK);
+  if (P.spout > 0.01) thin.push(spoutR(P));
+  if (P.knob > 0.01) thin.push(knobR(P));
+  return { bars, beats, k, sb, fam, from, to, u, P, rings, wave, center, featureMin: thin.length ? Math.min(...thin) : null, genus, tau, S, M };
+}
+const spoutR = P => SPR * clamp01((P.ra + P.rb) / 0.3);
+const knobR = P => 0.07 * (0.3 + 0.7 * P.knob);
+const liftOf = P => { const L0 = 2.5 * (P.h + P.rb) + 0.3; return L0 + (THICK + 0.03 - L0) * P.cav; };
+function shapeCenter(P) {
+  const wb = P.ra + P.rb + P.h, wh = P.a * (P.Rh + P.rh);
+  return [wh * P.hx / (wb + wh + 1e-6), wh * P.hy / (wb + wh + 1e-6), 0];
+}
+
+// ---------- the SDF, in JS (the GLSL below is the same, line for line) ----------
+const smin = (a, b, k) => { const h = clamp01(0.5 + 0.5 * (b - a) / k); return b + (a - b) * h - k * h * (1 - h); };
+const smax = (a, b, k) => -smin(-a, -b, k);
+function bodyF(P, x, y, z) {
+  const sc = 1 + P.taper * Math.max(-1, Math.min(1, y));
+  const qx = x / sc, qz = z / sc;
+  const dx = Math.hypot(qx, qz) - P.ra, dy = Math.abs(y) - P.h;
+  let b = (Math.min(Math.max(dx, dy), 0) + Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) - P.rb) * Math.min(1, sc);
+  const top = P.h + P.rb, dd = Math.hypot(x, y - (top + 0.10), z) - 0.20;
+  return b + (smax(b, -dd, 0.08) - b) * P.dimple;
+}
+function segDist(px, py, pz, ax, ay, az, bx, by, bz) {
+  const pax = px - ax, pay = py - ay, paz = pz - az, bax = bx - ax, bay = by - ay, baz = bz - az;
+  const bb = bax * bax + bay * bay + baz * baz, h = bb > 1e-12 ? clamp01((pax * bax + pay * bay + paz * baz) / bb) : 0;
+  return Math.hypot(pax - bax * h, pay - bay * h, paz - baz * h);
+}
+function partsJS(P, x, y, z) {
+  let body = bodyF(P, x, y, z);
+  const R0 = P.ra + P.rb, spR = spoutR(P);
+  const s1x = -R0 * 0.4 + (-R0 - 0.30 + R0 * 0.4) * P.spout, s1y = 0.32 * P.spout;
+  const spD = segDist(x, y, z, -R0 * 0.4, 0, 0, s1x, s1y, 0);
+  body = smin(body, spD - spR, 0.06);
+  const ky = (P.h + P.rb + 0.04) * P.knob, kR = knobR(P), knD = Math.hypot(x, y - ky, z);
+  body = smin(body, knD - kR, 0.04);
+  const qx = x - P.hx, qy = y - P.hy, rho = Math.hypot(qx, qy) - P.Rh, phi = Math.atan2(qy, qx);
+  const rl = P.rh * P.a * (1 - P.p * Math.exp(-(phi * phi) / 0.16)), tubeD = Math.hypot(rho, z);
+  let dh = tubeD - rl;
+  if (P.w > 0) dh = smax(dh, -Math.max(Math.abs(qy) - P.w, -qx), Math.min(0.03, P.w));
+  if (P.a <= 0.001) dh = 1e3;
+  let base = smin(body, dh, 0.04);
+  const dIn = bodyF(P, x, y - liftOf(P), z) + THICK;
+  if (P.cav > 0.001) base = smax(base, -dIn, 0.03);
+  return { base, rl, tubeD, dIn, spD, spR, knD, kR };
+}
+function wavesJS(st, x, y, z) {
+  let w = 0;
+  for (const r of st.rings) { const d = Math.hypot(x - r[0], y - r[1], z - r[2]) - 0.9 * r[3]; w += Math.exp(-(d * d) / 0.0144) * Math.exp(-r[3] / 0.8); }
+  w += 0.5 * st.wave.bass;
+  w += 0.25 * st.wave.hat * Math.sin(23 * x + 17 * y + 29 * z + st.beats * 12);
+  w += 0.35 * st.wave.snare * Math.sin(y * 9 - st.beats * 6.2832);
+  return Math.max(-1, Math.min(1, w));
+}
+const sstep = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+function sdfJS(st, x, y, z) {
+  const P = st.P, p = partsJS(P, x, y, z);
+  let A = st.wave.A;
+  if (P.a > 0.001) A = A + (Math.min(A, 0.4 * p.rl) - A) * (1 - sstep(p.rl + 0.03, p.rl + 0.15, p.tubeD));
+  if (P.cav > 0.001) A = A + (Math.min(A, 0.4 * THICK) - A) * (1 - sstep(THICK, THICK + 0.12, Math.abs(p.dIn)));
+  A = A + (Math.min(A, 0.4 * p.spR) - A) * (1 - sstep(p.spR + 0.03, p.spR + 0.15, p.spD));
+  A = A + (Math.min(A, 0.4 * p.kR) - A) * (1 - sstep(p.kR + 0.03, p.kR + 0.15, p.knD));
+  return p.base - A * wavesJS(st, x, y, z);
+}
+
+// ---------- QA: genus from the solid's cubical complex, ∫K dA by co-area ----------
+function genusAt(st, n = 64) {
+  const c = st.center, L = 1.5, h = 2 * L / n, inside = new Uint8Array(n * n * n);
+  let C = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+    const v = sdfJS(st, c[0] - L + (i + 0.5) * h, c[1] - L + (j + 0.5) * h, c[2] - L + (k + 0.5) * h) < 0 ? 1 : 0;
+    inside[(i * n + j) * n + k] = v; C += v;
+  }
+  const at = (i, j, k) => i >= 0 && j >= 0 && k >= 0 && i < n && j < n && k < n && inside[(i * n + j) * n + k] === 1;
+  let V = 0, E = 0, F = 0;
+  for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) for (let k = 0; k <= n; k++) {
+    // a lattice vertex belongs to the complex if any of its 8 cubes is inside
+    let vIn = false;
+    for (let a = -1; a <= 0 && !vIn; a++) for (let b = -1; b <= 0 && !vIn; b++) for (let d = -1; d <= 0 && !vIn; d++) if (at(i + a, j + b, k + d)) vIn = true;
+    if (vIn) V++;
+    // edges along x, y, z starting here (4 cubes each)
+    if (i < n && (at(i, j - 1, k - 1) || at(i, j, k - 1) || at(i, j - 1, k) || at(i, j, k))) E++;
+    if (j < n && (at(i - 1, j, k - 1) || at(i, j, k - 1) || at(i - 1, j, k) || at(i, j, k))) E++;
+    if (k < n && (at(i - 1, j - 1, k) || at(i, j - 1, k) || at(i - 1, j, k) || at(i, j, k))) E++;
+    // faces normal to x, y, z (2 cubes each)
+    if (j < n && k < n && (at(i - 1, j, k) || at(i, j, k))) F++;
+    if (i < n && k < n && (at(i, j - 1, k) || at(i, j, k))) F++;
+    if (i < n && j < n && (at(i, j, k - 1) || at(i, j, k))) F++;
+  }
+  const chiSolid = V - E + F - C;
+  return { n, V, E, F, C, chiSolid, chi: 2 * chiSolid, g: 1 - chiSolid };
+}
+function curvJS(st, x, y, z, e = 0.006) {
+  const f = (a, b, c) => sdfJS(st, x + a, y + b, z + c), f0 = f(0, 0, 0);
+  const fpx = f(e, 0, 0), fmx = f(-e, 0, 0), fpy = f(0, e, 0), fmy = f(0, -e, 0), fpz = f(0, 0, e), fmz = f(0, 0, -e);
+  const gx = (fpx - fmx) / (2 * e), gy = (fpy - fmy) / (2 * e), gz = (fpz - fmz) / (2 * e);
+  const fxx = (fpx - 2 * f0 + fmx) / (e * e), fyy = (fpy - 2 * f0 + fmy) / (e * e), fzz = (fpz - 2 * f0 + fmz) / (e * e);
+  const fxy = (f(e, e, 0) - f(e, -e, 0) - f(-e, e, 0) + f(-e, -e, 0)) / (4 * e * e);
+  const fxz = (f(e, 0, e) - f(e, 0, -e) - f(-e, 0, e) + f(-e, 0, -e)) / (4 * e * e);
+  const fyz = (f(0, e, e) - f(0, e, -e) - f(0, -e, e) + f(0, -e, -e)) / (4 * e * e);
+  const A11 = fyy * fzz - fyz * fyz, A22 = fxx * fzz - fxz * fxz, A33 = fxx * fyy - fxy * fxy;
+  const A12 = fxz * fyz - fxy * fzz, A13 = fxy * fyz - fxz * fyy, A23 = fxy * fxz - fxx * fyz;
+  const g2 = gx * gx + gy * gy + gz * gz;
+  const K = (gx * gx * A11 + gy * gy * A22 + gz * gz * A33 + 2 * (gx * gy * A12 + gx * gz * A13 + gy * gz * A23)) / (g2 * g2 + 1e-12);
+  return { f0, K, grad: Math.sqrt(g2) };
+}
+function totalKAt(st, n = 96) {   // ∫K dA ≈ Σ K |∇f| δ_ε(f) h³ over the grid (δ a cosine bump, ε = 1.5h)
+  const c = st.center, L = 1.5, h = 2 * L / n, eps = 1.5 * h;
+  let sum = 0, cells = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+    const x = c[0] - L + (i + 0.5) * h, y = c[1] - L + (j + 0.5) * h, z = c[2] - L + (k + 0.5) * h;
+    const f0 = sdfJS(st, x, y, z); if (Math.abs(f0) >= eps) continue;
+    const q = curvJS(st, x, y, z), delta = (1 + Math.cos(Math.PI * q.f0 / eps)) / (2 * eps);
+    sum += q.K * q.grad * delta * h * h * h; cells++;
+  }
+  return { n, totalK: sum, over2pi: sum / (2 * Math.PI), cells };
+}
+
+// ---------- WebGL ----------
+const canvas = document.getElementById('c'), hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+if (!gl) fail('WebGL2 is not available in this browser.');
+function compile(type, src) { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(sh)); return sh; }
+function program(vs, fs) {
+  const p = gl.createProgram(); gl.attachShader(p, compile(gl.VERTEX_SHADER, vs)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name.replace('[0]', ''); u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u };
+}
+const FULL_VS = `#version 300 es
+out vec2 vUv;
+void main() { vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = p; gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+const marchProg = program(FULL_VS, `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 o;
+uniform float uP[16];      // ra rb h taper dimple cav spout knob hx hy Rh rh a p w lift
+uniform vec4 uRing[4];     // centre, age in beats (< 0 = off)
+uniform vec4 uWave;        // A, bass, hat, snare
+uniform float uBeats, uAspect, uStepK, uCurv, uKick, uFlash;
+uniform int uSteps, uPal;
+uniform vec3 uEye, uFwd, uRight, uUp, uCenter;
+const float THICK = ${THICK.toFixed(2)}, SPR = ${SPR.toFixed(2)};
+float smin(float a, float b, float k) { float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return b + (a - b) * h - k * h * (1.0 - h); }
+float smax(float a, float b, float k) { return -smin(-a, -b, k); }
+float bodyF(vec3 p) {
+  float sc = 1.0 + uP[3] * clamp(p.y, -1.0, 1.0);
+  vec2 d = vec2(length(p.xz / sc) - uP[0], abs(p.y) - uP[2]);
+  float b = (min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - uP[1]) * min(1.0, sc);
+  float top = uP[2] + uP[1], dd = length(p - vec3(0.0, top + 0.10, 0.0)) - 0.20;
+  return b + (smax(b, -dd, 0.08) - b) * uP[4];
+}
+float segD(vec3 p, vec3 a, vec3 b) { vec3 pa = p - a, ba = b - a; float bb = dot(ba, ba); float h = bb > 1e-12 ? clamp(dot(pa, ba) / bb, 0.0, 1.0) : 0.0; return length(pa - ba * h); }
+float sdf(vec3 p) {
+  float body = bodyF(p), R0 = uP[0] + uP[1], spR = SPR * clamp(R0 / 0.3, 0.0, 1.0);
+  vec3 s0 = vec3(-R0 * 0.4, 0.0, 0.0), s1 = vec3(-R0 * 0.4 + (-R0 - 0.30 + R0 * 0.4) * uP[6], 0.32 * uP[6], 0.0);
+  float spD = segD(p, s0, s1);
+  body = smin(body, spD - spR, 0.06);
+  float kR = 0.07 * (0.3 + 0.7 * uP[7]), knD = length(p - vec3(0.0, (uP[2] + uP[1] + 0.04) * uP[7], 0.0));
+  body = smin(body, knD - kR, 0.04);
+  vec3 q = p - vec3(uP[8], uP[9], 0.0);
+  float rho = length(q.xy) - uP[10], phi = atan(q.y, q.x);
+  float rl = uP[11] * uP[12] * (1.0 - uP[13] * exp(-(phi * phi) / 0.16)), tubeD = length(vec2(rho, q.z));
+  float dh = tubeD - rl;
+  if (uP[14] > 0.0) dh = smax(dh, -max(abs(q.y) - uP[14], -q.x), min(0.03, uP[14]));
+  if (uP[12] <= 0.001) dh = 1e3;
+  float base = smin(body, dh, 0.04);
+  float dIn = bodyF(p - vec3(0.0, uP[15], 0.0)) + THICK;
+  if (uP[5] > 0.001) base = smax(base, -dIn, 0.03);
+  float A = uWave.x;
+  if (uP[12] > 0.001) A = A + (min(A, 0.4 * rl) - A) * (1.0 - smoothstep(rl + 0.03, rl + 0.15, tubeD));
+  if (uP[5] > 0.001) A = A + (min(A, 0.4 * THICK) - A) * (1.0 - smoothstep(THICK, THICK + 0.12, abs(dIn)));
+  A = A + (min(A, 0.4 * spR) - A) * (1.0 - smoothstep(spR + 0.03, spR + 0.15, spD));
+  A = A + (min(A, 0.4 * kR) - A) * (1.0 - smoothstep(kR + 0.03, kR + 0.15, knD));
+  float w = 0.0;
+  for (int i = 0; i < 4; i++) { vec4 r = uRing[i]; if (r.w < 0.0) continue; float d = length(p - r.xyz) - 0.9 * r.w; w += exp(-(d * d) / 0.0144) * exp(-r.w / 0.8); }
+  w += 0.5 * uWave.y + 0.25 * uWave.z * sin(23.0 * p.x + 17.0 * p.y + 29.0 * p.z + uBeats * 12.0) + 0.35 * uWave.w * sin(p.y * 9.0 - uBeats * 6.2832);
+  return base - A * clamp(w, -1.0, 1.0);
+}
+vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
+vec3 env(vec3 d) { return mix(vec3(0.02, 0.02, 0.05), vec3(0.35, 0.42, 0.6), smoothstep(-0.3, 0.9, d.y)) + vec3(1.0, 0.85, 0.7) * pow(max(dot(d, normalize(vec3(0.6, 0.8, 0.4))), 0.0), 40.0) * 2.0; }
+void main() {
+  vec2 sp = (vUv * 2.0 - 1.0) * vec2(uAspect, 1.0);
+  vec3 rd = normalize(uFwd * 1.6 + uRight * sp.x + uUp * sp.y), ro = uEye;
+  vec3 bg = mix(vec3(0.015, 0.015, 0.03), vec3(0.06, 0.05, 0.1), vUv.y) + vec3(0.2, 0.15, 0.35) * 0.08 * exp(-dot(sp, sp));
+  // start at the bounding sphere around the shape
+  vec3 oc = ro - uCenter; float b = dot(oc, rd), cc = dot(oc, oc) - 1.7 * 1.7, disc = b * b - cc;
+  if (disc < 0.0) { o = vec4(bg, 1.0); return; }
+  float t = max(0.0, -b - sqrt(disc)), tEnd = -b + sqrt(disc);
+  bool hit = false; vec3 p;
+  for (int i = 0; i < 160; i++) {
+    if (i >= uSteps) break;
+    p = ro + rd * t; float d = sdf(p);
+    if (d < 0.0006 * t + 0.0004) { hit = true; break; }
+    t += d > 0.3 ? d - 2.0 * uWave.x : d * uStepK;   // far: |A·w| ≤ A bounds the gap; near: Lipschitz step
+    if (t > tEnd) break;
+  }
+  if (!hit) { o = vec4(bg, 1.0); return; }
+  // gradient and Hessian by central differences (19 samples), Gaussian curvature by the adjugate
+  float e = 0.006, f0 = sdf(p);
+  float fpx = sdf(p + vec3(e, 0, 0)), fmx = sdf(p - vec3(e, 0, 0)), fpy = sdf(p + vec3(0, e, 0)), fmy = sdf(p - vec3(0, e, 0)), fpz = sdf(p + vec3(0, 0, e)), fmz = sdf(p - vec3(0, 0, e));
+  vec3 g = vec3(fpx - fmx, fpy - fmy, fpz - fmz) / (2.0 * e);
+  float fxx = (fpx - 2.0 * f0 + fmx) / (e * e), fyy = (fpy - 2.0 * f0 + fmy) / (e * e), fzz = (fpz - 2.0 * f0 + fmz) / (e * e);
+  float fxy = (sdf(p + vec3(e, e, 0)) - sdf(p + vec3(e, -e, 0)) - sdf(p + vec3(-e, e, 0)) + sdf(p + vec3(-e, -e, 0))) / (4.0 * e * e);
+  float fxz = (sdf(p + vec3(e, 0, e)) - sdf(p + vec3(e, 0, -e)) - sdf(p + vec3(-e, 0, e)) + sdf(p + vec3(-e, 0, -e))) / (4.0 * e * e);
+  float fyz = (sdf(p + vec3(0, e, e)) - sdf(p + vec3(0, e, -e)) - sdf(p + vec3(0, -e, e)) + sdf(p + vec3(0, -e, -e))) / (4.0 * e * e);
+  float A11 = fyy * fzz - fyz * fyz, A22 = fxx * fzz - fxz * fxz, A33 = fxx * fyy - fxy * fxy;
+  float A12 = fxz * fyz - fxy * fzz, A13 = fxy * fyz - fxz * fyy, A23 = fxy * fxz - fxx * fyz;
+  float g2 = dot(g, g);
+  float K = (g.x * g.x * A11 + g.y * g.y * A22 + g.z * g.z * A33 + 2.0 * (g.x * g.y * A12 + g.x * g.z * A13 + g.y * g.z * A23)) / (g2 * g2 + 1e-12);
+  vec3 n = normalize(g), v = -rd, l = normalize(vec3(0.6, 0.8, 0.4));
+  float kt = K / (abs(K) + 4.0);                                        // −1 … 1
+  vec3 curv = kt > 0.0 ? mix(vec3(0.9, 0.85, 0.8), vec3(1.0, 0.45, 0.15), kt) : mix(vec3(0.9, 0.85, 0.8), vec3(0.15, 0.45, 1.0), -kt);
+  // soft shadow and ambient occlusion
+  float sh = 1.0, st = 0.02;
+  for (int i = 0; i < 16; i++) { float h = sdf(p + n * 0.002 + l * st); sh = min(sh, 10.0 * h / st); st += clamp(h, 0.02, 0.2); if (sh < 0.02 || st > 2.0) break; }
+  sh = clamp(sh, 0.0, 1.0);
+  float ao = 0.0; for (int i = 1; i <= 4; i++) { float hh = 0.03 * float(i); ao += (hh - sdf(p + n * hh)) / hh; }
+  ao = clamp(1.0 - 0.25 * ao, 0.2, 1.0);
+  float diff = max(dot(n, l), 0.0), fres = pow(1.0 - max(dot(n, v), 0.0), 3.0), spec = pow(max(dot(reflect(-l, n), v), 0.0), 60.0);
+  vec3 col;
+  if (uPal == 0) {        // ceramic glaze
+    vec3 alb = mix(vec3(0.86, 0.83, 0.78), curv, uCurv);
+    col = alb * (0.12 + 0.88 * diff * sh) * ao + vec3(1.0) * spec * 0.5 * sh + alb * fres * 0.4;
+  } else if (uPal == 1) { // chrome
+    vec3 r = reflect(rd, n);
+    col = env(r) * mix(vec3(1.0), curv, uCurv * 0.8) * (0.4 + 0.6 * ao) + spec * sh;
+  } else {                // iridescent thin film
+    vec3 film = hue(0.55 + 1.2 * (1.0 - dot(n, v)) + kt * 0.25);
+    col = mix(film, curv, uCurv * 0.5) * (0.15 + 0.85 * diff * sh) * ao + spec * sh * 0.8 + film * fres * 0.6;
+  }
+  col += curv * uKick * 0.12 + vec3(1.0, 0.95, 0.9) * uFlash * 0.5;
+  col = vec3(1.0) - exp(-col * 1.4);
+  o = vec4(pow(col, vec3(0.92)), 1.0);
+}`);
+const emptyVao = gl.createVertexArray();
+
+// ---------- camera: a slow orbit; a dive through the handle on the bar before a surgery ----------
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const mul3 = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm3 = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const lerp3 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+function orbitAt(bars, center) {
+  const th = 2 * Math.PI * bars / params.orbitBars, R = 2.5 + 0.3 * Math.sin(bars * 0.37);
+  return [center[0] + R * Math.sin(th), center[1] + 0.5 + 0.6 * Math.sin(bars * 0.23), center[2] + R * Math.cos(th)];
+}
+function holePoint(st) {   // the middle of the handle's open hole (the point with the most clearance)
+  const P = st.P; let best = null;
+  for (let i = 0; i <= 32; i++) {
+    const x = P.hx - (P.Rh - P.rh) + 2 * (P.Rh - P.rh) * i / 32, d = sdfJS(st, x, P.hy, 0);
+    if (!best || d > best.d) best = { x, d };
+  }
+  return { pos: [best.x, P.hy, 0], clearance: best.d };
+}
+function cameraAt(st) {
+  const S = st.S, bars = st.bars, sb = st.sb, center = st.center;
+  let eye = orbitAt(bars, center), at = center, mode = 'orbit';
+  const flyStart = S - 3, flyEnd = S - 2;
+  if (params.fly && st.fam === 1 && params.family === 'auto' && sb >= flyStart && sb < flyEnd && st.genus === 1) {
+    const u = sb - flyStart, base = st.k * S;
+    const p0 = orbitAt(base + flyStart, center), p1 = orbitAt(base + flyEnd, center), H = holePoint(st).pos;
+    const side = p0[2] >= H[2] ? 1 : -1, A = add3(H, [0, 0, 1.2 * side]), B = add3(H, [0, 0, -1.2 * side]);
+    if (u < 0.35) { const e = ease(u / 0.35); eye = lerp3(p0, A, e); at = lerp3(center, H, e); }
+    else if (u < 0.65) { const e = (u - 0.35) / 0.3; eye = lerp3(A, B, e); at = lerp3(H, add3(H, [0, 0, -3 * side]), e); }
+    else { const e = ease((u - 0.65) / 0.35); eye = lerp3(B, p1, e); at = lerp3(add3(H, [0, 0, -1.2 * side]), center, e); }
+    mode = 'fly';
+  }
+  // never inside the shape: push out along the gradient if too close
+  let d = sdfJS(st, ...eye), pushes = 0;
+  while (d < 0.08 && pushes < 20) {
+    const e = 0.01, g = norm3([sdfJS(st, eye[0] + e, eye[1], eye[2]) - d, sdfJS(st, eye[0], eye[1] + e, eye[2]) - d, sdfJS(st, eye[0], eye[1], eye[2] + e) - d]);
+    eye = add3(eye, mul3(g, 0.08 - d + 0.02)); d = sdfJS(st, ...eye); pushes++;
+  }
+  return { eye, at, mode, sdf: d, pushes };
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+$('play').onclick = () => {
+  if (metronome.playing) metronome.stop(); else metronome.start();
+  clockStart = performance.now();
+  $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', metronome.playing);
+};
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('full').onclick = () => { const w = $('wrap'); if (document.fullscreenElement) document.exitFullscreen(); else (w.requestFullscreen || w.webkitRequestFullscreen).call(w); };
+for (const [box, list, key] of [['families', ['auto', '1', '0'], 'family'], ['palettes', ['auto', ...PALETTES], 'palette']]) for (const name of list) {
+  const b = document.createElement('button'); b.textContent = key === 'family' && name !== 'auto' ? `genus ${name}` : name; b.dataset.v = name;
+  b.onclick = () => { params[key] = name; sync(); }; $(box).appendChild(b);
+}
+$('t-fly').onclick = () => { params.fly = !params.fly; sync(); };
+const SLIDERS = { bumpAmp: 2, curvColor: 2, morphBars: 0, orbitBars: 0, steps: 0, bpm: 0 };
+for (const [name, dec] of Object.entries(SLIDERS)) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name].toFixed(dec); });
+function sync() {
+  for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
+  for (const b of $('families').children) b.classList.toggle('on', b.dataset.v === params.family);
+  for (const b of $('palettes').children) b.classList.toggle('on', b.dataset.v === params.palette);
+  $('t-fly').classList.toggle('on', params.fly);
+  $('mute').classList.toggle('on', params.muted);
+}
+$('copy').onclick = async e => {
+  const q = new URLSearchParams({ family: params.family, palette: params.palette, fly: +params.fly, bumpAmp: params.bumpAmp, curvColor: params.curvColor, morphBars: params.morphBars, orbitBars: params.orbitBars, steps: params.steps, bpm: params.bpm });
+  const text = `23 · Shape Shifter\n${location.origin + location.pathname}?${q}`;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓'; setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
+};
+window.__modules = { 'shape-shifter': { inputs: [
+  { name: 'family', type: 'long', values: ['auto', '1', '0'], default: 'auto' },
+  { name: 'palette', type: 'long', values: ['auto', ...PALETTES], default: 'auto' },
+  { name: 'fly', type: 'bool', default: true },
+  { name: 'bumpAmp', type: 'float', default: 0.5, min: 0, max: 1 }, { name: 'curvColor', type: 'float', default: 0.7, min: 0, max: 1 },
+  { name: 'morphBars', type: 'long', default: 8, min: 4, max: 16 }, { name: 'orbitBars', type: 'long', default: 16, min: 4, max: 64 },
+  { name: 'steps', type: 'long', default: 128, min: 48, max: 160 },
+] } };
+
+// ---------- main loop ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+  const cap = (params.res === 'native' ? 1 : Math.min(1, Math.sqrt(1920 * 1080 / (w * h)))) * params.scale;
+  w = Math.max(1, Math.round(w * cap)); h = Math.max(1, Math.round(h * cap));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastNow = 0;
+const errors = [], events = [], logged = new Set();
+const prev = { genus: null, from: null, mode: null, beat: -1, flash: 0 };
+function logEvent(e, now) {
+  if (!metronome.playing) { e.tBeat = null; e.perfDrawn = now; events.push(e); if (events.length > 256) events.shift(); return; }
+  e.tHeard = e.tBeat + metronome.latency();
+  e.perfHeard = performance.now() + (e.tHeard - metronome.ctx.currentTime) * 1000;
+  e.perfDrawn = now;
+  events.push(e); if (events.length > 256) events.shift();
+}
+const stepTime = step => { const s = metronome.playing && metronome.steps.find(x => x.step === step); return s ? s.time : null; };
+function logAt(type, bar, extra, now) {
+  const key = type + ':' + bar; if (logged.has(key)) return; logged.add(key); if (logged.size > 500) logged.clear();
+  logEvent({ type, bar, ...extra, tBeat: stepTime(Math.round(bar * params.bpb * 4)) }, now);
+}
+function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
+}
+function draw(now) {
+  resize();
+  const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
+  const mb = metronome.beats();
+  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60);
+  const bars = beats / params.bpb, st = stateAt(bars);
+  // logged events
+  if (metronome.playing) {
+    const heard = metronome.ctx.currentTime - metronome.latency();
+    for (const h of metronome.hits) { if (h.logged || h.time > heard) continue; h.logged = true; logEvent({ type: h.lane, vel: h.vel, tBeat: h.time }, now); }
+  }
+  const base = st.k * st.S;
+  if (prev.genus !== null && st.genus !== prev.genus) {
+    const type = st.genus < prev.genus ? 'surgery' : 'attach';
+    logAt(type, base + st.S - 2, { from: prev.genus, to: st.genus }, now); prev.flash = 1;
+  }
+  if (prev.from !== null && st.from !== prev.from) logAt('morph', Math.round(bars), { shape: st.from }, now);
+  const cam = cameraAt(st);
+  if (cam.mode === 'fly' && prev.mode !== 'fly') logAt('fly', base + st.S - 3, { genus: st.genus }, now);
+  prev.genus = st.genus; prev.from = st.from; prev.mode = cam.mode;
+  prev.flash = Math.max(0, prev.flash - dt * 2);
+  const beat = Math.floor(beats), kickLevel = params.kick[(beat * 4) % 16] === 'x' ? Math.exp(-(beats - beat) * 60 / params.bpm / 0.15) : 0;
+
+  const W = canvas.width, H = canvas.height;
+  const fwd = norm3(sub3(cam.at, cam.eye)), right = norm3(cross3(fwd, [0, 1, 0])), up = cross3(right, fwd);
+  const P = st.P, w = st.wave;
+  const L = w.A * (2 * 0.9 / 0.12 + 0.25 * w.hat * 40 + 0.35 * w.snare * 9);   // a bound on |∇(A·waves)|
+  gl.viewport(0, 0, W, H);
+  gl.useProgram(marchProg.p);
+  const u = marchProg.u;
+  gl.uniform1fv(u.uP, [P.ra, P.rb, P.h, P.taper, P.dimple, P.cav, P.spout, P.knob, P.hx, P.hy, P.Rh, P.rh, P.a, P.p, P.w, liftOf(P)]);
+  const rings = new Float32Array(16).fill(-1);
+  st.rings.forEach((r, i) => rings.set(r, i * 4));
+  gl.uniform4fv(u.uRing, rings);
+  gl.uniform4f(u.uWave, w.A, w.bass, w.hat, w.snare);
+  gl.uniform1f(u.uBeats, beats); gl.uniform1f(u.uAspect, W / H); gl.uniform1f(u.uStepK, 1 / (1 + L));
+  gl.uniform1f(u.uCurv, params.curvColor); gl.uniform1f(u.uKick, kickLevel); gl.uniform1f(u.uFlash, prev.flash);
+  gl.uniform1i(u.uSteps, Math.round(params.steps));
+  const pal = params.palette === 'auto' ? Math.floor(st.k / 2) % 3 : PALETTES.indexOf(params.palette);
+  gl.uniform1i(u.uPal, pal);
+  gl.uniform3fv(u.uEye, cam.eye); gl.uniform3fv(u.uFwd, fwd); gl.uniform3fv(u.uRight, right); gl.uniform3fv(u.uUp, up); gl.uniform3fv(u.uCenter, st.center);
+  gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  Object.assign(window.__qa, {
+    bars, beats, section: st.k, family: st.fam, genusExpected: st.genus, featureMin: st.featureMin,
+    bump: { A: w.A, capRule: 'A_local = min(A, 0.4 × local thickness) near the handle tube, cup wall and spout' },
+    cam: { pos: cam.eye, at: cam.at, mode: cam.mode, sdf: cam.sdf, pushes: cam.pushes },
+    shape: { from: st.from, to: st.to, u: st.u, params: { ...P }, genus: st.genus, tau: st.tau, neck: P.w > 0 ? 0 : P.rh * P.a * (1 - P.p), cut: P.w },
+    palette: PALETTES[pal],
+  });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    hud.textContent = `Shape Shifter · ${st.from} → ${st.to} · genus ${st.genus} · ${PALETTES[pal]} · ${cam.mode} · ${params.bpm} bpm · ${state}\n` +
+      `section ${st.k} bar ${st.sb.toFixed(1)}/${st.S} · ${W}×${H} · ${fps} fps`;
+  }
+}
+
+window.__qa = {
+  errors, events, THICK, KF,
+  state: b => stateAt(b ?? window.__qa.bars),
+  sdf: (x, y, z, b) => sdfJS(stateAt(b ?? window.__qa.bars), x, y, z),
+  genus: (n = 64, b) => genusAt(stateAt(b ?? window.__qa.bars), n),
+  totalK: (n = 96, b) => totalKAt(stateAt(b ?? window.__qa.bars), n),
+  curvature: (x, y, z, b) => curvJS(stateAt(b ?? window.__qa.bars), x, y, z),
+  camera: b => cameraAt(stateAt(b ?? window.__qa.bars)),
+};
+const q = k => query.get(k);
+if (['auto', '0', '1'].includes(q('family'))) params.family = q('family');
+if (['auto', ...PALETTES].includes(q('palette'))) params.palette = q('palette');
+if (q('fly') !== null) params.fly = q('fly') !== '0';
+for (const k of Object.keys(SLIDERS)) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
+if (q('res') === 'native') params.res = 'native';
+params.scale = Math.max(0.25, Math.min(1, parseFloat(q('scale')) || 1));   // ?scale=0.75 renders fewer pixels
+params.muted = q('muted') === '1';
+sync();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
