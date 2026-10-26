@@ -1,0 +1,9 @@
+# Optional: reach the runner's read-only API from the host or the LAN. The container publishes no ports, so the
+# runner listens on a Unix socket in the bind-mounted folder (RUNNER_SOCKET) and this forwards a TCP port to it,
+# like the 8787 viewer. 127.0.0.1 keeps it on the box; put the box's LAN address here to see it from the Wi-Fi.
+#   cp qa/runner/cellular-viz-runner-api.* ~/.config/systemd/user/ && systemctl --user enable --now cellular-viz-runner-api.socket
+[Socket]
+ListenStream=127.0.0.1:8788
+
+[Install]
+WantedBy=sockets.target
