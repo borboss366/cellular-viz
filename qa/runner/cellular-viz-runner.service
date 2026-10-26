@@ -10,6 +10,8 @@
 Description=cellular-viz QA runner (watches PRs, runs page checks, read-only API)
 Wants=network-online.target
 After=network-online.target
+# never give up restarting: a start limit would leave the pipeline silently stopped after a container restart
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple

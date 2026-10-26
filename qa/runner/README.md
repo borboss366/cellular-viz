@@ -40,13 +40,26 @@ that already has a build for that page).
 
 ## Install (once, on the host)
 
+After #59 is merged, as your normal user on the box (over SSH):
+
 ```
+loginctl enable-linger $USER                                           # user services start at boot and survive logout
 cp qa/runner/cellular-viz-runner.service ~/.config/systemd/user/
 cp qa/runner/runner.env.example ~/.config/cellular-viz-runner.env      # fill in the paths
 systemctl --user daemon-reload && systemctl --user enable --now cellular-viz-runner
-loginctl enable-linger $USER                                           # keep it running without a login
-journalctl --user -u cellular-viz-runner -f
 ```
+
+Check it took:
+
+- `systemctl --user status cellular-viz-runner` says active (running)
+- `journalctl --user -u cellular-viz-runner -f` shows `runner up: …` with no errors after it
+- the next commit on an open PR appears on `/builds` as queued, then running, with nobody touching anything
+
+Only then does QA box switch its own commit watcher off, so there is no gap where nobody checks commits.
+
+It restarts itself: `Restart=always` every 30 s with no start limit, so a crash mid-check, a reboot or the
+container restarting heals by itself instead of leaving the pipeline stopped. Updates: `git -C $RUNNER_HOME pull`,
+then `systemctl --user restart cellular-viz-runner`.
 
 Optional API from the host or the LAN: `cellular-viz-runner-api.socket` + `.service` (systemd-socket-proxyd,
 as for the 8787 viewer), then `curl http://127.0.0.1:8788/api/status`.
