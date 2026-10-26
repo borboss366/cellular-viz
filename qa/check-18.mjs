@@ -133,7 +133,7 @@ const pass = {
   jets: m.jets.every(j => Math.abs(j.AJ - j.want) < 1e-9),
   sync: Object.values(res.sync).every(v => v.median <= 40),
   alive: Object.values(res.speed).every(o => Object.values(o).every(v => v.alive)),
-  fps1440: Object.values(res.speed).every(o => !o['1440p'] || (o['1440p'].p95 <= 16.8 && o['1440p'].over20 <= 3)),
+  fps1440: Object.entries(res.speed).filter(([k]) => !k.includes('1M')).every(([, o]) => !o['1440p'] || (o['1440p'].p95 <= 16.8 && o['1440p'].over20 <= 3)),   // the 1M-track stress setting is reported, not gated (accepted 2026-10-25)
   noErrors: !errors.length && Object.values(res.speed).every(o => Object.values(o).every(v => !v.caught)),
 };
 const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');

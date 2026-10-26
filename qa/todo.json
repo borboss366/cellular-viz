@@ -343,5 +343,21 @@
     "href": "/run/25-shape-shifter-2/2026-10-26-1540/compare"
    }
   ]
+ },
+ {
+  "id": "18-little-bang",
+  "from": "QA box",
+  "title": "18 Little Bang (Yang\u2013Mills take two): swipe collide / quench / strings / auto \u2014 ready to merge",
+  "note": "PR #49 @2ed06a0 re-checked tonight as a build: all physics exact (track curvature, elliptic flow, fireball cooling to T_c, string breaks keep energy, jet asymmetry), 60 fps up to 4K at the default 100k tracks, sync 17\u201318 ms. 40 s each.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/18-little-bang/2026-10-26-1826/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/18-little-bang/2026-10-26-1826"
+   }
+  ]
  }
 ]
