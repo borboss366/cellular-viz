@@ -11,6 +11,7 @@
 //     energy drift |ΔE/E0| < 1e-3.
 //  5. Jets: collide pairs are balanced (A_J = 0); quench pairs have A_J = q/(2 − q).
 //  6. Sync from __qa.events (≤ 40 ms after the sound), liveness, errors.
+//  8. #58 white blob: in the collide scene, < 2 % of pixels clipped (any channel ≥ 254) in every frame over 16 s.
 //  7. fps (vsync p95, frames > 20 ms) at 1080p, 1440p and 4K for collide and quench at
 //     n = 150k and 1M, plus strings and auto at default.
 import { chromium } from 'playwright';
@@ -101,6 +102,26 @@ const res = {};
     return Object.fromEntries(Object.entries(by).map(([k, a]) => [k, { n: a.length, median: q(a, 0.5), p90: q(a, 0.9) }])); });
   await page.close();
 }
+// ---- 8: clipping at the brightest collide frame (#58: no white blob) ----
+{
+  const page = await open('scene=collide', [1920, 1080]);
+  await page.waitForTimeout(2000);
+  res.clip = await page.evaluate(async () => {
+    // copy the WebGL canvas in a rAF callback that runs after the page's own draw in the same frame
+    const gl = [...document.querySelectorAll('canvas')].sort((a, b) => b.width * b.height - a.width * a.height)[0];
+    const c2 = document.createElement('canvas'); c2.width = gl.width; c2.height = gl.height; const x = c2.getContext('2d', { willReadFrequently: true });
+    let best = null; const t0 = performance.now(), frames = [];
+    await new Promise(done => { const f = () => {
+      x.drawImage(gl, 0, 0); const d = x.getImageData(0, 0, c2.width, c2.height).data;
+      let lum = 0, clip = 0, white = 0, n = 0;
+      for (let i = 0; i < d.length; i += 8) { const r = d[i], g = d[i + 1], b = d[i + 2]; lum += 0.2126 * r + 0.7152 * g + 0.0722 * b; if (r >= 254 || g >= 254 || b >= 254) clip++; if (r >= 240 && g >= 240 && b >= 240) white++; n++; }
+      const fr = { t: +((performance.now() - t0) / 1000).toFixed(2), lum: lum / n / 255, clip: clip / n, white: white / n };
+      frames.push(fr); if (!best || fr.lum > best.lum) best = fr;
+      if (performance.now() - t0 < 16000) setTimeout(() => requestAnimationFrame(f), 90); else done(); }; requestAnimationFrame(f); });
+    return { frames: frames.length, brightest: best, worstClipAnyFrame: Math.max(...frames.map(f => f.clip)), size: [c2.width, c2.height] };
+  });
+  await page.close();
+}
 // ---- 7: speed ----
 const sizes = { '1080p': [1920, 1080], '1440p': [2560, 1440], '4K': [3840, 2160] };
 const runs = [['collide', 'scene=collide'], ['collide 1M', 'scene=collide&n=1000000'], ['quench', 'scene=quench'], ['quench 1M', 'scene=quench&n=1000000'], ['strings', 'scene=strings'], ['auto', 'scene=auto']];
@@ -134,6 +155,7 @@ const pass = {
   sync: Object.values(res.sync).every(v => v.median <= 40),
   alive: Object.values(res.speed).every(o => Object.values(o).every(v => v.alive)),
   fps1440: Object.entries(res.speed).filter(([k]) => !k.includes('1M')).every(([, o]) => !o['1440p'] || (o['1440p'].p95 <= 16.8 && o['1440p'].over20 <= 3)),   // the 1M-track stress setting is reported, not gated (accepted 2026-10-25)
+  noClip: res.clip.frames > 50 && res.clip.worstClipAnyFrame < 0.02,   // the blob peaks on the collision itself, which is not always the frame with the highest mean
   noErrors: !errors.length && Object.values(res.speed).every(o => Object.values(o).every(v => !v.caught)),
 };
 const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
@@ -150,6 +172,7 @@ fs.writeFileSync(path.join(dir, 'check.md'), `# 18 Little Bang check · ${stamp}
   `| jets: A_J = q/(2 − q) | ${ok(pass.jets)} | ${m.jets.map(j => `q ${j.q}: ${j.AJ.toFixed(4)}`).join(', ')} |\n` +
   `| sync from __qa.events (≤ 40 ms after the sound) | ${ok(pass.sync)} | ${Object.entries(res.sync).map(([k, v]) => `${k} ${v.median} ms (n ${v.n})`).join(' · ')} |\n` +
   `| page keeps animating | ${ok(pass.alive)} | |\n` +
+  `| collide: < 2 % of pixels clipped in every frame of 16 s (#58) | ${ok(pass.noClip)} | worst frame ${(res.clip.worstClipAnyFrame * 100).toFixed(2)} % clipped (any channel ≥ 254) of ${res.clip.frames} frames · brightest frame (mean lum ${(res.clip.brightest.lum * 100).toFixed(1)} %): clipped ${(res.clip.brightest.clip * 100).toFixed(2)} %, white ${(res.clip.brightest.white * 100).toFixed(2)} % · ${res.clip.size.join('×')} |\n` +
   `| 1440p: p95 ≤ 16.8 ms, ≤ 3 frames > 20 ms | ${ok(pass.fps1440)} | |\n` +
   `| errors | ${ok(pass.noErrors)} | ${errors.slice(0, 2).join('; ') || 'none'} |\n\n` +
   `## Frame times (vsync)\n\n| run | 1080p p95 / >20 ms | 1440p p95 / >20 ms | 4K p95 / >20 ms | canvas at 4K | tracks drawn |\n|---|---|---|---|---|---|\n` +
