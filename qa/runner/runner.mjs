@@ -272,6 +272,11 @@ function stop(sig) {
 }
 process.on('SIGTERM', () => stop('SIGTERM'));
 process.on('SIGINT', () => stop('SIGINT'));
+// A crash exits with 70, not Node's default 1: the unit counts 1 as a clean stop (podman exec signalled on stop),
+// so 70 keeps a real crash visible as Failed in systemctl status and journalctl.
+const crash = e => { try { log(`crash: ${e && e.stack || e}`); save(); } catch {} process.exit(70); };
+process.on('uncaughtException', crash);
+process.on('unhandledRejection', crash);
 
 // one runner at a time: if an older one is still alive (e.g. podman exec lost it on a restart), stop it first
 const PID_FILE = path.join(CFG.state, 'runner.pid');

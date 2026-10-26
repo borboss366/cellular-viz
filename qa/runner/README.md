@@ -65,6 +65,9 @@ Updates need no host step: inside the container, `git -C $RUNNER_HOME pull`, the
 A dry run next to the service needs its own state folder (`--once --state /tmp/runner-dry`); with the
 service's folder `--once` refuses, so it can never stop the service's runner.
 
+A crash exits with code 70 and shows as Failed in `systemctl --user status` (exit 1 and 143 count as a clean stop,
+because that is what `podman exec` reports when systemd stops it); `runner.log` has the stack.
+
 A change to the unit file itself (rare) is a host step: copy it again to `~/.config/systemd/user/`, then
 `systemctl --user daemon-reload && systemctl --user restart cellular-viz-runner`.
 
