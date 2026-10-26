@@ -26,3 +26,5 @@ Everything below is rebuilt from `__qa.sdf` with my own grid code.
   - Mine converges to 4π(1 − g) as h², the bar-3 excess sits at the mug's sharp handle–body crease.
 - With bumps on, neither estimate is near: mine 2.23 → 1.22 (g 1) and 3.18 → 2.24 (g 0) from n = 160 → 224, the page's 0.21–0.24 and 1.39–1.51. The bumps are finer than a 160–224 grid resolves; the integral is not checkable this way with bumps on. The genus itself is exact from χ (gate 1).
 - Render cap: at 4K the canvas is 1920×1080 (res=cap). With ?res=native it renders 2560×1440 and 3840×2160 at 60 fps, p95 16.7 / 16.8 ms (qa/history/2026-10-26-1010-probe23-native.sh).
+
+Gate 2 decision (QA box, so nothing waits on the user): Gauss–Bonnet is judged with bumpAmp=0, where it holds (no hole 1.00·4π; one hole → 0 as h²); the genus with bumps on is exact from χ (gate 1). #56 ready to merge.

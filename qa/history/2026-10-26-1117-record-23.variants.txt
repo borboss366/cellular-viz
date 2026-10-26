@@ -1,0 +1,4 @@
+1-auto :: family=auto ::tap
+2-one-hole :: family=1 ::tap
+3-no-hole :: family=0 ::tap
+4-auto-native :: family=auto&res=native ::tap

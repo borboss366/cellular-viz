@@ -311,5 +311,21 @@
     "href": "/run/14-round-point/2026-10-26-0835"
    }
   ]
+ },
+ {
+  "id": "23-shape-shifter",
+  "from": "QA box",
+  "title": "23 Shape Shifter: swipe auto vs one-hole vs no-hole vs auto at native 4K \u2014 ready to merge",
+  "note": "PR #56 @aa04702: the mug/kettle/doughnut keep their one hole and the vase/bowl/sphere keep none, checked exactly; the handle snaps on the drop and grows back on the next; the camera never goes inside; 60 fps up to 4K (native 4K too); sync 7\u20139 ms. 'auto' clips are 64 s so you see the snap at ~28 s. Merge #56 when you like.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/23-shape-shifter/2026-10-26-1117/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/23-shape-shifter/2026-10-26-1117"
+   }
+  ]
  }
 ]
