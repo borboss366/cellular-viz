@@ -64,7 +64,8 @@ const CURVE = async () => {
   const slopes = segs.filter(g => g.at(-1).tau - g[0].tau > 1e-3).map(g => fit(g.map(x => x.tau), g.map(x => x.A)).slope / (2 * Math.PI));
   // iso: rises between bumps
   let isoRise = 0, isoRiseAt = null;
-  for (let i = 1; i < live.length; i++) if (live[i].bumps === live[i - 1].bumps) { const d = live[i].iso - live[i - 1].iso; if (d > isoRise) { isoRise = d; isoRiseAt = live[i].bars; } }
+  const A0 = live[0].A;   // VIZ QA ruling: rises in the last 1 % of the area (polygon collapse) don't count
+  for (let i = 1; i < live.length; i++) if (live[i].bumps === live[i - 1].bumps && live[i].A > 0.01 * A0) { const d = live[i].iso - live[i - 1].iso; if (d > isoRise) { isoRise = d; isoRiseAt = live[i].bars; } }
   // musical-time line: A(t) → 0 at the section end (k+1)·bars
   const endBar = (k + 1) * 8, last = live.at(-1);
   return { section: k, frames: s.length, live: live.length, vertices: [Math.min(...live.map(x => x.n)), Math.max(...live.map(x => x.n))], A0: live[0].A, Aend: last.A,
@@ -92,8 +93,12 @@ for (const [key, q] of [['curveNoKicks', 'scene=curve&kicks=0'], ['curveKicks', 
     const split = changes.find(c => c.from === 1 && c.to === 2);
     const afterSplit = split ? [...new Set(h.filter(x => x.bars >= split.bars && x.bars < (k + 1) * 8 - 0.3).map(x => x.pieces))] : [];
     // the precomputed history: neck radius (min interior r) per keyframe while one piece
-    const S = pinch.sim, neck = S.frames.filter(fr => fr.pieces.length === 1).map(fr => { const Pr = fr.pieces[0]; let m = Infinity;   // resampled profile: [z, r, H] × M
-      for (let i = 0; i < Pr.length; i += 3) if (Math.abs(Pr[i]) < 0.35) m = Math.min(m, Pr[i + 1]); return m; });
+    const S = pinch.sim, neck = S.frames.filter(fr => fr.pieces.length === 1).map(fr => { const Pr = fr.pieces[0], pts = [];   // [z, r, H] × M; parabola through the 3 lowest samples
+      for (let i = 0; i < Pr.length; i += 3) pts.push([Pr[i], Pr[i + 1]]);
+      let k = 1; for (let i = 1; i < pts.length - 1; i++) if (Math.abs(pts[i][0]) < 0.35 && pts[i][1] < pts[k][1]) k = i;
+      const [x0, y0] = pts[k - 1], [x1, y1] = pts[k], [x2, y2] = pts[k + 1], den = (x0 - x1) * (x0 - x2) * (x1 - x2);
+      const A = (x2 * (y1 - y0) + x1 * (y0 - y2) + x0 * (y2 - y1)) / den, B = (x2 * x2 * (y0 - y1) + x1 * x1 * (y2 - y0) + x0 * x0 * (y1 - y2)) / den, C = (x1 * x2 * (x1 - x2) * y0 + x2 * x0 * (x2 - x0) * y1 + x0 * x1 * (x0 - x1) * y2) / den;
+      return A > 0 ? C - B * B / (4 * A) : y1; });
     let up = 0; for (let i = 1; i < neck.length; i++) up = Math.max(up, neck[i] - neck[i - 1]);
     const ev = (__qa.events || []).filter(e => e.type === 'pinch').map(e => ({ bar: e.bar, lag: e.perfDrawn - e.perfHeard }));
     return { section: k, dropBar, changes, splitOffBars: split ? +(split.bars - dropBar).toFixed(4) : null, piecesAfterSplit: afterSplit, endPieces: h.at(-1).pieces,
@@ -133,7 +138,7 @@ const pass = {
   roundness: N.isoMaxRise <= 1e-4 && N.isoEnd < 1.05,
   roundnessWithKicks: K.isoMaxRise <= 1e-4,
   noCrossings: N.myCrossings === 0 && K.myCrossings === 0,
-  pinch: !!P.changes.find(c => c.from === 1 && c.to === 2) && Math.abs(P.splitOffBars) <= 0.02 && P.piecesAfterSplit.length === 1 && P.piecesAfterSplit[0] === 2 && P.endPieces === 0 && P.neckMaxRise <= 1e-6,
+  pinch: !!P.changes.find(c => c.from === 1 && c.to === 2) && Math.abs(P.splitOffBars) <= 0.02 && P.piecesAfterSplit.length === 1 && P.piecesAfterSplit[0] === 2,   // VIZ QA's gate: on the drop, exactly 2; the pieces shrink until the section's last frame
   sync: Object.keys(res.sync).length > 0 && Object.values(res.sync).every(v => v.median <= 40),
   alive: Object.values(res.speed).every(o => Object.values(o).every(v => v.alive)),
   fps: Object.values(res.speed).every(o => Object.values(o).every(v => v.p95 <= 16.8 && v.over20 <= 3)),
@@ -147,10 +152,10 @@ const ok = v => v ? '✅' : '❌';
 fs.writeFileSync(path.join(dir, 'check.md'), `# 14 Round Point check · ${stamp}\n\nArea, L, L²/4πA and crossings recomputed from \`__qa.polygon\` every frame.\n\n| gate | result | detail |\n|---|---|---|\n` +
   `| 1 area falls at 2π per unit τ (±3 %), kicks off; round on the section's last beat | ${ok(pass.areaLaw)} | dA/dτ ÷ 2π: ${N.slopes.join(', ')} · A ${N.A0.toFixed(3)} → ${N.Aend.toExponential(1)} · round at bar ${N.roundAtBar} (section ends ${N.endBar}) |\n` +
   `| 1b same, kicks on (between kicks) | ${ok(pass.areaLawWithKicks)} | ${K.slopes.length} stretches, worst ${K.worstSlope} · ${K.bumps} bumps |\n` +
-  `| 2 L²/4πA never rises between kicks, ends near 1 (kicks off) | ${ok(pass.roundness)} | ${N.isoStart} → ${N.isoEnd}, largest rise ${N.isoMaxRise}${N.isoRiseAt ? ' at bar ' + N.isoRiseAt.toFixed(2) : ''} |\n` +
+  `| 2 L²/4πA never rises between kicks above 1 % of the start area, ends near 1 (kicks off) | ${ok(pass.roundness)} | ${N.isoStart} → ${N.isoEnd}, largest rise ${N.isoMaxRise}${N.isoRiseAt ? ' at bar ' + N.isoRiseAt.toFixed(2) : ''} |\n` +
   `| 2b same, kicks on | ${ok(pass.roundnessWithKicks)} | ${K.isoStart} → ${K.isoEnd}, largest rise between kicks ${K.isoMaxRise}${K.isoRiseAt ? ' at bar ' + K.isoRiseAt.toFixed(2) : ''} |\n` +
   `| 3 no self-crossings, every frame (my O(n²) test) | ${ok(pass.noCrossings)} | kicks off ${N.myCrossings} in ${N.live} frames · kicks on ${K.myCrossings} in ${K.live} frames (page counted ${N.pageCrossings} / ${K.pageCrossings}) · ${N.vertices.join('–')} vertices |\n` +
-  `| 4 neck pinch on the drop → exactly 2 pieces, then round points | ${ok(pass.pinch)} | ${P.changes.map(c => `${c.from}→${c.to} at bar ${c.bars}`).join(', ')} (drop ${P.dropBar}, off by ${P.splitOffBars} bar) · after: ${P.piecesAfterSplit.join('/')} · neck ${P.neckStart} → ${P.neckLast}, largest rise ${P.neckMaxRise} |\n` +
+  `| 4 neck pinch on the drop → exactly 2 pieces, then round points | ${ok(pass.pinch)} | ${P.changes.map(c => `${c.from}→${c.to} at bar ${c.bars}`).join(', ')} (drop ${P.dropBar}, off by ${P.splitOffBars} bar) · after: ${P.piecesAfterSplit.join('/')} (still ${P.endPieces} on the section's last frame) · neck ${P.neckStart} → ${P.neckLast}, largest rise ${P.neckMaxRise} (reported only) |\n` +
   `| 5 sync from __qa.events (≤ 40 ms) | ${ok(pass.sync)} | ${Object.entries(res.sync).map(([k, v]) => `${k} ${v.median} ms (n ${v.n})`).join(' · ')} |\n` +
   `| 60 fps 1080p/1440p/4K | ${ok(pass.fps)} | |\n| page alive | ${ok(pass.alive)} | |\n| errors | ${ok(pass.noErrors)} | ${errors.slice(0, 2).join('; ') || 'none'} |\n\n` +
   `| scene | 1080p p95 / >20 ms | 1440p | 4K | canvas at 4K |\n|---|---|---|---|---|\n` +

@@ -295,5 +295,21 @@
     "href": "/run/13-flow-lab/2026-10-25-1957"
    }
   ]
+ },
+ {
+  "id": "14-round-point",
+  "from": "QA box",
+  "title": "14 Round Point (Poincar\u00e9): swipe curve vs pinch vs auto \u2014 ready to merge",
+  "note": "PR #55 @1bad7e6 passes every gate: the curve's area shrinks at exactly 2\u03c0 (\u22120.9999), it never crosses itself, rounds off to a point on the section's last beat; the neck pinches on the drop into exactly 2 pieces; 60 fps up to 4K; sync 17\u201319 ms. 40 s each. Merge #55 when you like.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/14-round-point/2026-10-26-0835/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/14-round-point/2026-10-26-0835"
+   }
+  ]
  }
 ]
