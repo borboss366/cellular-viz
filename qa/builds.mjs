@@ -30,8 +30,10 @@ function append(b) { b.at = new Date().toISOString(); fs.appendFileSync(FILE, JS
 export function gatesFromCheck(dir) {
   const md = fs.readFileSync(path.join(dir, 'check.md'), 'utf8'), gates = [];
   for (const line of md.split('\n')) {
-    const m = line.match(/^\| (.+?) \| (✅|❌) \|(.*)\|$/);
-    if (m) gates.push({ name: m[1].trim(), ok: m[2] === '✅', value: m[3].trim().slice(0, 300) || null, bar: null });
+    const m = line.match(/^\| (.+?) \| (✅|❌)[^|]*\|(.*)\|$/);           // | gate | ✅ … | detail |
+    if (m) { gates.push({ name: m[1].trim(), ok: m[2] === '✅', value: m[3].trim().slice(0, 300) || null, bar: null }); continue; }
+    const l = line.match(/^- (✅|❌) (\S.*)$/);                              // - ✅ gate   (check-17 style)
+    if (l) gates.push({ name: l[2].trim(), ok: l[1] === '✅', value: null, bar: null });
   }
   return gates;
 }
