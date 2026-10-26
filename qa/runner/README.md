@@ -58,8 +58,12 @@ Check it took:
 Only then does QA box switch its own commit watcher off, so there is no gap where nobody checks commits.
 
 It restarts itself: `Restart=always` every 30 s with no start limit, so a crash mid-check, a reboot or the
-container restarting heals by itself instead of leaving the pipeline stopped. Updates: `git -C $RUNNER_HOME pull`,
-then `systemctl --user restart cellular-viz-runner`.
+container restarting heals by itself instead of leaving the pipeline stopped.
+
+Updates need no host step: inside the container, `git -C $RUNNER_HOME pull`, then
+`kill -TERM "$(cat $RUNNER_STATE/runner.pid)"`; systemd starts the new code 30 s later.
+A dry run next to the service needs its own state folder (`--once --state /tmp/runner-dry`); with the
+service's folder `--once` refuses, so it can never stop the service's runner.
 
 Optional API from the host or the LAN: `cellular-viz-runner-api.socket` + `.service` (systemd-socket-proxyd,
 as for the 8787 viewer), then `curl http://127.0.0.1:8788/api/status`.
