@@ -4,6 +4,7 @@
 //
 // Pages: /                 list of runs (newest first)
 //        /run/<exp>/<stamp> videos + scores + keep / maybe / dull
+//        /builds            every check round (qa/builds.json via qa/builds.mjs): status, gates, who it waits on
 // Verdicts are saved to qa/<exp>/runs/<stamp>/verdicts.json and copied into
 // results.json and report.md, which are the files that go to GitHub.
 // Videos never leave the box. LAN only: no login, do not expose to the internet.
@@ -12,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadComparisons, nextPair, ranking, savePick, undoPick, setups, comparePage, writeRankingToReport } from './compare.mjs';
+import { loadBuilds } from './builds.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
@@ -105,6 +107,7 @@ function indexPage() {
     <h2 style="font-size:16px">Graded (${done.length})</h2>${done.length ? `<ul>${done.map(row).join('')}</ul>` : '<p class="m">None yet.</p>'}
     <details><summary class="m">Other runs (${other.length}): branch checks, software-only, single variant</summary><ul>${other.map(row).join('')}</ul></details>
     <h2 style="font-size:16px">Elsewhere</h2><ul>
+      <li><a href="/builds"><b>Builds</b></a> <span class="m">— every check round and who it is waiting on</span></li>
       <li><a href="https://github.com/users/borboss366/projects/1">Board (GitHub Projects)</a></li>
       <li><a href="https://github.com/borboss366/cellular-viz/pulls">Pull requests</a></li>
       <li><a href="https://borboss366.github.io/cellular-viz/">Experiments (live site)</a></li></ul>
@@ -210,6 +213,34 @@ function compareRoute(req, res, exp, stamp, dir, action) {
   json({ error: 'not found' }, 404);
 }
 
+// ---- builds: one row per open PR (latest round), tap for that PR's rounds (qa/builds.json, written by qa/builds.mjs) ----
+const CHIP = { queued: ['#5b6478', 'queued'], running: ['#2b5cff', 'running'], failed: ['#d6455d', 'failed'], ready: ['#2bd96b', 'ready to merge'], merged: ['#3a4560', 'merged'] };
+const chip = st => { const [c, t] = CHIP[st] || ['#5b6478', st]; return `<span style="background:${c};color:#fff;border-radius:8px;padding:2px 8px;font-size:12px;white-space:nowrap">${esc(t)}</span>`; };
+const ago = iso => { if (!iso) return ''; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min` : m < 2880 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; };
+const gatesCell = b => b.gates.length ? `${b.gates.filter(g => g.ok).length}/${b.gates.length}` : '–';
+const waitTxt = { dev: 'VIZ dev', 'qa-box': 'QA box', user: 'you' };
+function buildsPage() {
+  const all = loadBuilds(), last = new Map();
+  for (const b of all) { const k = `${b.kind}/${b.pr}`, cur = last.get(k); if (!cur || b.round > cur.round) last.set(k, b); }
+  const rows = [...last.values()].sort((a, b) => (a.status === 'merged') - (b.status === 'merged') || Date.parse(b.at) - Date.parse(a.at));
+  const open = rows.filter(b => b.status !== 'merged'), merged = rows.filter(b => b.status === 'merged');
+  const tr = b => `<tr onclick="location='/builds/${esc(b.kind)}/${b.pr}'" style="cursor:pointer"><td><b>${esc(b.page)}</b><br><span class="m">#${b.pr} · ${esc(b.commit)} · round ${b.round}</span></td>
+    <td>${chip(b.status)}</td><td>${gatesCell(b)}</td><td>${b.waitingOn ? esc(waitTxt[b.waitingOn] || b.waitingOn) : ''}</td><td class="m">${ago(b.at)}</td>
+    <td>${b.report ? `<a href="/report/${esc(b.report)}" onclick="event.stopPropagation()">report</a>` : ''}${b.swipe ? ` · <a href="${esc(b.swipe)}" onclick="event.stopPropagation()">swipe</a>` : ''}</td></tr>`;
+  const table = list => `<table style="width:100%;border-collapse:collapse;font-size:14px"><tr class="m"><th align=left>page</th><th align=left>status</th><th align=left>gates</th><th align=left>waiting on</th><th align=left>last</th><th></th></tr>${list.map(tr).join('')}</table>`;
+  return page('Builds', `<p class="m">One build = one check round of one commit. Latest round per PR; tap a row for its history.</p>
+    <div class="card">${open.length ? table(open) : 'Nothing open.'}</div>
+    ${merged.length ? `<details><summary class="m">Merged (${merged.length})</summary><div class="card">${table(merged)}</div></details>` : ''}`);
+}
+function buildPage(kind, pr) {
+  const list = loadBuilds().filter(b => b.kind === kind && String(b.pr) === String(pr)).sort((a, b) => b.round - a.round);
+  if (!list.length) return page('Builds', '<p>No builds for this PR.</p>');
+  const card = b => `<div class="card"><b>Round ${b.round}</b> · ${esc(b.commit)} ${chip(b.status)} <span class="m">gates ${gatesCell(b)} · ${b.finished ? 'finished ' + ago(b.finished) + ' ago' : 'started ' + ago(b.started) + ' ago'}</span>
+    ${b.gates.filter(g => !g.ok).map(g => `<div class="m">❌ ${esc(g.name)}${g.value ? ': ' + esc(g.value.slice(0, 160)) : ''}</div>`).join('')}
+    <div class="row">${b.report ? `<a href="/report/${esc(b.report)}">report</a>` : ''}${b.swipe ? ` · <a href="${esc(b.swipe)}">swipe</a>` : ''}</div></div>`;
+  return page(`${list[0].page} · #${pr}`, `<p class="m"><a href="/builds">← all builds</a> · <a href="https://github.com/borboss366/cellular-viz/pull/${esc(pr)}">PR #${esc(pr)}</a></p>${list.map(card).join('')}`);
+}
+
 // ---- proposals: "pick which to build" (qa/proposals/<id>/proposal.json + pictures; picks → picks.json) ----
 const PROP = path.join(here, 'proposals');
 function pickPage(id) {
@@ -258,6 +289,12 @@ const handler = (req, res) => {
       }
       if (parts[3] === 'compare') return compareRoute(req, res, parts[1], parts[2], dir, parts[4]);
       return html(runPage(parts[1], parts[2], dir));
+    }
+    if (parts[0] === 'builds' && parts.length === 1) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(buildsPage()); }
+    if (parts[0] === 'builds' && parts.length === 3 && safe(parts[1]) && /^\d+$/.test(parts[2])) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(buildPage(parts[1], parts[2])); }
+    if (parts[0] === 'report' && parts[1] === 'qa' && parts.length >= 4 && parts.slice(1).every(safe) && parts.at(-1) === 'check.md') {   // check reports only
+      const f = path.join(repo, ...parts.slice(1)); if (!fs.existsSync(f)) { res.writeHead(404); return res.end(); }
+      res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); return res.end(fs.readFileSync(f));
     }
     if (parts[0] === 'todo' && parts[2] === 'done' && req.method === 'POST' && safe(parts[1] || '')) {
       const t = loadTodo(), item = t.find(x => x.id === parts[1]);
