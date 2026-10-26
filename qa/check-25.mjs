@@ -97,9 +97,18 @@ res.cam = await page.evaluate(BARS => {
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], len = a => Math.hypot(...a);
   const ang = (a, b) => Math.acos(Math.max(-1, Math.min(1, dot(a, b) / (len(a) * len(b))))) * 180 / Math.PI;
   const spf = 1 / 60, barsPerFrame = spf * 120 / 60 / 4;   // 120 bpm, 4/4
-  let minSdf = Infinity, minAt = null, prev = null; const rates = [], upRates = [];
+  let minSdf = Infinity, minAt = null, prev = null; const rates = [], upRates = [], cover = [], emptyRuns = []; let emptyFrom = null;
+  const add = (a, c, s = 1) => [a[0] + c[0] * s, a[1] + c[1] * s, a[2] + c[2] * s], crs = (a, c) => [a[1] * c[2] - a[2] * c[1], a[2] * c[0] - a[0] * c[2], a[0] * c[1] - a[1] * c[0]], nrm = a => { const l = Math.hypot(...a); return [a[0] / l, a[1] / l, a[2] / l]; };
   for (let b = 0; b < BARS; b += barsPerFrame) {
     const c = __qa.camera(b), d = __qa.sdf(...c.eye, b);
+    {   // framing: 25 rays on a 5×5 grid over the 16:9 picture, marched through the shape's SDF (hit within 6 units)
+      const st = __qa.state(b), f = nrm(c.fwd), r = nrm(crs(f, c.up)), u = crs(r, f), th = Math.tan(((c.fov || 60) / 2) * Math.PI / 180);
+      let hits = 0;
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) { const dir = nrm(add(add(f, r, (i / 2 - 1) * 0.9 * th * 16 / 9), u, (j / 2 - 1) * 0.9 * th));
+        let s = 0; for (let k = 0; k < 80 && s < 6; k++) { const q = sdfJS(st, ...add(c.eye, dir, s)); if (q < 0.002) { hits++; break; } s += Math.max(q, 0.004); } }
+      cover.push(hits / 25);
+      if (!hits) { if (emptyFrom === null) emptyFrom = b; } else if (emptyFrom !== null) { emptyRuns.push({ from: +emptyFrom.toFixed(3), secs: +((b - emptyFrom) * 2).toFixed(2), mode: c.mode }); emptyFrom = null; }
+    }
     if (d < minSdf) { minSdf = d; minAt = { bars: +b.toFixed(3), mode: c.mode }; }
     if (prev) { rates.push(ang(prev.fwd, c.fwd) / spf); upRates.push(ang(prev.up, c.up) / spf); }
     prev = c;
@@ -123,7 +132,8 @@ res.cam = await page.evaluate(BARS => {
     const page = __qa.thread(mid);
     return { ph: w.ph, holes: holes.map((h, k) => ({ slot: h.slot, type: h.type, knot: h.Rk > 0, crossings: sums[k].n, signed: sums[k].signed })), pageLinking: page && page.holes.map(x => x.linking) };
   });
-  return { frames: rates.length, minSdf, minAt, p99: p(rates, 0.99), max: Math.max(...rates), upP99: p(upRates, 0.99), dives, pageAngP99: __qa.angP99 && __qa.angP99() };
+  const longEmpty = emptyRuns.filter(x => x.secs > 0.25).sort((a, c) => c.secs - a.secs);
+  return { coverMean: cover.reduce((a, x) => a + x, 0) / cover.length, coverP10: p(cover, 0.10), longEmpty, frames: rates.length, minSdf, minAt, p99: p(rates, 0.99), max: Math.max(...rates), upP99: p(upRates, 0.99), dives, pageAngP99: __qa.angP99 && __qa.angP99() };
 }, BARS);
 await page.close();
 // 5. sync and speed
@@ -159,6 +169,7 @@ const badDives = res.cam.dives.filter(d => !d.holes.length || d.holes.some(h => 
 const pass = {
   keyGenus: badKeys.length === 0, liveGenus: badLive.length === 0, slalom: res.cam.dives.length > 0 && badDives.length === 0,
   clearance: res.cam.minSdf >= 0.05, turnRate: res.cam.p99 <= 180,
+  noEmpty: res.cam.longEmpty.length === 0, framing: res.cam.coverMean >= 0.25 && res.cam.coverP10 >= 0.08,
   sync: Object.keys(res.sync).length > 0 && Object.values(res.sync).every(v => v.median <= 40),
   alive: Object.values(res.speed).every(o => Object.values(o).every(v => v.alive)),
   fps: Object.values(res.speed).every(o => Object.values(o).every(v => v.p95 <= 16.8 && v.over20 <= 3)),
@@ -177,6 +188,8 @@ fs.writeFileSync(path.join(dir, 'check.md'), `# 25 Shape Shifter II check · ${s
   `| 3 slalom: each hole crossed once (trefoil linking 2) | ${ok(pass.slalom)} | ${res.cam.dives.length} dives, ${badDives.length} off${badDives.length ? ': ' + badDives.slice(0, 6).map(d => `phrase ${d.ph}: ` + (d.holes.length ? d.holes.map(h => `${h.type}${h.knot ? ' (knot)' : ''} ×${h.crossings} (${h.signed > 0 ? '+' : ''}${h.signed})`).join(', ') : 'no closed hole')).join('; ') : ''} |\n` +
   `| 4a camera ≥ 0.05 from the surface, every frame | ${ok(pass.clearance)} | min ${res.cam.minSdf.toFixed(3)} at bar ${res.cam.minAt.bars} (${res.cam.minAt.mode}), ${res.cam.frames} frames |\n` +
   `| 4b view turn rate p99 ≤ 180°/s | ${ok(pass.turnRate)} | fwd p99 ${res.cam.p99.toFixed(0)}°/s, max ${res.cam.max.toFixed(0)}°/s · up p99 ${res.cam.upP99.toFixed(0)}°/s |\n` +
+  `| 4c no empty picture longer than ¼ s (25-ray test) | ${ok(pass.noEmpty)} | ${res.cam.longEmpty.length} stretches${res.cam.longEmpty.length ? ', longest ' + res.cam.longEmpty.slice(0, 4).map(x => `${x.secs} s at bar ${x.from} (${x.mode})`).join(', ') : ''} |\n` +
+  `| 4d framing: shape fills ≥ 25 % on average, ≥ 8 % in 90 % of frames | ${ok(pass.framing)} | mean ${(res.cam.coverMean * 100).toFixed(1)} %, 10th percentile ${(res.cam.coverP10 * 100).toFixed(0)} % |\n` +
   `| 5 sync (≤ 40 ms) | ${ok(pass.sync)} | ${Object.entries(res.sync).map(([k, v]) => `${k} ${v.median} ms (n ${v.n})`).join(' · ')} |\n` +
   `| 60 fps | ${ok(pass.fps)} | |\n| page alive | ${ok(pass.alive)} | |\n| errors | ${ok(pass.noErrors)} | ${errors.slice(0, 2).join('; ') || 'none'} |\n\n` +
   `| render | 1080p p95 / >20 ms | 1440p | 4K | canvas at 4K |\n|---|---|---|---|---|\n` +
