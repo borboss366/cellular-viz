@@ -90,6 +90,8 @@ for (let b = 0; b < BARS; b += 1 / 8) {
   const t = await grid(NL, b), meta = await page.evaluate(b => ({ want: __qa.genusExpected(b), kf: __qa.keyframeAt(b) }), b);
   res.live.push({ bars: b, want: meta.want, mine: t.g, b0: t.b0, b2: t.b2, touchesBox: t.touchesBox, shape: `${meta.kf.from}→${meta.kf.to}` });
 }
+// a wrong moment counts only if it is still wrong on finer grids (n = 192 and 256): coarse grids merge near-touching surfaces
+for (const x of res.live.filter(x => x.mine !== x.want)) { x.n192 = (await grid(192, x.bars)).g; x.n256 = (await grid(256, x.bars)).g; }
 // 3–4. camera and slalom
 res.cam = await page.evaluate(BARS => {
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], len = a => Math.hypot(...a);
@@ -104,7 +106,7 @@ res.cam = await page.evaluate(BARS => {
   }
   const p = (a, q) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(q * (s.length - 1))]; };
   // slalom windows: phrases where the camera is in thread mode
-  const wins = []; for (let ph = 0; ph * 8 < BARS; ph++) { const m = __qa.camera(8 * ph + 4).mode; if (m === 'thread') wins.push({ ph, ts: 8 * ph + 2.5, te: 8 * ph + 5.75 }); }
+  const wins = []; for (let ph = 0; ph * 8 < BARS; ph++) { const m = __qa.camera(8 * ph + 4).mode; if (m === 'thread') wins.push({ ph, ts: 8 * ph + 1.75, te: 8 * ph + 6.25 }); }   // covers both 2.5–5.75 (f5f6a28) and 2–5.5 (9363bf0)
   const dives = wins.map(w => {
     const mid = (w.ts + w.te) / 2, holes = __qa.handles(mid).filter(h => h.closed && h.a > 0.99);
     const sums = holes.map(() => ({ n: 0, signed: 0 }));
@@ -151,7 +153,8 @@ for (const q of ['', 'res=native']) {
 await browser.close(); server.close();
 
 const badKeys = res.keys.filter(k => k.mine !== k.genus || k.b2 || k.touchesBox);
-const badLive = res.live.filter(x => x.mine !== x.want || x.touchesBox);
+const badLive = res.live.filter(x => x.touchesBox || (x.mine !== x.want && x.n192 !== x.want && x.n256 !== x.want));
+const gridOnly = res.live.filter(x => x.mine !== x.want && !badLive.includes(x));
 const badDives = res.cam.dives.filter(d => !d.holes.length || d.holes.some(h => h.crossings !== 1 || Math.abs(h.signed) !== (h.knot ? 2 : 1)));
 const pass = {
   keyGenus: badKeys.length === 0, liveGenus: badLive.length === 0, slalom: res.cam.dives.length > 0 && badDives.length === 0,
@@ -170,7 +173,7 @@ const ok = v => v ? '✅' : '❌';
 const stretches = []; for (const x of badLive) { const l = stretches.at(-1); if (l && Math.abs(x.bars - l.to - 0.125) < 1e-9 && l.mine === x.mine && l.want === x.want) l.to = x.bars; else stretches.push({ from: x.bars, to: x.bars, mine: x.mine, want: x.want, shape: x.shape }); }
 fs.writeFileSync(path.join(dir, 'check.md'), `# 25 Shape Shifter II check · ${stamp}\n\nGenus, crossings, clearance and turn rate rebuilt from the page's SDF and camera with my own code.\n\n| gate | result | detail |\n|---|---|---|\n` +
   `| 1 every keyframe has its listed genus (my b0 + b2 − χ, n = 192) | ${ok(pass.keyGenus)} | ${res.keys.length} keyframes, ${badKeys.length} wrong${badKeys.length ? ': ' + badKeys.map(k => `${k.name} (listed ${k.genus}, mine ${k.mine}${k.b0 !== 1 ? `, ${k.b0} parts` : ''}${k.b2 ? `, ${k.b2} pockets` : ''}${k.touchesBox ? ', off the grid' : ''})`).join('; ') : ''} |\n` +
-  `| 2 live genus = expected every ⅛ bar (n = ${NL}, ${BARS} bars) | ${ok(pass.liveGenus)} | ${res.live.length} moments, ${badLive.length} wrong${stretches.length ? ': ' + stretches.slice(0, 12).map(s => `bars ${s.from}–${s.to} mine ${s.mine} want ${s.want} (${s.shape})`).join('; ') + (stretches.length > 12 ? ` … ${stretches.length} stretches` : '') : ''} |\n` +
+  `| 2 live genus = expected every ⅛ bar (n = ${NL}, ${BARS} bars; flagged moments re-counted at 192 and 256) | ${ok(pass.liveGenus)} | ${res.live.length} moments, ${gridOnly.length} flagged at n = ${NL} but right on a finer grid, ${badLive.length} wrong${stretches.length ? ': ' + stretches.slice(0, 12).map(s => `bars ${s.from}–${s.to} mine ${s.mine} want ${s.want} (${s.shape})`).join('; ') + (stretches.length > 12 ? ` … ${stretches.length} stretches` : '') : ''} |\n` +
   `| 3 slalom: each hole crossed once (trefoil linking 2) | ${ok(pass.slalom)} | ${res.cam.dives.length} dives, ${badDives.length} off${badDives.length ? ': ' + badDives.slice(0, 6).map(d => `phrase ${d.ph}: ` + (d.holes.length ? d.holes.map(h => `${h.type}${h.knot ? ' (knot)' : ''} ×${h.crossings} (${h.signed > 0 ? '+' : ''}${h.signed})`).join(', ') : 'no closed hole')).join('; ') : ''} |\n` +
   `| 4a camera ≥ 0.05 from the surface, every frame | ${ok(pass.clearance)} | min ${res.cam.minSdf.toFixed(3)} at bar ${res.cam.minAt.bars} (${res.cam.minAt.mode}), ${res.cam.frames} frames |\n` +
   `| 4b view turn rate p99 ≤ 180°/s | ${ok(pass.turnRate)} | fwd p99 ${res.cam.p99.toFixed(0)}°/s, max ${res.cam.max.toFixed(0)}°/s · up p99 ${res.cam.upP99.toFixed(0)}°/s |\n` +
