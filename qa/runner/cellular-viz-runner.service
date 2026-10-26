@@ -17,7 +17,12 @@ StartLimitIntervalSec=0
 Type=simple
 EnvironmentFile=%h/.config/cellular-viz-runner.env
 ExecStart=/usr/bin/podman exec --env-file %h/.config/cellular-viz-runner.env -w ${QA_HOME} ${CONTAINER} node ${RUNNER_HOME}/qa/runner/runner.mjs
-ExecStop=/usr/bin/podman exec ${CONTAINER} sh -c 'kill -TERM "$(cat ${RUNNER_STATE}/runner.pid)"'
+# Stop the runner inside the container and wait until it is gone (up to 20 s), so podman exec returns 0 on its own
+# before systemd signals it; podman exec killed by systemd reports 1 or 143, which also count as a clean stop.
+# ($$ passes a literal $ through systemd to sh; ${RUNNER_STATE} is filled in by systemd.)
+ExecStop=/usr/bin/podman exec ${CONTAINER} sh -c 'p="$$(cat ${RUNNER_STATE}/runner.pid)"; kill -TERM "$$p" 2>/dev/null; i=0; while kill -0 "$$p" 2>/dev/null && [ $$i -lt 100 ]; do sleep 0.2; i=$$((i+1)); done; true'
+SuccessExitStatus=1 143 SIGTERM
+TimeoutStopSec=30
 Restart=always
 RestartSec=30
 

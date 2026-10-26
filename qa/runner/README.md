@@ -65,6 +65,9 @@ Updates need no host step: inside the container, `git -C $RUNNER_HOME pull`, the
 A dry run next to the service needs its own state folder (`--once --state /tmp/runner-dry`); with the
 service's folder `--once` refuses, so it can never stop the service's runner.
 
+A change to the unit file itself (rare) is a host step: copy it again to `~/.config/systemd/user/`, then
+`systemctl --user daemon-reload && systemctl --user restart cellular-viz-runner`.
+
 Optional API from the host or the LAN: `cellular-viz-runner-api.socket` + `.service` (systemd-socket-proxyd,
 as for the 8787 viewer), then `curl http://127.0.0.1:8788/api/status`.
 
