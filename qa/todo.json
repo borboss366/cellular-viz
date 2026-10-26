@@ -327,5 +327,21 @@
     "href": "/run/23-shape-shifter/2026-10-26-1117"
    }
   ]
+ },
+ {
+  "id": "25-preview",
+  "from": "QA box",
+  "title": "25 Shape Shifter II \u2014 preview to watch (not final yet)",
+  "note": "Build 9363bf0: 35 shapes with 0\u20133 holes, morphing on the beat, the camera slaloms through every hole. 64 s each, normal and native 4K. Two tiny glitches are still being fixed (an extra hole for ~\u00bc s at two moments, two quick camera snaps). Watch and leave notes; the final run replaces this one.",
+  "links": [
+   {
+    "label": "\u25b6 watch",
+    "href": "/run/25-shape-shifter-2/2026-10-26-1540"
+   },
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/25-shape-shifter-2/2026-10-26-1540/compare"
+   }
+  ]
  }
 ]
