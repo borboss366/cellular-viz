@@ -31,7 +31,7 @@
 
   Camera. orbit (one turn per `orbitBars`, radius and height on slow noise, banking into turns),
   skim (in builds: hugs the surface at 0.25 from the bump-free SDF) and thread (mid-phrase,
-  bars 2.5–5.75: a Hermite path from the base path through the centre of every closed handle along
+  bars 2–5.5: a Hermite path from the base path through the centre of every closed handle along
   its axis, a slalom when g ≥ 2, then back to the base path). Positions and tangents match at
   both ends, so there are no cuts unless cutOnDrop is on. FOV kicks +8° on the drop. Through a
   ring the camera's path links the core loop once; through the trefoil's centre twice (the
@@ -131,6 +131,7 @@ const THICK = 0.12, SPR = 0.09;
 const SONG = [{ name: 'breakdown', from: 0, to: 8, P: 4 }, { name: 'normal', from: 8, to: 16, P: 2 },
               { name: 'build', from: 16, to: 24, P: 1 }, { name: 'drop', from: 24, to: 32, P: 0.5 }];
 const DROP_BAR = 24;
+const TW0 = 2, TW1 = 5.5;   // the fly-through window, in bars of the phrase
 
 // ---------- keyframes ----------
 // body: ra, rb, h (rounded cylinder: radius ra + rb, half height h + rb), taper (radius × (1 + taper·y)),
@@ -148,8 +149,11 @@ const X = [1, 0, 0], NX = [-1, 0, 0], Y = [0, 1, 0], Z = [0, 0, 1];
 // after a surgery. Per variant: 0 = rings, 1 = slot A is a trefoil sitting on top.
 const PARK = [
   [ring(X, Z, 0.27, 0.085, 0.12), ring(NX, Z, 0.27, 0.085, 0.12), ring(Y, Z, 0.22, 0.07, 0.08)],
-  [knot(0.36, 0.15, 0.06, 0.05), ring([1, -0.7, 0], Z, 0.24, 0.07, 0.08), ring([-1, -0.7, 0], Z, 0.24, 0.07, 0.08)],
+  [knot(0.36, 0.15, 0.06, 0.05), ring([1, -1.3, 0], Z, 0.22, 0.065, 0.08), ring([-1, -1.3, 0], Z, 0.22, 0.065, 0.08)],
 ];
+// Rule learned from QA (#57 check 2026-10-26-1316): within a genus, rings keep their axis (all n = z
+// for rings next to other rings or a cavity), so a morph only slides and resizes them; a ring that
+// turns while morphing can cross another ring, or dip into a cup through its rim, and add a hole.
 const B = {
   sphere: body({ rb: 0.5 }), ball: body({ rb: 0.42 }), bead: body({ rb: 0.16 }),
   egg: body({ rb: 0.4, h: 0.16, taper: -0.3 }),
@@ -170,9 +174,10 @@ const B = {
   urn: body({ ra: 0.12, rb: 0.36, h: 0.12, taper: -0.15 }),
   core: body({ rb: 0.2 }),
   bridge: body({ rb: 0.06, barL: 0.16, barR: 0.045 }),
-  cup: body({ ra: 0.36, rb: 0.07, h: 0.26, taper: 0.35, cav: 0.95 }),
-  knotCore: body({ rb: 0.25 }),
-  disc: body({ ra: 0.22, rb: 0.1, h: 0 }),
+  cup: body({ ra: 0.36, rb: 0.07, h: 0.26, taper: 0.35 }),
+  jar: body({ ra: 0.16, rb: 0.12, h: 0.46, taper: -0.55 }),
+  knotCore: body({ rb: 0.22 }),
+  core3: body({ rb: 0.3 }),
   ball3: body({ rb: 0.3 }),
 };
 const dir = (deg, plane) => { const a = deg * Math.PI / 180; return plane === 'xz' ? [Math.cos(a), 0, Math.sin(a)] : [Math.cos(a), Math.sin(a), 0]; };
@@ -185,19 +190,19 @@ const KEYS = [
   ['vase', 0, 0, B.vase], ['bowl', 0, 0, B.bowl], ['apple', 0, 0, B.apple],
   ['mug', 1, 0, B.mug, [ring(X, Z, 0.27, 0.085, 0.15)]],
   ['kettle', 1, 0, B.teapot, [ring([1, 0.15, 0], Z, 0.3, 0.09, 0.12), ring([0, 0, -1], NX, 0.25, 0.08, 0.1)]],
-  ['bagel', 1, 0, B.small, [ring(X, Y, 0.42, 0.24, 0.1)]],
-  ['key ring', 1, 0, B.key, [ring(X, [0, 0.35, 1], 0.36, 0.035, 0.05)]],
+  ['bagel', 1, 0, B.small, [ring(X, Z, 0.42, 0.24, 0.1)]],
+  ['key ring', 1, 0, B.key, [ring(X, Z, 0.36, 0.035, 0.05)]],
   ['handbag', 1, 0, B.bag, [ring(Y, Z, 0.3, 0.045, 0.06)]],
   ['racket', 1, 0, B.stick, [ring(Y, Z, 0.42, 0.045, 0.06), ring([-1, -0.8, 0], Z, 0.2, 0.07, 0.05)]],
   ['urn', 2, 0, B.urn, [ring(X, Z, 0.25, 0.08, 0.12), ring(NX, Z, 0.25, 0.08, 0.12)]],
   ['double torus', 2, 0, B.core, [ring(X, Z, 0.42, 0.15, 0.2), ring(NX, Z, 0.42, 0.15, 0.2), ring(Z, X, 0.22, 0.07, 0.08)]],
   ['glasses', 2, 0, B.bridge, [ring(X, Z, 0.3, 0.04, 0.04), ring(NX, Z, 0.3, 0.04, 0.04), ring(Y, Z, 0.08, 0.035, 0.03)]],
-  ['amphora', 2, 0, B.vase, [ring([1, 0.35, 0], Z, 0.24, 0.06, 0.1), ring([-1, 0.35, 0], Z, 0.24, 0.06, 0.1), ring(Z, X, 0.2, 0.06, 0.08)]],
-  ['trophy', 2, 0, B.cup, [ring([1, 0.2, 0], Z, 0.3, 0.06, 0.12), ring([-1, 0.2, 0], Z, 0.3, 0.06, 0.12), ring(Z, X, 0.2, 0.06, 0.08)]],
+  ['amphora', 2, 0, B.jar, [ring([1, 0.35, 0], Z, 0.24, 0.06, 0.1), ring([-1, 0.35, 0], Z, 0.24, 0.06, 0.1)]],
+  ['trophy', 2, 0, B.cup, [ring([1, 0.2, 0], Z, 0.3, 0.06, 0.12), ring([-1, 0.2, 0], Z, 0.3, 0.06, 0.12)]],
   ['urn with lid loop', 3, 0, B.urn, [ring(X, Z, 0.25, 0.08, 0.12), ring(NX, Z, 0.25, 0.08, 0.12), ring(Y, Z, 0.22, 0.07, 0.08)]],
-  ['pretzel', 3, 0, B.knotCore, [ring(dir(-30), Z, 0.28, 0.08, 0.06), ring(dir(210), Z, 0.28, 0.08, 0.06), ring(Y, Z, 0.28, 0.08, 0.06)]],
-  ['triple torus', 3, 0, B.disc, [ring(dir(0, 'xz'), Y, 0.3, 0.09, 0.07), ring(dir(120, 'xz'), Y, 0.3, 0.09, 0.07), ring(dir(240, 'xz'), Y, 0.3, 0.09, 0.07)]],
-  ['ball', 0, 1, B.ball], ['egg ', 0, 1, B.egg], ['bell ', 0, 1, B.bell], ['teapot ', 0, 1, B.teapot],
+  ['pretzel', 3, 0, B.knotCore, [ring(dir(-30), Z, 0.3, 0.07, 0.06), ring(dir(210), Z, 0.3, 0.07, 0.06), ring(Y, Z, 0.3, 0.07, 0.06)]],
+  ['triple torus', 3, 0, B.core3, [ring(dir(-30), Z, 0.3, 0.12, 0.08), ring(dir(210), Z, 0.3, 0.12, 0.08), ring(Y, Z, 0.3, 0.12, 0.08)]],
+  ['ball', 0, 1, B.ball], ['egg ', 0, 1, B.egg], ['teapot ', 0, 1, B.teapot],
   ['trefoil', 1, 1, B.bead, [knot(0.4, 0.17, 0.07, 0.05)]],
   ['trefoil on an egg', 1, 1, B.egg, [knot(0.34, 0.14, 0.06, 0.05)]],
   ['big trefoil', 1, 1, B.bead, [knot(0.5, 0.2, 0.085, 0.05)]],
@@ -314,15 +319,15 @@ function keyName(i) {   // the keyframe that step i lands on; the last step of e
   if (s >= n - 1 || list.length === 1) return list[0];
   return list[1 + ((s + ph * 3) % (list.length - 1))];
 }
-function threadOn(ph) {   // does phrase ph have a fly-through (bars 2.5–5.75)?
+function threadOn(ph) {   // does phrase ph have a fly-through (bars TW0–TW1 of the phrase)?
   if (params.camMode === 'orbit' || params.camMode === 'skim' || genusOfPhrase(ph) < 1) return false;
   const every = Math.max(1, Math.round(params.throughEvery / 8));
   return params.camMode === 'thread' || ph % every === 0;
 }
 function holdRange(ph) {   // in fast phrases the shape holds still while the camera threads it: [first, end) steps
   if (!threadOn(ph) || stepOf(8 * ph + 3).P > 1) return null;
-  const a = stepOf(8 * ph + 2.5), i0 = a.T0 >= 8 * ph + 2.5 - 1e-9 ? a.i : a.i + 1;
-  const e = stepOf(8 * ph + 5.75 - 1e-6), i1 = e.T1 <= 8 * ph + 5.75 + 1e-9 ? e.i + 1 : e.i;
+  const a = stepOf(8 * ph + TW0), i0 = a.T0 >= 8 * ph + TW0 - 1e-9 ? a.i : a.i + 1;
+  const e = stepOf(8 * ph + TW1 - 1e-6), i1 = e.T1 <= 8 * ph + TW1 + 1e-9 ? e.i + 1 : e.i;
   return i1 > i0 ? [i0, i1] : null;
 }
 function effKey(i) {   // the keyframe step i lands on, after holds
@@ -730,11 +735,11 @@ function basePos(bars) {
 const baseVel = bars => mul3(sub3(basePos(bars + 0.01), basePos(bars - 0.01)), 1 / 0.02);
 function threadWindow(bars) {
   const ph = Math.floor(bars / 8), b = bars - 8 * ph;
-  if (!threadOn(ph) || b < 2.5 || b >= 5.75) return null;
-  return { ph, ts: 8 * ph + 2.5, te: 8 * ph + 5.75 };
+  if (!threadOn(ph) || b < TW0 || b >= TW1) return null;
+  return { ph, ts: 8 * ph + TW0, te: 8 * ph + TW1 };
 }
 const planCache = new Map();
-function threadPlan(win) {   // which holes, in which order and from which side: fixed for the window
+function threadPlan(win) {   // which holes, in which order, from which side, and whether to come back round a rim: fixed per window
   const key = win.ph;
   if (planCache.has(key)) return planCache.get(key);
   const st = stateAt(win.ts), holes = st.slots.filter(s => s.closed);
@@ -743,14 +748,13 @@ function threadPlan(win) {   // which holes, in which order and from which side:
     const p0 = basePos(win.ts), pe = basePos(win.te), v0 = baseVel(win.ts), ve = baseVel(win.te);
     let list = holes.slice().sort((a, b) => dot3(sub3(a.c, p0), v0) - dot3(sub3(b.c, p0), v0));
     if (!params.slalom) list = [list.slice().sort((a, b) => len3(sub3(a.c, p0)) - len3(sub3(b.c, p0)))[0]];
-    const pts = [p0, ...list.map(h => h.c), pe], signs = [];
-    let prevSign = 1;
-    list.forEach((h, i) => {
-      const span = sub3(pts[i + 2], pts[i]), s = dot3(h.n, span);
-      const sign = Math.abs(s) < 0.3 * len3(span) ? (i === 0 ? (dot3(h.n, sub3(h.c, p0)) >= 0 ? 1 : -1) : -prevSign) : Math.sign(s);
-      signs.push(sign); prevSign = sign;
-    });
-    plan = { order: list.map(h => h.slot), signs, p0, pe, v0, ve };
+    // enter each hole from the side the camera is on, so it crosses each spanning disk once
+    const signs = [];
+    let cur = p0;
+    for (const h of list) { const s = dot3(h.n, sub3(h.c, cur)) >= 0 ? 1 : -1; signs.push(s); cur = add3(h.c, mul3(h.n, s * (h.R + 0.8))); }
+    // if the base path waits on the side the camera came from, come back round the far rim (outside the disk)
+    const last = list[list.length - 1], detour = dot3(last.n, sub3(pe, last.c)) * signs[signs.length - 1] < 0;
+    plan = { order: list.map(h => h.slot), signs, detour, p0, pe, v0, ve };
   }
   planCache.set(key, plan);
   if (planCache.size > 64) planCache.delete(planCache.keys().next().value);
@@ -762,34 +766,51 @@ function hermite(p0, m0, p1, m1, u) {
 }
 function threadPos(t, win, plan, st) {
   st = st || stateAt(t);
-  const k = plan.order.length, Dt = (win.te - win.ts) / (k + 1);
-  const pts = [plan.p0, ...plan.order.map(j => st.slots[j].c), plan.pe];
-  const tans = [mul3(plan.v0, Dt)];
-  plan.order.forEach((j, i) => { const M = Math.max(1.6, 0.5 * len3(sub3(pts[i + 2], pts[i]))); tans.push(mul3(st.slots[j].n, plan.signs[i] * M)); });
-  tans.push(mul3(plan.ve, Dt));
-  const x = (t - win.ts) / Dt, seg = Math.max(0, Math.min(k, Math.floor(x)));
+  const hs = plan.order.map(j => st.slots[j]), k = hs.length, pts = [plan.p0, ...hs.map(h => h.c)], tans = [null];
+  hs.forEach((h, i) => tans.push(mul3(h.n, plan.signs[i])));
+  if (plan.detour) {   // a point beyond the far rim of the last hole, crossed going back
+    const h = hs[k - 1];
+    pts.push(add3(h.c, mul3(h.u, h.R + h.Rk + h.r + 0.7))); tans.push(mul3(h.n, -plan.signs[k - 1]));
+  }
+  pts.push(plan.pe);
+  const segs = pts.length - 1, Dt = (win.te - win.ts) / segs;
+  tans[0] = mul3(plan.v0, Dt); tans.push(mul3(plan.ve, Dt));
+  for (let i = 1; i < segs; i++) tans[i] = mul3(tans[i], Math.max(2.0, 0.5 * len3(sub3(pts[i + 1], pts[i - 1]))));
+  const x = (t - win.ts) / Dt, seg = Math.max(0, Math.min(segs - 1, Math.floor(x)));
   return hermite(pts[seg], tans[seg], pts[seg + 1], tans[seg + 1], Math.max(0, Math.min(1, x - seg)));
 }
 function posAt(t) {
   const win = threadWindow(t), plan = win && threadPlan(win);
   return plan ? threadPos(t, win, plan) : basePos(t);
 }
+function slerpDir(a, b, k) {   // turn unit vector a toward b by the fraction k, on the great circle
+  const th = Math.acos(Math.max(-1, Math.min(1, dot3(a, b))));
+  if (th < 1e-5 || k <= 0) return a;
+  let axis = cross3(a, b);
+  if (len3(axis) < 1e-5) axis = cross3(a, [0, 1, 0]);
+  if (len3(axis) < 1e-5) axis = [1, 0, 0];
+  axis = norm3(axis);
+  const ang = th * Math.min(1, k), ca = Math.cos(ang), sa = Math.sin(ang);
+  return norm3(add3(add3(mul3(a, ca), mul3(cross3(axis, a), sa)), mul3(axis, dot3(axis, a) * (1 - ca))));
+}
 function cameraAt(bars) {
   const st = stateAt(bars);
   const win = threadWindow(bars), plan = win && threadPlan(win);
   let eye = plan ? threadPos(bars, win, plan, st) : basePos(bars);
   const ws = skimWeight(bars);
-  const wt = plan ? sstep(0, 0.5, bars - win.ts) * sstep(0, 0.5, win.te - bars) : 0;
+  const wt = plan ? sstep(0, 0.5, bars - win.ts) * sstep(0, 1, win.te - bars) : 0;
   const ahead = posAt(bars + 0.3), behind = posAt(bars - 0.05), next = posAt(bars + 0.05);
-  let at = lerp3(st.center, ahead, Math.max(0.6 * ws, wt));
-  if (len3(sub3(at, eye)) < 0.2) at = add3(eye, norm3(sub3(next, behind)));
   // never inside the shape: push out along the gradient
   let d = sdfJS(st, ...eye), pushes = 0;
   while (d < 0.08 && pushes < 20) {
     const e = 0.01, g = norm3([sdfJS(st, eye[0] + e, eye[1], eye[2]) - d, sdfJS(st, eye[0], eye[1] + e, eye[2]) - d, sdfJS(st, eye[0], eye[1], eye[2] + e) - d]);
     eye = add3(eye, mul3(g, 0.08 - d + 0.02)); d = sdfJS(st, ...eye); pushes++;
   }
-  const fwd = norm3(sub3(at, eye));
+  // look: turn from the shape's centre toward the path ahead (directions blended, never points)
+  const toC = norm3(sub3(st.center, eye));
+  let toA = sub3(ahead, eye);
+  toA = len3(toA) > 0.05 ? norm3(toA) : norm3(sub3(next, behind));
+  const fwd = slerpDir(toC, toA, Math.max(0.6 * ws, wt)), at = add3(eye, fwd);
   let right = norm3(cross3(fwd, [0, 1, 0])), up = cross3(right, fwd);
   // bank into turns: roll against the sideways acceleration of the path (deg per unit/bar²)
   const acc = mul3(add3(sub3(next, mul3(eye, 2)), behind), 1 / (0.05 * 0.05));
