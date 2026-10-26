@@ -10,7 +10,7 @@ QA sweep · 14-round-point · 2026-10-26T08:37
 |---|---|---|---|---|---|---|---|
 | 1-curve | 8.4 | 13% | 0.0137 | ±0.0442 | 0.006 | 60.4 |  |
 | 2-pinch | 7.8 | 10% | 0.0040 | ±0.0056 | 0.026 | 60.4 |  |
-| 3-auto | 8.4 | 11% | 0.0074 | ±0.0131 | 0.014 | 60 |  |
+| 3-auto | 8.4 | 11% | 0.0074 | ±0.0131 | 0.014 | 60 |  — make it more dynamic and pulsating. transition is just cut off |
 
 queries:
 - 1-curve: http://127.0.0.1:39203/experiments/14-round-point.html?scene=curve
@@ -18,3 +18,20 @@ queries:
 - 3-auto: http://127.0.0.1:39203/experiments/14-round-point.html?scene=auto
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+4 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | 2-pinch | 2.286 | 2 | 0 | 1 |
+| 2 | 3-auto | 0.759 | 0 | 1 | 2 |
+| 3 | 1-curve | 0.576 | 0 | 1 | 1 |
+
+## User notes
+
+**On each look**
+
+- **3-auto**: make it more dynamic and pulsating. transition is just cut off
+

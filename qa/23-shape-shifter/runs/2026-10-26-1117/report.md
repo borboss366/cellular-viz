@@ -8,10 +8,10 @@
 QA sweep · 23-shape-shifter · 2026-10-26T11:21
 | variant | score | cover | motion | pulse | colour | fps | verdict |
 |---|---|---|---|---|---|---|---|
-| 1-auto | 8.1 | 7% | 0.0081 | ±0.0199 | 0.022 | 60.1 |  |
-| 2-one-hole | 6.9 | 6% | 0.0048 | ±0.0029 | 0.023 | 60.2 |  |
-| 3-no-hole | 6.6 | 5% | 0.0033 | ±0.0015 | 0.023 | 60.2 |  |
-| 4-auto-native | 8.1 | 7% | 0.0074 | ±0.0160 | 0.022 | 60.2 |  |
+| 1-auto | 8.1 | 7% | 0.0081 | ±0.0199 | 0.022 | 60.1 | keep |
+| 2-one-hole | 6.9 | 6% | 0.0048 | ±0.0029 | 0.023 | 60.2 | keep |
+| 3-no-hole | 6.6 | 5% | 0.0033 | ±0.0015 | 0.023 | 60.2 | keep |
+| 4-auto-native | 8.1 | 7% | 0.0074 | ±0.0160 | 0.022 | 60.2 | keep |
 
 queries:
 - 1-auto: http://127.0.0.1:45345/experiments/23-shape-shifter.html?family=auto
