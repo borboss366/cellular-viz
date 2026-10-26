@@ -1,0 +1,25 @@
+# systemd user unit for the QA runner. Install on the box itself (the host, outside Puggie's container):
+#   cp qa/runner/cellular-viz-runner.service ~/.config/systemd/user/
+#   cp qa/runner/runner.env.example ~/.config/cellular-viz-runner.env   (then fill it in)
+#   systemctl --user daemon-reload && systemctl --user enable --now cellular-viz-runner
+#   journalctl --user -u cellular-viz-runner -f
+# It runs inside Puggie's worker container, where Node, Playwright, the Mesa libs and the GPU already are.
+# For a runner straight on the host instead, replace both Exec lines with:
+#   ExecStart=/usr/bin/node ${RUNNER_HOME}/qa/runner/runner.mjs
+[Unit]
+Description=cellular-viz QA runner (watches PRs, runs page checks, read-only API)
+Wants=network-online.target
+After=network-online.target
+# never give up restarting: a start limit would leave the pipeline silently stopped after a container restart
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/cellular-viz-runner.env
+ExecStart=/usr/bin/podman exec --env-file %h/.config/cellular-viz-runner.env -w ${QA_HOME} ${CONTAINER} node ${RUNNER_HOME}/qa/runner/runner.mjs
+ExecStop=/usr/bin/podman exec ${CONTAINER} sh -c 'kill -TERM "$(cat ${RUNNER_STATE}/runner.pid)"'
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target

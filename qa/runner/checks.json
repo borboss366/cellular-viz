@@ -1,0 +1,13 @@
+{
+  "09-riemann": { "script": "check-09.mjs", "args": [] },
+  "10-bsd": { "script": "check-10.mjs", "args": [] },
+  "11-riemann-show": { "script": "check-11.mjs", "args": [] },
+  "12-mass-gap": { "script": "check-12.mjs", "args": [] },
+  "13-flow-lab": { "script": "check-13.mjs", "args": [] },
+  "14-round-point": { "script": "check-14.mjs", "args": [] },
+  "17-bsd-skater": { "script": "check-17.mjs", "args": [] },
+  "18-little-bang": { "script": "check-18.mjs", "args": [] },
+  "19-skate-park": { "script": "check-19.mjs", "args": [] },
+  "23-shape-shifter": { "script": "check-23.mjs", "args": [] },
+  "25-shape-shifter-2": { "script": "check-25.mjs", "args": [] }
+}
