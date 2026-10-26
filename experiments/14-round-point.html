@@ -253,7 +253,7 @@ function curveAdvance(dTau) {   // sub-step to the stable limit (dt ≤ 0.2 h_mi
 function curveBump(rand, amp) {   // a kick: push a soft bump in or out; undone if it would cross
   const P = curve.P, n = P.length, g = geom(P), k = Math.floor(rand() * n), w = Math.max(3, Math.floor(n * 0.06));
   const R = Math.sqrt(Math.max(1e-6, areaOf(P)) / Math.PI), sign = rand() < 0.5 ? -1 : 1, A = amp * R * sign;
-  const Q = P.map((p, i) => { let d = Math.abs(i - k); d = Math.min(d, n - d); const f = Math.exp(-(d / w) ** 2); return [p[0] - g[i].nx * A * f, p[1] - g[i].ny * A * f]; });
+  const Q = P.map((p, i) => { let d = Math.abs(i - k); d = Math.min(d, n - d); const f = Math.exp(-((d / w) ** 2)); return [p[0] - g[i].nx * A * f, p[1] - g[i].ny * A * f]; });
   if (crossings(Q) === 0) { curve.P = remesh(Q); curve.bumps++; return true; }
   curve.rejected++; return false;
 }
