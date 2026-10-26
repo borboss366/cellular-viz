@@ -148,7 +148,7 @@ const X = [1, 0, 0], NX = [-1, 0, 0], Y = [0, 1, 0], Z = [0, 0, 1];
 // parked slots (a slot a keyframe doesn't use): where its stubs grow before an attach and shrink
 // after a surgery. Per variant: 0 = rings, 1 = slot A is a trefoil sitting on top.
 const PARK = [
-  [ring(X, Z, 0.27, 0.085, 0.12), ring(NX, Z, 0.27, 0.085, 0.12), ring(Y, Z, 0.22, 0.07, 0.08)],
+  [ring(X, Z, 0.27, 0.085, 0.06), ring(NX, Z, 0.27, 0.085, 0.06), ring(Y, Z, 0.22, 0.07, 0.08)],
   [knot(0.36, 0.15, 0.06, 0.05), ring([1, -1.3, 0], Z, 0.22, 0.065, 0.08), ring([-1, -1.3, 0], Z, 0.22, 0.065, 0.08)],
 ];
 // Rule learned from QA (#57 check 2026-10-26-1316): within a genus, rings keep their axis (all n = z
@@ -176,8 +176,8 @@ const B = {
   bridge: body({ rb: 0.06, barL: 0.16, barR: 0.045 }),
   cup: body({ ra: 0.36, rb: 0.07, h: 0.26, taper: 0.35 }),
   jar: body({ ra: 0.16, rb: 0.12, h: 0.46, taper: -0.55 }),
-  knotCore: body({ rb: 0.22 }),
-  core3: body({ rb: 0.3 }),
+  knotCore: body({ rb: 0.26 }),
+  core3: body({ rb: 0.34 }),
   ball3: body({ rb: 0.3 }),
 };
 const dir = (deg, plane) => { const a = deg * Math.PI / 180; return plane === 'xz' ? [Math.cos(a), 0, Math.sin(a)] : [Math.cos(a), Math.sin(a), 0]; };
@@ -188,7 +188,7 @@ const KEYS = [
   ['mushroom', 0, 0, B.mushroom, [ring([1, -0.9, 0], Z, 0.2, 0.07, 0.08)]],
   ['bottle', 0, 0, B.bottle], ['rounded cube', 0, 0, B.cube], ['spiky blob', 0, 0, B.spiky], ['teapot', 0, 0, B.teapot],
   ['vase', 0, 0, B.vase], ['bowl', 0, 0, B.bowl], ['apple', 0, 0, B.apple],
-  ['mug', 1, 0, B.mug, [ring(X, Z, 0.27, 0.085, 0.15)]],
+  ['mug', 1, 0, B.mug, [ring(X, Z, 0.27, 0.085, 0.04)]],
   ['kettle', 1, 0, B.teapot, [ring([1, 0.15, 0], Z, 0.3, 0.09, 0.12), ring([0, 0, -1], NX, 0.25, 0.08, 0.1)]],
   ['bagel', 1, 0, B.small, [ring(X, Z, 0.42, 0.24, 0.1)]],
   ['key ring', 1, 0, B.key, [ring(X, Z, 0.36, 0.035, 0.05)]],
@@ -201,7 +201,7 @@ const KEYS = [
   ['trophy', 2, 0, B.cup, [ring([1, 0.2, 0], Z, 0.3, 0.06, 0.12), ring([-1, 0.2, 0], Z, 0.3, 0.06, 0.12)]],
   ['urn with lid loop', 3, 0, B.urn, [ring(X, Z, 0.25, 0.08, 0.12), ring(NX, Z, 0.25, 0.08, 0.12), ring(Y, Z, 0.22, 0.07, 0.08)]],
   ['pretzel', 3, 0, B.knotCore, [ring(dir(-30), Z, 0.3, 0.07, 0.06), ring(dir(210), Z, 0.3, 0.07, 0.06), ring(Y, Z, 0.3, 0.07, 0.06)]],
-  ['triple torus', 3, 0, B.core3, [ring(dir(-30), Z, 0.3, 0.12, 0.08), ring(dir(210), Z, 0.3, 0.12, 0.08), ring(Y, Z, 0.3, 0.12, 0.08)]],
+  ['triple torus', 3, 0, B.core3, [ring(dir(-30), Z, 0.28, 0.11, 0.08), ring(dir(210), Z, 0.28, 0.11, 0.08), ring(Y, Z, 0.28, 0.11, 0.08)]],
   ['ball', 0, 1, B.ball], ['egg ', 0, 1, B.egg], ['teapot ', 0, 1, B.teapot],
   ['trefoil', 1, 1, B.bead, [knot(0.4, 0.17, 0.07, 0.05)]],
   ['trefoil on an egg', 1, 1, B.egg, [knot(0.34, 0.14, 0.06, 0.05)]],
@@ -702,11 +702,20 @@ const emptyVao = gl.createVertexArray();
 // ---------- camera: orbit, skim and thread, mixed by the song ----------
 const noise1 = x => 0.5 * Math.sin(x) + 0.3 * Math.sin(2.3 * x + 1.3) + 0.2 * Math.sin(4.7 * x + 2.1);
 const dropsUpTo = bars => Math.max(0, Math.floor((bars - DROP_BAR) / 32) + 1);
-function orbitPos(bars, center) {
-  const cuts = params.cutOnDrop ? dropsUpTo(bars) : 0;
+function envR(P, dv) {   // a smooth envelope of the genus-0 body (superellipsoid, p = 4), radius along unit dv
+  const t = 1 + Math.abs(P.taper) * Math.min(1, P.h + P.rb);
+  const ax = Math.max(P.ra + P.rb, P.barL + P.barR, P.capR) * t + 0.45 * P.spout + P.spike;
+  const az = Math.max(P.ra + P.rb, P.capR) * t + 0.1 * P.spout + P.spike;
+  const ay = Math.max(P.h + P.rb, P.capY + 0.45 * P.capR) + 0.15 * P.knob + 0.15 * P.spout + P.spike;
+  const q = (dv[0] / ax) ** 4 + (dv[1] / ay) ** 4 + (dv[2] / az) ** 4;
+  return 1 / Math.sqrt(Math.sqrt(q));
+}
+function orbitPos(bars, st) {   // distance follows the shape's size (it fills the picture); breathes every 2 bars
+  const cuts = params.cutOnDrop ? dropsUpTo(bars) : 0, c = st.center, bd = st.bound;
   const th = 2 * Math.PI * bars / params.orbitBars + Math.PI * cuts;
-  const R = 2.7 + 0.45 * noise1(bars * 0.31), h = 0.35 + 0.7 * noise1(bars * 0.17 + 5);
-  return [center[0] + R * Math.sin(th), center[1] + h, center[2] + R * Math.cos(th)];
+  const R = Math.max(bd + 0.25, bd * (1.4 + 0.15 * noise1(bars * 0.31) + 0.12 * Math.sin(Math.PI * bars)));
+  const h = bd * (0.2 + 0.45 * noise1(bars * 0.17 + 5));
+  return [c[0] + R * Math.sin(th), c[1] + h, c[2] + R * Math.cos(th)];
 }
 function skimWeight(bars) {
   if (params.camMode === 'skim') return 1;
@@ -714,11 +723,10 @@ function skimWeight(bars) {
   const r = ((bars % 32) + 32) % 32;
   return sstep(16, 17, r) * (1 - sstep(23.25, 24, r));
 }
-function skimPos(bars, st) {   // hugs the body at 0.25; rises smoothly over each handle's footprint
+function skimPos(bars, st) {   // rides 0.3 above a smooth envelope of the body; rises over each handle's footprint
   const th = 2 * Math.PI * bars / (params.orbitBars * 1.5) + 0.7, el = 0.45 * Math.sin(bars * 0.9);
-  const dv = [Math.cos(el) * Math.sin(th), Math.sin(el), Math.cos(el) * Math.cos(th)], P = st.Pb;
-  let s = bodyExtent(P) + 1;
-  for (let i = 0; i < 60; i++) { const f = bodyFull(P, dv[0] * s, dv[1] * s, dv[2] * s) - 0.25; if (f < 0.002) break; s -= Math.max(0.002, 0.85 * f); if (s < 0.3) { s = 0.3; break; } }
+  const dv = [Math.cos(el) * Math.sin(th), Math.sin(el), Math.cos(el) * Math.cos(th)];
+  let s = envR(st.Pb, dv) + 0.3;
   for (const h of st.slots) {
     if (h.a <= 0.001) continue;
     const cl = len3(h.c), ext = cl + h.R + h.Rk + h.r + 0.25;
@@ -729,7 +737,7 @@ function skimPos(bars, st) {   // hugs the body at 0.25; rises smoothly over eac
   return mul3(dv, s);
 }
 function basePos(bars) {
-  const st = stateAt(bars), o = orbitPos(bars, st.center), ws = skimWeight(bars);
+  const st = stateAt(bars), o = orbitPos(bars, st), ws = skimWeight(bars);
   return ws <= 0 ? o : lerp3(o, skimPos(bars, st), ws);
 }
 const baseVel = bars => mul3(sub3(basePos(bars + 0.01), basePos(bars - 0.01)), 1 / 0.02);
@@ -777,20 +785,30 @@ function threadPos(t, win, plan, st) {
   tans[0] = mul3(plan.v0, Dt); tans.push(mul3(plan.ve, Dt));
   for (let i = 1; i < segs; i++) tans[i] = mul3(tans[i], Math.max(2.0, 0.5 * len3(sub3(pts[i + 1], pts[i - 1]))));
   const x = (t - win.ts) / Dt, seg = Math.max(0, Math.min(segs - 1, Math.floor(x)));
-  return hermite(pts[seg], tans[seg], pts[seg + 1], tans[seg + 1], Math.max(0, Math.min(1, x - seg)));
+  let p = hermite(pts[seg], tans[seg], pts[seg + 1], tans[seg + 1], Math.max(0, Math.min(1, x - seg)));
+  // stay near the shape: never inside the body's envelope, and legs pulled in (softly) beyond the holes;
+  // radial from the body centre, so points nearer than every hole's far rim (and the rim detour) don't move
+  const w = sstep(0, 0.5, t - win.ts) * sstep(0, 0.5, win.te - t), r = len3(p);
+  if (w > 0 && r > 1e-6) {
+    let r2 = Math.max(r, envR(st.Pb, mul3(p, 1 / r)) + 0.05);
+    const Rc = Math.max(...hs.map(h => len3(h.c) + h.R + h.Rk + h.r + 0.8));
+    if (r2 > Rc) r2 = Rc + (r2 - Rc) / (1 + (r2 - Rc) / 0.6);
+    p = mul3(p, 1 + (r2 / r - 1) * w);
+  }
+  return p;
 }
 function posAt(t) {
   const win = threadWindow(t), plan = win && threadPlan(win);
   return plan ? threadPos(t, win, plan) : basePos(t);
 }
-function slerpDir(a, b, k) {   // turn unit vector a toward b by the fraction k, on the great circle
+function slerpDir(a, b, k, maxAng = Math.PI) {   // turn unit vector a toward b by the fraction k (at most maxAng), on the great circle
   const th = Math.acos(Math.max(-1, Math.min(1, dot3(a, b))));
   if (th < 1e-5 || k <= 0) return a;
   let axis = cross3(a, b);
   if (len3(axis) < 1e-5) axis = cross3(a, [0, 1, 0]);
   if (len3(axis) < 1e-5) axis = [1, 0, 0];
   axis = norm3(axis);
-  const ang = th * Math.min(1, k), ca = Math.cos(ang), sa = Math.sin(ang);
+  const ang = Math.min(th * Math.min(1, k), maxAng), ca = Math.cos(ang), sa = Math.sin(ang);
   return norm3(add3(add3(mul3(a, ca), mul3(cross3(axis, a), sa)), mul3(axis, dot3(axis, a) * (1 - ca))));
 }
 function cameraAt(bars) {
@@ -806,11 +824,15 @@ function cameraAt(bars) {
     const e = 0.01, g = norm3([sdfJS(st, eye[0] + e, eye[1], eye[2]) - d, sdfJS(st, eye[0], eye[1] + e, eye[2]) - d, sdfJS(st, eye[0], eye[1], eye[2] + e) - d]);
     eye = add3(eye, mul3(g, 0.08 - d + 0.02)); d = sdfJS(st, ...eye); pushes++;
   }
-  // look: turn from the shape's centre toward the path ahead (directions blended, never points)
+  // look: turn from the shape's centre toward the path ahead (directions blended, never points);
+  // only near a hole may the view leave the shape (28° from its centre otherwise, so it stays in shot)
   const toC = norm3(sub3(st.center, eye));
   let toA = sub3(ahead, eye);
   toA = len3(toA) > 0.05 ? norm3(toA) : norm3(sub3(next, behind));
-  const fwd = slerpDir(toC, toA, Math.max(0.6 * ws, wt)), at = add3(eye, fwd);
+  let near = 0;
+  if (plan) for (const j of plan.order) { const h = st.slots[j]; near = Math.max(near, 1 - sstep(0.8, 2.0, len3(sub3(eye, h.c)) / (h.R + h.Rk + 0.4))); }
+  near *= wt;
+  const fwd = slerpDir(toC, toA, Math.max(0.6 * ws, wt * Math.max(0.35, near)), (28 + 152 * near) * Math.PI / 180), at = add3(eye, fwd);
   let right = norm3(cross3(fwd, [0, 1, 0])), up = cross3(right, fwd);
   // bank into turns: roll against the sideways acceleration of the path (deg per unit/bar²)
   const acc = mul3(add3(sub3(next, mul3(eye, 2)), behind), 1 / (0.05 * 0.05));
