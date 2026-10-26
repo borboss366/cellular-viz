@@ -63,10 +63,10 @@ function log(...a) {
 const tail = n => { try { return fs.readFileSync(LOG_FILE, 'utf8').trimEnd().split('\n').slice(-n); } catch { return []; } };
 
 // ---------- state (survives restarts) ----------
-let state = { seen: {}, etag: null, queue: [] };
+let state = { seen: {}, etag: null, queue: [], recent: [] };
 try { state = { ...state, ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) }; } catch {}
 const save = () => { const t = STATE_FILE + '.tmp'; fs.writeFileSync(t, JSON.stringify(state, null, 1)); fs.renameSync(t, STATE_FILE); };
-const status = { started: new Date().toISOString(), lastPoll: null, lastError: null, rate: null, running: null, recent: [] };
+const status = { started: new Date().toISOString(), lastPoll: null, lastError: null, rate: null, running: null };
 
 // ---------- processes (no shell; argument arrays only) ----------
 let child = null;
@@ -209,8 +209,8 @@ async function runBuild(job) {
     result = `error: ${e.message}`;
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
-    status.recent.unshift({ ...status.running, finished: new Date().toISOString(), result });
-    status.recent = status.recent.slice(0, 30);
+    state.recent = [{ ...status.running, finished: new Date().toISOString(), result }, ...(state.recent || [])].slice(0, 30);   // kept in state.json, so it survives restarts
+    save();
     status.running = null;
     log(`build ${id} done: ${result}`);
   }
@@ -246,7 +246,7 @@ if (!CFG.once) {
     const u = new URL(req.url, 'http://runner');
     if (u.pathname === '/' || u.pathname === '/api') return send(200, { endpoints: ['/health', '/api/status', '/api/builds', '/api/builds/<id>', '/api/log?lines=200'], note: 'read only' });
     if (u.pathname === '/health') return send(200, { ok: true, running: !!status.running, queued: state.queue.length });
-    if (u.pathname === '/api/status') return send(200, { repo: CFG.repo, checksRef: CFG.checksRef, authors: CFG.authors, pollSeconds: CFG.poll, ...status, queue: state.queue, watching: state.seen });
+    if (u.pathname === '/api/status') return send(200, { repo: CFG.repo, checksRef: CFG.checksRef, authors: CFG.authors, pollSeconds: CFG.poll, pid: process.pid, ...status, queue: state.queue, recent: state.recent || [], watching: state.seen });
     if (u.pathname === '/api/builds') return send(200, latestBuilds().sort((a, b) => String(b.at).localeCompare(String(a.at))));
     const m = u.pathname.match(/^\/api\/builds\/([\w.-]+)$/);
     if (m) return send(200, buildLines().filter(b => b.id === m[1]));
@@ -275,11 +275,12 @@ process.on('SIGINT', () => stop('SIGINT'));
 
 // one runner at a time: if an older one is still alive (e.g. podman exec lost it on a restart), stop it first
 const PID_FILE = path.join(CFG.state, 'runner.pid');
-try {
-  const old = +fs.readFileSync(PID_FILE, 'utf8');
-  if (old && old !== process.pid) { process.kill(old, 0); log(`stopping the older runner ${old}`); process.kill(old, 'SIGTERM'); await new Promise(r => setTimeout(r, 3000)); }
-} catch {}
-fs.writeFileSync(PID_FILE, String(process.pid));
+// --once never touches a running service: it refuses and exits (it was stopping the service's runner)
+let older = 0;
+try { older = +fs.readFileSync(PID_FILE, 'utf8'); if (older && older !== process.pid) process.kill(older, 0); else older = 0; } catch { older = 0; }
+if (older && CFG.once) { console.error(`a runner (pid ${older}) is already running on ${CFG.state}; --once would race it. Use another --state for a dry run.`); process.exit(1); }
+if (older) { log(`stopping the older runner ${older}`); try { process.kill(older, 'SIGTERM'); } catch {} await new Promise(r => setTimeout(r, 3000)); }
+if (!CFG.once) fs.writeFileSync(PID_FILE, String(process.pid));
 if (!fs.existsSync(BUILDS_CLI)) log(`warning: ${BUILDS_CLI} not found; set QA_HOME to QA box's working copy`);
 log(`runner up: ${CFG.repo}, checks from ${CFG.checksRef}, authors ${CFG.authors.join(',')}, every ${CFG.poll} s, state ${CFG.state}`);
 if (state.queue.length) log(`resuming ${state.queue.length} queued build(s)`);
