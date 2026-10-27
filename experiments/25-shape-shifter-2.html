@@ -39,7 +39,7 @@
   the frame's height); skim shares its azimuth and the two blend round the centre. The look aims
   from the centre toward the path ahead, but never more than a cone off the centre (28°; in a
   thread 0.6× the shape's angular radius + 12°), and it is a Hann-filtered mean of the raw aims
-  over ±0.35 bar, so it turns smoothly. Below 55 fps the render scale steps down (?dynres=0: off).
+  over ±0.5 bar, so it turns smoothly. Below 55 fps the render scale steps down (?dynres=0: off).
 
   Everything is a pure function of the bar position. window.__qa:
     sdf(x, y, z [, bars]), genus(n, bars) (cubical complex χ, as 23), totalK(n, bars),
@@ -126,7 +126,7 @@
 const query = new URLSearchParams(location.search);
 // pace: 'auto' follows the song loop, or a fixed number of morphs per 4 bars (0.5, 1, 2, 4, 8).
 // res: 'cap' renders at most 1920×1080 pixels and lets the browser scale up; 'native' renders all.
-const params = { pace: 'auto', maxGenus: 3, camMode: 'auto', throughEvery: 8, slalom: true, bank: 15, cutOnDrop: false, squash: 0.04,
+const params = { pace: 'auto', maxGenus: 3, camMode: 'auto', throughEvery: 8, slalom: true, bank: 8, cutOnDrop: false, squash: 0.04,
                  palette: 'auto', bumpAmp: 0.5, curvColor: 0.7, orbitBars: 4, steps: 128, bpm: 120, bpb: 4, muted: false, res: 'cap', scale: 1, dynres: true,
                  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 const PALETTES = ['ceramic', 'chrome', 'iridescent'];
@@ -153,7 +153,7 @@ const X = [1, 0, 0], NX = [-1, 0, 0], Y = [0, 1, 0], Z = [0, 0, 1];
 // after a surgery. Per variant: 0 = rings, 1 = slot A is a trefoil sitting on top.
 const PARK = [
   [ring(X, Z, 0.27, 0.085, 0.06), ring(NX, Z, 0.27, 0.085, 0.06), ring(Y, Z, 0.22, 0.07, 0.08)],
-  [knot(0.36, 0.15, 0.06, 0.05), ring([1, -1.3, 0], Z, 0.22, 0.065, 0.08), ring([-1, -1.3, 0], Z, 0.22, 0.065, 0.08)],
+  [knot(0.36, 0.15, 0.07, 0.05), ring([1, -1.3, 0], Z, 0.22, 0.065, 0.08), ring([-1, -1.3, 0], Z, 0.22, 0.065, 0.08)],
 ];
 // Rule learned from QA (#57 check 2026-10-26-1316): within a genus, rings keep their axis (all n = z
 // for rings next to other rings or a cavity), so a morph only slides and resizes them; a ring that
@@ -195,9 +195,9 @@ const KEYS = [
   ['mug', 1, 0, B.mug, [ring(X, Z, 0.27, 0.085, 0.04)]],
   ['kettle', 1, 0, B.teapot, [ring([1, 0.15, 0], Z, 0.3, 0.09, 0.12), ring([0, 0, -1], NX, 0.25, 0.08, 0.1)]],
   ['bagel', 1, 0, B.small, [ring(X, Z, 0.42, 0.24, 0.1)]],
-  ['key ring', 1, 0, B.key, [ring(X, Z, 0.36, 0.035, 0.05)]],
+  ['key ring', 1, 0, B.key, [ring(X, Z, 0.36, 0.05, 0.05)]],
   ['handbag', 1, 0, B.bag, [ring(Y, Z, 0.3, 0.045, 0.06)]],
-  ['racket', 1, 0, B.stick, [ring(Y, Z, 0.42, 0.045, 0.06), ring([-1, -0.8, 0], Z, 0.2, 0.07, 0.05)]],
+  ['racket', 1, 0, B.stick, [ring(Y, Z, 0.42, 0.06, 0.06), ring([-1, -0.8, 0], Z, 0.2, 0.07, 0.05)]],
   ['urn', 2, 0, B.urn, [ring(X, Z, 0.25, 0.08, 0.12), ring(NX, Z, 0.25, 0.08, 0.12)]],
   ['double torus', 2, 0, B.core, [ring(X, Z, 0.42, 0.15, 0.2), ring(NX, Z, 0.42, 0.15, 0.2), ring(Z, X, 0.22, 0.07, 0.08)]],
   ['glasses', 2, 0, B.bridge, [ring(X, Z, 0.3, 0.04, 0.04), ring(NX, Z, 0.3, 0.04, 0.04), ring(Y, Z, 0.08, 0.035, 0.03)]],
@@ -207,13 +207,13 @@ const KEYS = [
   ['pretzel', 3, 0, B.knotCore, [ring(dir(-30), Z, 0.3, 0.07, 0.06), ring(dir(210), Z, 0.3, 0.07, 0.06), ring(Y, Z, 0.3, 0.07, 0.06)]],
   ['triple torus', 3, 0, B.core3, [ring(dir(-30), Z, 0.28, 0.11, 0.08), ring(dir(210), Z, 0.28, 0.11, 0.08), ring(Y, Z, 0.28, 0.11, 0.08)]],
   ['ball', 0, 1, B.ball], ['egg ', 0, 1, B.egg], ['teapot ', 0, 1, B.teapot],
-  ['trefoil', 1, 1, B.bead, [knot(0.4, 0.17, 0.07, 0.05)]],
-  ['trefoil on an egg', 1, 1, B.egg, [knot(0.34, 0.14, 0.06, 0.05)]],
-  ['big trefoil', 1, 1, B.bead, [knot(0.5, 0.2, 0.085, 0.05)]],
-  ['trefoil + ring', 2, 1, B.ball3, [knot(0.36, 0.15, 0.06, 0.05), ring([1, -0.7, 0], Z, 0.24, 0.07, 0.08)]],
-  ['trefoil + ring on an egg', 2, 1, B.egg, [knot(0.32, 0.13, 0.055, 0.05), ring([1, -0.5, 0], Z, 0.22, 0.065, 0.08)]],
-  ['trefoil + two rings', 3, 1, B.ball3, [knot(0.36, 0.15, 0.06, 0.05), ring([1, -0.7, 0], Z, 0.24, 0.07, 0.08), ring([-1, -0.7, 0], Z, 0.24, 0.07, 0.08)]],
-  ['trefoil + two rings on an egg', 3, 1, B.egg, [knot(0.32, 0.13, 0.055, 0.05), ring([1, -0.5, 0], Z, 0.22, 0.065, 0.08), ring([-1, -0.5, 0], Z, 0.22, 0.065, 0.08)]],
+  ['trefoil', 1, 1, B.bead, [knot(0.4, 0.17, 0.095, 0.05)]],
+  ['trefoil on an egg', 1, 1, B.egg, [knot(0.34, 0.14, 0.068, 0.05)]],
+  ['big trefoil', 1, 1, B.bead, [knot(0.5, 0.2, 0.11, 0.05)]],
+  ['trefoil + ring', 2, 1, B.ball3, [knot(0.36, 0.15, 0.08, 0.05), ring([1, -0.7, 0], Z, 0.24, 0.07, 0.08)]],
+  ['trefoil + ring on an egg', 2, 1, B.egg, [knot(0.32, 0.13, 0.065, 0.05), ring([1, -0.5, 0], Z, 0.22, 0.065, 0.08)]],
+  ['trefoil + two rings', 3, 1, B.ball3, [knot(0.36, 0.15, 0.08, 0.05), ring([1, -0.7, 0], Z, 0.24, 0.07, 0.08), ring([-1, -0.7, 0], Z, 0.24, 0.07, 0.08)]],
+  ['trefoil + two rings on an egg', 3, 1, B.egg, [knot(0.32, 0.13, 0.065, 0.05), ring([1, -0.5, 0], Z, 0.22, 0.065, 0.08), ring([-1, -0.5, 0], Z, 0.22, 0.065, 0.08)]],
 ];
 const KF = {}, LISTS = [[[], [], [], []], [[], [], [], []]];
 for (const [name, genus, variant, b, slots] of KEYS) { KF[name] = { name, genus, variant, body: b, slots: slots || [] }; LISTS[variant][genus].push(name); }
@@ -725,7 +725,7 @@ const fitR = st => Math.max(0.3, st.bound / (1 + st.sq) - st.wave.A - 0.15);   /
 function orbitPos(bars, st) {   // on a sphere round the centre, near enough that the shape fills the frame's height; breathes every 2 bars
   // QA #57 round 3: at 1.4× the bound (which has margins) the shape filled 21% of the frame on average
   const c = st.center, rF = fitR(st), th = orbitTh(bars), el = 0.22 + 0.3 * noise1(bars * 0.17 + 5);
-  const D = Math.max(rF + 0.3, rF * (1.75 + 0.1 * noise1(bars * 0.31) + 0.06 * Math.sin(Math.PI * bars)));
+  const D = Math.max(rF + 0.3, rF * (1.55 + 0.1 * noise1(bars * 0.31) + 0.06 * Math.sin(Math.PI * bars)));
   return [c[0] + D * Math.cos(el) * Math.sin(th), c[1] + D * Math.sin(el), c[2] + D * Math.cos(el) * Math.cos(th)];
 }
 function skimWeight(bars) {
@@ -771,6 +771,9 @@ function threadPlan(win) {   // which holes, in which order, from which side, an
     const p0 = basePos(win.ts), pe = basePos(win.te), v0 = baseVel(win.ts), ve = baseVel(win.te);
     let list = holes.slice().sort((a, b) => dot3(sub3(a.c, p0), v0) - dot3(sub3(b.c, p0), v0));
     if (!params.slalom) list = [list.slice().sort((a, b) => len3(sub3(a.c, p0)) - len3(sub3(b.c, p0)))[0]];
+    // at most two holes a dive, taking turns through the phrases (QA #57 round 4: three holes in 3.5 bars made
+    // U-turns of about a bar, turn rate p99 192°/s)
+    if (list.length > 2) { const k = win.ph % list.length; list = [list[k], list[(k + 1) % list.length]].sort((a, b) => dot3(sub3(a.c, p0), v0) - dot3(sub3(b.c, p0), v0)); }
     // enter each hole from the side the camera is on, so it crosses each spanning disk once
     const signs = [];
     let cur = p0;
@@ -845,7 +848,7 @@ function lookCone(eye, st, wt) {   // how far the view may turn off the shape's 
 }
 // The look is a pure function of the bar too, but filtered: a raw aim on a grid of LOOK_G bars, then a Hann
 // window of ±LOOK_W bars, so the view turns smoothly where the raw aim swings (QA #57 round 3: p99 223°/s).
-const LOOK_G = 1 / 32, LOOK_W = 0.35, lookCache = new Map();
+const LOOK_G = 1 / 32, LOOK_W = 0.5, lookCache = new Map();
 function rawLook(i) {   // the aim at grid point i: a direction near the shape's centre, and the bank (degrees)
   let r = lookCache.get(i);
   if (r) return r;
@@ -957,7 +960,7 @@ window.__modules = { 'shape-shifter-2': { inputs: [
   { name: 'camMode', type: 'long', values: ['auto', 'orbit', 'skim', 'thread'], default: 'auto' },
   { name: 'throughEvery', type: 'long', default: 8, min: 8, max: 32 },
   { name: 'slalom', type: 'bool', default: true }, { name: 'cutOnDrop', type: 'bool', default: false },
-  { name: 'bank', type: 'float', default: 15, min: 0, max: 30 }, { name: 'squash', type: 'float', default: 0.04, min: 0, max: 0.1 },
+  { name: 'bank', type: 'float', default: 8, min: 0, max: 30 }, { name: 'squash', type: 'float', default: 0.04, min: 0, max: 0.1 },
   { name: 'palette', type: 'long', values: ['auto', ...PALETTES], default: 'auto' },
   { name: 'bumpAmp', type: 'float', default: 0.5, min: 0, max: 1 }, { name: 'curvColor', type: 'float', default: 0.7, min: 0, max: 1 },
   { name: 'orbitBars', type: 'long', default: 4, min: 2, max: 16 }, { name: 'steps', type: 'long', default: 128, min: 48, max: 160 },
@@ -971,16 +974,17 @@ function resize() {
   w = Math.max(1, Math.round(w * cap)); h = Math.max(1, Math.round(h * cap));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 }
-// dynamic resolution (QA #57 round 3: native 4K ran at 51 fps): when frames average > 18 ms for a second, render
-// 7% fewer pixels a side, down to 0.7. It never scales back up by itself; a window resize or ?dynres=0 resets it.
-const dyn = { scale: 1, slowFor: 0, ema: 1 / 60, since: performance.now() };
-window.addEventListener('resize', () => { dyn.scale = 1; dyn.slowFor = 0; dyn.since = performance.now(); });
+// dynamic resolution: when frames average > 17.5 ms for a quarter second, render 12% fewer pixels a side, down to
+// 0.7, and look again 0.3 s later. It settles within about a second (QA #57 round 4: the old 1 s + 2 s steps left
+// 24 frames over 20 ms at native 4K). It never scales back up by itself; a window resize or ?dynres=0 resets it.
+const dyn = { scale: 1, slowFor: 0, ema: 1 / 60, since: performance.now(), grace: 1000 };
+window.addEventListener('resize', () => { dyn.scale = 1; dyn.slowFor = 0; dyn.since = performance.now(); dyn.grace = 1000; });
 function dynRes(dt, now) {
-  if (!params.dynres || dt <= 0 || now - dyn.since < 2000) return;
-  dyn.ema += (dt - dyn.ema) * 0.1;
-  if (dyn.ema <= 0.018) { dyn.slowFor = 0; return; }
+  if (!params.dynres || dt <= 0 || now - dyn.since < dyn.grace) return;
+  dyn.ema += (dt - dyn.ema) * 0.25;
+  if (dyn.ema <= 0.0175) { dyn.slowFor = 0; return; }
   dyn.slowFor += dt;
-  if (dyn.slowFor > 1 && dyn.scale > 0.7) { dyn.scale = Math.max(0.7, dyn.scale * 0.93); dyn.slowFor = 0; dyn.ema = 1 / 60; dyn.since = now; }
+  if (dyn.slowFor > 0.25 && dyn.scale > 0.7) { dyn.scale = Math.max(0.7, dyn.scale * 0.88); dyn.slowFor = 0; dyn.ema = 1 / 60; dyn.since = now; dyn.grace = 300; }
 }
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastNow = 0;
 const errors = [], events = [], logged = new Set(), angHistory = [];
