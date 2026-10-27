@@ -22,8 +22,9 @@ git -C /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz push -q     
 ```
 
 Nothing about which PR to run is on a command line: the runner finds the work itself (below). Both scripts read
-`~/.config/cellular-viz-runner.env` inside the container if it is there (`RUNNER_ENV` points elsewhere); `run-next.sh`
-needs it for `QA_HOME`. No ad-hoc probing on the box: a probe QA box needs is a field in the PR's experiment file
+`~/.config/cellular-viz-runner.env` inside the container if it is there (`RUNNER_ENV` points elsewhere). Otherwise
+`run-next.sh` uses `RUNNER_STATE/runner.env`, the copy of its settings the service writes every time it starts
+(the host's env file isn't visible in the container), so no copy by hand is needed. No ad-hoc probing on the box: a probe QA box needs is a field in the PR's experiment file
 (`debug`, see `qa/experiments/README.md`), and a probe that doesn't exist yet is a small runner PR.
 
 ## Experiments: PRs labelled `qa-ready`
