@@ -16,11 +16,14 @@ if [ -z "$SOCK" ] && [ -n "${RUNNER_SOCKET:-}" ]; then SOCK="$(dirname "$RUNNER_
 mkdir -p "$STATE"
 
 # A viewer started some other way (the old nohup one, or one systemd lost track of) holds the port: stop it first.
+# Only node processes running qa/serve.mjs: never a grep or a shell that merely mentions the path.
 for d in /proc/[0-9]*; do
   p=${d#/proc/}
   [ "$p" = "$$" ] && continue
+  a0=$(tr '\0' '\n' < "$d/cmdline" 2>/dev/null | head -n 1 || true)
+  case "$a0" in node|*/node) ;; *) continue ;; esac
   case "$(tr '\0' ' ' < "$d/cmdline" 2>/dev/null || true)" in
-    *qa/serve.mjs*) echo "stopping an older viewer, pid $p"; kill -TERM "$p" 2>/dev/null || true ;;
+    *" qa/serve.mjs"*|*"/qa/serve.mjs"*) echo "stopping an older viewer, pid $p"; kill -TERM "$p" 2>/dev/null || true ;;
   esac
 done
 sleep 1
