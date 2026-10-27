@@ -43,6 +43,24 @@ and the build to `qa/builds.json` (start → running → finish, with `--swipe` 
 Pass or fail is in `state.json` (`recent`) and `/api/status`.
 Unlabelled PRs keep the page checks below.
 
+## Viewer at :8787 (a service too)
+
+`cellular-viz-viewer.service` runs QA box's `qa/serve.mjs` from QA_HOME through `viewer.sh`, inside the container like
+the runner, with `Restart=always`. `viewer.sh` first stops a viewer started some other way (the old `nohup` one) and
+removes a stale socket, then writes `RUNNER_STATE/viewer.pid`. The socket is `VIEWER_SOCKET`, by default
+`qa-viewer.sock` next to `RUNNER_SOCKET`, so the host's existing :8787 forward keeps working. `update-runner.sh`
+restarts the viewer as well, so a change QA box pushes to `serve.mjs` is live after one update.
+
+Install once on the host (the user), like the runner unit:
+
+```
+cp qa/runner/cellular-viz-viewer.service ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now cellular-viz-viewer
+```
+
+Check it took: `systemctl --user status cellular-viz-viewer` is active, http://192.168.8.164:8787/builds answers,
+and `update-runner.sh` prints `stopped viewer <pid>` and the page is back within a few seconds.
+
 ## After each build (the runner, not QA box)
 
 1. **Builds log:** `qa/builds.mjs` start → running → finish `--check <dir>` [`--swipe <url>`], and merged when the PR merges.
