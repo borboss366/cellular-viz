@@ -2474,7 +2474,8 @@
     ]
    ],
    "hud": "Round Point · pinch · build-up · 120 bpm · ▶\npieces 1 · 428×241 · 60 fps",
-   "video": "videos/03-3-auto.webm"
+   "video": "videos/03-3-auto.webm",
+   "note": "make it more dynamic and pulsating. transition is just cut off"
   }
  ]
 }

@@ -34,7 +34,7 @@
     }
    },
    "videoSize": 7288600,
-   "verdict": "",
+   "verdict": "keep",
    "series": [
     [
      0.01,
@@ -1303,7 +1303,8 @@
     ]
    ],
    "hud": "Shape Shifter · kettle0 → sphere · genus 0 · ceramic · orbit · 120 bpm · ▶\nsection 1 bar 0.8/16 · 428×241 · 60 fps",
-   "video": "videos/01-1-auto.webm"
+   "video": "videos/01-1-auto.webm",
+   "note": ""
   },
   {
    "label": "2-one-hole",
@@ -1327,7 +1328,7 @@
     }
    },
    "videoSize": 6429353,
-   "verdict": "",
+   "verdict": "keep",
    "series": [
     [
      0,
@@ -2601,7 +2602,8 @@
     ]
    ],
    "hud": "Shape Shifter · doughnut → ring · genus 1 · ceramic · orbit · 120 bpm · ▶\nsection 1 bar 0.8/16 · 428×241 · 60 fps",
-   "video": "videos/02-2-one-hole.webm"
+   "video": "videos/02-2-one-hole.webm",
+   "note": ""
   },
   {
    "label": "3-no-hole",
@@ -2625,7 +2627,7 @@
     }
    },
    "videoSize": 6252708,
-   "verdict": "",
+   "verdict": "keep",
    "series": [
     [
      0,
@@ -3899,7 +3901,8 @@
     ]
    ],
    "hud": "Shape Shifter · vase → bowl · genus 0 · ceramic · orbit · 120 bpm · ▶\nsection 1 bar 0.8/16 · 428×241 · 60 fps",
-   "video": "videos/03-3-no-hole.webm"
+   "video": "videos/03-3-no-hole.webm",
+   "note": ""
   },
   {
    "label": "4-auto-native",
@@ -3923,7 +3926,7 @@
     }
    },
    "videoSize": 7322143,
-   "verdict": "",
+   "verdict": "keep",
    "series": [
     [
      0,
@@ -5197,7 +5200,8 @@
     ]
    ],
    "hud": "Shape Shifter · kettle0 → sphere · genus 0 · ceramic · orbit · 120 bpm · ▶\nsection 1 bar 0.8/16 · 428×241 · 60 fps",
-   "video": "videos/04-4-auto-native.webm"
+   "video": "videos/04-4-auto-native.webm",
+   "note": ""
   }
  ]
 }

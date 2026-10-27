@@ -34,7 +34,7 @@
     }
    },
    "videoSize": 4926047,
-   "verdict": "",
+   "verdict": "keep",
    "series": [
     [
      0.02,
@@ -513,7 +513,8 @@
     ]
    ],
    "hud": "Mass Gap · field · DROP · 120 bpm · ▶\nm 0.35 · κ 0.06 · sim t 2008\n420×420 · 60 fps",
-   "video": "videos/01-field.webm"
+   "video": "videos/01-field.webm",
+   "note": ""
   },
   {
    "label": "tube",

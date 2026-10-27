@@ -34,7 +34,7 @@
     }
    },
    "videoSize": 6134489,
-   "verdict": "",
+   "verdict": "maybe",
    "series": [
     [
      0.01,
@@ -1303,7 +1303,8 @@
     ]
    ],
    "hud": "Shape Shifter II · mug → amphora · genus 2 · build · skim · chrome · 120 bpm · ▶\nbar 16.9 · 428×241 · 60 fps",
-   "video": "videos/01-1-auto.webm"
+   "video": "videos/01-1-auto.webm",
+   "note": "It is pretty cool. The camera it a bit too static in the beginning. How configurable this is?"
   },
   {
    "label": "2-auto-native-4k",
@@ -1327,7 +1328,7 @@
     }
    },
    "videoSize": 6157619,
-   "verdict": "",
+   "verdict": "maybe",
    "series": [
     [
      0,
@@ -2596,7 +2597,8 @@
     ]
    ],
    "hud": "Shape Shifter II · mug → amphora · genus 2 · build · skim · chrome · 120 bpm · ▶\nbar 16.8 · 428×241 · 60 fps",
-   "video": "videos/02-2-auto-native-4k.webm"
+   "video": "videos/02-2-auto-native-4k.webm",
+   "note": "Camera flies away and not shows anything for certain period of time. But cool animation. And i like the psycodelic effects "
   }
  ]
 }

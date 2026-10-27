@@ -417,6 +417,23 @@
     "label": "\u25b6 watch all",
     "href": "/run/14-round-point/2026-10-27-1823-pr68-swipe"
    }
+  ],
+  "done": "2026-10-27T18:48:09.444Z"
+ },
+ {
+  "id": "13-brighter",
+  "from": "QA box",
+  "title": "13 Flow Lab: brighter curl and plume vs before \u2014 swipe, then merge #69",
+  "note": "PR #69 @3907937 passes all 15 checks: dye kept, vortex shedding steady, beat lock, sync 9 ms, 60 fps to 4K, no clipped pixels. Lit area is up 2\u00d7 on curl and 4.5\u00d7 on plume (plume smoke now reaches the top), but both are still dark looks overall (\u22483 % average brightness). Swipe old vs new curl and plume, 40 s each, and say if they are bright enough.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/13-flow-lab/2026-10-27-1835-pr69-swipe/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/13-flow-lab/2026-10-27-1835-pr69-swipe"
+   }
   ]
  }
 ]

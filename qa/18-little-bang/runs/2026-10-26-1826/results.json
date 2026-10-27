@@ -828,7 +828,8 @@
     ]
    ],
    "hud": "Little Bang · collide · build-up · 120 bpm · ▶\n100,000 tracks drawn · 420×420 · 60 fps",
-   "video": "videos/01-1-collide.webm"
+   "video": "videos/01-1-collide.webm",
+   "note": "when they fly away they look like giant while spot. Maybe decrease the amount of particles?"
   },
   {
    "label": "2-quench",
@@ -2474,7 +2475,8 @@
     ]
    ],
    "hud": "Little Bang · strings · build-up · 120 bpm · ▶\n0 tracks drawn · 420×420 · 60 fps",
-   "video": "videos/03-3-strings.webm"
+   "video": "videos/03-3-strings.webm",
+   "note": "quite boring. Maybe make a tube like in the particle accelerator - and the camera flies inside and sees the particles collide?"
   },
   {
    "label": "4-auto",

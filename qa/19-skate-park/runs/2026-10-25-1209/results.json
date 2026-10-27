@@ -927,7 +927,7 @@
      0.129
     ]
    ],
-   "hud": "Skate Park \u00b7 (2,3) torus knot \u00b7 DROP \u00b7 trick \u00b7 \u25b6\ncity mod 59 \u00b7 420\u00d7420 \u00b7 60 fps",
+   "hud": "Skate Park · (2,3) torus knot · DROP · trick · ▶\ncity mod 59 · 420×420 · 60 fps",
    "video": "videos/01-19-torus.webm"
   },
   {
@@ -1845,7 +1845,7 @@
      0.13
     ]
    ],
-   "hud": "Skate Park \u00b7 (2,3) torus knot \u00b7 DROP \u00b7 trick \u00b7 \u25b6\ncity mod 59 \u00b7 420\u00d7420 \u00b7 60 fps",
+   "hud": "Skate Park · (2,3) torus knot · DROP · trick · ▶\ncity mod 59 · 420×420 · 60 fps",
    "video": "videos/02-19-morph.webm"
   },
   {
@@ -2763,8 +2763,9 @@
      0.13
     ]
    ],
-   "hud": "Skate Park \u00b7 (2,3) torus knot \u00b7 DROP \u00b7 trick \u00b7 \u25b6\ncity mod 59 \u00b7 420\u00d7420 \u00b7 60 fps",
-   "video": "videos/03-19-free.webm"
+   "hud": "Skate Park · (2,3) torus knot · DROP · trick · ▶\ncity mod 59 · 420×420 · 60 fps",
+   "video": "videos/03-19-free.webm",
+   "note": ""
   },
   {
    "label": "17-chill-x3-25x",
@@ -3681,7 +3682,7 @@
      0.053
     ]
    ],
-   "hud": "BSD skater \u00b7 y\u00b2 = x\u00b3\u221225x \u00b7 120 bpm \u00b7 \u25b6\ngrind: 2P \u00b7 hop 5/24 \u00b7 height 99 bits\np 17 \u00b7 a_p -2 \u00b7 420\u00d7420 \u00b7 60 fps",
+   "hud": "BSD skater · y² = x³−25x · 120 bpm · ▶\ngrind: 2P · hop 5/24 · height 99 bits\np 17 · a_p -2 · 420×420 · 60 fps",
    "video": "videos/04-17-chill-x3-25x.webm"
   },
   {
@@ -4599,8 +4600,9 @@
      0.088
     ]
    ],
-   "hud": "BSD skater \u00b7 y\u00b2 = x\u00b3+17 \u00b7 120 bpm \u00b7 \u25b6\ngrind: 2P \u00b7 hop 5/24 \u00b7 height 153 bits\np 13 \u00b7 a_p -7 \u00b7 420\u00d7420 \u00b7 60 fps",
-   "video": "videos/05-17-chill-x3p17.webm"
+   "hud": "BSD skater · y² = x³+17 · 120 bpm · ▶\ngrind: 2P · hop 5/24 · height 153 bits\np 13 · a_p -7 · 420×420 · 60 fps",
+   "video": "videos/05-17-chill-x3p17.webm",
+   "note": "this one is a bit static in the beginning"
   },
   {
    "label": "17-chill-x3-2x",
@@ -5517,8 +5519,9 @@
      0.088
     ]
    ],
-   "hud": "BSD skater \u00b7 y\u00b2 = x\u00b3\u22122x \u00b7 120 bpm \u00b7 \u25b6\ngrind: 2P \u00b7 hop 5/24 \u00b7 height 88 bits\np 13 \u00b7 a_p -4 \u00b7 420\u00d7420 \u00b7 60 fps",
-   "video": "videos/06-17-chill-x3-2x.webm"
+   "hud": "BSD skater · y² = x³−2x · 120 bpm · ▶\ngrind: 2P · hop 5/24 · height 88 bits\np 13 · a_p -4 · 420×420 · 60 fps",
+   "video": "videos/06-17-chill-x3-2x.webm",
+   "note": ""
   }
  ]
 }

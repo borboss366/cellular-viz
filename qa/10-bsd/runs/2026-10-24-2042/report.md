@@ -16,3 +16,19 @@ queries:
 - x3-25x: http://127.0.0.1:38437/experiments/10-bsd.html?curve=x3-25x
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+2 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | x3-25x | 2.751 | 2 | 0 | 0 |
+| 2 | x3+17 | 0.363 | 0 | 2 | 0 |
+
+## User notes
+
+**On each look**
+
+- **x3-25x** (maybe): good attempt
+

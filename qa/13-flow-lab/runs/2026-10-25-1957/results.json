@@ -827,7 +827,7 @@
     }
    },
    "videoSize": 7223415,
-   "verdict": "",
+   "verdict": "keep",
    "series": [
     [
      0,
@@ -1611,7 +1611,8 @@
     ]
    ],
    "hud": "Flow Lab · kh · 120 bpm · ▶\ngrid 455×256 · dye 455×256 · 428×241 · 60 fps · 58 SOR iters · GPU 10.8 ms",
-   "video": "videos/02-2-kh.webm"
+   "video": "videos/02-2-kh.webm",
+   "note": "Looks quite fantastic. Good result"
   },
   {
    "label": "3-plume",
@@ -1635,7 +1636,7 @@
     }
    },
    "videoSize": 4234620,
-   "verdict": "",
+   "verdict": "maybe",
    "series": [
     [
      0,
@@ -2419,7 +2420,8 @@
     ]
    ],
    "hud": "Flow Lab · plume · 120 bpm · ▶\ngrid 455×256 · dye 455×256 · 428×241 · 60 fps · 58 SOR iters · GPU 10.9 ms",
-   "video": "videos/03-3-plume.webm"
+   "video": "videos/03-3-plume.webm",
+   "note": "too dark. maybe make a couple of such jets?"
   },
   {
    "label": "4-ink",
@@ -2443,7 +2445,7 @@
     }
    },
    "videoSize": 9165091,
-   "verdict": "",
+   "verdict": "keep",
    "series": [
     [
      0,
@@ -3227,7 +3229,8 @@
     ]
    ],
    "hud": "Flow Lab · ink · 120 bpm · ▶\ngrid 455×256 · dye 455×256 · 428×241 · 60 fps · 58 SOR iters · GPU 10.6 ms",
-   "video": "videos/04-4-ink.webm"
+   "video": "videos/04-4-ink.webm",
+   "note": "very good"
   },
   {
    "label": "5-rocks",
@@ -3251,7 +3254,7 @@
     }
    },
    "videoSize": 4165117,
-   "verdict": "",
+   "verdict": "maybe",
    "series": [
     [
      0,
@@ -4035,7 +4038,8 @@
     ]
    ],
    "hud": "Flow Lab · rocks · 120 bpm · ▶\ngrid 455×256 · dye 455×256 · 428×241 · 60 fps · 64 SOR iters · GPU 11.0 ms",
-   "video": "videos/05-5-rocks.webm"
+   "video": "videos/05-5-rocks.webm",
+   "note": "the circles are boring (we can add some visualisation for them later). Make more flows and make them more pronounced. Can we do this approach with moving circles so the flow cnahges randomly? This might be good"
   },
   {
    "label": "6-curl",
@@ -4059,7 +4063,7 @@
     }
    },
    "videoSize": 3319397,
-   "verdict": "",
+   "verdict": "maybe",
    "series": [
     [
      0,
@@ -4858,7 +4862,8 @@
     ]
    ],
    "hud": "Flow Lab · curl · 120 bpm · ▶\ngrid 455×256 · dye 455×256 · 428×241 · 60 fps · 0 SOR iters · GPU 0.5 ms",
-   "video": "videos/06-6-curl.webm"
+   "video": "videos/06-6-curl.webm",
+   "note": "Also good, but dark "
   }
  ]
 }

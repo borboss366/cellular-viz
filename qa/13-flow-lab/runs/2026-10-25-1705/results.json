@@ -2424,7 +2424,8 @@
     ]
    ],
    "hud": "Flow Lab · plume · 120 bpm · ▶\ngrid 455×256 · dye 455×256 · 428×241 · 60 fps · 58 SOR iters · GPU 11.0 ms",
-   "video": "videos/03-3-plume.webm"
+   "video": "videos/03-3-plume.webm",
+   "note": "make it brighter"
   },
   {
    "label": "4-ink",
@@ -4040,7 +4041,8 @@
     ]
    ],
    "hud": "Flow Lab · rocks · 120 bpm · ▶\ngrid 455×256 · dye 455×256 · 428×241 · 60 fps · 64 SOR iters · GPU 10.7 ms",
-   "video": "videos/05-5-rocks.webm"
+   "video": "videos/05-5-rocks.webm",
+   "note": "make rocks more interesting and not just simple circles, add more flow and make it more contrast"
   },
   {
    "label": "6-curl",
@@ -4863,7 +4865,8 @@
     ]
    ],
    "hud": "Flow Lab · curl · 120 bpm · ▶\ngrid 455×256 · dye 455×256 · 428×241 · 60 fps · 0 SOR iters · GPU 0.4 ms",
-   "video": "videos/06-6-curl.webm"
+   "video": "videos/06-6-curl.webm",
+   "note": "make this a bit brighter"
   }
  ]
 }

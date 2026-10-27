@@ -40,12 +40,12 @@ Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
 
 ## Pairwise ranking (user picks)
 
-2 picks, Bradley–Terry strength (1 = average).
+4 picks, Bradley–Terry strength (1 = average).
 
 | # | variant | strength | won | lost | tie |
 |---|---|---|---|---|---|
-| 1 | new-auto | 2.751 | 2 | 0 | 0 |
-| 2 | old-auto | 0.363 | 0 | 2 | 0 |
+| 1 | new-auto | 3.62 | 4 | 0 | 0 |
+| 2 | old-auto | 0.276 | 0 | 4 | 0 |
 
 ## User notes
 
