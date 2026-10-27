@@ -435,5 +435,21 @@
     "href": "/run/13-flow-lab/2026-10-27-1835-pr69-swipe"
    }
   ]
+ },
+ {
+  "id": "13-rocks",
+  "from": "QA box",
+  "title": "13 Flow Lab: new rocks (polygons, blobs, two-colour dye) vs old circles \u2014 swipe, then merge #72",
+  "note": "PR #72 @e5b1a9c passes all 15 checks (physics unchanged, 60 fps to 4K, sync 9 ms, no clipping). Heads-up: my rough picture numbers show the new rocks slightly LESS busy than the old ones (lit area 4.0 vs 5.0 %, motion \u221227 %, contrast \u22126 %), so judge by eye whether there is 'more flow and contrast'. 40 s each.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/13-flow-lab/2026-10-27-1923-pr72-swipe/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/13-flow-lab/2026-10-27-1923-pr72-swipe"
+   }
+  ]
  }
 ]
