@@ -202,6 +202,19 @@ async function fetchRefs(pr) {
   }
   await must('git', ['-C', WORK, 'fetch', '-q', '--force', 'origin', `+refs/pull/${pr}/head:refs/runner/pr-${pr}`, `+refs/heads/${CFG.checksRef}:refs/runner/checks`, '+refs/heads/main:refs/runner/main'], { timeoutMs: 15 * 60e3 });
 }
+// A fetch that fails on the network (DNS, TLS, a dropped connection) is not a result: the job stays queued and is
+// tried again later, instead of the commit being marked done (QA #57: a DNS blip at 14:17 lost round 8).
+const NET_RE = /could not resolve|unable to access|failed to connect|connection (?:timed out|refused|reset)|temporary failure in name resolution|name or service not known|early eof|rpc failed|operation timed out|network is unreachable|gnutls|ssl|tls/i;
+const RETRY_MAX = 6;
+async function fetchOrRetry(job) {   // true: fetched; false: a network failure, job.retry set for work()
+  try { await fetchRefs(job.pr); return true; }
+  catch (e) {
+    if (!NET_RE.test(e.message) || (job.tries || 0) >= RETRY_MAX) throw e;
+    job.retry = e.message;
+    log(`#${job.pr} @${job.sha.slice(0, 7)}: network failure while fetching, will retry (try ${(job.tries || 0) + 1} of ${RETRY_MAX}): ${e.message}`);
+    return false;
+  }
+}
 async function unpack(ref, what, dir) {
   fs.mkdirSync(dir, { recursive: true });
   const tar = path.join(path.dirname(dir), `${path.basename(dir)}-${what.replace(/\W+/g, '_')}.tar`);
@@ -211,6 +224,7 @@ async function unpack(ref, what, dir) {
 
 // a qa-ready PR: run its experiment file with this runner's measuring code and the check scripts from CHECKS_REF
 async function runExperiment(job, gate) {
+  try { if (!(await fetchOrRetry(job))) return; } catch {}   // a non-network failure is recorded below, as before
   const short = job.sha.slice(0, 7), stamp = localStamp(), tmp = fs.mkdtempSync(path.join(CFG.state, 'exp-'));
   const rel = `qa/experiments/${job.pr}.json`;
   let id = null, result = 'failed', page = `pr-${job.pr}`;
@@ -286,6 +300,7 @@ async function runExperiment(job, gate) {
 }
 
 async function runBuild(job, gate) {
+  try { if (!(await fetchOrRetry(job))) return; } catch {}   // a non-network failure is recorded below, as before
   const short = job.sha.slice(0, 7), stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
   const id = (await builds('start', '--page', job.page, '--pr', String(job.pr), '--commit', short)).trim().split('\n').pop();
   status.running = { ...job, id, started: new Date().toISOString() };
@@ -373,6 +388,7 @@ async function work() {
   try {
     while (!stopping && state.queue.length) {
       const job = state.queue[0];
+      if (job.after && Date.now() < job.after) break;   // waiting to retry after a network failure
       // one GPU check at a time on the box, and only on an idle GPU; if it stays busy the job stays queued for the next poll
       const gate = await gpuGate({ what: `runner #${job.pr} ${job.page}`, log, shouldStop: () => stopping });
       status.gpu = gate;
@@ -383,6 +399,12 @@ async function work() {
       catch (e) { log(`build for #${job.pr} ${job.page} could not start: ${e.message}`); status.running = null; }
       finally { gpuUnlock(); }
       const tr = trace; trace = null;
+      if (job.retry) {   // a network failure: keep the job, try again in 2, 4, 8 … up to 10 minutes
+        job.tries = (job.tries || 0) + 1; job.lastError = job.retry; delete job.retry;
+        job.after = Date.now() + Math.min(10, 2 ** job.tries) * 60e3;
+        save();
+        break;
+      }
       const rec = (state.recent || [])[0];
       if (rec && rec !== before) await afterBuild(rec, gate, tr);
       state.queue = state.queue.filter(j => j !== job && !(j.pr === job.pr && j.page === job.page && j.sha === job.sha));
