@@ -31,6 +31,9 @@
     curl     engine B alone: curl-noise currents.
   Morph: numeric params and the palette blend over `morphBars`; forces fade by weight and
   rocks shrink out / grow in. Laptop extra (3-D smoke volume) is not built yet.
+  Display (#58): `exposure` (EV) and `tone` params; curl and plume run at +0.6 EV with tone 1 (the
+  curve's white point capped at 0.97, so brighter dye never clips); plume's source 1.5x, dissipation
+  0.35 -> 0.2, so the smoke stays visible all the way up. The other recipes look as before.
 
   window.__qa: divergenceRMS() (after projection, over fluid cells), dyeMass(), probe(x, y),
   strouhal {St, f, U, d}, wake (probe log of the sideways velocity behind the cylinder with
@@ -121,7 +124,9 @@ const settings = { bpm: 120, bpb: 4, muted: false, res: 256, morphBars: 8, probe
 const ST = 0.2;   // Strouhal number of a cylinder wake (≈ 0.2 for Re ~ 300 … 2·10⁵)
 
 // ---------- recipes (JSON presets) ----------
-const BASE = { viscosity: 0, curl: 6, dissipation: 0.15, velDissipation: 0.02, pressureIters: 120, splatRadius: 0.35, noiseScale: 2.5, octaves: 3, wind: 0, seed: 1 };
+// exposure (EV) and tone (1 caps the display curve's white point at 0.97, so nothing clips):
+// #58, user on curl and plume: "make it brighter"; the other recipes keep their look
+const BASE = { viscosity: 0, curl: 6, dissipation: 0.15, velDissipation: 0.02, pressureIters: 120, splatRadius: 0.35, noiseScale: 2.5, octaves: 3, wind: 0, seed: 1, exposure: 0, tone: 0 };
 const PRESETS = {
   vortex: { name: 'vortex', engine: 'fluid',
     forces: [{ type: 'inflow', U: 'strouhal', lock: 0.15 }], obstacles: [{ x: 0.2, y: 0.5, r: 0.07 }],
@@ -136,8 +141,8 @@ const PRESETS = {
     music: { kick: 'nudge', snare: 'curl', downbeat: 'none' } },
   plume: { name: 'plume', engine: 'fluid',
     forces: [{ type: 'buoyancy', sigma: 120, cool: 0.5, heat: { x: 0.5, y: 0.06, r: 0.03, rate: 2.5 } }, { type: 'wind', strength: 25 }], obstacles: [],
-    sources: [{ x: 0.5, y: 0.06, r: 0.025, c: 0, rate: 2 }],
-    params: { ...BASE, curl: 14, dissipation: 0.35, wind: 25 }, palette: ['#ff7a2f', '#ffd36b', '#8a5cff'],
+    sources: [{ x: 0.5, y: 0.06, r: 0.025, c: 0, rate: 3 }],
+    params: { ...BASE, curl: 14, dissipation: 0.2, wind: 25, exposure: 0.6, tone: 1 }, palette: ['#ff7a2f', '#ffd36b', '#8a5cff'],
     music: { kick: 'heat', snare: 'curl', downbeat: 'none' } },
   ink: { name: 'ink', engine: 'fluid',
     forces: [{ type: 'wind', strength: 40 }], obstacles: [], sources: [],
@@ -151,14 +156,14 @@ const PRESETS = {
     music: { kick: 'pulse', snare: 'splat', downbeat: 'none' } },
   curl: { name: 'curl', engine: 'curl',
     forces: [], obstacles: [], sources: [{ x: 0.3, y: 0.5, r: 0.03, c: 0, rate: 1.2 }, { x: 0.7, y: 0.5, r: 0.03, c: 1, rate: 1.2 }, { x: 0.5, y: 0.25, r: 0.03, c: 2, rate: 1.2 }],
-    params: { ...BASE, curl: 0, dissipation: 0.3, noiseScale: 2.2, octaves: 4, wind: 90 }, palette: ['#ff6b6b', '#4ecdc4', '#ffe66d'],
+    params: { ...BASE, curl: 0, dissipation: 0.3, noiseScale: 2.2, octaves: 4, wind: 90, exposure: 0.6, tone: 1 }, palette: ['#ff6b6b', '#4ecdc4', '#ffe66d'],
     music: { kick: 'speed', snare: 'none', downbeat: 'none' } },
 };
 const clone = o => JSON.parse(JSON.stringify(o));
 const hex = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
 const toHex = c => '#' + c.map(v => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')).join('');
 // safe ranges for 🎲 and for sliders (ISF-style inputs)
-const RANGES = { curl: [0, 40], dissipation: [0, 2], viscosity: [0, 20], pressureIters: [5, 120], splatRadius: [0.05, 1.5], noiseScale: [0.5, 8], wind: [0, 200], velDissipation: [0, 0.5], octaves: [1, 5] };
+const RANGES = { curl: [0, 40], dissipation: [0, 2], viscosity: [0, 20], pressureIters: [5, 120], splatRadius: [0.05, 1.5], noiseScale: [0.5, 8], wind: [0, 200], velDissipation: [0, 0.5], octaves: [1, 5], exposure: [-1, 2], tone: [0, 1] };
 const RAND = { curl: [1, 25], dissipation: [0.05, 0.6], viscosity: [0, 3], splatRadius: [0.15, 0.8], noiseScale: [1, 5], wind: [0, 80] };
 window.__modules = { 'flow-lab': { inputs: [
   { name: 'preset', type: 'long', values: Object.keys(PRESETS), default: 'vortex' },
@@ -435,14 +440,15 @@ void main() {
   o = vec4(v, 0.0, 1.0);
 }`),
   display: program(HEAD_A + `
-uniform sampler2D uDye; uniform float uKick, uHat;
+uniform sampler2D uDye; uniform float uKick, uHat, uExposure, uTone;
 void main() {
-  vec3 c = texture(uDye, vUv).rgb;
+  vec3 c = texture(uDye, vUv).rgb * exp2(uExposure);
   vec2 e = vec2(1.0) / vec2(textureSize(uDye, 0));
   float gx = dot(texture(uDye, vUv + vec2(e.x, 0)).rgb - texture(uDye, vUv - vec2(e.x, 0)).rgb, vec3(0.33));
   float gy = dot(texture(uDye, vUv + vec2(0, e.y)).rgb - texture(uDye, vUv - vec2(0, e.y)).rgb, vec3(0.33));
   c += vec3(0.25) * clamp(gx - gy, 0.0, 1.0);                     // a soft sheen on the folds
-  c = vec3(1.0) - exp(-c * (1.4 + 0.4 * uKick));
+  // the same soft curve; tone 1 caps its white point at 0.97, so the brighter (exposed) dye never clips
+  c = (1.0 - 0.03 * uTone) * (vec3(1.0) - exp(-c * (1.4 + 0.4 * uKick)));
   if (solid(vUv) > 0.5) {
     float rim = 0.0;
     for (int i = 0; i < 10; i++) { if (i >= uObsN) break; vec2 d = (vUv - uObs[i].xy) * vec2(uAspect, 1.0); float r = uObs[i].z * uObs[i].w; rim = max(rim, smoothstep(r - 0.006, r, length(d))); }
@@ -891,7 +897,8 @@ function draw(now) {
     }
   }
 
-  pass(P.display, null, (u, tex) => { tex('uDye', F.dye.a); gl.uniform1f(u.uKick, L.kick); gl.uniform1f(u.uHat, L.hat); });
+  pass(P.display, null, (u, tex) => { tex('uDye', F.dye.a); gl.uniform1f(u.uKick, L.kick); gl.uniform1f(u.uHat, L.hat);
+    gl.uniform1f(u.uExposure, eff.params.exposure || 0); gl.uniform1f(u.uTone, eff.params.tone || 0); });
   gpuTimer.end();
   if (++st.tuneFrames >= 30) { st.tuneFrames = 0; tuneIters(); }
 
