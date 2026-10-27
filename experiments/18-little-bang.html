@@ -1,0 +1,985 @@
+<!doctype html>
+<!--
+  18 · Little Bang   (Millennium track #37, Yang–Mills take two; spec: #37 comment 6395831220)
+
+  12 Mass Gap stays as it is; the user found it dull apart from the particle look and the lava
+  lamp too basic. This page is a collider show built only from particles: everything we can see
+  of the strong force. Three scenes, switching every `bars` bars; each section is a build-up
+  (beam energy rising collision by collision) and a drop (the last 2 bars, the biggest ones).
+
+    collide  On every downbeat two gold nuclei (197 nucleons each, flattened by their speed) meet
+             with impact parameter b. Nucleons in the overlap are participants and become the
+             fireball; the rest (spectators) fly on down the beam. The fireball is quark–gluon
+             plasma: an almond (short axis along b) that expands under its own pressure, faster
+             along the short axis (a ∝ 1/R), so the almond turns round: elliptic flow. It cools
+             as T = T0 (V0/V)^(1/3) and glows ∝ T⁴, white to orange; at T = 156 MeV it
+             hadronizes into thousands of tracks. Charged tracks curl in the detector's 0.5 T
+             field along the beam with radius r = pT/(0.3 B) [m, GeV, T], losing energy at a
+             constant rate (dE/dx), so r shrinks linearly with path length and slow ones spiral
+             in. The azimuthal spread follows dN/dφ ∝ 1 + 2 v2 cos 2(φ − Ψ) with v2 > 0 from the
+             almond's eccentricity. On each snare a jet pair fires back to back.
+    strings  The Lund string model. On each kick a quark and an antiquark fly apart, tied by a
+             colour string with constant tension κ = 1 GeV/fm (energy κ·L). When it breaks, a new
+             quark–antiquark pair appears at the break, 2m/κ apart, so energy is conserved; it
+             repeats into a cascade of mesons. Each piece is a quark of one colour plus its
+             anticolour (red + cyan, green + magenta, blue + yellow), so every group is white.
+    quench   Collisions as above, but each snare jet pair is lopsided: one jet escapes, the other
+             crosses the plasma, loses most of its energy (dE/dx) and frays into soft curling
+             sparks. A_J = (E1 − E2)/(E1 + E2) is shown.
+  A small strip (bottom right) keeps 12's glueball spectrum: nothing below 1730 MeV, the gap.
+  Not to scale: the fireball is drawn in femtometres (×0.045), the tracks in metres, and time
+  is slowed so a collision lasts about a bar. The fireball is an analytic blast wave, not a
+  fluid solver yet (Flow Lab, 13, will provide one).
+
+  Everything per event is a pure function of the bar number and a seed (a PCG hash shared by
+  JS and GLSL), so QA can recompute any track. window.__qa: event(bar), trackParams(seed, i),
+  trackPos(event, i, t), jetSums(jetSeed, n, quench), fireballAt(event, tfm), strings
+  {cascades, totals}, events, errors. Modules: window.__modules (ISF-style inputs).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>18 · Little Bang</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #ov { pointer-events: none; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #9fb0c3; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 70px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0;
+      position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <canvas id="ov"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Scene</h3>
+  <div class="buttons" id="scenes"></div>
+  <div class="row"><label for="bars">bars / scene</label><input id="bars" type="range" min="4" max="32" step="1"><output id="barsOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="row"><label for="n">tracks</label><input id="n" type="range" min="10000" max="1000000" step="10000"><output id="nOut"></output></div>
+  <div class="row"><label for="gain">glow</label><input id="gain" type="range" min="0.1" max="3" step="0.05"><output id="gainOut"></output></div>
+  <div class="row"><label for="tau">trails (s)</label><input id="tau" type="range" min="0" max="0.4" step="0.01"><output id="tauOut"></output></div>
+  <div class="row"><label for="loss">dE/dx</label><input id="loss" type="range" min="0" max="0.3" step="0.005"><output id="lossOut"></output></div>
+  <div class="buttons">
+    <button id="copy" class="wide">Copy setup</button>
+  </div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+const SCENES = ['collide', 'strings', 'quench'];
+const COARSE = matchMedia('(pointer: coarse)').matches;
+// lead (ms): read the drums this far ahead of the heard clock, if QA box finds the picture late.
+// res: 'cap' draws the particles at up to 2560×1440 pixels and scales the glow up to the
+// screen (QA box: 30 fps at 1440p, 15 at 4K at full size); ?res=native draws every pixel.
+const params = { scene: 'auto', bars: 8, bpm: 120, bpb: 4, muted: false, lead: 0, seed: 1, res: 'cap',
+                 n: 30000, gain: 1, tau: 0.08, loss: 0.06,
+                 kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+
+// ---------- physics constants ----------
+const B_T = 0.5;            // detector field along the beam, tesla (ALICE's solenoid)
+const T_C = 0.156;          // GeV, QCD crossover / hadronization temperature
+const R_AU = 7.0;           // fm, gold nucleus radius (1.2·197^(1/3) ≈ 7.0)
+const FBS = 0.045;          // world units per fm for the fireball and nuclei
+const FMC_S = 0.06;         // seconds of picture per fm/c of fireball time
+const DET_R = 2.5;          // m, drawn detector barrel
+const SPEED = 2.0;          // m per second of picture (tracks, slowed down)
+const TRAIL_K = 3, TRAIL_DT = 0.04;   // line segments per track, seconds each
+const TRACK_LIFE = 2.4;               // s; tracks fade from 1.4 s, so about one event's tracks are drawn at a time
+const FIRE_N = 24000;                 // fireball points
+const JET_N = 700;          // particles per jet
+const KAPPA = 1.0, MQ = 0.33, STR_FM = 0.12, STR_S = 0.12;   // strings: GeV/fm, GeV, units/fm, s per fm/c
+
+// ---------- shared hash (JS twin of the GLSL one) ----------
+function pcg(v) {
+  v >>>= 0;
+  const s = (Math.imul(v, 747796405) + 2891336453) >>> 0;
+  const w = Math.imul(((s >>> ((s >>> 28) + 4)) ^ s) >>> 0, 277803737) >>> 0;
+  return ((w >>> 22) ^ w) >>> 0;
+}
+const rnd = (seed, i, k) => pcg((seed ^ pcg((i * 8 + k) >>> 0)) >>> 0) / 4294967296;
+
+// ---------- Metronome (as 11, with a look-ahead read) ----------
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, bus: null, noise: null, timer: 0, playing: false,
+  nextTime: 0, step: 0, hits: [], steps: [],
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx;
+      this.bus = ctx.createGain(); this.master = ctx.createGain();
+      this.bus.connect(this.master); this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume();
+    this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+    this.playing = true;
+    this.timer = setInterval(() => this.schedule(), 25);
+    this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  schedule() {
+    while (this.nextTime < this.ctx.currentTime + 0.1) {
+      this.queueStep(this.step, this.nextTime);
+      this.nextTime += 60 / params.bpm / 4; this.step++;
+    }
+    const old = this.ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, time) {
+    const inBar = step % (params.bpb * 4);
+    this.steps.push({ time, step });
+    for (const lane of LANES) {
+      if (params[lane][inBar % 16] !== 'x') continue;
+      const vel = inBar === 0 ? 1.0 : 0.7;
+      this.hits.push({ lane, time, vel });
+      this.click(lane, time, vel);
+    }
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain();
+    g.connect(this.bus);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') {
+      src = ctx.createOscillator();
+      src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08);
+      src.connect(g);
+    } else {
+      src = ctx.createBufferSource(); src.buffer = this.noise;
+      const f = ctx.createBiquadFilter();
+      f.type = lane === 'snare' ? 'bandpass' : 'highpass';
+      f.frequency.value = lane === 'snare' ? 1800 : 8000;
+      src.connect(f); f.connect(g);
+    }
+    const end = t + TAU[lane] * 4;
+    g.gain.exponentialRampToValueAtTime(0.001, end);
+    src.start(t); src.stop(end + 0.01);
+  },
+  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
+  // levels and the bar position at the moment the listener hears them (plus `lead` seconds)
+  read(lead = 0) {
+    const out = { kick: 0, snare: 0, hat: 0, bars: -1 };
+    if (!this.ctx) return out;
+    const now = this.ctx.currentTime - this.latency() + lead;
+    for (const h of this.hits) {
+      const dt = now - h.time;
+      if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane]));
+    }
+    let last = null;
+    for (const s of this.steps) if (s.time <= now) last = s;
+    if (last) out.bars = (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / (params.bpb * 4);
+    return out;
+  },
+};
+
+// ---------- the physics, in JS (drives the uniforms; QA recomputes from it) ----------
+// Fireball: an almond of overlap, short axis along b. Transverse axes accelerate at a = A/R0
+// (pressure gradient ∝ 1/size) up to 0.85c; along the beam it grows at 0.95c (Bjorken).
+function fireballAxes(fb, t) {   // t in fm/c → semi-axes in fm {x, out (long), in (short)}
+  const ax = (R0, a) => { const tc = 0.85 / a; return t < tc ? R0 + 0.5 * a * t * t : R0 + 0.5 * a * tc * tc + 0.85 * (t - tc); };
+  return { x: fb.Rx0 + 0.95 * t, out: ax(fb.Rout0, fb.aOut), in: ax(fb.Rin0, fb.aIn) };
+}
+function fireballT(fb, t) {
+  const a = fireballAxes(fb, t);
+  return fb.T0 * Math.cbrt((fb.Rx0 * fb.Rout0 * fb.Rin0) / (a.x * a.out * a.in));
+}
+function makeFireball(energy, b) {
+  const Rin0 = R_AU - b / 2, Rout0 = Math.sqrt(R_AU * R_AU - b * b / 4), A = 1.6;
+  const fb = { b, Rin0, Rout0, Rx0: 0.6, aIn: A / Rin0, aOut: A / Rout0, T0: 0.28 + 0.22 * energy };
+  let t = 0; while (fireballT(fb, t) > T_C && t < 40) t += 0.01;
+  fb.th = t;                                 // fm/c at hadronization
+  fb.thS = t * FMC_S;                        // seconds of picture
+  fb.ecc = (Rout0 * Rout0 - Rin0 * Rin0) / (Rout0 * Rout0 + Rin0 * Rin0);
+  fb.v2 = 0.2 * fb.ecc;                      // hydro response, v2 ≈ 0.2 ε
+  return fb;
+}
+
+const sectionOf = n => {
+  const scene = params.scene === 'auto' ? SCENES[Math.floor(n / params.bars) % SCENES.length] : params.scene;
+  const sb = ((n % params.bars) + params.bars) % params.bars, build = Math.max(1, params.bars - 2), drop = sb >= build;
+  return { scene, drop, energy: drop ? 1.3 : 0.3 + 0.7 * sb / build };
+};
+const evCache = new Map();
+function eventFor(n) {   // the collision on bar n's downbeat, or null (strings scene)
+  if (n < 0) return null;
+  const sec = sectionOf(n);
+  if (sec.scene === 'strings') return null;
+  const key = `${n}|${sec.scene}|${sec.energy}|${params.seed}|${params.snare}|${params.bpb}`;
+  let ev = evCache.get(key);
+  if (!ev) {
+    const seed = pcg(n * 7919 + params.seed * 104729);
+    const b = sec.drop ? 1.5 + 2 * rnd(seed, 0, 1) : 3 + 6 * rnd(seed, 0, 1);   // fm; the drop is near-central
+    const psi = 2 * Math.PI * rnd(seed, 0, 2);
+    const fb = makeFireball(sec.energy, b);
+    const jets = [];
+    for (let s = 0; s < params.bpb * 4; s++) {
+      if (params.snare[s % 16] !== 'x') continue;
+      jets.push({ step: s, seed: pcg(seed + 31 * (s + 1)), phi: 2 * Math.PI * rnd(seed, 1000 + s, 7),
+                  quench: sec.scene === 'quench' ? (sec.drop ? 0.75 : 0.6) : 0 });
+    }
+    ev = { n, seed, scene: sec.scene, drop: sec.drop, energy: sec.energy, b, psi, fb, jets };
+    evCache.set(key, ev);
+    if (evCache.size > 64) evCache.delete(evCache.keys().next().value);
+  }
+  return ev;
+}
+const basis = psi => ({ ein: [0, Math.sin(psi), Math.cos(psi)], eout: [0, Math.cos(psi), -Math.sin(psi)] });
+
+// One bulk track: the same maths as the vertex shader.
+function trackParams(seed, i, ev) {
+  const u0 = rnd(seed, i, 0), u1 = rnd(seed, i, 1), u2 = rnd(seed, i, 2), u3 = rnd(seed, i, 3), u4 = rnd(seed, i, 4);
+  const pT = 0.12 * -Math.log(Math.max(u0 * u1, 1e-7)) * 1.6 * (0.85 + 0.3 * ev.energy);
+  const phi0 = 2 * Math.PI * u2, phi = phi0 - ev.fb.v2 * Math.sin(2 * phi0);
+  const q = u3 < 0.36 ? -1 : u3 < 0.72 ? 1 : 0;
+  const eta = (2 * u4 - 1) * 1.4;
+  return { pT, phi, q, eta, r0: pT / (0.3 * B_T) };
+}
+// Path in the transverse plane for a track of radius r0 losing radius at k per unit length:
+// r(s) = r0 − k s, which is r = p/(0.3 B) with constant dE/dx. Closed form via the turning
+// angle θ: s = r0 (1 − e^(−kθ))/k.
+function helix(r0, k, sT) {
+  const sMax = k > 1e-4 ? 0.995 * r0 / k : Infinity, s = Math.min(sT, sMax);
+  const th = k > 1e-4 ? -Math.log(1 - k * s / r0) / k : s / r0;
+  const e = Math.exp(-k * th), d = 1 + k * k;
+  return { X: r0 * (e * (Math.sin(th) - k * Math.cos(th)) + k) / d, Y: r0 * (1 - e * (k * Math.sin(th) + Math.cos(th))) / d, s, th, r: r0 - k * s };
+}
+function trackPos(ev, i, t) {   // world position of bulk track i, t seconds after hadronization
+  const P = trackParams(ev.seed, i, ev), u5 = rnd(ev.seed, i, 5);
+  const A = fireballAxes(ev.fb, ev.fb.th), rad = 0.75 + 0.25 * u5;
+  const ex = A.x * Math.tanh(P.eta) * FBS * 0.8, ein = A.in * Math.cos(P.phi) * rad * FBS, eout = A.out * Math.sin(P.phi) * rad * FBS;
+  const d = SPEED * Math.max(0, t), sT = d / Math.cosh(P.eta);
+  let X, Y, s;
+  if (P.q !== 0) ({ X, Y, s } = helix(P.r0, params.loss, sT)); else { X = Math.min(sT, DET_R * 1.2); Y = 0; s = X; }
+  const xl = s * Math.sinh(P.eta), c = Math.cos(P.phi), sn = Math.sin(P.phi);
+  const tin = ein + X * c - P.q * Y * sn, tout = eout + X * sn + P.q * Y * c;
+  const { ein: E1, eout: E2 } = basis(ev.psi);
+  return [ex + xl, E1[1] * tin + E2[1] * tout, E1[2] * tin + E2[2] * tout];
+}
+function jetSums(jseed, n, quench) {
+  let a = 0, b = 0;
+  for (let i = 0; i < n; i++) {
+    const pT = 1.0 + 30 * rnd(jseed, i, 0) ** 3;
+    a += pT; b += pT * (1 - quench);
+  }
+  return { E1: a, E2: b, AJ: (a - b) / (a + b) };
+}
+
+// ---------- WebGL ----------
+const canvas = document.getElementById('c');
+const ov = document.getElementById('ov'), octx = ov.getContext('2d');
+const hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+if (!gl) fail('WebGL2 is not available in this browser.');
+if (!gl.getExtension('EXT_color_buffer_float') && !gl.getExtension('EXT_color_buffer_half_float')) fail('This GPU cannot render to float textures.');
+
+function compile(type, src) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src); gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(sh));
+  return sh;
+}
+function program(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name.replace('[0]', ''); u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u };
+}
+const FULL_VS = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+const emptyVao = gl.createVertexArray();
+const HASH_GLSL = `
+uniform uint uSeed;
+uint pcg(uint v) { uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
+float rnd(uint i, uint k) { return float(pcg(uSeed ^ pcg(i * 8u + k))) / 4294967296.0; }`;
+const ADD_FS = `#version 300 es
+precision highp float;
+in vec4 vC;
+out vec4 o;
+void main() { o = vec4(vC.rgb * vC.a, 1.0); }`;
+
+// Tracks: no buffers. Vertex id → (particle, trail segment, end); the path is closed form.
+const trackProg = program(`#version 300 es
+precision highp float;
+uniform mat4 uVP;
+uniform float uT, uTrail, uSpeed, uLoss, uB, uEnergy, uV2, uGain, uDet, uJetPhi, uQuench;
+uniform int uK, uMode, uJetN;
+uniform vec3 uEin, uEout, uAx;
+${HASH_GLSL}
+out vec4 vC;
+void main() {
+  int perP = uK * 2, v = gl_VertexID, i = v / perP, r = v - i * perP, seg = r / 2, e = r - seg * 2;
+  float tRaw = uT - float(seg + e) * uTrail, t = max(tRaw, 0.0);
+  uint ui = uint(i);
+  float pT, phi, eta, q, k = uLoss, bright = 1.0;
+  vec3 emit = vec3(0.0);   // x, in, out (world units)
+  float u3 = rnd(ui, 3u);
+  q = u3 < 0.36 ? -1.0 : (u3 < 0.72 ? 1.0 : 0.0);
+  if (uMode == 0) {
+    float u0 = rnd(ui, 0u), u1 = rnd(ui, 1u), u2 = rnd(ui, 2u), u4 = rnd(ui, 4u), u5 = rnd(ui, 5u);
+    pT = 0.12 * -log(max(u0 * u1, 1e-7)) * 1.6 * (0.85 + 0.3 * uEnergy);
+    float phi0 = 6.2831853 * u2;
+    phi = phi0 - uV2 * sin(2.0 * phi0);
+    eta = (2.0 * u4 - 1.0) * 1.4;
+    float rad = 0.75 + 0.25 * u5;
+    emit = vec3(uAx.x * tanh(eta) * 0.8, uAx.z * cos(phi) * rad, uAx.y * sin(phi) * rad);
+  } else {
+    int side = i / uJetN; uint j = uint(i - side * uJetN);
+    float fs = float(side), qn = fs * uQuench;
+    float u0 = rnd(j, 0u), u1 = rnd(j, 1u), u4 = rnd(j, 4u);
+    q = rnd(j, 3u) < 0.36 ? -1.0 : (rnd(j, 3u) < 0.72 ? 1.0 : 0.0);
+    pT = (1.0 + 30.0 * u0 * u0 * u0) * (1.0 - qn);
+    float wide = 1.0 + 2.5 * qn;
+    phi = uJetPhi + fs * 3.14159265 + (u1 - 0.5) * 0.16 * wide;
+    eta = (u4 - 0.5) * 0.3 * wide;
+    k = uLoss + 0.35 * qn;
+    bright = 2.5 * (1.0 - 0.5 * qn);
+  }
+  float d = uSpeed * t, sT = d / cosh(eta), X, Y, s, alpha = 1.0;
+  if (q != 0.0) {
+    float r0 = pT / (0.3 * uB), sMax = k > 1e-4 ? 0.995 * r0 / k : 1e9;
+    s = min(sT, sMax);
+    float th = k > 1e-4 ? -log(1.0 - k * s / r0) / k : s / r0, ee = exp(-k * th), dd = 1.0 + k * k;
+    X = r0 * (ee * (sin(th) - k * cos(th)) + k) / dd;
+    Y = r0 * (1.0 - ee * (k * sin(th) + cos(th))) / dd;
+    alpha *= smoothstep(0.0, 0.12, 1.0 - sT / sMax);
+  } else { X = min(sT, uDet * 1.2); Y = 0.0; s = X; bright *= 0.35; }
+  float xl = s * sinh(eta), c = cos(phi), sn = sin(phi);
+  float tin = emit.y + X * c - q * Y * sn, tout = emit.z + X * sn + q * Y * c;
+  vec3 pos = vec3(emit.x + xl, 0.0, 0.0) + uEin * tin + uEout * tout;
+  alpha *= 1.0 - smoothstep(uDet, uDet * 1.6, length(vec2(tin, tout)));
+  alpha *= (1.0 - smoothstep(1.4, 2.4, uT)) * step(0.0, tRaw) * (1.0 - 0.8 * float(seg + e) / float(uK));
+  // tracks leave one point, so their projected density falls as 1/rho: alpha ~ sqrt(rho) keeps the core from piling up
+  alpha *= clamp(sqrt((length(vec2(tin, tout)) + 0.05) / 0.6), 0.2, 1.0);
+  // colour by charge (+ warm, - cool, neutral pale) and momentum (soft pT deep, hard pT bright)
+  float hard = smoothstep(0.15, 1.6, pT);
+  vec3 col = q > 0.0 ? mix(vec3(0.95, 0.18, 0.10), vec3(1.0, 0.78, 0.22), hard)
+           : (q < 0.0 ? mix(vec3(0.30, 0.20, 1.0), vec3(0.15, 0.85, 1.0), hard) : mix(vec3(0.55, 0.85, 0.45), vec3(0.95, 1.0, 0.7), hard));
+  vC = vec4(col * bright, alpha * uGain);
+  gl_Position = uVP * vec4(pos, 1.0);
+}`, ADD_FS);
+
+// Fireball: a cloud of glowing points filling the current almond, wobbling like a liquid.
+const fireProg = program(`#version 300 es
+precision highp float;
+uniform mat4 uVP;
+uniform vec3 uAxW, uEin, uEout, uCol;
+uniform float uBright, uScale, uTime;
+${HASH_GLSL}
+out vec4 vC;
+void main() {
+  uint i = uint(gl_VertexID);
+  float z = 2.0 * rnd(i, 0u) - 1.0, a = 6.2831853 * rnd(i, 1u), r = pow(rnd(i, 2u), 0.3333);
+  vec3 dir = vec3(z, sqrt(1.0 - z * z) * cos(a), sqrt(1.0 - z * z) * sin(a)) * r;
+  float w = 0.07;
+  dir += w * vec3(sin(uTime * 2.1 + dir.y * 6.0 + dir.z * 3.0), sin(uTime * 1.7 + dir.z * 5.0 + dir.x * 4.0), sin(uTime * 2.3 + dir.x * 5.0 + dir.y * 3.0));
+  vec3 pos = vec3(dir.x * uAxW.x, 0.0, 0.0) + uEout * (dir.y * uAxW.y) + uEin * (dir.z * uAxW.z);
+  gl_Position = uVP * vec4(pos, 1.0);
+  gl_PointSize = clamp(uScale * (0.6 + 0.8 * rnd(i, 3u)) / gl_Position.w, 1.0, 64.0);
+  vC = vec4(uCol, uBright);
+}`, `#version 300 es
+precision highp float;
+in vec4 vC;
+out vec4 o;
+void main() { vec2 p = gl_PointCoord * 2.0 - 1.0; float f = exp(-3.0 * dot(p, p)); o = vec4(vC.rgb * vC.a * f, 1.0); }`);
+
+// Sprites with their own buffer: nucleons, string beads, quarks, hadrons.
+const spriteProg = program(`#version 300 es
+precision highp float;
+uniform mat4 uVP;
+uniform float uScale;
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec4 aCol;   // rgb, size
+out vec4 vC;
+void main() {
+  gl_Position = uVP * vec4(aPos, 1.0);
+  gl_PointSize = clamp(uScale * aCol.a / gl_Position.w, 1.0, 96.0);
+  vC = vec4(aCol.rgb, 1.0);
+}`, `#version 300 es
+precision highp float;
+in vec4 vC;
+out vec4 o;
+void main() { vec2 p = gl_PointCoord * 2.0 - 1.0; float f = exp(-4.0 * dot(p, p)); o = vec4(vC.rgb * f, 1.0); }`);
+const lineProg = program(`#version 300 es
+precision highp float;
+uniform mat4 uVP;
+uniform vec4 uColor;
+layout(location = 0) in vec3 aPos;
+out vec4 vC;
+void main() { gl_Position = uVP * vec4(aPos, 1.0); vC = uColor; }`, ADD_FS);
+
+function dynBuffer(attrs) {
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  const stride = attrs.reduce((s, a) => s + a.size, 0) * 4; let off = 0;
+  for (const a of attrs) { gl.enableVertexAttribArray(a.loc); gl.vertexAttribPointer(a.loc, a.size, gl.FLOAT, false, stride, off); off += a.size * 4; }
+  gl.bindVertexArray(null);
+  return { vao, buf, count: 0 };
+}
+const spriteBuf = dynBuffer([{ loc: 0, size: 3 }, { loc: 1, size: 4 }]);
+const detBuf = dynBuffer([{ loc: 0, size: 3 }]);
+(function buildDetector() {   // barrel rings, staves, the inner tracker and the beam pipe
+  const v = [], ring = (x, r) => { for (let i = 0; i < 96; i++) { const a = i / 96 * 2 * Math.PI, b = (i + 1) / 96 * 2 * Math.PI; v.push(x, r * Math.cos(a), r * Math.sin(a), x, r * Math.cos(b), r * Math.sin(b)); } };
+  for (let x = -3; x <= 3; x += 1) ring(x, DET_R);
+  for (const x of [-1, 0, 1]) ring(x, 0.6);
+  for (let i = 0; i < 12; i++) { const a = i / 12 * 2 * Math.PI; v.push(-3, DET_R * Math.cos(a), DET_R * Math.sin(a), 3, DET_R * Math.cos(a), DET_R * Math.sin(a)); }
+  v.push(-6, 0, 0, 6, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, detBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+  detBuf.count = v.length / 3;
+})();
+
+// post: HDR accumulation with decay (motion trails), bloom at quarter size, tone map
+const decayProg = program(FULL_VS, `#version 300 es
+precision highp float;
+out vec4 o;
+void main() { o = vec4(0.0); }`);
+const brightProg = program(FULL_VS, `#version 300 es
+precision highp float;
+uniform sampler2D uSrc;
+uniform vec2 uPx;
+in vec2 vUv;
+out vec4 o;
+void main() {
+  vec3 c = texture(uSrc, vUv + uPx * vec2(-1, -1)).rgb + texture(uSrc, vUv + uPx * vec2(1, -1)).rgb
+         + texture(uSrc, vUv + uPx * vec2(-1, 1)).rgb + texture(uSrc, vUv + uPx * vec2(1, 1)).rgb;
+  c *= 0.25;
+  o = vec4(max(c - 0.25, 0.0), 1.0);
+}`);
+const blurProg = program(FULL_VS, `#version 300 es
+precision highp float;
+uniform sampler2D uSrc;
+uniform vec2 uDir;
+in vec2 vUv;
+out vec4 o;
+void main() {
+  vec3 c = texture(uSrc, vUv).rgb * 0.227;
+  c += (texture(uSrc, vUv + uDir * 1.385).rgb + texture(uSrc, vUv - uDir * 1.385).rgb) * 0.316;
+  c += (texture(uSrc, vUv + uDir * 3.231).rgb + texture(uSrc, vUv - uDir * 3.231).rgb) * 0.070;
+  o = vec4(c, 1.0);
+}`);
+const finalProg = program(FULL_VS, `#version 300 es
+precision highp float;
+uniform sampler2D uAcc, uBloom;
+uniform float uFlash;
+in vec2 vUv;
+out vec4 o;
+void main() {
+  vec3 c = texture(uAcc, vUv).rgb + 0.9 * texture(uBloom, vUv).rgb + uFlash * vec3(0.9, 0.85, 0.8);
+  // tone map on the brightest channel, so a dense core keeps its hue instead of every channel saturating to
+  // white; the white point is 0.97, so no pixel clips, and only the hottest cores lean a little towards white
+  float m = max(max(c.r, c.g), c.b), g = 0.97 * (1.0 - exp(-1.2 * m));
+  c = m > 1e-6 ? c * (g / m) : vec3(0.0);
+  c = mix(c, vec3(g), 0.25 * smoothstep(0.8, 0.97, g));
+  float vig = smoothstep(1.3, 0.3, length(vUv - 0.5) * 1.5);
+  o = vec4(pow(c, vec3(0.9)) * (0.7 + 0.3 * vig), 1.0);
+}`);
+function hdrTex(w, h) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  return { t, fbo, w, h };
+}
+const rt = { w: 0, h: 0, acc: null, b1: null, b2: null };
+function sizeTargets(w, h) {
+  if (rt.w === w && rt.h === h) return;
+  for (const k of ['acc', 'b1', 'b2']) if (rt[k]) { gl.deleteTexture(rt[k].t); gl.deleteFramebuffer(rt[k].fbo); }
+  const qw = Math.max(1, Math.ceil(w / 4)), qh = Math.max(1, Math.ceil(h / 4));
+  Object.assign(rt, { w, h, acc: hdrTex(w, h), b1: hdrTex(qw, qh), b2: hdrTex(qw, qh) });
+}
+
+// ---------- small matrix kit (column-major) ----------
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm3 = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+function perspective(fov, asp, n, f) {
+  const t = 1 / Math.tan(fov / 2);
+  return [t / asp, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) / (n - f), -1, 0, 0, 2 * f * n / (n - f), 0];
+}
+function lookAt(eye, at, up) {
+  const z = norm3(sub3(eye, at)), x = norm3(cross3(up, z)), y = cross3(z, x);
+  return [x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot3(x, eye), -dot3(y, eye), -dot3(z, eye), 1];
+}
+function mul4(a, b) {
+  const o = new Array(16).fill(0);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) o[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k];
+  return o;
+}
+
+// ---------- strings: the Lund model in 1+1 D along each cascade's axis ----------
+// Each piece is a quark (colour c) and an antiquark (anticolour c̄) joined by a string of
+// tension κ. Endpoints of mass m feel κ toward their partner. A piece breaks with probability
+// P0·L per unit time; the new pair takes 2m/κ of string, so energy is conserved exactly.
+const QCOL = [[1, 0.1, 0.08], [0.1, 1, 0.2], [0.15, 0.35, 1]];
+const ACOL = QCOL.map(c => c.map(x => 1 - x));   // anticolours: cyan, magenta, yellow
+const P0 = 0.25, HADRON_E = 1.4, STR_LIFE = 5.5;
+const strings = { cascades: [], nextId: 0, totalBreaks: 0, totalQuarks: 0 };
+const endE = q => Math.sqrt(q.p * q.p + MQ * MQ);
+const pieceE = pc => endE(pc.a) + endE(pc.b) + KAPPA * Math.abs(pc.b.x - pc.a.x);
+function spawnCascade(E0) {
+  const u = Math.random(), v = Math.random(), z = 0.6 * (2 * u - 1), a = 2 * Math.PI * v;
+  const axis = norm3([z, Math.sqrt(1 - z * z) * Math.cos(a), Math.sqrt(1 - z * z) * Math.sin(a)]);
+  const p0 = Math.sqrt(Math.max(0, (E0 / 2) ** 2 - MQ * MQ)), c = Math.floor(Math.random() * 3);
+  const cas = { id: strings.nextId++, axis, colour: c, E0, age: 0, breaks: 0,
+                pieces: [{ a: { x: 0, p: -p0 }, b: { x: 0, p: p0 }, hadron: false }] };
+  strings.cascades.push(cas); strings.totalQuarks += 2;
+  return cas;
+}
+function moveConst(q, F, h) { const e1 = endE(q); q.p += F * h; q.x += (endE(q) - e1) / F; }
+function fixEnergy(pc, E0) {
+  const target = E0 - KAPPA * Math.abs(pc.b.x - pc.a.x), pa = pc.a.p, pb = pc.b.p;
+  const f = s => Math.hypot(s * pa, MQ) + Math.hypot(s * pb, MQ) - target;
+  if (Math.abs(f(1)) < 1e-12) return;
+  if (target <= 2 * MQ) { pc.a.p = 0; pc.b.p = 0; return; }   // can't happen without a crossing; stop the ends
+  let lo = 0, hi = 1; while (f(hi) < 0 && hi < 1e6) hi *= 2;
+  for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (f(m) < 0) lo = m; else hi = m; }
+  const s = (lo + hi) / 2; pc.a.p = s * pa; pc.b.p = s * pb;
+}
+function stepStrings(dtS) {
+  const dtFm = dtS / STR_S, SUB = Math.max(1, Math.ceil(dtFm / 0.02)), h = dtFm / SUB;
+  for (const cas of strings.cascades) {
+    cas.age += dtS;
+    for (let it = 0; it < SUB; it++) {
+      const born = [];
+      for (const pc of cas.pieces) {
+        // Exact under a constant force F: p += F h and x moves by ΔE/F (since dE = F dx). That
+        // conserves E = Ea + Eb + κ|L| exactly while the ends don't cross; a yo-yo crossing
+        // inside the step is then put right by rescaling the momenta (QA box saw 3% drift).
+        const E0 = pieceE(pc), sa = Math.sign(pc.b.x - pc.a.x) || 1;
+        moveConst(pc.a, KAPPA * sa, h); moveConst(pc.b, -KAPPA * sa, h);
+        fixEnergy(pc, E0);
+        if (pc.hadron) continue;
+        if (pieceE(pc) < HADRON_E) { pc.hadron = true; continue; }
+        const L = Math.abs(pc.b.x - pc.a.x), gapFm = 2 * MQ / KAPPA;
+        if (L > gapFm + 0.2 && Math.random() < 1 - Math.exp(-P0 * L * h)) {
+          const dir = Math.sign(pc.b.x - pc.a.x), lo = Math.min(pc.a.x, pc.b.x) + gapFm / 2, span = L - gapFm;
+          const xm = lo + Math.random() * span;
+          const qbar = { x: xm - dir * gapFm / 2, p: 0 }, q = { x: xm + dir * gapFm / 2, p: 0 };
+          born.push({ a: q, b: pc.b, hadron: false });
+          pc.b = qbar;
+          cas.breaks++; strings.totalBreaks++; strings.totalQuarks += 2;
+        }
+      }
+      cas.pieces.push(...born);
+    }
+  }
+  strings.cascades = strings.cascades.filter(c => c.age < STR_LIFE);
+}
+function stringSprites(out, kick, hat) {
+  for (const cas of strings.cascades) {
+    const fade = Math.min(1, cas.age / 0.1) * (1 - Math.max(0, (cas.age - STR_LIFE + 1.2) / 1.2));
+    if (fade <= 0) continue;
+    const ax = cas.axis, qc = QCOL[cas.colour], ac = ACOL[cas.colour];
+    const at = x => [ax[0] * x * STR_FM, ax[1] * x * STR_FM, ax[2] * x * STR_FM];
+    for (const pc of cas.pieces) {
+      const xa = pc.a.x, xb = pc.b.x, L = Math.abs(xb - xa), beads = Math.min(80, Math.ceil(L * STR_FM / 0.02));
+      const g = (pc.hadron ? 0.35 : 0.7) * fade * (1 + 0.6 * kick);
+      for (let j = 1; j < beads; j++) {   // the flux tube: colour → white → anticolour
+        const f = j / beads, wmid = 1 - Math.abs(2 * f - 1);
+        const col = [0, 1, 2].map(k => ((1 - f) * qc[k] + f * ac[k]) * (1 - wmid) + wmid);
+        out.push(...at(xa + (xb - xa) * f), col[0] * g * 0.5, col[1] * g * 0.5, col[2] * g * 0.5, 2.2);
+      }
+      const s = (pc.hadron ? 4 : 7) * (1 + 0.5 * hat);
+      out.push(...at(xa), qc[0] * fade * 1.6, qc[1] * fade * 1.6, qc[2] * fade * 1.6, s);
+      out.push(...at(xb), ac[0] * fade * 1.6, ac[1] * fade * 1.6, ac[2] * fade * 1.6, s);
+      if (pc.hadron) out.push(...at((xa + xb) / 2), fade * 0.9, fade * 0.9, fade * 0.9, 9);   // white meson
+    }
+  }
+}
+function stringsQA() {
+  const cascades = strings.cascades.map(c => {
+    const quarks = c.pieces.length * 2;
+    const groups = c.pieces.map(pc => QCOL[c.colour].map((v, k) => +(v + ACOL[c.colour][k]).toFixed(6)));
+    const E = c.pieces.reduce((s, pc) => s + pieceE(pc), 0);
+    return { id: c.id, colour: 'RGB'[c.colour], quarks, breaks: c.breaks, pairRule: quarks === 2 + 2 * c.breaks,
+             hadrons: c.pieces.filter(p => p.hadron).length, groups, neutral: groups.every(g => g.every(v => Math.abs(v - 1) < 1e-6)),
+             E0: c.E0, E: +E.toFixed(4), energyDrift: +((E - c.E0) / c.E0).toFixed(5) };
+  });
+  return { cascades, totalBreaks: strings.totalBreaks, totalQuarks: strings.totalQuarks };
+}
+
+// ---------- modules (ISF-style inputs for the coming platform) ----------
+const MODULES = {
+  collide: { inputs: [
+    { name: 'n', type: 'long', default: 30000, min: 10000, max: 1000000 },
+    { name: 'gain', type: 'float', default: 1, min: 0.1, max: 3 },
+    { name: 'loss', type: 'float', default: 0.06, min: 0, max: 0.3 },
+    { name: 'tau', type: 'float', default: 0.08, min: 0, max: 0.4 } ] },
+  strings: { inputs: [ { name: 'gain', type: 'float', default: 1, min: 0.1, max: 3 } ] },
+  quench: { inputs: [
+    { name: 'n', type: 'long', default: 30000, min: 10000, max: 1000000 },
+    { name: 'loss', type: 'float', default: 0.06, min: 0, max: 0.3 } ] },
+};
+window.__modules = Object.fromEntries(Object.entries(MODULES).map(([k, m]) => [k, { inputs: m.inputs }]));
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+$('play').onclick = () => {
+  if (metronome.playing) metronome.stop(); else metronome.start();
+  clockStart = performance.now();
+  $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', metronome.playing);
+};
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('full').onclick = () => {
+  const w = $('wrap');
+  if (document.fullscreenElement) document.exitFullscreen();
+  else (w.requestFullscreen || w.webkitRequestFullscreen).call(w);
+};
+for (const name of ['auto', ...SCENES]) {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.onclick = () => { params.scene = name; sync(); };
+  $('scenes').appendChild(b);
+}
+const sliders = { bars: 0, bpm: 0, n: 0, gain: 2, tau: 2, loss: 3 };
+for (const [name, dec] of Object.entries(sliders)) {
+  $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name].toFixed(dec); });
+}
+function sync() {
+  for (const [name, dec] of Object.entries(sliders)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
+  $('mute').classList.toggle('on', params.muted);
+  for (const b of $('scenes').children) b.classList.toggle('on', b.textContent === params.scene);
+}
+function setupLink() {
+  const q = new URLSearchParams({ scene: params.scene, bars: params.bars, bpm: params.bpm, n: params.n, gain: params.gain, tau: params.tau, loss: params.loss, seed: params.seed });
+  return location.origin + location.pathname + '?' + q;
+}
+$('copy').onclick = async e => {
+  const text = `18 · Little Bang · ${params.scene} · ${params.bpm} bpm · ${params.n} tracks\n${setupLink()}`;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓';
+  setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
+};
+
+// ---------- drawing pieces ----------
+const GOLD = [1.0, 0.72, 0.25];
+function nucleiSprites(out, ev, t, beatSec) {   // t: seconds since the collision (negative before)
+  const { ein, eout } = basis(ev.psi), v = 3.2 / beatSec;
+  if (t > 1.6) return;
+  for (const side of [-1, 1]) {   // side −1 comes in from −x, its centre at +b/2 along e_in
+    const cx = -side * v * t, off = -side * ev.b / 2;   // spectators keep going after t = 0
+    for (let j = 0; j < 197; j++) {
+      const k = side < 0 ? j : j + 197;
+      const u0 = rnd(ev.seed ^ 0x5bd1e995, k, 0), u1 = rnd(ev.seed ^ 0x5bd1e995, k, 1), u2 = rnd(ev.seed ^ 0x5bd1e995, k, 2);
+      const z = 2 * u0 - 1, a = 2 * Math.PI * u1, r = R_AU * Math.cbrt(u2), s = Math.sqrt(1 - z * z);
+      const lx = r * z * 0.15, ly = r * s * Math.cos(a), lz = r * s * Math.sin(a) + off;   // ly: out of plane, lz: in plane
+      // participant: inside the other nucleus' disc in the transverse plane
+      const participant = Math.hypot(ly, lz + off) < R_AU;
+      if (t > 0 && participant) continue;
+      const fade = t > 0 ? 1 - t / 1.6 : Math.max(0, Math.min(1, 1.2 + t / beatSec * 1.2));
+      const pos = [cx + lx * FBS, ein[1] * lz * FBS + eout[1] * ly * FBS, ein[2] * lz * FBS + eout[2] * ly * FBS];
+      const hot = t > -0.08 && participant ? 1 : 0;
+      out.push(...pos, (GOLD[0] + hot) * fade, (GOLD[1] + hot) * fade, (GOLD[2] + hot) * fade, 5);
+    }
+  }
+}
+function fireCol(T, T0) {
+  const x = Math.max(0, Math.min(1, (T - T_C) / Math.max(1e-3, T0 - T_C)));
+  const orange = [1.0, 0.38, 0.08], yellow = [1.0, 0.82, 0.55], white = [0.85, 0.9, 1.0];
+  const mix = (a, b, f) => a.map((v, i) => v + (b[i] - v) * f);
+  return x < 0.4 ? mix(orange, yellow, x / 0.4) : mix(yellow, white, (x - 0.4) / 0.6);
+}
+
+// ---------- main loop: book the next frame first, survive a bad frame ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(3840, Math.round(canvas.clientWidth * dpr)), h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const ow = Math.round(canvas.clientWidth * Math.min(dpr, 1.5)), oh = Math.round(canvas.clientHeight * Math.min(dpr, 1.5));
+  if (ov.width !== ow || ov.height !== oh) { ov.width = ow; ov.height = oh; }
+  const cap = params.res === 'native' ? 1 : Math.min(1, Math.sqrt(2560 * 1440 / (canvas.width * canvas.height)));
+  sizeTargets(Math.round(canvas.width * cap), Math.round(canvas.height * cap));
+}
+let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastOv = 0, lastNow = 0;
+let lastBeat = -1;
+const errors = [], events = [], logged = new Set();
+function logEvent(e, now) {
+  const ctx = metronome.ctx, lat = metronome.latency();
+  e.tHeard = e.tBeat + lat;
+  e.perfHeard = performance.now() + (e.tHeard - ctx.currentTime) * 1000;
+  e.perfDrawn = now;
+  events.push(e); if (events.length > 256) events.shift();
+}
+function stepTime(step) { const s = metronome.steps.find(x => x.step === step); return s ? s.time : null; }
+function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); }
+  catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
+}
+const qaState = { scene: null, bar: 0, lastEvent: null, lastJet: null, drawnTracks: 0 };
+function draw(now) {
+  resize();
+  const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
+  const L = metronome.read(params.lead / 1000);
+  const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb);
+  const beatSec = 60 / params.bpm, barSec = beatSec * params.bpb, tMus = bars * barSec;
+  const n = Math.floor(bars), sec = sectionOf(n), beat = Math.floor(bars * params.bpb);
+  const beatEdge = beat !== lastBeat; lastBeat = beat;
+  const W = rt.w, H = rt.h, CW = canvas.width, CH = canvas.height;   // particles at W×H, shown at CW×CH
+
+  // strings: a new cascade on every kick of the strings scene
+  if (beatEdge && sec.scene === 'strings' && params.kick[(beat * 4) % 16] === 'x') {
+    const cas = spawnCascade(sec.drop ? 18 : 5 + 9 * sec.energy);
+    if (metronome.playing) { const tb = stepTime(beat * 4); if (tb !== null) logEvent({ type: 'pair', cascade: cas.id, tBeat: tb }, now); }
+  }
+  stepStrings(dt);
+
+  // camera: orbit between a side view (to see the nuclei come in) and a view down the beam
+  const al = 0.75 + 0.45 * Math.sin(bars / 32 * 2 * Math.PI), D = 5.4 - 0.1 * L.kick;
+  const eye = [D * Math.cos(al), D * 0.32 + 0.4 * Math.sin(bars / 16 * 2 * Math.PI), D * Math.sin(al)];
+  const vp = mul4(perspective(0.95, W / H, 0.05, 60), lookAt(eye, [0, 0, 0], [0, 1, 0]));
+
+  // accumulate: decay the old picture, then add this frame
+  gl.bindFramebuffer(gl.FRAMEBUFFER, rt.acc.fbo);
+  gl.viewport(0, 0, W, H);
+  gl.bindVertexArray(emptyVao);
+  const decay = params.tau > 0 ? Math.exp(-dt / params.tau) : 0, fg = 1 - decay || 1;
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ZERO, gl.CONSTANT_ALPHA); gl.blendColor(0, 0, 0, decay);
+  gl.useProgram(decayProg.p); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.blendFunc(gl.ONE, gl.ONE);
+
+  gl.useProgram(lineProg.p); gl.uniformMatrix4fv(lineProg.u.uVP, false, vp);
+  gl.uniform4f(lineProg.u.uColor, 0.25, 0.45, 0.9, 0.12 * fg * (1 + 0.5 * L.hat));
+  gl.bindVertexArray(detBuf.vao); gl.drawArrays(gl.LINES, 0, detBuf.count);
+
+  const sprites = [];
+  let flash = 0, drawn = 0;
+  for (let m = n - 2; m <= n + 1; m++) {
+    const ev = eventFor(m);
+    if (!ev) continue;
+    const t = tMus - m * barSec;
+    if (t < -beatSec) continue;
+    const { ein, eout } = basis(ev.psi);
+    nucleiSprites(sprites, ev, t, beatSec);
+    if (t >= 0 && metronome.playing && !logged.has('c' + m)) {
+      logged.add('c' + m);
+      const tb = stepTime(m * params.bpb * 4);
+      if (tb !== null) logEvent({ type: 'collision', bar: m, b: ev.b, tBeat: tb }, now);
+    }
+    if (t >= 0 && t < ev.fb.thS + 0.15) {   // the fireball
+      const tf = t / FMC_S, A = fireballAxes(ev.fb, Math.min(tf, ev.fb.th)), T = fireballT(ev.fb, Math.min(tf, ev.fb.th));
+      const fade = t < ev.fb.thS ? 1 : 1 - (t - ev.fb.thS) / 0.15;
+      const glow = Math.min(60, (T / T_C) ** 4) * 0.012 * (40000 / FIRE_N) * fade;
+      flash = Math.max(flash, (ev.drop ? 0.3 : 0.12) * Math.min(1, (T / T_C) ** 4 / 40) * fade * Math.exp(-t / 0.12));
+      gl.useProgram(fireProg.p);
+      gl.uniformMatrix4fv(fireProg.u.uVP, false, vp);
+      gl.uniform1ui(fireProg.u.uSeed, ev.seed);
+      gl.uniform3f(fireProg.u.uAxW, A.x * FBS, A.out * FBS, A.in * FBS);
+      gl.uniform3fv(fireProg.u.uEin, ein); gl.uniform3fv(fireProg.u.uEout, eout);
+      gl.uniform3fv(fireProg.u.uCol, fireCol(T, ev.fb.T0));
+      gl.uniform1f(fireProg.u.uBright, glow * fg * params.gain);
+      gl.uniform1f(fireProg.u.uScale, H / 45);
+      gl.uniform1f(fireProg.u.uTime, now / 1000);
+      gl.bindVertexArray(emptyVao); gl.drawArrays(gl.POINTS, 0, FIRE_N);
+    }
+    const tt = t - ev.fb.thS;
+    if (tt >= 0 && tt < TRACK_LIFE) {   // hadrons: the bulk tracks
+      gl.useProgram(trackProg.p);
+      setTrackUniforms(vp, ev, tt, 0, fg);
+      gl.uniform1f(trackProg.u.uGain, 0.9 * Math.sqrt(100000 / params.n) * fg * params.gain);
+      gl.bindVertexArray(emptyVao); gl.drawArrays(gl.LINES, 0, params.n * TRAIL_K * 2);
+      drawn += params.n;
+    }
+    for (const j of ev.jets) {   // jet pairs on the snares
+      const tj = t - j.step * beatSec / 4;
+      if (tj < 0 || tj >= TRACK_LIFE) continue;
+      if (metronome.playing && !logged.has(`j${m}.${j.step}`)) {
+        logged.add(`j${m}.${j.step}`);
+        const tb = stepTime(m * params.bpb * 4 + j.step);
+        if (tb !== null) logEvent({ type: 'jet', bar: m, quench: j.quench, tBeat: tb }, now);
+      }
+      gl.useProgram(trackProg.p);
+      setTrackUniforms(vp, ev, tj, 1, fg);
+      gl.uniform1ui(trackProg.u.uSeed, j.seed);
+      gl.uniform1f(trackProg.u.uJetPhi, j.phi);
+      gl.uniform1f(trackProg.u.uQuench, j.quench);
+      gl.uniform1i(trackProg.u.uJetN, JET_N);
+      gl.uniform1f(trackProg.u.uGain, 0.8 * fg * params.gain);
+      gl.bindVertexArray(emptyVao); gl.drawArrays(gl.LINES, 0, 2 * JET_N * TRAIL_K * 2);
+      qaState.lastJet = { bar: m, step: j.step, seed: j.seed, phi: j.phi, quench: j.quench, ...jetSums(j.seed, JET_N, j.quench) };
+    }
+    if (t >= 0) qaState.lastEvent = ev;
+  }
+  if (logged.size > 400) logged.clear();
+  stringSprites(sprites, L.kick, L.hat);
+  if (sprites.length) {
+    for (let i = 3; i < sprites.length; i += 7) { sprites[i] *= fg * params.gain; sprites[i + 1] *= fg * params.gain; sprites[i + 2] *= fg * params.gain; }
+    gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(sprites), gl.DYNAMIC_DRAW);
+    gl.useProgram(spriteProg.p); gl.uniformMatrix4fv(spriteProg.u.uVP, false, vp); gl.uniform1f(spriteProg.u.uScale, H / 160);
+    gl.bindVertexArray(spriteBuf.vao); gl.drawArrays(gl.POINTS, 0, sprites.length / 7);
+  }
+  gl.disable(gl.BLEND);
+
+  // bloom and tone map
+  gl.bindVertexArray(emptyVao);
+  const pass = (prog, dst, src, set) => {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dst ? dst.fbo : null);
+    gl.viewport(0, 0, dst ? dst.w : CW, dst ? dst.h : CH);
+    gl.useProgram(prog.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.t); gl.uniform1i(prog.u.uSrc ?? prog.u.uAcc, 0);
+    if (set) set(prog);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  };
+  pass(brightProg, rt.b1, rt.acc, p => gl.uniform2f(p.u.uPx, 1 / W, 1 / H));
+  for (let k = 0; k < 2; k++) {
+    pass(blurProg, rt.b2, rt.b1, p => gl.uniform2f(p.u.uDir, (1 + k) / rt.b1.w, 0));
+    pass(blurProg, rt.b1, rt.b2, p => gl.uniform2f(p.u.uDir, 0, (1 + k) / rt.b1.h));
+  }
+  pass(finalProg, null, rt.acc, p => {
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, rt.b1.t); gl.uniform1i(p.u.uBloom, 1);
+    gl.uniform1f(p.u.uFlash, flash * params.gain);
+  });
+
+  qaState.scene = sec.scene; qaState.bar = n; qaState.drawnTracks = drawn;
+  if (now - lastOv > 66) { lastOv = now; drawOverlay(sec, L); }
+  Object.assign(window.__qa, { scene: sec.scene, bars, drop: sec.drop, energy: sec.energy, drawnTracks: drawn, render: [W, H], screen: [CW, CH],
+    lastEvent: qaState.lastEvent && summary(qaState.lastEvent), lastJet: qaState.lastJet, strings: stringsQA(), latency: metronome.latency() });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    hud.textContent = `Little Bang · ${sec.scene} · ${sec.drop ? 'DROP' : 'build-up'} · ${params.bpm} bpm · ${state}\n` +
+      `${drawn.toLocaleString()} tracks drawn · ${W}×${H}${W !== CW ? ` → ${CW}×${CH}` : ''} · ${fps} fps`;
+  }
+}
+function setTrackUniforms(vp, ev, t, mode, fg) {
+  const u = trackProg.u, { ein, eout } = basis(ev.psi), A = fireballAxes(ev.fb, ev.fb.th);
+  gl.uniformMatrix4fv(u.uVP, false, vp);
+  gl.uniform1ui(u.uSeed, ev.seed);
+  gl.uniform1f(u.uT, t); gl.uniform1f(u.uTrail, TRAIL_DT); gl.uniform1i(u.uK, TRAIL_K);
+  gl.uniform1i(u.uMode, mode); gl.uniform1i(u.uJetN, JET_N);
+  gl.uniform1f(u.uSpeed, SPEED); gl.uniform1f(u.uLoss, params.loss); gl.uniform1f(u.uB, B_T);
+  gl.uniform1f(u.uEnergy, ev.energy); gl.uniform1f(u.uV2, ev.fb.v2); gl.uniform1f(u.uDet, DET_R);
+  gl.uniform1f(u.uJetPhi, 0); gl.uniform1f(u.uQuench, 0);
+  gl.uniform3fv(u.uEin, ein); gl.uniform3fv(u.uEout, eout);
+  gl.uniform3f(u.uAx, A.x * FBS, A.out * FBS, A.in * FBS);
+}
+function summary(ev) {
+  return { bar: ev.n, seed: ev.seed, scene: ev.scene, drop: ev.drop, energy: ev.energy, b: ev.b, psi: ev.psi,
+           fireball: { ...ev.fb }, jets: ev.jets.map(j => ({ ...j })) };
+}
+
+// the overlay: labels and the glueball strip (12's gap, kept small)
+const GLUEBALLS = [{ name: '0++', mev: 1730 }, { name: '2++', mev: 2400 }, { name: '0−+', mev: 2590 }];
+function drawOverlay(sec, L) {
+  const c = octx, W = ov.width, H = ov.height, f = px => `600 ${Math.round(px)}px ui-monospace, Menlo, monospace`;
+  c.clearRect(0, 0, W, H);
+  c.textAlign = 'left'; c.fillStyle = 'rgba(230,236,245,0.85)'; c.font = f(H / 34);
+  const ev = qaState.lastEvent;
+  let line1 = '', line2 = '';
+  if (sec.scene === 'strings') {
+    const s = stringsQA();
+    line1 = 'string breaking · κ = 1 GeV/fm';
+    line2 = `${s.totalBreaks} breaks · every group white`;
+  } else if (ev) {
+    line1 = `Au + Au · b = ${ev.b.toFixed(1)} fm · T₀ = ${Math.round(ev.fb.T0 * 1000)} MeV`;
+    line2 = `hadronize at 156 MeV after ${ev.fb.th.toFixed(1)} fm/c · v₂ = ${ev.fb.v2.toFixed(3)}`;
+    if (sec.scene === 'quench' && qaState.lastJet) line2 = `jet quenching · A_J = ${qaState.lastJet.AJ.toFixed(2)}`;
+  }
+  c.fillText(line1, W * 0.04, H * 0.07);
+  c.font = f(H / 48); c.fillStyle = 'rgba(200,212,232,0.6)';
+  c.fillText(line2, W * 0.04, H * 0.115);
+  // glueball strip
+  const x0 = W * 0.62, x1 = W * 0.96, y0 = H * 0.9, hgt = H * 0.06, X = m => x0 + m / 3200 * (x1 - x0);
+  c.fillStyle = 'rgba(30,20,50,0.55)'; c.fillRect(X(0), y0 - hgt, X(1730) - X(0), hgt);
+  c.fillStyle = 'rgba(200,180,255,0.6)'; c.font = f(H / 60); c.textAlign = 'center';
+  c.fillText('gap', (X(0) + X(1730)) / 2, y0 - hgt / 2 + H / 160);
+  const lv = [L.kick, L.snare, L.hat];
+  GLUEBALLS.forEach((g, i) => {
+    const h = hgt * (0.3 + 0.7 * lv[i]);
+    c.fillStyle = 'rgba(255,255,255,0.85)'; c.fillRect(X(g.mev) - W / 400, y0 - h, W / 200, h);
+  });
+  c.strokeStyle = 'rgba(200,210,230,0.4)'; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(X(0), y0); c.lineTo(X(3200), y0); c.stroke();
+  c.textAlign = 'left'; c.fillStyle = 'rgba(200,210,230,0.5)';
+  c.fillText('glueballs, MeV', X(0), y0 + H / 40);
+}
+
+window.__qa = {
+  errors, events, B: B_T, Tc: T_C, kappa: KAPPA, mq: MQ, fbs: FBS, speed: SPEED, jetN: JET_N,
+  rnd, pcg, event: n => { const ev = eventFor(n); return ev && summary(ev); },
+  trackParams: (seed, i, energy = 1, v2 = 0) => trackParams(seed, i, { energy, fb: { v2 } }),
+  trackPos: (bar, i, t) => { const ev = eventFor(bar); return ev ? trackPos(ev, i, t) : null; },
+  helix, jetSums, fireballAt: (bar, tfm) => { const ev = eventFor(bar); return ev ? { axes: fireballAxes(ev.fb, tfm), T: fireballT(ev.fb, tfm) } : null; },
+  loss: () => params.loss,
+};
+const q = k => query.get(k);
+if (q('scene') && (q('scene') === 'auto' || SCENES.includes(q('scene')))) params.scene = q('scene');
+for (const k of ['bars', 'bpm', 'n', 'gain', 'tau', 'loss', 'lead', 'seed']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
+if (q('res') === 'native') params.res = 'native';
+params.n = Math.max(1000, Math.min(1000000, Math.round(params.n)));
+params.muted = q('muted') === '1';
+sync();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

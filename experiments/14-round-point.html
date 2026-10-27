@@ -1,0 +1,691 @@
+<!doctype html>
+<!--
+  14 · Round Point   (Millennium track #37, Poincaré; spec: #37 comment 6395201304)
+
+  Perelman proved the Poincaré conjecture with Ricci flow: let the geometry flow toward
+  roundness, and cut it apart cleanly where it pinches. Two scenes, each section a build-up and
+  a drop (last 2 bars):
+
+    curve   curve-shortening flow, the 2-D cousin: a closed glowing curve where every point moves
+            inward at a speed equal to the curvature there. Any simple closed curve stays simple,
+            turns convex and shrinks to a round point (Gage–Hamilton, Grayson), and its area falls
+            at exactly dA/dt = −2π, whatever the shape (∮κ ds = 2π). Kicks punch bumps the flow
+            heals. The page times the flow so the round point lands on the section's last beat.
+            Discrete: a polygon; each vertex moves along its angle bisector at κᵢ = θᵢ / (ℓᵢ cos θᵢ/2)
+            (θ turning angle, ℓ dual length), which makes Σ area change exactly −2π dt to first
+            order; a tangential term keeps the spacing even; vertices are added or dropped as the
+            length changes. Self-crossings are counted every frame.
+    pinch   the neck pinch: a dumbbell surface of revolution under mean-curvature flow (the
+            surface version of the same idea; Ricci flow pinches the same way, the S²×R model).
+            The profile curve (z, r) moves at (κ₁ + κ₂)·N with κ₂ = −n_r / r. The neck thins and
+            pinches off exactly on the drop (surgery: cut there, cap both ends), leaving two round
+            pieces that shrink to points by the section end. The whole history is computed once
+            at load and played back, so the pinch time is exact.
+  The eight-geometries fly-through (laptop extra) is not built.
+
+  window.__qa: area, length, iso = L²/(4πA), crossings, tau (sim time), kicks, scene,
+  curveLog [{tau, area, length, iso, crossings}], pinch {tauPinch, tauEnd, pieces, history},
+  events (kick/snare/hat, seed, round, pinch with tBeat/tHeard/perfHeard/perfDrawn), errors.
+  ?kicks=0 turns the bumps off (the area-rate check), ?scene=curve|pinch|auto, ?bars=8.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>14 · Round Point</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 16 / 9;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #ov { pointer-events: none; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #9fb0c3; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(62vw, calc(100vh * 16 / 9)); margin: 0; position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <canvas id="ov"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Scene</h3>
+  <div class="buttons" id="scenes"></div>
+  <div class="row"><label for="bars">bars / scene</label><input id="bars" type="range" min="4" max="32" step="1"><output id="barsOut"></output></div>
+  <div class="row"><label for="bump">kick bumps</label><input id="bump" type="range" min="0" max="0.4" step="0.01"><output id="bumpOut"></output></div>
+  <div class="row"><label for="trail">trails (s)</label><input id="trail" type="range" min="0" max="1.5" step="0.05"><output id="trailOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="buttons"><button id="copy" class="wide">Copy setup</button></div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+const SCENES = ['curve', 'pinch'];
+const params = { scene: 'auto', bars: 8, bpm: 120, bpb: 4, muted: false, bump: 0.15, trail: 0.45, kicks: true,
+                 kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+
+// ---------- metronome (as 19) ----------
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [],
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume(); this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+    this.playing = true; this.timer = setInterval(() => this.schedule(), 25); this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  schedule() {
+    while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / params.bpm / 4; this.step++; }
+    const old = this.ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, time) {
+    const inBar = step % (params.bpb * 4); this.steps.push({ time, step });
+    for (const lane of LANES) { if (params[lane][inBar % 16] !== 'x') continue; const vel = inBar === 0 ? 1 : 0.7; this.hits.push({ lane, time, vel }); this.click(lane, time, vel); }
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain(); g.connect(this.master);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') { src = ctx.createOscillator(); src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08); src.connect(g); }
+    else { src = ctx.createBufferSource(); src.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = lane === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = lane === 'snare' ? 1800 : 8000; src.connect(f); f.connect(g); }
+    const end = t + TAU[lane] * 4; g.gain.exponentialRampToValueAtTime(0.001, end); src.start(t); src.stop(end + 0.01);
+  },
+  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
+  read() {   // levels and the beat position at the moment the listener hears them
+    const out = { kick: 0, snare: 0, hat: 0, beats: -1 };
+    if (!this.ctx) return out;
+    const now = this.ctx.currentTime - this.latency();
+    for (const h of this.hits) { const dt = now - h.time; if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane])); }
+    let last = null; for (const s of this.steps) if (s.time <= now) last = s;
+    if (last) out.beats = (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / 4;
+    return out;
+  },
+};
+
+// ================================================================================================
+// Curve-shortening flow on a polygon
+// ================================================================================================
+const areaOf = P => { let s = 0; for (let i = 0, n = P.length; i < n; i++) { const a = P[i], b = P[(i + 1) % n]; s += a[0] * b[1] - b[0] * a[1]; } return s / 2; };
+const lengthOf = P => { let s = 0; for (let i = 0, n = P.length; i < n; i++) { const a = P[i], b = P[(i + 1) % n]; s += Math.hypot(b[0] - a[0], b[1] - a[1]); } return s; };
+// Per-vertex geometry: turning angle θ (left turn > 0 on a counter-clockwise curve), dual length
+// ℓ, inward bisector normal, unit tangent, the two edge lengths, and κ = θ / (ℓ cos θ/2).
+function geom(P) {
+  const n = P.length, g = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const p = P[(i - 1 + n) % n], c = P[i], q = P[(i + 1) % n];
+    const e1x = c[0] - p[0], e1y = c[1] - p[1], e2x = q[0] - c[0], e2y = q[1] - c[1];
+    const a = Math.hypot(e1x, e1y) || 1e-12, b = Math.hypot(e2x, e2y) || 1e-12;
+    const t1x = e1x / a, t1y = e1y / a, t2x = e2x / b, t2y = e2y / b;
+    const th = Math.atan2(t1x * t2y - t1y * t2x, t1x * t2x + t1y * t2y);
+    let nx = -(t1y + t2y), ny = t1x + t2x; const nl = Math.hypot(nx, ny) || 1e-12; nx /= nl; ny /= nl;   // left normals = inward
+    let tx = t1x + t2x, ty = t1y + t2y; const tl = Math.hypot(tx, ty) || 1e-12; tx /= tl; ty /= tl;
+    const l = (a + b) / 2;
+    g[i] = { th, kap: th / (l * Math.cos(th / 2)), nx, ny, tx, ty, a, b, l };
+  }
+  return g;
+}
+// One explicit step of length dt: normal motion at κ, plus a tangential nudge toward equal spacing.
+function cstep(P, dt) {
+  const g = geom(P), n = P.length, Q = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const v = g[i], s = 0.25 * (v.b - v.a);
+    Q[i] = [P[i][0] + v.nx * v.kap * dt + v.tx * s, P[i][1] + v.ny * v.kap * dt + v.ty * s];
+  }
+  return Q;
+}
+// Keep the spacing near h0 = L/200 (but not finer than 0.004 until only 30 vertices are left, so
+// the last moments stay cheap): split long edges on the osculating arc, drop very short ones.
+function remesh(P) {
+  const L = lengthOf(P), h0 = Math.max(L / 200, Math.min(0.004, L / 30), 1e-5);
+  let out = [], n = P.length;
+  const g = geom(P);
+  for (let i = 0; i < n; i++) {
+    const a = P[i], b = P[(i + 1) % n], e = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    out.push(a);
+    if (e > 1.8 * h0) {   // the arc bulges outward from the chord by the sagitta κe²/8
+      const k = 0.5 * (g[i].kap + g[(i + 1) % n].kap), tx = (b[0] - a[0]) / e, ty = (b[1] - a[1]) / e, sag = k * e * e / 8;
+      out.push([(a[0] + b[0]) / 2 + ty * sag, (a[1] + b[1]) / 2 - tx * sag]);
+    }
+  }
+  if (out.length > 30) {
+    const kept = [];
+    for (let i = 0; i < out.length; i++) {
+      const a = kept.length ? kept[kept.length - 1] : out[out.length - 1], b = out[i];
+      if (kept.length && Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.4 * h0 && out.length - (i - kept.length) > 30) continue;
+      kept.push(b);
+    }
+    out = kept;
+  }
+  return out;
+}
+// Self-crossings: proper intersections between non-adjacent edges, via a uniform grid.
+function crossings(P) {
+  const n = P.length; if (n < 4) return 0;
+  let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+  for (const p of P) { minx = Math.min(minx, p[0]); maxx = Math.max(maxx, p[0]); miny = Math.min(miny, p[1]); maxy = Math.max(maxy, p[1]); }
+  const cs = Math.max(1e-6, 2 * lengthOf(P) / n), cols = Math.max(1, Math.ceil((maxx - minx) / cs) + 1), cells = new Map();
+  for (let i = 0; i < n; i++) {
+    const a = P[i], b = P[(i + 1) % n];
+    const x0 = Math.floor((Math.min(a[0], b[0]) - minx) / cs), x1 = Math.floor((Math.max(a[0], b[0]) - minx) / cs);
+    const y0 = Math.floor((Math.min(a[1], b[1]) - miny) / cs), y1 = Math.floor((Math.max(a[1], b[1]) - miny) / cs);
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) { const k = y * cols + x; let c = cells.get(k); if (!c) cells.set(k, c = []); c.push(i); }
+  }
+  const seen = new Set(); let count = 0;
+  const orient = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  for (const list of cells.values()) for (let u = 0; u < list.length; u++) for (let v = u + 1; v < list.length; v++) {
+    let i = list[u], j = list[v]; if (i > j) [i, j] = [j, i];
+    if (j - i <= 1 || (i === 0 && j === n - 1)) continue;
+    const key = i * n + j; if (seen.has(key)) continue; seen.add(key);
+    const a = P[i], b = P[(i + 1) % n], c = P[j], d = P[(j + 1) % n];
+    const o1 = orient(a, b, c), o2 = orient(a, b, d), o3 = orient(c, d, a), o4 = orient(c, d, b);
+    if (o1 * o2 < 0 && o3 * o4 < 0) count++;
+  }
+  return count;
+}
+// A star-shaped seed (so it starts simple): r(θ) = R (1 + Σ a_k cos(kθ + φ_k)), Σ|a_k| ≤ 0.55.
+function seedCurve(rand, area = 1.7) {
+  const harm = [], ks = [2, 3, 4, 5, 6, 7]; let budget = 0.55;
+  for (const k of ks) { const a = Math.min(budget, rand() * 0.22 * (k <= 4 ? 1 : 0.6)); budget -= a; harm.push([k, a, rand() * 6.283]); }
+  const raw = [];
+  for (let i = 0; i < 240; i++) {
+    const t = i / 240 * 2 * Math.PI; let r = 1; for (const [k, a, ph] of harm) r += a * Math.cos(k * t + ph);
+    raw.push([r * Math.cos(t), r * Math.sin(t)]);
+  }
+  const s = Math.sqrt(area / areaOf(raw));
+  return remesh(raw.map(p => [p[0] * s, p[1] * s]));
+}
+const curve = { P: null, tau: 0, area: 0, length: 0, iso: 1, cross: 0, alive: false, log: [], roundAt: null, bumps: 0, rejected: 0 };
+function curveAdvance(dTau) {   // sub-step to the stable limit (dt ≤ 0.2 h_min²), at most 600 sub-steps
+  let left = dTau, steps = 0;
+  while (left > 0 && steps < 600 && curve.alive) {
+    let hmin = Infinity; const n = curve.P.length;
+    for (let i = 0; i < n; i++) { const a = curve.P[i], b = curve.P[(i + 1) % n]; hmin = Math.min(hmin, Math.hypot(b[0] - a[0], b[1] - a[1])); }
+    const dt = Math.min(left, 0.2 * hmin * hmin);
+    curve.P = cstep(curve.P, dt); curve.tau += dt; left -= dt; steps++;
+    if (steps % 4 === 0) curve.P = remesh(curve.P);
+    if (areaOf(curve.P) < 2.5e-4 || curve.P.length < 8) { curve.alive = false; }
+  }
+  curve.P = remesh(curve.P);
+  return steps;
+}
+function curveBump(rand, amp) {   // a kick: push a soft bump in or out; undone if it would cross
+  const P = curve.P, n = P.length, g = geom(P), k = Math.floor(rand() * n), w = Math.max(3, Math.floor(n * 0.06));
+  const R = Math.sqrt(Math.max(1e-6, areaOf(P)) / Math.PI), sign = rand() < 0.5 ? -1 : 1, A = amp * R * sign;
+  const Q = P.map((p, i) => { let d = Math.abs(i - k); d = Math.min(d, n - d); const f = Math.exp(-((d / w) ** 2)); return [p[0] - g[i].nx * A * f, p[1] - g[i].ny * A * f]; });
+  if (crossings(Q) === 0) { curve.P = remesh(Q); curve.bumps++; return true; }
+  curve.rejected++; return false;
+}
+
+// ================================================================================================
+// Neck pinch: mean-curvature flow of a surface of revolution, computed once, played back
+// ================================================================================================
+// A profile is a polyline from the axis (r = 0) to the axis; the inside of the solid is below it.
+function profileStep(Pr, dt) {
+  const n = Pr.length, Q = new Array(n), H = new Float64Array(n);
+  for (let i = 1; i < n - 1; i++) {
+    const p = Pr[i - 1], c = Pr[i], q = Pr[i + 1];
+    const e1z = c[0] - p[0], e1r = c[1] - p[1], e2z = q[0] - c[0], e2r = q[1] - c[1];
+    const a = Math.hypot(e1z, e1r) || 1e-12, b = Math.hypot(e2z, e2r) || 1e-12;
+    const t1z = e1z / a, t1r = e1r / a, t2z = e2z / b, t2r = e2r / b;
+    // traversal runs over the top from left to right, so the inside is to the right (clockwise)
+    let nz = t1r + t2r, nr = -(t1z + t2z); const nl = Math.hypot(nz, nr) || 1e-12; nz /= nl; nr /= nl;
+    const th = -Math.atan2(t1z * t2r - t1r * t2z, t1z * t2z + t1r * t2r);   // turning toward the inside > 0
+    const k1 = th / ((a + b) / 2);
+    const k2 = c[1] > 1e-4 ? -nr / c[1] : k1;
+    H[i] = k1 + k2;
+    let tz = t1z + t2z, tr = t1r + t2r; const tl = Math.hypot(tz, tr) || 1e-12; tz /= tl; tr /= tl;
+    const s = 0.25 * (b - a);
+    Q[i] = [c[0] + nz * H[i] * dt + tz * s, Math.max(0, c[1] + nr * H[i] * dt + tr * s)];
+  }
+  for (const [e, nb, dir] of [[0, 1, 1], [n - 1, n - 2, -1]]) {   // the tips slide along the axis at 2/R
+    const T = Pr[e], P = Pr[nb], cz = (P[0] * P[0] + P[1] * P[1] - T[0] * T[0]) / (2 * (P[0] - T[0]) || 1e-12);
+    const R = Math.abs(T[0] - cz) || 1e-6; H[e] = 2 / R;
+    Q[e] = [T[0] + dir * H[e] * dt, 0];
+  }
+  return { Q, H };
+}
+function profileRemesh(Pr, h0) {
+  const out = [Pr[0]];
+  for (let i = 1; i < Pr.length; i++) {
+    const a = out[out.length - 1], b = Pr[i], e = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (e > 1.8 * h0) out.push([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
+    if (e < 0.4 * h0 && i < Pr.length - 1 && out.length > 1) continue;
+    out.push(b);
+  }
+  return out;
+}
+const arcLen = Pr => { let s = 0; for (let i = 1; i < Pr.length; i++) s += Math.hypot(Pr[i][0] - Pr[i - 1][0], Pr[i][1] - Pr[i - 1][1]); return s; };
+function resampleProfile(Pr, H, M) {   // M points by arc length, with the mean curvature
+  const cum = [0]; for (let i = 1; i < Pr.length; i++) cum.push(cum[i - 1] + Math.hypot(Pr[i][0] - Pr[i - 1][0], Pr[i][1] - Pr[i - 1][1]));
+  const L = cum[cum.length - 1], out = new Float32Array(M * 3); let j = 0;
+  for (let m = 0; m < M; m++) {
+    const s = L * m / (M - 1); while (j < cum.length - 2 && cum[j + 1] < s) j++;
+    const f = (s - cum[j]) / Math.max(1e-12, cum[j + 1] - cum[j]);
+    out[m * 3] = Pr[j][0] + (Pr[j + 1][0] - Pr[j][0]) * f; out[m * 3 + 1] = Pr[j][1] + (Pr[j + 1][1] - Pr[j][1]) * f;
+    out[m * 3 + 2] = H[j] + (H[j + 1] - H[j]) * f;
+  }
+  return out;
+}
+function dumbbell(neck) {   // bulbs ~0.72 at z = ±0.9, a neck of radius `neck` at z = 0
+  const pts = [];
+  for (let i = 0; i <= 160; i++) {
+    const z = -1.62 + 3.24 * i / 160, cap = Math.sqrt(Math.max(0, 1 - (z / 1.62) ** 2));
+    const a = 0.78 - (0.78 - neck) * Math.exp(-z * z / 0.09);
+    pts.push([z, a * cap]);
+  }
+  pts[0][1] = 0; pts[pts.length - 1][1] = 0;
+  return pts;
+}
+function simulatePinch() {   // the whole history: keyframes every Δτ; thinner necks until it pinches
+  for (const neck of [0.2, 0.16, 0.12, 0.09]) {
+    let pieces = [dumbbell(neck)], tau = 0, tauPinch = null, guard = 0;
+    const frames = [], dTauKey = 2e-4; let nextKey = 0;
+    while (pieces.length && guard++ < 400000) {
+      let hmin = Infinity, rmin = Infinity;
+      for (const Pr of pieces) for (let i = 1; i < Pr.length; i++) {
+        hmin = Math.min(hmin, Math.hypot(Pr[i][0] - Pr[i - 1][0], Pr[i][1] - Pr[i - 1][1]));
+        if (i < Pr.length - 1 && i > 2 && i < Pr.length - 3) rmin = Math.min(rmin, Pr[i][1]);
+      }
+      const dt = 0.15 * Math.min(hmin * hmin, rmin * rmin);
+      const stepped = pieces.map(Pr => profileStep(Pr, dt));
+      if (tau >= nextKey) { frames.push({ tau, pieces: stepped.map((s, k) => resampleProfile(pieces[k], s.H, 96)) }); nextKey += dTauKey; }
+      tau += dt;
+      pieces = stepped.map(s => s.Q);
+      // surgery: an interior local minimum of r below 0.025 → cut there, cap both sides
+      const next = [];
+      for (const Pr of pieces) {
+        let k = -1;
+        for (let i = 3; i < Pr.length - 3; i++) if (Pr[i][1] < 0.025 && Pr[i][1] <= Pr[i - 1][1] && Pr[i][1] <= Pr[i + 1][1]) { k = i; break; }
+        if (k >= 0) {
+          if (tauPinch === null) tauPinch = tau;
+          next.push([...Pr.slice(0, k), [Pr[k][0], 0]], [[Pr[k][0], 0], ...Pr.slice(k + 1)]);
+        } else next.push(Pr);
+      }
+      pieces = next.map(Pr => profileRemesh(Pr, Math.max(0.004, arcLen(Pr) / 160))).filter(Pr => arcLen(Pr) > 0.03 && Pr.length > 6);
+    }
+    if (tauPinch !== null) return { neck, tauPinch, tauEnd: tau, frames };
+  }
+  return null;
+}
+const pinch = { sim: null, pieces: 0, history: [] };
+
+// ================================================================================================
+// WebGL
+// ================================================================================================
+const canvas = document.getElementById('c'), ov = document.getElementById('ov'), octx = ov.getContext('2d');
+const hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+if (!gl) fail('WebGL2 is not available in this browser.');
+const halfF = !!gl.getExtension('EXT_color_buffer_float') || !!gl.getExtension('EXT_color_buffer_half_float');
+function compile(type, src) { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(sh)); return sh; }
+function program(vs, fs) {
+  const p = gl.createProgram(); gl.attachShader(p, compile(gl.VERTEX_SHADER, vs)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name.replace('[0]', ''); u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u };
+}
+const FULL_VS = `#version 300 es
+out vec2 vUv;
+void main() { vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = p; gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+const ribbonProg = program(`#version 300 es
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec4 aCol;
+uniform vec2 uScale;
+out vec4 vC;
+void main() { vC = aCol; gl_Position = vec4(aPos * uScale, 0.0, 1.0); }`, `#version 300 es
+precision highp float;
+in vec4 vC; out vec4 o;
+void main() { o = vec4(vC.rgb * vC.a, 1.0); }`);
+const fadeProg = program(FULL_VS, `#version 300 es
+precision highp float;
+out vec4 o; void main() { o = vec4(0.0); }`);
+const showProg = program(FULL_VS, `#version 300 es
+precision highp float;
+uniform sampler2D uSrc; uniform float uFlash;
+in vec2 vUv; out vec4 o;
+void main() {
+  vec3 c = texture(uSrc, vUv).rgb;
+  c += 0.35 * (texture(uSrc, vUv + vec2(0.003, 0)).rgb + texture(uSrc, vUv - vec2(0.003, 0)).rgb + texture(uSrc, vUv + vec2(0, 0.005)).rgb + texture(uSrc, vUv - vec2(0, 0.005)).rgb) * 0.25;
+  c = vec3(1.0) - exp(-c * 1.3) + uFlash * vec3(0.9, 0.85, 1.0);
+  float vig = smoothstep(1.25, 0.35, length(vUv - 0.5) * 1.4);
+  o = vec4(c * (0.7 + 0.3 * vig), 1.0);
+}`);
+const surfProg = program(`#version 300 es
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNor;
+layout(location = 2) in float aH;
+uniform mat4 uVP;
+out vec3 vP; out vec3 vN; out float vH;
+void main() { vP = aPos; vN = aNor; vH = aH; gl_Position = uVP * vec4(aPos, 1.0); }`, `#version 300 es
+precision highp float;
+uniform vec3 uEye; uniform float uKick, uHat, uBeat, uPinch;
+in vec3 vP; in vec3 vN; in float vH; out vec4 o;
+vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0, 4, 2), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
+void main() {
+  vec3 n = normalize(vN), v = normalize(uEye - vP);
+  float fres = pow(1.0 - abs(dot(n, v)), 2.0), diff = 0.35 + 0.65 * max(0.0, dot(n, normalize(vec3(0.4, 0.8, 0.5))));
+  vec3 base = mix(vec3(0.15, 0.35, 1.0), vec3(1.0, 0.45, 0.2), clamp(vH * 0.12, 0.0, 1.0));   // cool = flat, warm = tight
+  float bands = 0.5 + 0.5 * sin(vP.x * 18.0 - uBeat * 6.2831);
+  vec3 c = base * diff * 0.6 + hue(0.6 + vH * 0.02) * fres * (0.6 + 0.8 * uKick) + vec3(1.0) * bands * 0.06 * (0.5 + uKick);
+  c += vec3(1.0, 0.9, 0.8) * uPinch * exp(-abs(vP.x) * 6.0);
+  o = vec4(c, 1.0);
+}`);
+const emptyVao = gl.createVertexArray();
+function dynBuf(attrs) {
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  const stride = attrs.reduce((s, a) => s + a.size, 0) * 4; let off = 0;
+  for (const a of attrs) { gl.enableVertexAttribArray(a.loc); gl.vertexAttribPointer(a.loc, a.size, gl.FLOAT, false, stride, off); off += a.size * 4; }
+  const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
+  gl.bindVertexArray(null);
+  return { vao, buf, ib, count: 0 };
+}
+const ribbonBuf = dynBuf([{ loc: 0, size: 2 }, { loc: 1, size: 4 }]);
+const surfBuf = dynBuf([{ loc: 0, size: 3 }, { loc: 1, size: 3 }, { loc: 2, size: 1 }]);
+let acc = null;
+function accTarget(w, h) {
+  if (acc && acc.w === w && acc.h === h) return;
+  if (acc) { gl.deleteTexture(acc.t); gl.deleteFramebuffer(acc.fbo); }
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  if (halfF) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  const fbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  acc = { t, fbo, w, h };
+}
+// the curve as a glowing ribbon: a core and a wide soft halo, coloured by curvature
+function ribbon(P, width, kick, W, H) {
+  const n = P.length, g = geom(P), R = Math.sqrt(Math.max(1e-6, areaOf(P)) / Math.PI), data = [], idx = [];
+  const px = 2.4 / H;   // world units per pixel (the view is 2.4 units tall)
+  for (const [w, alpha, core] of [[width * 5 * px, 0.18, 0], [width * px, 1.0, 1]]) {
+    const base = data.length / 6;
+    for (let i = 0; i <= n; i++) {
+      const v = g[i % n], p = P[i % n], k = v.kap * R;   // 1 on a circle
+      const warm = Math.max(0, Math.min(1, (k - 1) * 0.35 + 0.5));
+      const col = core ? [0.9 + 0.1 * warm, 0.75 + 0.2 * (1 - warm), 0.6 + 0.4 * (1 - warm)] : [0.25 + 0.9 * warm, 0.35, 1.0 - 0.7 * warm];
+      const a = alpha * (1 + 0.8 * kick);
+      data.push(p[0] + v.nx * w, p[1] + v.ny * w, ...col, a, p[0] - v.nx * w, p[1] - v.ny * w, ...col, a);
+    }
+    for (let i = 0; i < n; i++) { const q = base + i * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
+  }
+  gl.bindVertexArray(ribbonBuf.vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, ribbonBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ribbonBuf.ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(idx), gl.DYNAMIC_DRAW);
+  gl.useProgram(ribbonProg.p); gl.uniform2f(ribbonProg.u.uScale, (H / W) / 1.2, 1 / 1.2);
+  gl.drawElements(gl.TRIANGLES, idx.length, gl.UNSIGNED_INT, 0);
+}
+// a profile (z, r, H) revolved around the x axis
+function surfaceMesh(pieces) {
+  const S = 72, data = [], idx = [];
+  for (const pr of pieces) {
+    const M = pr.length / 3, base = data.length / 7;
+    for (let m = 0; m < M; m++) {
+      const z = pr[m * 3], r = pr[m * 3 + 1], h = pr[m * 3 + 2];
+      const a = Math.max(0, m - 1), b = Math.min(M - 1, m + 1);
+      const dz = pr[b * 3] - pr[a * 3], dr = pr[b * 3 + 1] - pr[a * 3 + 1], l = Math.hypot(dz, dr) || 1;
+      const nz = -dr / l, nr = dz / l;   // outward (away from the axis on the top side)
+      for (let s = 0; s <= S; s++) {
+        const ph = s / S * 2 * Math.PI, c = Math.cos(ph), sn = Math.sin(ph);
+        data.push(z, r * c, r * sn, nz, nr * c, nr * sn, h);
+      }
+    }
+    for (let m = 0; m < M - 1; m++) for (let s = 0; s < S; s++) {
+      const q = base + m * (S + 1) + s, w = q + S + 1;
+      idx.push(q, w, q + 1, q + 1, w, w + 1);
+    }
+  }
+  gl.bindVertexArray(surfBuf.vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, surfBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, surfBuf.ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(idx), gl.DYNAMIC_DRAW);
+  surfBuf.count = idx.length;
+}
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm3 = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+function perspective(fovy, aspect, near, far) { const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far); return new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0]); }
+function lookAt(eye, at, up) { const z = norm3(sub3(eye, at)), x = norm3(cross3(up, z)), y = cross3(z, x); return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot3(x, eye), -dot3(y, eye), -dot3(z, eye), 1]); }
+function mul4(a, b) { const o = new Float32Array(16); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + j] * b[i * 4 + k]; o[i * 4 + j] = s; } return o; }
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+$('play').onclick = () => {
+  if (metronome.playing) metronome.stop(); else metronome.start();
+  clockStart = performance.now(); st.section = -1;
+  $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', metronome.playing);
+};
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('full').onclick = () => { const w = $('wrap'); if (document.fullscreenElement) document.exitFullscreen(); else (w.requestFullscreen || w.webkitRequestFullscreen).call(w); };
+for (const name of ['auto', ...SCENES]) {
+  const b = document.createElement('button'); b.textContent = name;
+  b.onclick = () => { params.scene = name; st.section = -1; sync(); };
+  $('scenes').appendChild(b);
+}
+const SLIDERS = { bars: 0, bump: 2, trail: 2, bpm: 0 };
+for (const [name, dec] of Object.entries(SLIDERS)) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name].toFixed(dec); if (name === 'bars') st.section = -1; });
+function sync() {
+  for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
+  $('mute').classList.toggle('on', params.muted);
+  for (const b of $('scenes').children) b.classList.toggle('on', b.textContent === params.scene);
+}
+$('copy').onclick = async e => {
+  const q = new URLSearchParams({ scene: params.scene, bars: params.bars, bump: params.bump, trail: params.trail, bpm: params.bpm, kicks: params.kicks ? 1 : 0 });
+  const text = `14 · Round Point · ${params.scene}\n${location.origin + location.pathname}?${q}`;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓'; setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
+};
+window.__modules = { 'round-point': { inputs: [
+  { name: 'scene', type: 'long', values: ['auto', ...SCENES], default: 'auto' },
+  { name: 'bars', type: 'long', default: 8, min: 4, max: 32 },
+  { name: 'bump', type: 'float', default: 0.15, min: 0, max: 0.4 },
+  { name: 'trail', type: 'float', default: 0.45, min: 0, max: 1.5 },
+] } };
+
+// ---------- main loop ----------
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const st = { section: -1, scene: null, t0: 0, tDrop: 0, tEnd: 0, flash: 0, lastBeat: -1, roundLogged: -1, pinchLogged: -1, rand: mulberry(7) };
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(3840, Math.round(canvas.clientWidth * dpr)), h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const ow = Math.round(canvas.clientWidth * Math.min(dpr, 1.5)), oh = Math.round(canvas.clientHeight * Math.min(dpr, 1.5));
+  if (ov.width !== ow || ov.height !== oh) { ov.width = ow; ov.height = oh; }
+}
+let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastNow = 0;
+const errors = [], events = [];
+function logEvent(e, now) {
+  if (!metronome.playing) return;
+  e.tHeard = e.tBeat + metronome.latency();
+  e.perfHeard = performance.now() + (e.tHeard - metronome.ctx.currentTime) * 1000;
+  e.perfDrawn = now;
+  events.push(e); if (events.length > 256) events.shift();
+}
+const stepTime = step => { const s = metronome.playing && metronome.steps.find(x => x.step === step); return s ? s.time : null; };
+function logAt(type, bar, extra, now) { const t = stepTime(Math.round(bar * params.bpb * 4)); if (t !== null) logEvent({ type, bar, ...extra, tBeat: t }, now); }
+function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
+}
+const sceneOf = k => params.scene === 'auto' ? SCENES[k % SCENES.length] : params.scene;
+function draw(now) {
+  resize();
+  const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
+  const L = metronome.read();
+  const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * params.bpm / 60);
+  const bars = beats / params.bpb, barSec = 60 / params.bpm * params.bpb;
+  const k = Math.floor(bars / params.bars), sb = bars - k * params.bars, build = Math.max(1, params.bars - 2), drop = sb >= build;
+  const tNow = bars * barSec;   // musical seconds
+
+  // logged drum hits
+  if (metronome.playing) {
+    const heard = metronome.ctx.currentTime - metronome.latency();
+    for (const h of metronome.hits) { if (h.logged || h.time > heard) continue; h.logged = true; logEvent({ type: h.lane, vel: h.vel, tBeat: h.time }, now); }
+  }
+  // a new section: a new curve or a new dumbbell
+  if (k !== st.section) {
+    st.section = k; st.scene = sceneOf(k);
+    st.t0 = k * params.bars * barSec; st.tDrop = (k * params.bars + build) * barSec; st.tEnd = (k + 1) * params.bars * barSec;
+    if (st.scene === 'curve') {
+      st.rand = mulberry(1000 + k);
+      curve.P = seedCurve(st.rand); curve.tau = 0; curve.alive = true; curve.log = []; curve.bumps = 0; curve.rejected = 0;
+      logAt('seed', k * params.bars, { scene: 'curve' }, now);
+    } else if (!pinch.sim) pinch.sim = simulatePinch();
+  }
+  const beat = Math.floor(beats), beatEdge = beat !== st.lastBeat; st.lastBeat = beat;
+  const kickNow = beatEdge && params.kick[(beat * 4) % 16] === 'x';
+
+  const W = canvas.width, H = canvas.height;
+  let label1 = '', label2 = '';
+  if (st.scene === 'curve') {
+    if (curve.alive) {
+      if (kickNow && params.kicks && params.bump > 0 && tNow < st.tEnd - barSec) curveBump(st.rand, params.bump * (beat % params.bpb === 0 ? 1.3 : 1));
+      // time the flow so the area reaches 0 on the section's last beat: dτ = (A/2π)·dt/(T − t)
+      const A = areaOf(curve.P), left = Math.max(0.02, st.tEnd - tNow);
+      curveAdvance(A / (2 * Math.PI) * dt / left);
+    }
+    curve.area = curve.alive ? areaOf(curve.P) : 0; curve.length = curve.alive ? lengthOf(curve.P) : 0;
+    curve.iso = curve.alive && curve.area > 0 ? curve.length * curve.length / (4 * Math.PI * curve.area) : 1;
+    curve.cross = curve.alive ? crossings(curve.P) : 0;
+    curve.log.push({ tau: +curve.tau.toFixed(7), area: +curve.area.toFixed(7), length: +curve.length.toFixed(6), iso: +curve.iso.toFixed(6), crossings: curve.cross, kick: kickNow });
+    if (curve.log.length > 4000) curve.log.shift();
+    if (!curve.alive && st.roundLogged !== k) { st.roundLogged = k; st.flash = 1; logAt('round', (k + 1) * params.bars, { scene: 'curve' }, now); }
+    label1 = 'curve-shortening flow · dA/dt = −2π';
+    label2 = curve.alive ? `A ${curve.area.toFixed(3)} · L²/4πA ${curve.iso.toFixed(3)} · crossings ${curve.cross}` : 'round point';
+
+    // draw: fade the trails, add the ribbon
+    accTarget(W, H);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, acc.fbo); gl.viewport(0, 0, W, H);
+    gl.enable(gl.BLEND);
+    const decay = params.trail > 0 ? Math.exp(-dt / params.trail) : 0;
+    gl.blendFunc(gl.ZERO, gl.CONSTANT_ALPHA); gl.blendColor(0, 0, 0, decay);
+    gl.useProgram(fadeProg.p); gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    if (curve.alive) ribbon(curve.P, 2.2 * (1 + 0.4 * L.kick), L.kick, W, H);
+    gl.disable(gl.BLEND);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H);
+    gl.useProgram(showProg.p); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, acc.t); gl.uniform1i(showProg.u.uSrc, 0);
+    gl.uniform1f(showProg.u.uFlash, st.flash * 0.6);
+    gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  } else {
+    const S = pinch.sim;
+    let tau = 0, framesK = null;
+    if (S) {   // τ reaches τ_pinch exactly on the drop, τ_end at the section end
+      tau = tNow < st.tDrop ? S.tauPinch * Math.max(0, (tNow - st.t0) / (st.tDrop - st.t0))
+                            : S.tauPinch + (S.tauEnd - S.tauPinch) * Math.min(1, (tNow - st.tDrop) / (st.tEnd - st.tDrop));
+      // the keyframe at or before τ (exact piece count), interpolated with the next if they match
+      let lo = 0, hi = S.frames.length - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (S.frames[m].tau <= tau) lo = m; else hi = m; }
+      const A = S.frames[lo], B = S.frames[hi];
+      if (tau >= S.tauPinch && A.tau < S.tauPinch) framesK = B.pieces;   // never show the neck after the pinch time
+      else if (A.pieces.length === B.pieces.length && B.tau > A.tau) {
+        const f = Math.max(0, Math.min(1, (tau - A.tau) / (B.tau - A.tau)));
+        framesK = A.pieces.map((p, i) => p.map((v, j) => v + (B.pieces[i][j] - v) * f));
+      } else framesK = A.pieces;
+      if (tau >= S.tauEnd - 1e-9) framesK = [];
+      const n = framesK.length;
+      if (n === 2 && pinch.pieces === 1 && st.pinchLogged !== k) { st.pinchLogged = k; st.flash = 1; logAt('pinch', k * params.bars + build, { pieces: 2 }, now); }
+      pinch.pieces = n;
+      pinch.history.push({ bars: +bars.toFixed(4), tau: +tau.toFixed(7), pieces: n }); if (pinch.history.length > 2000) pinch.history.shift();
+    }
+    label1 = 'mean-curvature flow · the neck pinch';
+    label2 = S ? (pinch.pieces >= 2 ? 'surgery: two round pieces' : pinch.pieces === 1 ? `neck thinning · pinch on the drop` : 'round points') : 'computing…';
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H);
+    gl.clearColor(0.01, 0.01, 0.03, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    if (framesK && framesK.length) {
+      surfaceMesh(framesK);
+      const ang = bars * 0.25, eye = [0.9 * Math.sin(ang), 1.1 + 0.35 * Math.sin(bars * 0.17), 3.5 + 0.4 * Math.cos(ang)];   // always in front
+      const vp = mul4(perspective(0.8, W / H, 0.05, 50), lookAt(eye, [0, 0, 0], [0, 1, 0]));
+      gl.enable(gl.DEPTH_TEST);
+      gl.useProgram(surfProg.p); gl.uniformMatrix4fv(surfProg.u.uVP, false, vp); gl.uniform3fv(surfProg.u.uEye, eye);
+      gl.uniform1f(surfProg.u.uKick, L.kick); gl.uniform1f(surfProg.u.uHat, L.hat); gl.uniform1f(surfProg.u.uBeat, beats); gl.uniform1f(surfProg.u.uPinch, st.flash);
+      gl.bindVertexArray(surfBuf.vao); gl.drawElements(gl.TRIANGLES, surfBuf.count, gl.UNSIGNED_INT, 0);
+      gl.disable(gl.DEPTH_TEST);
+    }
+  }
+  st.flash = Math.max(0, st.flash - dt * 2.5);
+
+  // labels
+  const c = octx, OW = ov.width, OH = ov.height;
+  c.clearRect(0, 0, OW, OH);
+  c.font = `600 ${Math.round(OH / 32)}px ui-monospace, Menlo, monospace`; c.fillStyle = 'rgba(230,236,245,0.85)'; c.fillText(label1, OW * 0.04, OH * 0.08);
+  c.font = `500 ${Math.round(OH / 46)}px ui-monospace, Menlo, monospace`; c.fillStyle = 'rgba(200,212,232,0.6)'; c.fillText(label2, OW * 0.04, OH * 0.125);
+
+  Object.assign(window.__qa, {
+    scene: st.scene, section: k, drop, bars, kicks: params.kicks,
+    area: curve.area, length: curve.length, iso: curve.iso, crossings: curve.cross, tau: curve.tau, alive: curve.alive,
+    bumps: curve.bumps, bumpsRejected: curve.rejected,
+    pinch: { tauPinch: pinch.sim && pinch.sim.tauPinch, tauEnd: pinch.sim && pinch.sim.tauEnd, neck: pinch.sim && pinch.sim.neck, pieces: pinch.pieces, dropBar: k * params.bars + build },
+  });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    hud.textContent = `Round Point · ${st.scene} · ${drop ? 'DROP' : 'build-up'} · ${params.bpm} bpm · ${state}\n` +
+      (st.scene === 'curve' ? `${curve.P ? curve.P.length : 0} vertices · τ ${curve.tau.toFixed(4)} · ` : `pieces ${pinch.pieces} · `) + `${W}×${H} · ${fps} fps`;
+  }
+}
+
+window.__qa = {
+  errors, events, get curveLog() { return curve.log.slice(); }, get pinchHistory() { return pinch.history.slice(); },
+  areaOf, lengthOf, crossings, get polygon() { return curve.P ? curve.P.map(p => p.slice()) : null; },
+};
+const q = k => query.get(k);
+if (q('scene') && (q('scene') === 'auto' || SCENES.includes(q('scene')))) params.scene = q('scene');
+for (const k of Object.keys(SLIDERS)) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
+params.kicks = q('kicks') !== '0'; params.muted = q('muted') === '1';
+sync();
+setTimeout(() => { if (!pinch.sim) pinch.sim = simulatePinch(); }, 50);   // the pinch history, ready before its section
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -12,9 +12,9 @@ Build a wide set of good-looking MVPs, each one true to its source (maths or phy
 |---|---|---|
 | Riemann | 09 phase portrait, **11 Riemann show** (ribbon, march, scope, primes, canyon, map) | ✅ MVP on main. User's ranking: ribbon > scope > canyon > march > map > primes. Auto-mix is deferred to phase 2 |
 | Birch–Swinnerton-Dyer | 10 first version, 17 Skater, **19 Skate Park** (torus, morph, free) | ✅ MVP, on main (#50 merged). 19 won the final grade. Later: the line looks like it ends right in front of the skater in one clip (effects) |
-| Yang–Mills | 12 Mass Gap, **18 Little Bang** (collide, strings, quench) | ✅ MVP (#43, #49) |
+| Yang–Mills | 12 Mass Gap, **18 Little Bang** (collide, strings, quench) | ✅ MVP, on main (#43, #49). User's grade: collide ≈ auto > quench. Next (#58): beamline scene, quench Mach-cone wake |
 | Navier–Stokes | 13 Flow Lab (stable fluids + curl noise, presets) | ✅ MVP, on main (#53): passes 60 fps to 4K, raw dye drift ≤ 0.7 %/10 s, swirls on the beat. User's picks: kh > ink > vortex > rocks > curl > plume. Next: living obstacles (#54); 3-D smoke and multigrid later |
-| Poincaré | 14 Round Point (curve-shortening flow, neck pinch; #55), **23 Shape Shifter** (SDF mug ↔ kettle ↔ doughnut, surgery on the drop, curvature colour, fly-through), 25 Shape Shifter II (genus 0–3 incl. trefoil and pretzel, fast morphs, orbit/skim/slalom camera) | ✅ 23 MVP on main (#56): genus exact, 60 fps to native 4K. 14 passes its gates (#55). 25 in QA |
+| Poincaré | 14 Round Point (curve-shortening flow, neck pinch; #55), **23 Shape Shifter** (SDF mug ↔ kettle ↔ doughnut, surgery on the drop, curvature colour, fly-through), 25 Shape Shifter II (genus 0–3 incl. trefoil and pretzel, fast morphs, orbit/skim/slalom camera) | ✅ on main: 14 (#55), 23 (#56), 25 (#57, user: "Very good"). Next (#58): 14 kick pulse + crossfade |
 | P vs NP | 15 Hard Problems (2-opt salesman, 3-SAT cliff at 4.26, Rule 110) | ⏳ spec on #37 |
 | Hodge | 16 Calabi–Yau (Fermat n=5 slice, Hodge diamond) | ⏳ spec on #37. Check the formula against Hanson 1994 before building |
 
