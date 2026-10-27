@@ -133,8 +133,8 @@ for (const sc of ['curve', 'pinch']) {
 // ---- 6: no brightness jump at a scene change (#58 "no hard cuts", VIZ dev's ask 27 Oct) ----
 // Every frame, right after the page draws, the canvas is shrunk to 64×36 and its mean luminance taken (Rec. 709 on the
 // sRGB values, 0–255). Around each scene change (while __qa.transition is under way, and ±½ s of the frame __qa.scene
-// flips) the frame-to-frame change must stay ≤ 25 % of the brighter frame's level (floored at 5/255 so black
-// frames don't divide by ~0). Kick flashes elsewhere are reported, not gated.
+// flips) the frame-to-frame change must stay ≤ 25 % of the brighter frame's level. Both frames are raised to 5/255
+// first (VIZ QA's ruling 27 Oct), so a change between two near-black frames counts as 0. Kick flashes elsewhere are reported, not gated.
 res.lum = { frames: 0, flips: [], windowFrames: 0, worstAtChange: null, worstElsewhere: null, over25AtChange: 0, lumRange: null };
 try {
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
@@ -159,7 +159,7 @@ try {
   await page.close();
   const flips = []; for (let i = 1; i < L.length; i++) if (L[i].scene !== L[i - 1].scene) flips.push({ i, t: L[i].t, bars: L[i].bars, from: L[i - 1].scene, to: L[i].scene });
   const inWin = i => (L[i].tr !== null && L[i].tr > 0 && L[i].tr < 1) || flips.some(f => Math.abs(L[i].t - f.t) <= 500);
-  const jumps = []; for (let i = 1; i < L.length; i++) { const a = L[i - 1].lum, b = L[i].lum; jumps.push({ i, bars: L[i].bars, scene: L[i].scene, a, b, rel: Math.abs(b - a) / Math.max(a, b, 5), win: inWin(i) }); }
+  const jumps = []; for (let i = 1; i < L.length; i++) { const a = L[i - 1].lum, b = L[i].lum; jumps.push({ i, bars: L[i].bars, scene: L[i].scene, a, b, rel: Math.abs(Math.max(b, 5) - Math.max(a, 5)) / Math.max(a, b, 5), win: inWin(i) }); }
   const top = arr => [...arr].sort((u, v) => v.rel - u.rel)[0] || null;
   const wj = jumps.filter(j => j.win), oj = jumps.filter(j => !j.win);
   res.lum = { frames: L.length, flips, windowFrames: wj.length, worstAtChange: top(wj), worstElsewhere: top(oj), over25AtChange: wj.filter(j => j.rel > 0.25).length,
