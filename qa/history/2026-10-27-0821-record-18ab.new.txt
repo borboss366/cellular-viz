@@ -1,0 +1,3 @@
+new-collide :: scene=collide ::tap
+new-quench :: scene=quench ::tap
+new-auto :: scene=auto ::tap

@@ -166,7 +166,8 @@
     "label": "\u25b6 watch all",
     "href": "/run/12-mass-gap/2026-10-25-0035"
    }
-  ]
+  ],
+  "done": "2026-10-26T21:40:12.474Z"
  },
  {
   "id": "17-skater",
@@ -212,7 +213,8 @@
     "label": "\u2713 pick",
     "href": "/pick/fhp"
    }
-  ]
+  ],
+  "done": "2026-10-26T21:40:14.025Z"
  },
  {
   "id": "19-vs-17",
@@ -245,7 +247,8 @@
     "label": "\u21c4 canyon vs ribbon",
     "href": "/run/11-riemann-show/2026-10-25-1209/compare"
    }
-  ]
+  ],
+  "done": "2026-10-26T21:40:14.992Z"
  },
  {
   "id": "19-vs-17-slow",
@@ -261,7 +264,8 @@
     "label": "\u25b6 watch all",
     "href": "/run/19-skate-park/2026-10-25-1327"
    }
-  ]
+  ],
+  "done": "2026-10-26T21:40:15.698Z"
  },
  {
   "id": "13-flow-lab-looks",
@@ -294,7 +298,8 @@
     "label": "\u25b6 watch all",
     "href": "/run/13-flow-lab/2026-10-25-1957"
    }
-  ]
+  ],
+  "done": "2026-10-26T21:40:16.219Z"
  },
  {
   "id": "14-round-point",
@@ -310,7 +315,8 @@
     "label": "\u25b6 watch all",
     "href": "/run/14-round-point/2026-10-26-0835"
    }
-  ]
+  ],
+  "done": "2026-10-26T21:40:16.743Z"
  },
  {
   "id": "23-shape-shifter",
@@ -326,7 +332,8 @@
     "label": "\u25b6 watch all",
     "href": "/run/23-shape-shifter/2026-10-26-1117"
    }
-  ]
+  ],
+  "done": "2026-10-26T21:40:17.268Z"
  },
  {
   "id": "25-preview",
@@ -342,7 +349,8 @@
     "label": "\u21c4 compare",
     "href": "/run/25-shape-shifter-2/2026-10-26-1540/compare"
    }
-  ]
+  ],
+  "done": "2026-10-26T21:40:17.775Z"
  },
  {
   "id": "18-little-bang",
@@ -357,6 +365,23 @@
    {
     "label": "\u25b6 watch all",
     "href": "/run/18-little-bang/2026-10-26-1826"
+   }
+  ],
+  "done": "2026-10-26T21:40:18.507Z"
+ },
+ {
+  "id": "18-white-blob",
+  "from": "QA box",
+  "title": "18 Little Bang: the white blob is gone \u2014 swipe old collide vs new (collide, quench, auto)",
+  "note": "PR #49 @9d71ef5 passes every check: no pixel clipped in any frame of the collision (old build: up to 10 %), all physics still exact, 60 fps up to 4K, sync 17\u201318 ms. 30k tracks, colours by charge and momentum. 40 s each. Merge #49 when you like.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/18-little-bang/2026-10-27-0822/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/18-little-bang/2026-10-27-0822"
    }
   ]
  }
