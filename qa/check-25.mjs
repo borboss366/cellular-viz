@@ -169,7 +169,17 @@ await browser.close(); server.close();
 const badKeys = res.keys.filter(k => k.mine !== k.genus || k.b2 || k.touchesBox);
 const badLive = res.live.filter(x => x.touchesBox || (x.mine !== x.want && x.n192 !== x.want && x.n256 !== x.want));
 const gridOnly = res.live.filter(x => x.mine !== x.want && !badLive.includes(x));
-const badDives = res.cam.dives.filter(d => !d.holes.length || d.holes.some(h => h.crossings !== 1 || Math.abs(h.signed) !== (h.knot ? 2 : 1)));
+// slalom (VIZ QA ruling 2026-10-27, after #57 round 5): a dive aims at 1–2 holes; each hole it passes is passed exactly once with the
+// right linking (±1 ring, ±2 trefoil), no hole twice, and the linking numbers I count match the page's plan for that dive.
+// A third hole of a genus-3 shape may be skipped (threading all three forced U-turns).
+const sortL = a => [...a].sort((x, y) => x - y).join(',');
+for (const d of res.cam.dives) {
+  const hit = d.holes.filter(h => h.crossings > 0);
+  d.why = !d.holes.length ? 'no closed hole' : !hit.length ? 'no hole passed' : hit.length > 2 ? `${hit.length} holes in one dive` :
+    hit.some(h => h.crossings > 1) ? 'a hole passed twice' : hit.some(h => Math.abs(h.signed) !== (h.knot ? 2 : 1)) ? 'wrong linking' :
+    d.pageLinking && sortL(hit.map(h => h.signed)) !== sortL(d.pageLinking) ? `passed ${sortL(hit.map(h => h.signed))}, plan ${sortL(d.pageLinking)}` : null;
+}
+const badDives = res.cam.dives.filter(d => d.why);
 const pass = {
   keyGenus: badKeys.length === 0, liveGenus: badLive.length === 0, slalom: res.cam.dives.length > 0 && badDives.length === 0,
   clearance: res.cam.minSdf >= 0.05, turnRate: res.cam.p99 <= 180,
@@ -189,7 +199,7 @@ const stretches = []; for (const x of badLive) { const l = stretches.at(-1); if 
 fs.writeFileSync(path.join(dir, 'check.md'), `# 25 Shape Shifter II check · ${stamp}\n\nGenus, crossings, clearance and turn rate rebuilt from the page's SDF and camera with my own code.\n\n| gate | result | detail |\n|---|---|---|\n` +
   `| 1 every keyframe has its listed genus (my b0 + b2 − χ, n = 192) | ${ok(pass.keyGenus)} | ${res.keys.length} keyframes, ${badKeys.length} wrong${badKeys.length ? ': ' + badKeys.map(k => `${k.name} (listed ${k.genus}, mine ${k.mine}${k.b0 !== 1 ? `, ${k.b0} parts` : ''}${k.b2 ? `, ${k.b2} pockets` : ''}${k.touchesBox ? ', off the grid' : ''})`).join('; ') : ''} |\n` +
   `| 2 live genus = expected every ⅛ bar (n = ${NL}, ${BARS} bars; flagged moments re-counted at 192 and 256) | ${ok(pass.liveGenus)} | ${res.live.length} moments, ${gridOnly.length} flagged at n = ${NL} but right on a finer grid, ${badLive.length} wrong${stretches.length ? ': ' + stretches.slice(0, 12).map(s => `bars ${s.from}–${s.to} mine ${s.mine} want ${s.want} (${s.shape})`).join('; ') + (stretches.length > 12 ? ` … ${stretches.length} stretches` : '') : ''} |\n` +
-  `| 3 slalom: each hole crossed once (trefoil linking 2) | ${ok(pass.slalom)} | ${res.cam.dives.length} dives, ${badDives.length} off${badDives.length ? ': ' + badDives.slice(0, 6).map(d => `phrase ${d.ph}: ` + (d.holes.length ? d.holes.map(h => `${h.type}${h.knot ? ' (knot)' : ''} ×${h.crossings} (${h.signed > 0 ? '+' : ''}${h.signed})`).join(', ') : 'no closed hole')).join('; ') : ''} |\n` +
+  `| 3 slalom: 1–2 holes per dive, each passed once (trefoil linking 2), as planned | ${ok(pass.slalom)} | ${res.cam.dives.length} dives, ${badDives.length} off${badDives.length ? ': ' + badDives.slice(0, 6).map(d => `phrase ${d.ph}: ${d.why} (` + d.holes.map(h => `${h.type}${h.knot ? ' (knot)' : ''} ×${h.crossings} (${h.signed > 0 ? '+' : ''}${h.signed})`).join(', ') + ')').join('; ') : ''}${res.cam.dives.some(d => d.holes.length > 2) ? ' · genus-3 dives skip one hole (allowed)' : ''} |\n` +
   `| 4a camera ≥ 0.05 from the surface, every frame | ${ok(pass.clearance)} | min ${res.cam.minSdf.toFixed(3)} at bar ${res.cam.minAt.bars} (${res.cam.minAt.mode}), ${res.cam.frames} frames |\n` +
   `| 4b view turn rate p99 ≤ 180°/s | ${ok(pass.turnRate)} | fwd p99 ${res.cam.p99.toFixed(0)}°/s, max ${res.cam.max.toFixed(0)}°/s · up p99 ${res.cam.upP99.toFixed(0)}°/s, max ${res.cam.upMax.toFixed(0)}°/s · ${res.cam.overFrames} frames > 180°/s<br>fwd peaks: ${res.cam.fwdPeaks.map(x => `${x.deg}° bar ${x.bars} (${x.mode}, phrase bar ${x.inPh})`).join(', ')}<br>up peaks: ${res.cam.upPeaks.map(x => `${x.deg}° bar ${x.bars} (${x.mode}, phrase bar ${x.inPh})`).join(', ')} |\n` +
   `| 4c no empty picture longer than ¼ s (25-ray test) | ${ok(pass.noEmpty)} | ${res.cam.longEmpty.length} stretches${res.cam.longEmpty.length ? ', longest ' + res.cam.longEmpty.slice(0, 4).map(x => `${x.secs} s at bar ${x.from} (${x.mode})`).join(', ') : ''} |\n` +
