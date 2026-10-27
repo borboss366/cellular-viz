@@ -148,3 +148,64 @@ test('GPU gate waits for idle readings and saves them', async () => {
   assert.match(none.note, /no reading/);
   G.unlock();
 });
+
+// ---------- after-build steps: board moves, history entry, report commit ----------
+const B = await import('../board.mjs');
+const P = await import('../post.mjs');
+const bl = (pr, page, round, status, extra = {}) => ({ id: `viz-${pr}-${round}`, pr, page, round, status, commit: 'abc1234', at: `2026-10-27T0${round}:00:00Z`, gates: [], ...extra });
+
+test('board: one status per PR, the worst page wins, newest round per page', () => {
+  const s = B.prStatus([bl(57, '25-x', 1, 'failed'), bl(57, '25-x', 2, 'ready'), bl(49, '18-a', 1, 'ready'), bl(49, '17-b', 1, 'running')]);
+  assert.equal(s[57].status, 'ready');
+  assert.equal(s[49].status, 'running');
+});
+
+test('board: plan follows the rules and leaves hand moves alone', () => {
+  const items = { 57: { status: 'QA' }, 49: { status: 'Your review' }, 40: { status: 'Your review' }, 22: { status: 'Next' } };
+  const states = { 57: 'OPEN', 49: 'OPEN', 40: 'MERGED', 22: 'OPEN', 65: 'OPEN', 23: 'CLOSED' };
+  const builds = [bl(57, '25-x', 3, 'failed'), bl(49, '18-a', 5, 'ready')];
+  const m = Object.fromEntries(B.plan(items, states, builds).filter(x => !x.noop).map(x => [x.n, x.to]));
+  assert.deepEqual(m, { 57: 'In progress', 40: 'Done', 65: 'Ideas' });
+  // once applied, a card moved by hand stays until the next build
+  const again = B.plan({ ...items, 57: { status: 'Next' } }, states, builds, { 57: 'viz-57-3:failed', 49: 'viz-49-5:ready' });
+  assert.equal(again.some(x => x.n === 57), false);
+});
+
+test('post: commit message, dirs and sh quoting', () => {
+  const b = bl(57, '25-shape-shifter-2', 7, 'failed', { gates: [{ name: 'fps', ok: true }, { name: 'clip ≤ 1', ok: false }],
+    report: 'qa/25-shape-shifter-2/runs/2026-10-27-1130-pr57/check.md', swipe: '/run/25-shape-shifter-2/2026-10-27-1130-pr57-swipe/compare' });
+  const msg = P.messageFor(b);
+  assert.match(msg, /^qa: #57 25-shape-shifter-2 @abc1234 failed 1\/2 \(viz-57-7\)\n/);
+  assert.match(msg, /Failed: clip ≤ 1/);
+  assert.match(msg, /Made-by: QA runner/);
+  assert.deepEqual(P.buildDirs(b), ['qa/25-shape-shifter-2/runs/2026-10-27-1130-pr57', 'qa/25-shape-shifter-2/runs/2026-10-27-1130-pr57-swipe']);
+  assert.equal(P.shLine('node', ['a b', "it's", '--x=1']), `node 'a b' 'it'\\''s' --x=1`);
+});
+
+test('post: history entry, report files and a commit of only those paths', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const home = fs.mkdtempSync(path.join(tmp, 'qahome-'));
+  const g = (...a) => execFileSync('git', ['-C', home, ...a], { encoding: 'utf8' });
+  g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't');
+  const run = path.join(home, 'qa', '25-x', 'runs', 's-pr57');
+  fs.mkdirSync(path.join(run, 'stills'), { recursive: true });
+  fs.writeFileSync(path.join(run, 'check.md'), '# c\n'); fs.writeFileSync(path.join(run, 'results.json'), '{}');
+  const b = bl(57, '25-x', 1, 'ready', { report: 'qa/25-x/runs/s-pr57/check.md' });
+  fs.writeFileSync(path.join(run, 'stills', 'a.png'), 'png'); fs.writeFileSync(path.join(home, 'qa', 'builds.json'), JSON.stringify(b) + '\n');
+  fs.writeFileSync(path.join(home, 'other.txt'), 'x'); g('add', 'other.txt');          // QA box's own staged work
+  const hist = P.historyEntry({ qaHome: home, b, trace: [['git', ['-C', '/w', 'fetch']], ['node', ['exp-run.mjs', '--out', '/t/o']]], result: 'viz-57-1 ready 2/2', checksRef: 'qa/headless-runner' });
+  assert.match(fs.readFileSync(path.join(home, hist[1]), 'utf8'), /\ngit -C \/w fetch\nnode exp-run.mjs --out \/t\/o\n$/);
+  const files = P.reportFiles(home, P.buildDirs(b));
+  assert.deepEqual(files.sort(), ['qa/25-x/runs/s-pr57/check.md', 'qa/25-x/runs/s-pr57/results.json']);
+  const r = await P.commitPaths(home, [...hist, ...files, 'qa/builds.json'], P.messageFor(b));
+  assert.equal(r.ok, true, r.why);
+  const committed = g('show', '--name-only', '--format=', 'HEAD').trim().split('\n').sort();
+  assert.equal(committed.length, 5);
+  assert.ok(!committed.some(f => f.endsWith('.png') || f === 'other.txt'));
+  assert.match(g('diff', '--cached', '--name-only'), /other\.txt/);                   // still staged, untouched
+  assert.equal((await P.commitPaths(home, files, 'again')).why, 'nothing changed');
+  fs.writeFileSync(path.join(run, 'report.md'), '# r\n');
+  const left = await P.commitReports(home);
+  assert.equal(left.ok, true, left.why);
+  assert.match(g('log', '-1', '--format=%s'), /^qa: reports for #57 25-x ready/);
+});
