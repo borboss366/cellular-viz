@@ -11,7 +11,44 @@ GitHub (read only, anonymous)          the box
                                        └──▶ GET-only API: /health /api/status /api/builds /api/log
 ```
 
-## What it does
+## The three commands QA box types
+
+Always the same strings, so each needs approval once (RUNNER_HOME is the runner's own clone of main):
+
+```
+sh <RUNNER_HOME>/qa/update-runner.sh     # pull the runner's clone + kill -TERM the runner; systemd starts the new code
+sh <RUNNER_HOME>/qa/run-next.sh          # one round without the service: poll once, run the queue, exit
+git -C /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz push -q     # on its own, as today
+```
+
+Nothing about which PR to run is on a command line: the runner finds the work itself (below). Both scripts read
+`~/.config/cellular-viz-runner.env` inside the container if it is there (`RUNNER_ENV` points elsewhere); `run-next.sh`
+needs it for `QA_HOME`. No ad-hoc probing on the box: a probe QA box needs is a field in the PR's experiment file
+(`debug`, see `qa/experiments/README.md`), and a probe that doesn't exist yet is a small runner PR.
+
+## Experiments: PRs labelled `qa-ready`
+
+A PR labelled `qa-ready` (`RUNNER_LABEL`) carries `qa/experiments/<PR>.json`, its experiment file. Format, gates, swipe
+and debug probes: [`qa/experiments/README.md`](../experiments/README.md). For every new head commit of such a PR the
+runner validates the file, then runs it with its own measuring code (`exp-run.mjs`, `experiment.mjs`, `probes.mjs`,
+`gpu.mjs`, copied from this clone, never from the PR or the checks ref) and the check scripts it names (from
+`CHECKS_REF`). Results go to `qa/<id>/runs/<YYYY-MM-DD-HHMM>-pr<N>/` in QA box's tree (`check.md`, `report.md`,
+`results.json`, `stills/`, `debug/`, `checks/`, `gpu-gate.json`), the swipe run to `qa/<id>/runs/<stamp>-pr<N>-swipe/`,
+and the build to `qa/builds.json` (start → running → finish, with `--swipe` when there is one).
+Pass or fail is in `state.json` (`recent`) and `/api/status`.
+Unlabelled PRs keep the page checks below.
+
+## GPU gate
+
+Before every build (both kinds) the runner takes the box's GPU lock (`GPU_LOCK`, one GPU job at a time, whoever runs it)
+and waits until `gpu_busy_percent` stays at or under `GPU_IDLE_MAX` % for `GPU_IDLE_SECS` readings in a row. The readings
+go with the result (`gpu-gate.json` and an ℹ️ row in `check.md`). If the GPU stays busy for `GPU_WAIT_MIN` minutes
+nothing is measured: the job stays queued and is tried again after the next poll, and `/api/status` shows why (`gpu`).
+Each measured run also records `gpuBusy` just before its page opens, so an experiment can gate on it.
+
+Tests (no browser, no network): `node --test qa/runner/test/*.test.mjs` (Node 22 does not search a folder given to `--test`).
+
+## What it does (unlabelled PRs)
 
 1. Every `RUNNER_POLL` seconds it lists the open PRs (ETag, so an unchanged list costs nothing).
 2. For a PR with a new head commit, from an allowed author and a branch in this repo, it reads which
