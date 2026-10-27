@@ -97,7 +97,7 @@ res.cam = await page.evaluate(BARS => {
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], len = a => Math.hypot(...a);
   const ang = (a, b) => Math.acos(Math.max(-1, Math.min(1, dot(a, b) / (len(a) * len(b))))) * 180 / Math.PI;
   const spf = 1 / 60, barsPerFrame = spf * 120 / 60 / 4;   // 120 bpm, 4/4
-  let minSdf = Infinity, minAt = null, prev = null; const rates = [], upRates = [], cover = [], emptyRuns = []; let emptyFrom = null;
+  let minSdf = Infinity, minAt = null, prev = null; const rates = [], upRates = [], rateAt = [], cover = [], emptyRuns = []; let emptyFrom = null;
   const add = (a, c, s = 1) => [a[0] + c[0] * s, a[1] + c[1] * s, a[2] + c[2] * s], crs = (a, c) => [a[1] * c[2] - a[2] * c[1], a[2] * c[0] - a[0] * c[2], a[0] * c[1] - a[1] * c[0]], nrm = a => { const l = Math.hypot(...a); return [a[0] / l, a[1] / l, a[2] / l]; };
   for (let b = 0; b < BARS; b += barsPerFrame) {
     const c = __qa.camera(b), d = __qa.sdf(...c.eye, b);
@@ -110,7 +110,7 @@ res.cam = await page.evaluate(BARS => {
       if (!hits) { if (emptyFrom === null) emptyFrom = b; } else if (emptyFrom !== null) { emptyRuns.push({ from: +emptyFrom.toFixed(3), secs: +((b - emptyFrom) * 2).toFixed(2), mode: c.mode }); emptyFrom = null; }
     }
     if (d < minSdf) { minSdf = d; minAt = { bars: +b.toFixed(3), mode: c.mode }; }
-    if (prev) { rates.push(ang(prev.fwd, c.fwd) / spf); upRates.push(ang(prev.up, c.up) / spf); }
+    if (prev) { rates.push(ang(prev.fwd, c.fwd) / spf); upRates.push(ang(prev.up, c.up) / spf); rateAt.push({ bars: +b.toFixed(3), mode: c.mode, ph: Math.floor(b / 8), inPh: +(b % 8).toFixed(2) }); }
     prev = c;
   }
   const p = (a, q) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(q * (s.length - 1))]; };
@@ -132,8 +132,12 @@ res.cam = await page.evaluate(BARS => {
     const page = __qa.thread(mid);
     return { ph: w.ph, holes: holes.map((h, k) => ({ slot: h.slot, type: h.type, knot: h.Rk > 0, crossings: sums[k].n, signed: sums[k].signed })), pageLinking: page && page.holes.map(x => x.linking) };
   });
+  // turn peaks: top 5 fwd and up, at least ¼ bar apart, with bar, mode and position in the 8-bar phrase
+  const peaks = arr => { const idx = arr.map((v, i) => i).sort((x, y) => arr[y] - arr[x]), out = [];
+    for (const i of idx) { if (out.length >= 5) break; if (out.some(o => Math.abs(o.bars - rateAt[i].bars) < 0.25)) continue; out.push({ ...rateAt[i], deg: +arr[i].toFixed(0) }); } return out; };
+  const fwdPeaks = peaks(rates), upPeaks = peaks(upRates), overBars = rateAt.filter((x, i) => rates[i] > 180 || upRates[i] > 180).map(x => x.bars);
   const longEmpty = emptyRuns.filter(x => x.secs > 0.25).sort((a, c) => c.secs - a.secs);
-  return { coverMean: cover.reduce((a, x) => a + x, 0) / cover.length, coverP10: p(cover, 0.10), longEmpty, frames: rates.length, minSdf, minAt, p99: p(rates, 0.99), max: Math.max(...rates), upP99: p(upRates, 0.99), dives, pageAngP99: __qa.angP99 && __qa.angP99() };
+  return { coverMean: cover.reduce((a, x) => a + x, 0) / cover.length, coverP10: p(cover, 0.10), longEmpty, frames: rates.length, minSdf, minAt, p99: p(rates, 0.99), max: Math.max(...rates), upP99: p(upRates, 0.99), upMax: Math.max(...upRates), fwdPeaks, upPeaks, overFrames: overBars.length, dives, pageAngP99: __qa.angP99 && __qa.angP99() };
 }, BARS);
 await page.close();
 // 5. sync and speed
@@ -187,7 +191,7 @@ fs.writeFileSync(path.join(dir, 'check.md'), `# 25 Shape Shifter II check · ${s
   `| 2 live genus = expected every ⅛ bar (n = ${NL}, ${BARS} bars; flagged moments re-counted at 192 and 256) | ${ok(pass.liveGenus)} | ${res.live.length} moments, ${gridOnly.length} flagged at n = ${NL} but right on a finer grid, ${badLive.length} wrong${stretches.length ? ': ' + stretches.slice(0, 12).map(s => `bars ${s.from}–${s.to} mine ${s.mine} want ${s.want} (${s.shape})`).join('; ') + (stretches.length > 12 ? ` … ${stretches.length} stretches` : '') : ''} |\n` +
   `| 3 slalom: each hole crossed once (trefoil linking 2) | ${ok(pass.slalom)} | ${res.cam.dives.length} dives, ${badDives.length} off${badDives.length ? ': ' + badDives.slice(0, 6).map(d => `phrase ${d.ph}: ` + (d.holes.length ? d.holes.map(h => `${h.type}${h.knot ? ' (knot)' : ''} ×${h.crossings} (${h.signed > 0 ? '+' : ''}${h.signed})`).join(', ') : 'no closed hole')).join('; ') : ''} |\n` +
   `| 4a camera ≥ 0.05 from the surface, every frame | ${ok(pass.clearance)} | min ${res.cam.minSdf.toFixed(3)} at bar ${res.cam.minAt.bars} (${res.cam.minAt.mode}), ${res.cam.frames} frames |\n` +
-  `| 4b view turn rate p99 ≤ 180°/s | ${ok(pass.turnRate)} | fwd p99 ${res.cam.p99.toFixed(0)}°/s, max ${res.cam.max.toFixed(0)}°/s · up p99 ${res.cam.upP99.toFixed(0)}°/s |\n` +
+  `| 4b view turn rate p99 ≤ 180°/s | ${ok(pass.turnRate)} | fwd p99 ${res.cam.p99.toFixed(0)}°/s, max ${res.cam.max.toFixed(0)}°/s · up p99 ${res.cam.upP99.toFixed(0)}°/s, max ${res.cam.upMax.toFixed(0)}°/s · ${res.cam.overFrames} frames > 180°/s<br>fwd peaks: ${res.cam.fwdPeaks.map(x => `${x.deg}° bar ${x.bars} (${x.mode}, phrase bar ${x.inPh})`).join(', ')}<br>up peaks: ${res.cam.upPeaks.map(x => `${x.deg}° bar ${x.bars} (${x.mode}, phrase bar ${x.inPh})`).join(', ')} |\n` +
   `| 4c no empty picture longer than ¼ s (25-ray test) | ${ok(pass.noEmpty)} | ${res.cam.longEmpty.length} stretches${res.cam.longEmpty.length ? ', longest ' + res.cam.longEmpty.slice(0, 4).map(x => `${x.secs} s at bar ${x.from} (${x.mode})`).join(', ') : ''} |\n` +
   `| 4d framing: shape fills ≥ 25 % on average, ≥ 8 % in 90 % of frames | ${ok(pass.framing)} | mean ${(res.cam.coverMean * 100).toFixed(1)} %, 10th percentile ${(res.cam.coverP10 * 100).toFixed(0)} % |\n` +
   `| 5 sync (≤ 40 ms) | ${ok(pass.sync)} | ${Object.entries(res.sync).map(([k, v]) => `${k} ${v.median} ms (n ${v.n})`).join(' · ')} |\n` +
