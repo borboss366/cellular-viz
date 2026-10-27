@@ -6,6 +6,7 @@
 //  3. No self-crossings: my own O(n²) test of every pair of non-adjacent edges, every frame, kicks on and off.
 //  4. Neck pinch: the piece count goes 1 → 2 on the drop bar (within 0.02 bar), exactly 2 pieces after, then
 //     0 at the end; the neck radius in the precomputed history shrinks monotonically to the surgery threshold.
+//  6. No frame-to-frame brightness jump > 25 % at a scene change (canvas mean luminance, every frame).
 //  5. Sync from __qa.events (drums, seed, round, pinch ≤ 40 ms), 60 fps at 1080p/1440p/4K per scene, alive, errors.
 import { chromium } from 'playwright';
 import http from 'node:http';
@@ -131,6 +132,41 @@ for (const sc of ['curve', 'pinch']) {
 }
 await browser.close(); server.close();
 
+// ---- 6: no brightness jump at a scene change (#58 "no hard cuts", VIZ dev's ask 27 Oct) ----
+// Every frame, right after the page draws, the canvas is shrunk to 64×36 and its mean luminance taken (Rec. 709 on the
+// sRGB values, 0–255). Around each scene change (while __qa.transition is under way, and ±½ s of the frame __qa.scene
+// flips) the frame-to-frame change must stay ≤ 25 % of the brighter frame's level (floored at 5/255 so black
+// frames don't divide by ~0). Kick flashes elsewhere are reported, not gated.
+res.lum = { frames: 0, flips: [], windowFrames: 0, worstAtChange: null, worstElsewhere: null, over25AtChange: 0, lumRange: null };
+try {
+  const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
+  page.on('pageerror', e => errors.push(e.message));
+  await page.addInitScript(() => {
+    const L = window.__lum = [], raf = window.requestAnimationFrame.bind(window);
+    const c = document.createElement('canvas'); c.width = 64; c.height = 36; const x = c.getContext('2d', { willReadFrequently: true });
+    let last = -1;
+    window.requestAnimationFrame = cb => raf(t => { try { cb(t); } finally {
+      if (t !== last && window.__qa && window.__lumOn) { last = t;
+        const gl = [...document.querySelectorAll('canvas')].filter(k => k !== c).sort((a, b) => b.width * b.height - a.width * a.height)[0];
+        if (gl) { x.drawImage(gl, 0, 0, 64, 36); const d = x.getImageData(0, 0, 64, 36).data; let s = 0;
+          for (let i = 0; i < d.length; i += 4) s += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+          const tr = __qa.transition;
+          L.push({ t, bars: +(+__qa.bars).toFixed(3), scene: __qa.scene, tr: tr && Number.isFinite(tr.progress) ? +tr.progress.toFixed(3) : null, lum: +(s / (64 * 36)).toFixed(2) }); } } } });
+  });
+  await page.goto(`${base}?scene=auto`); await page.addStyleTag({ content: FULL }).catch(() => {}); await page.waitForTimeout(800);
+  await page.click('#play').catch(() => {});
+  await page.evaluate(() => { window.__lumOn = true; });
+  await page.waitForTimeout(36000);
+  const L = await page.evaluate(() => window.__lum);
+  await page.close();
+  const flips = []; for (let i = 1; i < L.length; i++) if (L[i].scene !== L[i - 1].scene) flips.push({ i, t: L[i].t, bars: L[i].bars, from: L[i - 1].scene, to: L[i].scene });
+  const inWin = i => (L[i].tr !== null && L[i].tr > 0 && L[i].tr < 1) || flips.some(f => Math.abs(L[i].t - f.t) <= 500);
+  const jumps = []; for (let i = 1; i < L.length; i++) { const a = L[i - 1].lum, b = L[i].lum; jumps.push({ i, bars: L[i].bars, scene: L[i].scene, a, b, rel: Math.abs(b - a) / Math.max(a, b, 5), win: inWin(i) }); }
+  const top = arr => [...arr].sort((u, v) => v.rel - u.rel)[0] || null;
+  const wj = jumps.filter(j => j.win), oj = jumps.filter(j => !j.win);
+  res.lum = { frames: L.length, flips, windowFrames: wj.length, worstAtChange: top(wj), worstElsewhere: top(oj), over25AtChange: wj.filter(j => j.rel > 0.25).length,
+    lumRange: L.length ? [Math.min(...L.map(x => x.lum)), Math.max(...L.map(x => x.lum))] : null };
+} catch (e) { res.lum.error = e.message; errors.push('gate 6: ' + e.message); }
 const N = res.curveNoKicks, K = res.curveKicks, P = res.pinch;
 const pass = {
   areaLaw: N.slopes.length > 0 && N.slopes.every(x => Math.abs(x + 1) <= 0.03) && N.roundEarlyBars !== null && Math.abs(N.roundEarlyBars) <= 0.3,
@@ -142,6 +178,7 @@ const pass = {
   sync: Object.keys(res.sync).length > 0 && Object.values(res.sync).every(v => v.median <= 40),
   alive: Object.values(res.speed).every(o => Object.values(o).every(v => v.alive)),
   fps: Object.values(res.speed).every(o => Object.values(o).every(v => v.p95 <= 16.8 && v.over20 <= 3)),
+  noLumJump: res.lum.flips.length > 0 && res.lum.over25AtChange === 0,
   noErrors: !errors.length && Object.values(res.speed).every(o => Object.values(o).every(v => !v.caught)),
 };
 const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
@@ -157,6 +194,7 @@ fs.writeFileSync(path.join(dir, 'check.md'), `# 14 Round Point check · ${stamp}
   `| 3 no self-crossings, every frame (my O(n²) test) | ${ok(pass.noCrossings)} | kicks off ${N.myCrossings} in ${N.live} frames · kicks on ${K.myCrossings} in ${K.live} frames (page counted ${N.pageCrossings} / ${K.pageCrossings}) · ${N.vertices.join('–')} vertices |\n` +
   `| 4 neck pinch on the drop → exactly 2 pieces, then round points | ${ok(pass.pinch)} | ${P.changes.map(c => `${c.from}→${c.to} at bar ${c.bars}`).join(', ')} (drop ${P.dropBar}, off by ${P.splitOffBars} bar) · after: ${P.piecesAfterSplit.join('/')} (still ${P.endPieces} on the section's last frame) · neck ${P.neckStart} → ${P.neckLast}, largest rise ${P.neckMaxRise} (reported only) |\n` +
   `| 5 sync from __qa.events (≤ 40 ms) | ${ok(pass.sync)} | ${Object.entries(res.sync).map(([k, v]) => `${k} ${v.median} ms (n ${v.n})`).join(' · ')} |\n` +
+  `| 6 no brightness jump > 25 % frame to frame at a scene change | ${ok(pass.noLumJump)} | ${res.lum.flips.map(f => `${f.from}→${f.to} at bar ${f.bars}`).join(', ') || 'no scene change seen'} · worst at a change ${res.lum.worstAtChange ? (100 * res.lum.worstAtChange.rel).toFixed(1) + ' % (' + res.lum.worstAtChange.a + '→' + res.lum.worstAtChange.b + ' at bar ' + res.lum.worstAtChange.bars + ')' : '–'} · ${res.lum.over25AtChange} frames over 25 % · elsewhere (kicks, reported only) worst ${res.lum.worstElsewhere ? (100 * res.lum.worstElsewhere.rel).toFixed(1) + ' % at bar ' + res.lum.worstElsewhere.bars : '–'} |\n` +
   `| 60 fps 1080p/1440p/4K | ${ok(pass.fps)} | |\n| page alive | ${ok(pass.alive)} | |\n| errors | ${ok(pass.noErrors)} | ${errors.slice(0, 2).join('; ') || 'none'} |\n\n` +
   `| scene | 1080p p95 / >20 ms | 1440p | 4K | canvas at 4K |\n|---|---|---|---|---|\n` +
   Object.entries(res.speed).map(([k, o]) => `| ${k} | ${o['1080p'].p95} / ${o['1080p'].over20} | ${o['1440p'].p95} / ${o['1440p'].over20} | ${o['4K'].p95} / ${o['4K'].over20} | ${o['4K'].canvas.join('×')} |`).join('\n') + '\n');
