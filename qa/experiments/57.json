@@ -1,27 +1,28 @@
 {
   "version": 1,
   "id": "25-shape-shifter-2",
-  "note": "25 Shape Shifter II round 7: no frame stalls at native 4K (dynamic resolution renders into a corner of one full-size target; predicted start scale), plus a look at the stretched picture right after a scale change.",
+  "note": "25 Shape Shifter II round 7: no frame stalls at native 4K (dynamic resolution renders into a corner of one full-size target; predicted start scale, steps back up when fast), plus a look at the stretched picture on either side of each scale change. Window 0.5-24.5 s so the late steps (round 5: ~17 s, bar 8.4) fall inside it.",
   "resolutions": ["1080p", "4k"],
-  "warmup": 2,
-  "seconds": 10,
+  "warmup": 0.5,
+  "seconds": 24,
   "variants": [
     { "name": "auto", "params": {} },
     { "name": "native", "params": { "res": "native" } }
   ],
   "values": { "renderScale": "__qa.renderScale", "render": "__qa.render", "canvas": "__qa.canvas" },
   "gates": [
-    { "metric": "longFrames", "max": 0.5, "name": "at most 3 frames over 20 ms in 10 s" },
+    { "metric": "longFrames", "max": 0.25, "variant": "native", "resolution": "4k", "name": "native 4K: about 3 frames over 20 ms in 1400" },
+    { "metric": "longFrames", "max": 0.5, "variant": "auto", "name": "default render: at most 0.5 % of frames over 20 ms" },
     { "metric": "fps.p05", "min": 55 },
     { "metric": "errors", "max": 0 },
-    { "metric": "gpuBusy", "max": 20 }
+    { "metric": "gpuBusy", "max": 10 }
   ],
   "checks": ["check-25"],
-  "swipe": { "seconds": 40, "warmup": 4, "variants": ["auto"] },
+  "swipe": { "vs": "71f3673", "seconds": 40, "warmup": 4, "variants": ["auto"] },
   "debug": {
     "frameTimes": true,
     "screenshotAtFrame": [30, 90, 150, 300],
-    "qaDump": { "every": 0.25, "read": { "scale": "__qa.renderScale", "render": "__qa.render", "canvas": "__qa.canvas" } },
+    "qaDump": { "every": 0.1, "read": { "frame": "window.__probe && __probe.frame", "scale": "__qa.renderScale", "render": "__qa.render", "canvas": "__qa.canvas" } },
     "console": true
   }
 }
