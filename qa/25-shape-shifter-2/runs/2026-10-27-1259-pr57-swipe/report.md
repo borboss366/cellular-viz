@@ -31,9 +31,25 @@ Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
 QA sweep · 25-shape-shifter-2 · 2026-10-27T13:24
 | variant | score | cover | motion | pulse | colour | fps | verdict |
 |---|---|---|---|---|---|---|---|
-| new-auto | 8.9 | 25% | 0.0393 | ±0.0240 | 0.022 | 60.3 |  |
+| new-auto | 8.9 | 25% | 0.0393 | ±0.0240 | 0.022 | 60.3 |  — Very good |
 
 queries:
 - new-auto: http://127.0.0.1:39717/experiments/25-shape-shifter-2.html
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+2 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | new-auto | 2.751 | 2 | 0 | 0 |
+| 2 | old-auto | 0.363 | 0 | 2 | 0 |
+
+## User notes
+
+**On each look**
+
+- **new-auto**: Very good
+
