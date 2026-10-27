@@ -29,6 +29,9 @@ export const METRICS = {
   longFrames: '% of frames longer than 20 ms',
   clip: '% of pixels clipped (any channel ≥ 254) in the worst sampled frame',
   'clip.mean': '% clipped pixels, mean over the sampled frames',
+  'lum.mean': 'mean luminance of the sampled frames, % of white (Rec. 709 weights on the sRGB values)',
+  'lum.min': 'luminance of the darkest sampled frame, %',
+  'lum.max': 'luminance of the brightest sampled frame, %',
   errors: 'page errors plus __qa.errors entries',
   gpuBusy: 'GPU busy % read just before the run (outside load)',
 };

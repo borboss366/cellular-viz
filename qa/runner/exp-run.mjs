@@ -55,7 +55,7 @@ if (hasGpu && fs.existsSync(path.join(libRoot, 'usr/share/glvnd/egl_vendor.d')))
 const fontsConf = path.join(os.homedir(), 'qa-libs/fonts.conf');
 if (!env.FONTCONFIG_FILE && fs.existsSync(fontsConf)) env.FONTCONFIG_FILE = fontsConf;
 const FULL = '#wrap{width:100vw !important;height:100vh !important;aspect-ratio:auto !important;margin:0 !important}';
-const needClip = exp.gates.some(g => g.metric.startsWith('clip'));
+const needClip = exp.gates.some(g => g.metric.startsWith('clip') || g.metric.startsWith('lum'));
 const shared = {};
 
 async function measure(browser, run) {
@@ -99,16 +99,18 @@ async function measure(browser, run) {
         const gl = [...document.querySelectorAll('canvas')].sort((a, b) => b.width * b.height - a.width * a.height)[0];
         if (!gl) return null;
         const c2 = document.createElement('canvas'); c2.width = gl.width; c2.height = gl.height;
-        const x = c2.getContext('2d', { willReadFrequently: true }), fr = [], t0 = performance.now();
+        const x = c2.getContext('2d', { willReadFrequently: true }), fr = [], lu = [], t0 = performance.now();
         // a rAF callback booked from a timer runs after the page's own callback of that frame, so it sees the drawn frame
         await new Promise(done => { const f = () => {
-          x.drawImage(gl, 0, 0); const d = x.getImageData(0, 0, c2.width, c2.height).data; let clip = 0, n = 0;
-          for (let i = 0; i < d.length; i += 8) { if (d[i] >= 254 || d[i + 1] >= 254 || d[i + 2] >= 254) clip++; n++; }
-          fr.push(clip / n);
+          x.drawImage(gl, 0, 0); const d = x.getImageData(0, 0, c2.width, c2.height).data; let clip = 0, n = 0, lum = 0;
+          for (let i = 0; i < d.length; i += 8) { if (d[i] >= 254 || d[i + 1] >= 254 || d[i + 2] >= 254) clip++; lum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]; n++; }
+          fr.push(clip / n); lu.push(lum / n / 2.55);   // luminance of the sRGB values (Rec. 709 weights), % of white
           if (performance.now() - t0 < secs * 1000) setTimeout(() => requestAnimationFrame(f), 90); else done(); }; requestAnimationFrame(f); });
-        return { worst: Math.max(...fr), mean: fr.reduce((a, b) => a + b, 0) / fr.length, n: fr.length, size: [c2.width, c2.height] };
+        return { worst: Math.max(...fr), mean: fr.reduce((a, b) => a + b, 0) / fr.length, n: fr.length, size: [c2.width, c2.height],
+                 lumMean: lu.reduce((a, b) => a + b, 0) / lu.length, lumMin: Math.min(...lu), lumMax: Math.max(...lu) };
       }, Math.min(exp.seconds, 16));
-      if (c) Object.assign(r.metrics, { clip: +(100 * c.worst).toFixed(3), 'clip.mean': +(100 * c.mean).toFixed(3), clipFrames: c.n });
+      if (c) Object.assign(r.metrics, { clip: +(100 * c.worst).toFixed(3), 'clip.mean': +(100 * c.mean).toFixed(3), clipFrames: c.n,
+        'lum.mean': +c.lumMean.toFixed(2), 'lum.min': +c.lumMin.toFixed(2), 'lum.max': +c.lumMax.toFixed(2) });
       else note(`${r.label}: no canvas for the clip measure`);
     }
     for (const [k, e] of Object.entries(exp.values))
