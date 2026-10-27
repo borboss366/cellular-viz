@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "id": "14-round-point",
+  "note": "14 Round Point polish (#58): a breath 1 -> 1.06 -> 1 over a quarter beat plus a glow flash on every kick; no hard cuts: the curve grows in, the pinch dollies in from far with a radial wipe out of the round point, the round flash is local and rises and falls around the section end. 120 BPM, 8 bars: the scene changes at 16 s (curve -> pinch) and 32 s (pinch -> curve) after Play.",
+  "resolutions": ["1080p", "4k"],
+  "warmup": 2,
+  "seconds": 32,
+  "variants": [
+    { "name": "auto", "params": { "scene": "auto" } },
+    { "name": "curve-nokicks", "params": { "scene": "curve", "kicks": "0" } }
+  ],
+  "values": { "breath": "__qa.breath", "crossings": "__qa.crossings" },
+  "gates": [
+    { "metric": "fps.p05", "min": 55 },
+    { "metric": "longFrames", "max": 0.5 },
+    { "metric": "errors", "max": 0 },
+    { "metric": "gpuBusy", "max": 10 },
+    { "metric": "clip", "max": 2, "variant": "auto" }
+  ],
+  "checks": ["check-14"],
+  "swipe": { "vs": "base", "seconds": 40, "warmup": 4, "variants": ["auto"] },
+  "debug": {
+    "frameTimes": true,
+    "screenshotAt": [13.8, 14.1, 14.4, 14.8, 15.4, 29.9, 30.3],
+    "qaDump": { "every": 0.05, "read": { "bars": "__qa.bars", "scene": "__qa.scene", "breath": "__qa.breath", "glow": "__qa.glow", "roundFlash": "__qa.roundFlash", "transition": "__qa.transition", "area": "__qa.area" } },
+    "console": true
+  }
+}
