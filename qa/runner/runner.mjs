@@ -24,6 +24,8 @@ import os from 'node:os';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { gpuGate, unlock as gpuUnlock, GPU } from './gpu.mjs';
+import { loadFile } from './experiment.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -39,6 +41,7 @@ const CFG = {
   socket: flag('socket', env('RUNNER_SOCKET', '')),
   state: path.resolve(flag('state', env('RUNNER_STATE', path.join(os.homedir(), '.cache', 'cellular-viz-runner')))),
   timeoutMin: Math.max(1, +flag('timeout', env('RUNNER_TIMEOUT_MIN', '90')) || 90),
+  label: env('RUNNER_LABEL', 'qa-ready'),
   once: argv.includes('--once'),
 };
 if (!/^[\w.-]+\/[\w.-]+$/.test(CFG.repo)) throw new Error('bad repo ' + CFG.repo);
@@ -49,6 +52,7 @@ const WORK = path.join(CFG.state, 'repo');
 const STATE_FILE = path.join(CFG.state, 'state.json');
 const LOG_FILE = path.join(CFG.state, 'runner.log');
 const PAGE_RE = /^experiments\/(\d\d-[a-z0-9-]+)\.html$/;
+const EXP_FILES = ['experiment.mjs', 'probes.mjs', 'gpu.mjs', 'exp-run.mjs'];   // the measuring code: always this runner's own copy
 fs.mkdirSync(CFG.state, { recursive: true });
 
 // ---------- log ----------
@@ -63,7 +67,7 @@ function log(...a) {
 const tail = n => { try { return fs.readFileSync(LOG_FILE, 'utf8').trimEnd().split('\n').slice(-n); } catch { return []; } };
 
 // ---------- state (survives restarts) ----------
-let state = { seen: {}, etag: null, queue: [], recent: [] };
+let state = { seen: {}, etag: null, queue: [], recent: [], expDone: {} };
 try { state = { ...state, ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) }; } catch {}
 const save = () => { const t = STATE_FILE + '.tmp'; fs.writeFileSync(t, JSON.stringify(state, null, 1)); fs.renameSync(t, STATE_FILE); };
 const status = { started: new Date().toISOString(), lastPoll: null, lastError: null, rate: null, running: null };
@@ -112,7 +116,7 @@ function appendBuild(b) { b.at = new Date().toISOString(); fs.appendFileSync(BUI
 function enqueue(job) {
   state.queue = state.queue.filter(j => !(j.pr === job.pr && j.page === job.page));   // a newer commit replaces a queued older one
   state.queue.push(job);
-  log(`queued #${job.pr} ${job.page} @${job.sha.slice(0, 7)}`);
+  log(`queued #${job.pr} ${job.kind === 'experiment' ? 'experiment' : job.page} @${job.sha.slice(0, 7)}`);
 }
 async function poll() {
   status.lastPoll = new Date().toISOString();
@@ -126,12 +130,22 @@ async function poll() {
     open.add(n);
     if (!pr.head || !pr.head.repo || pr.head.repo.full_name !== CFG.repo) continue;   // forks never run
     if (!CFG.authors.includes(pr.user && pr.user.login)) continue;
-    if (!/^[0-9a-f]{40}$/.test(sha || '') || state.seen[n] === sha) continue;
+    if (!/^[0-9a-f]{40}$/.test(sha || '')) continue;
+    // labelled qa-ready: run the PR's own experiment file (qa/experiments/<PR>.json), once per head commit
+    const labelled = (pr.labels || []).some(l => l && l.name === CFG.label);
+    const key = labelled ? `${sha}+${CFG.label}` : sha;
+    if (state.seen[n] === key) continue;
+    if (labelled) {
+      if ((state.expDone || {})[n] !== sha) enqueue({ pr: n, sha, kind: 'experiment', page: 'experiment', title: pr.title, at: new Date().toISOString() });
+      state.seen[n] = key;
+      save();
+      continue;
+    }
     const files = await gh(`pulls/${n}/files?per_page=100`);
     const pages = [...new Set(files.data.map(f => (f.filename.match(PAGE_RE) || [])[1]).filter(Boolean))];
     const done = latestBuilds().filter(b => b.pr === n && sha.startsWith(String(b.commit || 'x')));
     for (const page of pages) if (!done.some(b => b.page === page)) enqueue({ pr: n, sha, page, title: pr.title, at: new Date().toISOString() });
-    state.seen[n] = sha;
+    state.seen[n] = key;
     save();
   }
   for (const k of Object.keys(state.seen)) {   // a PR left the open list: if it was merged, mark its builds merged
@@ -141,7 +155,7 @@ async function poll() {
       const pr = await gh(`pulls/${n}`);
       if (pr.data.merged) for (const b of latestBuilds().filter(b => b.pr === n && b.status !== 'merged')) { b.status = 'merged'; b.waitingOn = null; appendBuild(b); log(`#${n} merged: ${b.id}`); }
     } catch (e) { log(`#${n} closed, merge state unknown: ${e.message}`); }
-    delete state.seen[n]; state.queue = state.queue.filter(j => j.pr !== n); save();
+    delete state.seen[n]; if (state.expDone) delete state.expDone[n]; state.queue = state.queue.filter(j => j.pr !== n); save();
   }
 }
 
@@ -159,7 +173,108 @@ function failCheck(dir, rows) {   // a check.md the builds log can read, for run
   const clean = s => String(s).replace(/[|\n\r]/g, ' ').slice(0, 280);
   fs.writeFileSync(path.join(dir, 'check.md'), `# runner\n\n| gate | result | detail |\n|---|---|---|\n` + rows.map(([g, d]) => `| ${clean(g)} | ❌ | ${clean(d)} |`).join('\n') + '\n');
 }
-async function runBuild(job) {
+// the GPU readings taken before the build go with its result: gpu-gate.json and an ℹ️ row in check.md
+function saveGate(dir, gate) {
+  if (!gate) return;
+  try {
+    fs.writeFileSync(path.join(dir, 'gpu-gate.json'), JSON.stringify(gate, null, 1));
+    const r = gate.readings && gate.readings.length ? gate.readings.slice(-gate.idleSecs).join(', ') + ' %' : 'no reading';
+    fs.appendFileSync(path.join(dir, 'check.md'), `| GPU busy before the run | ℹ️ | ${r} (idle ≤ ${gate.idleMax} % for ${gate.idleSecs} s; waited ${gate.waitedS} s)${gate.note ? ' · ' + gate.note : ''} |\n`);
+  } catch (e) { log(`could not save the GPU readings: ${e.message}`); }
+}
+const localStamp = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; };
+
+// fetch the PR head, main and the checks ref into the work clone
+async function fetchRefs(pr) {
+  if (!fs.existsSync(path.join(WORK, '.git'))) {
+    await must('git', ['init', '-q', WORK]);
+    await must('git', ['-C', WORK, 'remote', 'add', 'origin', `https://github.com/${CFG.repo}.git`]);
+  }
+  await must('git', ['-C', WORK, 'fetch', '-q', '--force', 'origin', `+refs/pull/${pr}/head:refs/runner/pr-${pr}`, `+refs/heads/${CFG.checksRef}:refs/runner/checks`, '+refs/heads/main:refs/runner/main'], { timeoutMs: 15 * 60e3 });
+}
+async function unpack(ref, what, dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  const tar = path.join(path.dirname(dir), `${path.basename(dir)}-${what.replace(/\W+/g, '_')}.tar`);
+  await must('git', ['-C', WORK, 'archive', '-o', tar, ref, what]);
+  await must('tar', ['-xf', tar, '-C', dir]);
+}
+
+// a qa-ready PR: run its experiment file with this runner's measuring code and the check scripts from CHECKS_REF
+async function runExperiment(job, gate) {
+  const short = job.sha.slice(0, 7), stamp = localStamp(), tmp = fs.mkdtempSync(path.join(CFG.state, 'exp-'));
+  const rel = `qa/experiments/${job.pr}.json`;
+  let id = null, result = 'failed', page = `pr-${job.pr}`;
+  status.running = { ...job, started: new Date().toISOString() };
+  const fail = async (why, detail, waiting = 'dev') => {
+    const dir = path.join(CFG.qaHome, 'qa', page, 'runs', `${stamp}-pr${job.pr}`);
+    failCheck(dir, [[why, detail]]); saveGate(dir, gate);
+    if (!id) id = (await builds('start', '--page', page, '--pr', String(job.pr), '--commit', short)).trim().split('\n').pop();
+    await builds('finish', '--id', id, '--check', dir, '--status', 'failed', '--waiting', waiting, '--note', why);
+    result = `failed: ${why}`;
+  };
+  try {
+    await fetchRefs(job.pr);
+    const has = await run('git', ['-C', WORK, 'cat-file', '-e', `${job.sha}:${rel}`], { quiet: true });
+    if (has.code !== 0) return await fail(`the PR carries ${rel}`, `not on @${short}; see qa/experiments/README.md`);
+    const file = path.join(tmp, 'experiment.json');
+    fs.writeFileSync(file, await must('git', ['-C', WORK, 'show', `${job.sha}:${rel}`]));
+    const { errors, exp } = loadFile(file);
+    if (exp && typeof exp.id === 'string' && /^\d\d-[a-z0-9-]+$/.test(exp.id)) page = exp.id;
+    if (errors.length) return await fail(`${rel} is valid`, errors.join(' · '));
+    id = (await builds('start', '--page', page, '--pr', String(job.pr), '--commit', short)).trim().split('\n').pop();
+    status.running = { ...job, id, page, started: new Date().toISOString() };
+    log(`build ${id}: #${job.pr} experiment ${page} @${short}, checks from ${CFG.checksRef}`);
+
+    const tree = path.join(tmp, 'tree');
+    await unpack('refs/runner/checks', 'qa', tree);
+    await unpack(job.sha, 'experiments', tree);
+    fs.mkdirSync(path.join(tree, 'qa', 'runner'), { recursive: true });
+    for (const f of EXP_FILES) fs.copyFileSync(path.join(here, f), path.join(tree, 'qa', 'runner', f));
+    const nm = path.join(CFG.qaHome, 'qa', 'node_modules');
+    if (fs.existsSync(nm) && !fs.existsSync(path.join(tree, 'qa', 'node_modules'))) fs.symlinkSync(nm, path.join(tree, 'qa', 'node_modules'), 'dir');
+    const args = ['--file', file, '--experiments', path.join(tree, 'experiments'), '--qa', path.join(tree, 'qa'), '--pr', String(job.pr), '--sha', job.sha];
+    if (exp.swipe && exp.swipe.vs) {
+      const r = exp.swipe.vs === 'base'
+        ? await run('git', ['-C', WORK, 'merge-base', 'refs/runner/main', job.sha], { quiet: true })
+        : await run('git', ['-C', WORK, 'rev-parse', '--verify', '-q', `${exp.swipe.vs}^{commit}`], { quiet: true });
+      const old = r.out.trim();
+      if (r.code !== 0 || !/^[0-9a-f]{40}$/.test(old)) return await fail('swipe.vs names a commit the runner can fetch', `${exp.swipe.vs}: not in the PR's history or main`);
+      await unpack(old, 'experiments', path.join(tmp, 'old'));
+      args.push('--experiments-old', path.join(tmp, 'old', 'experiments'), '--vs', old.slice(0, 7));
+    }
+    const out = path.join(tree, 'qa', page, 'runs', `${stamp}-pr${job.pr}`);
+    args.push('--out', out);
+    await builds('set', '--id', id, '--status', 'running');
+    const r = await run('node', [path.join(tree, 'qa', 'runner', 'exp-run.mjs'), ...args], { cwd: tree, timeoutMs: (exp.timeoutMin || CFG.timeoutMin) * 60e3 });
+    const dest = path.join(CFG.qaHome, 'qa', page, 'runs', path.basename(out));
+    if (!fs.existsSync(path.join(out, 'check.md'))) failCheck(out, [['the experiment ran to the end', `exit ${r.code}: ${(r.err || r.out).trim().split('\n').slice(-3).join(' / ')}`]]);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.cpSync(out, dest, { recursive: true });
+    fs.writeFileSync(path.join(dest, 'runner.log'), `commit ${job.sha}\nchecks ${CFG.checksRef}\nexit ${r.code}\n\n${r.err.slice(-50000)}`);
+    saveGate(dest, gate);
+    let swipe = null;
+    try { swipe = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8')).swipe; } catch {}
+    const fin = ['finish', '--id', id, '--check', dest];
+    if (swipe && swipe.dir && !swipe.dir.includes('..')) {
+      fs.cpSync(path.join(tree, 'qa', swipe.dir), path.join(CFG.qaHome, 'qa', swipe.dir), { recursive: true });
+      fin.push('--swipe', swipe.url);
+    }
+    result = (await builds(...fin)).trim();
+  } catch (e) {
+    log(`experiment for #${job.pr} broke: ${e.message}`);
+    try { await fail('the runner could prepare the experiment', e.message, 'qa-box'); } catch (e2) { log(`could not record the failure: ${e2.message}`); }
+    result = `error: ${e.message}`;
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    state.expDone = { ...(state.expDone || {}), [job.pr]: job.sha };
+    state.recent = [{ ...status.running, finished: new Date().toISOString(), result }, ...(state.recent || [])].slice(0, 30);
+    save();
+    status.running = null;
+    log(`experiment #${job.pr} @${short} done: ${result}`);
+  }
+}
+
+async function runBuild(job, gate) {
   const short = job.sha.slice(0, 7), stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
   const id = (await builds('start', '--page', job.page, '--pr', String(job.pr), '--commit', short)).trim().split('\n').pop();
   status.running = { ...job, id, started: new Date().toISOString() };
@@ -167,11 +282,7 @@ async function runBuild(job) {
   const tmp = fs.mkdtempSync(path.join(CFG.state, 'build-'));
   let result = 'failed';
   try {
-    if (!fs.existsSync(path.join(WORK, '.git'))) {
-      await must('git', ['init', '-q', WORK]);
-      await must('git', ['-C', WORK, 'remote', 'add', 'origin', `https://github.com/${CFG.repo}.git`]);
-    }
-    await must('git', ['-C', WORK, 'fetch', '-q', '--force', 'origin', `+refs/pull/${job.pr}/head:refs/runner/pr-${job.pr}`, `+refs/heads/${CFG.checksRef}:refs/runner/checks`], { timeoutMs: 15 * 60e3 });
+    await fetchRefs(job.pr);
     const tree = path.join(tmp, 'tree');
     fs.mkdirSync(tree);
     await must('git', ['-C', WORK, 'archive', '-o', path.join(tmp, 'checks.tar'), 'refs/runner/checks', 'qa']);
@@ -200,6 +311,7 @@ async function runBuild(job) {
     } else {
       failCheck(fallback, [['the check ran to the end and wrote check.md', `exit ${r.code}: ${(r.err || r.out).trim().split('\n').slice(-3).join(' / ')}`]]);
     }
+    saveGate(dest, gate);
     const fin = await builds('finish', '--id', id, '--check', dest);
     result = fin.trim();
   } catch (e) {
@@ -224,7 +336,13 @@ async function work() {
   try {
     while (!stopping && state.queue.length) {
       const job = state.queue[0];
-      try { await runBuild(job); } catch (e) { log(`build for #${job.pr} ${job.page} could not start: ${e.message}`); status.running = null; }
+      // one GPU check at a time on the box, and only on an idle GPU; if it stays busy the job stays queued for the next poll
+      const gate = await gpuGate({ what: `runner #${job.pr} ${job.page}`, log, shouldStop: () => stopping });
+      status.gpu = gate;
+      if (!gate.ok) { log(`not starting #${job.pr} ${job.page}: ${gate.why}`); break; }
+      try { await (job.kind === 'experiment' ? runExperiment(job, gate) : runBuild(job, gate)); }
+      catch (e) { log(`build for #${job.pr} ${job.page} could not start: ${e.message}`); status.running = null; }
+      finally { gpuUnlock(); }
       state.queue = state.queue.filter(j => j !== job && !(j.pr === job.pr && j.page === job.page && j.sha === job.sha));
       save();
     }
@@ -246,7 +364,7 @@ if (!CFG.once) {
     const u = new URL(req.url, 'http://runner');
     if (u.pathname === '/' || u.pathname === '/api') return send(200, { endpoints: ['/health', '/api/status', '/api/builds', '/api/builds/<id>', '/api/log?lines=200'], note: 'read only' });
     if (u.pathname === '/health') return send(200, { ok: true, running: !!status.running, queued: state.queue.length });
-    if (u.pathname === '/api/status') return send(200, { repo: CFG.repo, checksRef: CFG.checksRef, authors: CFG.authors, pollSeconds: CFG.poll, pid: process.pid, ...status, queue: state.queue, recent: state.recent || [], watching: state.seen });
+    if (u.pathname === '/api/status') return send(200, { repo: CFG.repo, checksRef: CFG.checksRef, authors: CFG.authors, label: CFG.label, gpuGate: GPU, pollSeconds: CFG.poll, pid: process.pid, ...status, queue: state.queue, recent: state.recent || [], watching: state.seen });
     if (u.pathname === '/api/builds') return send(200, latestBuilds().sort((a, b) => String(b.at).localeCompare(String(a.at))));
     const m = u.pathname.match(/^\/api\/builds\/([\w.-]+)$/);
     if (m) return send(200, buildLines().filter(b => b.id === m[1]));
@@ -267,6 +385,7 @@ function stop(sig) {
   log(`${sig}: stopping`);
   if (child) try { process.kill(-child.pid, 'SIGTERM'); } catch {}
   save();
+  gpuUnlock();
   if (server) server.close();
   setTimeout(() => process.exit(0), 2000).unref();
 }
@@ -287,6 +406,6 @@ if (older && CFG.once) { console.error(`a runner (pid ${older}) is already runni
 if (older) { log(`stopping the older runner ${older}`); try { process.kill(older, 'SIGTERM'); } catch {} await new Promise(r => setTimeout(r, 3000)); }
 if (!CFG.once) fs.writeFileSync(PID_FILE, String(process.pid));
 if (!fs.existsSync(BUILDS_CLI)) log(`warning: ${BUILDS_CLI} not found; set QA_HOME to QA box's working copy`);
-log(`runner up: ${CFG.repo}, checks from ${CFG.checksRef}, authors ${CFG.authors.join(',')}, every ${CFG.poll} s, state ${CFG.state}`);
+log(`runner up: ${CFG.repo}, checks from ${CFG.checksRef}, authors ${CFG.authors.join(',')}, label ${CFG.label}, every ${CFG.poll} s, state ${CFG.state}, GPU idle ≤ ${GPU.idleMax} % (${GPU.file})`);
 if (state.queue.length) log(`resuming ${state.queue.length} queued build(s)`);
 tick();
