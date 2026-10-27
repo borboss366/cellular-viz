@@ -155,7 +155,7 @@ const P = await import('../post.mjs');
 const bl = (pr, page, round, status, extra = {}) => ({ id: `viz-${pr}-${round}`, pr, page, round, status, commit: 'abc1234', at: `2026-10-27T0${round}:00:00Z`, gates: [], ...extra });
 
 test('board: one status per PR, the worst page wins, newest round per page', () => {
-  const s = B.prStatus([bl(57, '25-x', 1, 'failed'), bl(57, '25-x', 2, 'ready'), bl(49, '18-a', 1, 'ready'), bl(49, '17-b', 1, 'running')]);
+  const s = B.prStatus([bl(57, '25-x', 1, 'failed'), bl(57, '25-x', 2, 'ready'), bl(49, '18-a', 1, 'ready'), bl(49, '17-b', 1, 'running')], { now: Date.parse('2026-10-27T01:30:00Z') });
   assert.equal(s[57].status, 'ready');
   assert.equal(s[49].status, 'running');
 });
@@ -207,5 +207,49 @@ test('post: history entry, report files and a commit of only those paths', async
   fs.writeFileSync(path.join(run, 'report.md'), '# r\n');
   const left = await P.commitReports(home);
   assert.equal(left.ok, true, left.why);
-  assert.match(g('log', '-1', '--format=%s'), /^qa: reports for #57 25-x ready/);
+  assert.match(g('log', '-1', '--format=%s'), /^qa: #57 25-x @abc1234 ready 0\/0 \(viz-57-1\)$/);
+  assert.equal(g('log', '-1', '--format=%an <%ae>'), 't <t@t>');      // the repo's own identity wins when it has one
+});
+
+test('post: commits without a git identity in QA_HOME, and a failed commit leaves nothing staged', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const home = fs.mkdtempSync(path.join(tmp, 'noid-'));
+  const g = (...a) => execFileSync('git', ['-C', home, ...a], { encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' } });
+  g('init', '-q');
+  fs.mkdirSync(path.join(home, 'qa'));
+  fs.writeFileSync(path.join(home, 'qa', 'a.md'), '# a\n');
+  const saved = process.env.GIT_CONFIG_GLOBAL; process.env.GIT_CONFIG_GLOBAL = '/dev/null'; process.env.GIT_CONFIG_NOSYSTEM = '1';
+  try {
+    const r = await P.commitPaths(home, ['qa/a.md'], 'qa: a\n');
+    assert.equal(r.ok, true, r.why);
+    assert.equal(g('log', '-1', '--format=%an <%ae>').trim(), 'QA box <qa-box@puggie.local>');
+    fs.writeFileSync(path.join(home, 'qa', 'b.md'), '# b\n');
+    fs.mkdirSync(path.join(home, '.git', 'hooks'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const bad = await P.commitPaths(home, ['qa/b.md'], 'qa: b\n');
+    assert.equal(bad.ok, false);
+    assert.equal(g('diff', '--cached', '--name-only').trim(), '');
+  } finally { delete process.env.GIT_CONFIG_NOSYSTEM; if (saved === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = saved; }
+});
+
+test('board: no-check-script failures and stale running builds say nothing; finished running = passed', () => {
+  const now = Date.parse('2026-10-27T12:00:00Z');
+  const noScript = bl(21, '07-particle-lenia', 2, 'failed', { gates: [{ name: 'a check script for 07-particle-lenia', ok: false }] });
+  assert.equal(B.boardStatus(noScript, { now }), null);
+  assert.equal(B.boardStatus(bl(45, '17-x', 1, 'failed', { gates: [{ name: 'groupLaw', ok: false }] }), { now }), 'failed');
+  assert.equal(B.boardStatus(bl(39, '13-x', 1, 'running', { started: '2026-10-26T20:30:00Z', finished: '2026-10-26T20:39:00Z' }), { now }), 'passed');
+  assert.equal(B.boardStatus(bl(39, '13-x', 1, 'running', { started: '2026-10-26T20:30:00Z' }), { now }), null);
+  assert.equal(B.boardStatus(bl(39, '13-x', 1, 'running', { started: '2026-10-27T11:30:00Z' }), { now }), 'running');
+});
+
+test('board: the first sync records builds and moves only closed and missing items', () => {
+  const items = { 21: { status: 'Your review' }, 45: { status: 'Your review' }, 53: { status: 'Your review' } };
+  const states = { 21: 'OPEN', 45: 'OPEN', 53: 'MERGED', 58: 'OPEN' };
+  const builds = [bl(45, '17-x', 1, 'failed', { gates: [{ name: 'groupLaw', ok: false }] })];
+  const moves = B.plan(items, states, builds, {}, { seed: true });
+  assert.deepEqual(moves.filter(m => !m.noop).map(m => [m.n, m.to]), [[53, 'Done'], [58, 'Ideas']]);
+  assert.deepEqual(moves.filter(m => m.noop).map(m => [m.n, m.key]), [[45, 'viz-45-1:failed']]);
+  // the next build of #45 moves it
+  const next = B.plan(items, states, [...builds, bl(45, '17-x', 2, 'failed', { gates: [{ name: 'groupLaw', ok: false }] })], { 45: 'viz-45-1:failed' });
+  assert.deepEqual(next.filter(m => !m.noop && m.n === 45).map(m => m.to), ['In progress']);
 });

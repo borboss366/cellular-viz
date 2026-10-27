@@ -55,7 +55,13 @@ Unlabelled PRs keep the page checks below.
 4. **Board** (`RUNNER_BOARD=1`, `board.mjs`, with the box's gh login): the latest build of each open PR moves its card
    (queued/running → QA, failed → In progress, ready → Your review, merged → Done); closed items → Done; open items not
    on the board → Ideas. Each build moves a card once (`RUNNER_STATE/board.json`), so a card moved by hand stays put
-   until the PR's next build.
+   until the PR's next build. The first sync (no board.json yet) only records the builds there are and moves no card
+   for them. A failure that is only "no check script for this page" moves nothing (that is QA box's gap, not dev's),
+   nor does a queued/running build older than `RUNNER_TIMEOUT_MIN` that never finished; a finished "running" build
+   (every gate passed, swipe run to come) counts as Your review.
+
+The commit uses QA_HOME's git identity, or `RUNNER_GIT_NAME` / `RUNNER_GIT_EMAIL` (default `QA box`,
+`qa-box@puggie.local`) when it has none. If the commit fails, what it staged is unstaged again.
 
 A failed step is logged and never fails the build.
 

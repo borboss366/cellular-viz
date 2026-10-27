@@ -66,6 +66,8 @@ export function reportFiles(qaHome, dirs) {
   return out;
 }
 
+// QA_HOME has no git identity of its own; then commit as QA box does (RUNNER_GIT_NAME / RUNNER_GIT_EMAIL). A configured one wins.
+const who = () => ['-c', `user.name=${process.env.RUNNER_GIT_NAME || 'QA box'}`, '-c', `user.email=${process.env.RUNNER_GIT_EMAIL || 'qa-box@puggie.local'}`];
 const git = (qaHome, args) => new Promise(resolve => execFile('git', ['-C', qaHome, ...args], { maxBuffer: 32 << 20 }, (e, out, err) => resolve({ code: e ? (e.code ?? 1) : 0, out, err })));
 /** add + commit exactly these paths (other staged work stays staged). → {ok, sha?, why?} */
 export async function commitPaths(qaHome, paths, message) {
@@ -75,8 +77,12 @@ export async function commitPaths(qaHome, paths, message) {
   if (add.code) return { ok: false, why: `git add: ${add.err.trim().split('\n').pop()}` };
   const diff = await git(qaHome, ['diff', '--cached', '--quiet', '--', ...paths]);
   if (diff.code === 0) return { ok: false, why: 'nothing changed' };
-  const c = await git(qaHome, ['commit', '-q', '-m', message, '--', ...paths]);
-  if (c.code) return { ok: false, why: `git commit: ${(c.err || c.out).trim().split('\n').pop()}` };
+  const hasId = (await git(qaHome, ['config', 'user.email'])).code === 0 && (await git(qaHome, ['config', 'user.name'])).code === 0;
+  const c = await git(qaHome, [...(hasId ? [] : who()), 'commit', '-q', '-m', message, '--', ...paths]);
+  if (c.code) {   // leave QA_HOME as it was: unstage what this step staged
+    await git(qaHome, ['reset', '-q', '--', ...paths]);
+    return { ok: false, why: `git commit: ${(c.err || c.out).trim().split('\n').pop()}` };
+  }
   const h = await git(qaHome, ['rev-parse', '--short', 'HEAD']);
   return { ok: true, sha: h.out.trim() };
 }
@@ -91,9 +97,13 @@ export async function commitReports(qaHome) {
   let builds = [];
   try { const m = new Map(); for (const l of fs.readFileSync(path.join(qaHome, 'qa', 'builds.json'), 'utf8').split('\n')) { try { const b = JSON.parse(l); m.set(b.id, b); } catch {} } builds = [...m.values()]; } catch {}
   const touched = builds.filter(b => buildDirs(b).some(d => paths.some(p => p.startsWith(d + '/'))));
-  const subject = touched.length
-    ? `qa: reports for ${touched.map(b => `#${b.pr} ${b.page} ${b.status} ${(b.gates || []).filter(g => g.ok).length}/${(b.gates || []).length}`).join(', ')}`.slice(0, 200)
-    : `qa: ${paths.length} report file${paths.length > 1 ? 's' : ''}`;
+  const count = {};
+  for (const b of touched) count[b.status] = (count[b.status] || 0) + 1;
+  const subject = touched.length === 1
+    ? messageFor(touched[0]).split('\n')[0]
+    : touched.length
+      ? `qa: reports for ${touched.length} builds (${Object.entries(count).map(([s, n]) => `${n} ${s}`).join(', ')})`
+      : `qa: ${paths.length} report file${paths.length > 1 ? 's' : ''}`;
   const body = touched.map(b => `- ${b.id}: #${b.pr} ${b.page} @${b.commit} ${b.status}${b.report ? ` · ${b.report}` : ''}`).join('\n');
   const r = await commitPaths(qaHome, paths, `${subject}\n\n${body ? body + '\n\n' : ''}${paths.length} files (.md/.json only).\n\nMade-by: QA runner\n`);
   return { ...r, files: paths.length };
