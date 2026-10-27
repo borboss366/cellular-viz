@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "id": "25-shape-shifter-2",
+  "note": "25 Shape Shifter II round 7: no frame stalls at native 4K (dynamic resolution renders into a corner of one full-size target; predicted start scale), plus a look at the stretched picture right after a scale change.",
+  "resolutions": ["1080p", "4k"],
+  "warmup": 2,
+  "seconds": 10,
+  "variants": [
+    { "name": "auto", "params": {} },
+    { "name": "native", "params": { "res": "native" } }
+  ],
+  "values": { "renderScale": "__qa.renderScale", "render": "__qa.render", "canvas": "__qa.canvas" },
+  "gates": [
+    { "metric": "longFrames", "max": 0.5, "name": "at most 3 frames over 20 ms in 10 s" },
+    { "metric": "fps.p05", "min": 55 },
+    { "metric": "errors", "max": 0 },
+    { "metric": "gpuBusy", "max": 20 }
+  ],
+  "checks": ["check-25"],
+  "swipe": { "seconds": 40, "warmup": 4, "variants": ["auto"] },
+  "debug": {
+    "frameTimes": true,
+    "screenshotAtFrame": [30, 90, 150, 300],
+    "qaDump": { "every": 0.25, "read": { "scale": "__qa.renderScale", "render": "__qa.render", "canvas": "__qa.canvas" } },
+    "console": true
+  }
+}
