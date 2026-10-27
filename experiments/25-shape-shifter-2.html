@@ -1,0 +1,1175 @@
+<!doctype html>
+<!--
+  25 · Shape Shifter II   (Poincaré, v2 of 23; spec: #56 comment 6414973925. 23 stays as it is.)
+
+  The user liked 23 and asked for more shape changes, faster, and a camera that moves more:
+  around the shape and through the holes.
+
+  Shapes. Every shape is one SDF: a genus-0 body (rounded cylinder or box, taper, dimple, cap,
+  bar, spikes, top cavity, spout, knob) plus up to three handle slots. Each handle is a ring
+  torus or a (2,3) torus-knot tube (the trefoil: homeomorphic to a solid torus, not isotopic to
+  one). A handle is anchored on the body: its core loop dips a depth `pen` into the body at one
+  spot (the body's surface point along the slot direction d, found by a search on the body
+  SDF), so each closed handle ∖ body is one arc fixed at both ends, and it adds exactly one to
+  the genus. Keyframes (table below, each with its genus) set the body and slot parameters,
+  and morphs interpolate the parameters, so the genus is the number of closed handles.
+    genus 0  sphere, egg, bell, mushroom, bottle, rounded cube, spiky blob, teapot, vase, bowl, apple
+    genus 1  mug, kettle, bagel, key ring, handbag, racket; trefoil ×3 (knot cycles)
+    genus 2  urn, double torus, glasses, amphora, trophy; trefoil + ring ×2
+    genus 3  urn with a lid loop, pretzel, triple torus; trefoil + two rings ×2
+  Genus walk: phrases of 8 bars go 0 → 1 → … → maxGenus → … → 1 → 0. Every second cycle slot A
+  is a trefoil knot instead of a ring. The genus changes only on phrase downbeats, one handle per
+  event: surgery (the neck radius ∝ √(T − t), a Ricci-flow neck pinch, reaches 0 on the
+  downbeat; then a cut opens and the stubs are absorbed) or attach (stubs grow with the cut open,
+  the cut closes on the downbeat, and the neck grows back as √τ).
+
+  Pace. A 32-bar song loop: breakdown (morph every 4 bars), normal (2), build (1), drop (½,
+  from bar 24). Each morph eases in and out after a 1-beat hold, so every shape lands exactly on
+  a step boundary (a downbeat) and holds for one beat. On each kick the shape squashes and
+  stretches (scale 1 → 1 + squash → 1 over ¼ beat), and the surface bumps, with the bump depth
+  capped at 0.4 × the local thickness of every thin part.
+
+  Camera. orbit (one turn per `orbitBars`, radius and height on slow noise, banking into turns),
+  skim (in builds: hugs the surface at 0.25 from the bump-free SDF) and thread (mid-phrase,
+  bars 2–5.5: a Hermite path from the base path through the centre of every closed handle along
+  its axis, a slalom when g ≥ 2, then back to the base path). Positions and tangents match at
+  both ends, so there are no cuts unless cutOnDrop is on. FOV kicks +8° on the drop. Through a
+  ring the camera's path links the core loop once; through the trefoil's centre twice (the
+  knot winds twice round its axis). The orbit sits at 1.75× the shape's reach (so the shape fills
+  the frame's height); skim shares its azimuth and the two blend round the centre. The look aims
+  from the centre toward the path ahead, but never more than a cone off the centre (28°; in a
+  thread 0.6× the shape's angular radius + 12°), and it is a Hann-filtered mean of the raw aims
+  over ±0.5 bar, so it turns smoothly. Below 55 fps the render scale steps down (?dynres=0: off).
+
+  Everything is a pure function of the bar position. window.__qa:
+    sdf(x, y, z [, bars]), genus(n, bars) (cubical complex χ, as 23), totalK(n, bars),
+    genusExpected(bars), keyframes [{name, genus}], keyframeAt(bars), handles(bars)
+    [{slot, type, c, n, R, r, Rk, closed}], camera(bars) {eye, fwd, up, mode, sdf, fov},
+    thread(bars) (the thread window holding bars: per hole the signed crossings of its spanning
+    disk (linking), the minimum SDF on the path and the clearance ratio), angSpeed (deg/s, last
+    frame), events (kick/snare/hat, land, surgery, attach, thread, drop, cut), errors.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>25 · Shape Shifter II</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 16 / 9;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #9fb0c3; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 14%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(62vw, calc(100vh * 16 / 9)); margin: 0; position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Pace (morphs per 4 bars)</h3>
+  <div class="buttons" id="paces"></div>
+  <h3>Camera</h3>
+  <div class="buttons" id="cams"></div>
+  <h3>Most holes</h3>
+  <div class="buttons" id="genera"></div>
+  <h3>Glaze</h3>
+  <div class="buttons" id="palettes"></div>
+  <div class="buttons">
+    <button id="t-slalom">slalom</button><button id="t-cut">cut on drop</button>
+  </div>
+  <div class="row"><label for="throughEvery">through every</label><input id="throughEvery" type="range" min="8" max="32" step="8"><output id="throughEveryOut"></output></div>
+  <div class="row"><label for="orbitBars">orbit bars</label><input id="orbitBars" type="range" min="2" max="16" step="1"><output id="orbitBarsOut"></output></div>
+  <div class="row"><label for="bank">bank °</label><input id="bank" type="range" min="0" max="30" step="1"><output id="bankOut"></output></div>
+  <div class="row"><label for="squash">squash</label><input id="squash" type="range" min="0" max="0.1" step="0.01"><output id="squashOut"></output></div>
+  <div class="row"><label for="bumpAmp">bumps</label><input id="bumpAmp" type="range" min="0" max="1" step="0.05"><output id="bumpAmpOut"></output></div>
+  <div class="row"><label for="curvColor">curvature colour</label><input id="curvColor" type="range" min="0" max="1" step="0.05"><output id="curvColorOut"></output></div>
+  <div class="row"><label for="steps">march steps</label><input id="steps" type="range" min="48" max="160" step="8"><output id="stepsOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="buttons"><button id="copy" class="wide">Copy setup</button></div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+// pace: 'auto' follows the song loop, or a fixed number of morphs per 4 bars (0.5, 1, 2, 4, 8).
+// res: 'cap' renders at most 1920×1080 pixels and lets the browser scale up; 'native' renders all.
+const params = { pace: 'auto', maxGenus: 3, camMode: 'auto', throughEvery: 8, slalom: true, bank: 8, cutOnDrop: false, squash: 0.04,
+                 palette: 'auto', bumpAmp: 0.5, curvColor: 0.7, orbitBars: 4, steps: 128, bpm: 120, bpb: 4, muted: false, res: 'cap', scale: 1, dynres: true,
+                 kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+const PALETTES = ['ceramic', 'chrome', 'iridescent'];
+const PACES = [0.5, 1, 2, 4, 8];
+const THICK = 0.12, SPR = 0.09;
+const SONG = [{ name: 'breakdown', from: 0, to: 8, P: 4 }, { name: 'normal', from: 8, to: 16, P: 2 },
+              { name: 'build', from: 16, to: 24, P: 1 }, { name: 'drop', from: 24, to: 32, P: 0.5 }];
+const DROP_BAR = 24;
+const TW0 = 2, TW1 = 5.5;   // the fly-through window, in bars of the phrase
+
+// ---------- keyframes ----------
+// body: ra, rb, h (rounded cylinder: radius ra + rb, half height h + rb), taper (radius × (1 + taper·y)),
+// dimple (apple top), cav (top cavity 0…1), spout, knob (grow out 0…1), box (0 cylinder … 1 rounded box),
+// spike (harmonic bumps), capR, capY (mushroom cap ellipsoid), barL, barR (horizontal capsule along x).
+// slot: d (direction of the anchor from the body centre), n (ring axis, made ⊥ d), R (core radius),
+// r (tube), pen (how deep the core loop dips into the body), Rk (knot: the tube circle's radius).
+const BODY_KEYS = ['ra', 'rb', 'h', 'taper', 'dimple', 'cav', 'spout', 'knob', 'box', 'spike', 'capR', 'capY', 'barL', 'barR'];
+const BODY0 = { ra: 0, rb: 0.5, h: 0, taper: 0, dimple: 0, cav: 0, spout: 0, knob: 0, box: 0, spike: 0, capR: 0, capY: 0, barL: 0, barR: 0.05 };
+const body = o => ({ ...BODY0, ...o });
+const ring = (d, n, R, r, pen) => ({ d, n, R, r, pen, Rk: 0 });
+const knot = (R, Rk, r, pen) => ({ d: [0, 1, 0], n: [0, 0, 1], R, r, pen, Rk });
+const X = [1, 0, 0], NX = [-1, 0, 0], Y = [0, 1, 0], Z = [0, 0, 1];
+// parked slots (a slot a keyframe doesn't use): where its stubs grow before an attach and shrink
+// after a surgery. Per variant: 0 = rings, 1 = slot A is a trefoil sitting on top.
+const PARK = [
+  [ring(X, Z, 0.27, 0.085, 0.06), ring(NX, Z, 0.27, 0.085, 0.06), ring(Y, Z, 0.22, 0.07, 0.08)],
+  [knot(0.36, 0.15, 0.07, 0.05), ring([1, -1.3, 0], Z, 0.22, 0.065, 0.08), ring([-1, -1.3, 0], Z, 0.22, 0.065, 0.08)],
+];
+// Rule learned from QA (#57 check 2026-10-26-1316): within a genus, rings keep their axis (all n = z
+// for rings next to other rings or a cavity), so a morph only slides and resizes them; a ring that
+// turns while morphing can cross another ring, or dip into a cup through its rim, and add a hole.
+const B = {
+  sphere: body({ rb: 0.5 }), ball: body({ rb: 0.42 }), bead: body({ rb: 0.16 }),
+  egg: body({ rb: 0.4, h: 0.16, taper: -0.3 }),
+  bell: body({ ra: 0.26, rb: 0.1, h: 0.28, taper: -0.6, knob: 0.7 }),
+  mushroom: body({ ra: 0.07, rb: 0.07, h: 0.22, capR: 0.48, capY: 0.24 }),
+  bottle: body({ ra: 0.17, rb: 0.09, h: 0.48, taper: -0.62, cav: 0.9 }),
+  cube: body({ ra: 0.3, rb: 0.1, h: 0.3, box: 1 }),
+  spiky: body({ rb: 0.48, spike: 0.06 }),
+  teapot: body({ ra: 0.05, rb: 0.47, h: 0.06, taper: 0.12, spout: 1, knob: 1 }),
+  vase: body({ ra: 0.16, rb: 0.12, h: 0.46, taper: -0.55, cav: 0.85 }),
+  bowl: body({ ra: 0.42, rb: 0.08, h: 0.2, taper: 0.5, cav: 0.97 }),
+  apple: body({ rb: 0.5, dimple: 1 }),
+  mug: body({ ra: 0.4, rb: 0.06, h: 0.38, cav: 0.95 }),
+  small: body({ rb: 0.1 }),
+  key: body({ rb: 0.07, barL: 0.22, barR: 0.05 }),
+  bag: body({ ra: 0.3, rb: 0.08, h: 0.24, box: 1 }),
+  stick: body({ ra: 0, rb: 0.05, h: 0.35 }),
+  urn: body({ ra: 0.12, rb: 0.36, h: 0.12, taper: -0.15 }),
+  core: body({ rb: 0.2 }),
+  bridge: body({ rb: 0.06, barL: 0.16, barR: 0.045 }),
+  cup: body({ ra: 0.36, rb: 0.07, h: 0.26, taper: 0.35 }),
+  jar: body({ ra: 0.16, rb: 0.12, h: 0.46, taper: -0.55 }),
+  knotCore: body({ rb: 0.26 }),
+  core3: body({ rb: 0.34 }),
+  ball3: body({ rb: 0.3 }),
+};
+const dir = (deg, plane) => { const a = deg * Math.PI / 180; return plane === 'xz' ? [Math.cos(a), 0, Math.sin(a)] : [Math.cos(a), Math.sin(a), 0]; };
+// [name, genus, variant, body, slots]; the first of each (genus, variant) list is its gate: the shape
+// that is on screen at every phrase downbeat, where the handles are cut or attached.
+const KEYS = [
+  ['sphere', 0, 0, B.sphere], ['egg', 0, 0, B.egg], ['bell', 0, 0, B.bell],
+  ['mushroom', 0, 0, B.mushroom, [ring([1, -0.9, 0], Z, 0.2, 0.07, 0.08)]],
+  ['bottle', 0, 0, B.bottle], ['rounded cube', 0, 0, B.cube], ['spiky blob', 0, 0, B.spiky], ['teapot', 0, 0, B.teapot],
+  ['vase', 0, 0, B.vase], ['bowl', 0, 0, B.bowl], ['apple', 0, 0, B.apple],
+  ['mug', 1, 0, B.mug, [ring(X, Z, 0.27, 0.085, 0.04)]],
+  ['kettle', 1, 0, B.teapot, [ring([1, 0.15, 0], Z, 0.3, 0.09, 0.12), ring([0, 0, -1], NX, 0.25, 0.08, 0.1)]],
+  ['bagel', 1, 0, B.small, [ring(X, Z, 0.42, 0.24, 0.1)]],
+  ['key ring', 1, 0, B.key, [ring(X, Z, 0.36, 0.05, 0.05)]],
+  ['handbag', 1, 0, B.bag, [ring(Y, Z, 0.3, 0.045, 0.06)]],
+  ['racket', 1, 0, B.stick, [ring(Y, Z, 0.42, 0.06, 0.06), ring([-1, -0.8, 0], Z, 0.2, 0.07, 0.05)]],
+  ['urn', 2, 0, B.urn, [ring(X, Z, 0.25, 0.08, 0.12), ring(NX, Z, 0.25, 0.08, 0.12)]],
+  ['double torus', 2, 0, B.core, [ring(X, Z, 0.42, 0.15, 0.2), ring(NX, Z, 0.42, 0.15, 0.2), ring(Z, X, 0.22, 0.07, 0.08)]],
+  ['glasses', 2, 0, B.bridge, [ring(X, Z, 0.3, 0.04, 0.04), ring(NX, Z, 0.3, 0.04, 0.04), ring(Y, Z, 0.08, 0.035, 0.03)]],
+  ['amphora', 2, 0, B.jar, [ring([1, 0.35, 0], Z, 0.24, 0.06, 0.1), ring([-1, 0.35, 0], Z, 0.24, 0.06, 0.1)]],
+  ['trophy', 2, 0, B.cup, [ring([1, 0.2, 0], Z, 0.3, 0.06, 0.12), ring([-1, 0.2, 0], Z, 0.3, 0.06, 0.12)]],
+  ['urn with lid loop', 3, 0, B.urn, [ring(X, Z, 0.25, 0.08, 0.12), ring(NX, Z, 0.25, 0.08, 0.12), ring(Y, Z, 0.22, 0.07, 0.08)]],
+  ['pretzel', 3, 0, B.knotCore, [ring(dir(-30), Z, 0.3, 0.07, 0.06), ring(dir(210), Z, 0.3, 0.07, 0.06), ring(Y, Z, 0.3, 0.07, 0.06)]],
+  ['triple torus', 3, 0, B.core3, [ring(dir(-30), Z, 0.28, 0.11, 0.08), ring(dir(210), Z, 0.28, 0.11, 0.08), ring(Y, Z, 0.28, 0.11, 0.08)]],
+  ['ball', 0, 1, B.ball], ['egg ', 0, 1, B.egg], ['teapot ', 0, 1, B.teapot],
+  ['trefoil', 1, 1, B.bead, [knot(0.4, 0.17, 0.095, 0.05)]],
+  ['trefoil on an egg', 1, 1, B.egg, [knot(0.34, 0.14, 0.068, 0.05)]],
+  ['big trefoil', 1, 1, B.bead, [knot(0.5, 0.2, 0.11, 0.05)]],
+  ['trefoil + ring', 2, 1, B.ball3, [knot(0.36, 0.15, 0.08, 0.05), ring([1, -0.7, 0], Z, 0.24, 0.07, 0.08)]],
+  ['trefoil + ring on an egg', 2, 1, B.egg, [knot(0.32, 0.13, 0.065, 0.05), ring([1, -0.5, 0], Z, 0.22, 0.065, 0.08)]],
+  ['trefoil + two rings', 3, 1, B.ball3, [knot(0.36, 0.15, 0.08, 0.05), ring([1, -0.7, 0], Z, 0.24, 0.07, 0.08), ring([-1, -0.7, 0], Z, 0.24, 0.07, 0.08)]],
+  ['trefoil + two rings on an egg', 3, 1, B.egg, [knot(0.32, 0.13, 0.065, 0.05), ring([1, -0.5, 0], Z, 0.22, 0.065, 0.08), ring([-1, -0.5, 0], Z, 0.22, 0.065, 0.08)]],
+];
+const KF = {}, LISTS = [[[], [], [], []], [[], [], [], []]];
+for (const [name, genus, variant, b, slots] of KEYS) { KF[name] = { name, genus, variant, body: b, slots: slots || [] }; LISTS[variant][genus].push(name); }
+
+// ---------- metronome (as 19) ----------
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [],
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume(); this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+    this.playing = true; this.timer = setInterval(() => this.schedule(), 25); this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  schedule() {
+    while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / params.bpm / 4; this.step++; }
+    const old = this.ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, time) {
+    const inBar = step % (params.bpb * 4); this.steps.push({ time, step });
+    for (const lane of LANES) { if (params[lane][inBar % 16] !== 'x') continue; const vel = inBar === 0 ? 1 : 0.7; this.hits.push({ lane, time, vel }); this.click(lane, time, vel); }
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain(); g.connect(this.master);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') { src = ctx.createOscillator(); src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08); src.connect(g); }
+    else { src = ctx.createBufferSource(); src.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = lane === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = lane === 'snare' ? 1800 : 8000; src.connect(f); f.connect(g); }
+    const end = t + TAU[lane] * 4; g.gain.exponentialRampToValueAtTime(0.001, end); src.start(t); src.stop(end + 0.01);
+  },
+  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
+  beats() {   // the beat position as heard
+    if (!this.ctx) return -1;
+    const now = this.ctx.currentTime - this.latency();
+    let last = null; for (const s of this.steps) if (s.time <= now) last = s;
+    return last ? (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / 4 : -1;
+  },
+};
+
+
+// ---------- small maths ----------
+const ease = u => u * u * (3 - 2 * u);
+const clamp01 = x => Math.max(0, Math.min(1, x));
+const lerp = (a, b, u) => a + (b - a) * u;
+const sstep = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const mul3 = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const len3 = a => Math.hypot(a[0], a[1], a[2]);
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm3 = a => { const l = len3(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const lerp3 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+function hash(n) { let x = Math.imul(n | 0, 0x9E3779B1) >>> 0; x ^= x >>> 15; x = Math.imul(x, 0x85EBCA77) >>> 0; x ^= x >>> 13; return (x >>> 0) / 4294967296; }
+const smin = (a, b, k) => { const h = clamp01(0.5 + 0.5 * (b - a) / k); return b + (a - b) * h - k * h * (1 - h); };
+const smax = (a, b, k) => -smin(-a, -b, k);
+const capA = (A, th, d) => A + (Math.min(A, 0.4 * th) - A) * (1 - sstep(th + 0.03, th + 0.15, d));
+function segDist(px, py, pz, ax, ay, az, bx, by, bz) {
+  const pax = px - ax, pay = py - ay, paz = pz - az, bax = bx - ax, bay = by - ay, baz = bz - az;
+  const bb = bax * bax + bay * bay + baz * baz, h = bb > 1e-12 ? clamp01((pax * bax + pay * bay + paz * baz) / bb) : 0;
+  return Math.hypot(pax - bax * h, pay - bay * h, paz - baz * h);
+}
+
+// ---------- timing: steps, the song loop, phrases and the genus walk ----------
+const songAt = bars => { const r = ((bars % 32) + 32) % 32; return SONG.find(s => r < s.to) || SONG[SONG.length - 1]; };
+function stepOf(bars) {   // the morph step holding bars: index i and its start T0 and end T1 (bars)
+  bars = Math.max(0, bars);
+  if (params.pace !== 'auto') { const P = 4 / params.pace, i = Math.floor(bars / P + 1e-9); return { i, T0: i * P, T1: (i + 1) * P, P }; }
+  const L = Math.floor(bars / 32), r = bars - 32 * L;
+  let cum = 0;
+  for (const s of SONG) {
+    if (r < s.to || s === SONG[SONG.length - 1]) {
+      const j = Math.min((s.to - s.from) / s.P - 1, Math.floor((r - s.from) / s.P + 1e-9));
+      return { i: 30 * L + cum + j, T0: 32 * L + s.from + j * s.P, T1: 32 * L + s.from + (j + 1) * s.P, P: s.P };
+    }
+    cum += (s.to - s.from) / s.P;
+  }
+}
+function stepStart(i) {
+  if (params.pace !== 'auto') return i * 4 / params.pace;
+  const L = Math.floor(i / 30); let j = i - 30 * L, cum = 0;
+  for (const s of SONG) { const n = (s.to - s.from) / s.P; if (j < cum + n) return 32 * L + s.from + (j - cum) * s.P; cum += n; }
+  return 32 * L + 32;
+}
+const maxG = () => Math.max(0, Math.min(3, Math.round(params.maxGenus)));
+function genusOfPhrase(ph) { const g = maxG(); if (g < 1 || ph < 0) return 0; const m = 2 * g, pos = ph % m; return pos <= g ? pos : m - pos; }
+function variantOfPhrase(ph) { const g = maxG(); if (g < 1 || ph < 0) return 0; return Math.floor(ph / (2 * g)) % 2; }
+function slotVariant(j, bars) {   // slot A's kind (ring or trefoil) changes only between cycles, while A is gone
+  const g = maxG(), ph = Math.floor(bars / 8), b = bars - 8 * ph;
+  if (j === 0 && g >= 1 && ph > 0 && ph % (2 * g) === 0 && b < 4) return variantOfPhrase(ph - 1);
+  return variantOfPhrase(ph);
+}
+function keyName(i) {   // the keyframe that step i lands on; the last step of each phrase lands on the gate shape
+  i = Math.max(0, i);
+  const T0 = stepStart(i), ph = Math.floor(T0 / 8 + 1e-9), list = LISTS[variantOfPhrase(ph)][genusOfPhrase(ph)];
+  const first = stepOf(8 * ph).i, n = stepOf(8 * ph + 8).i - first, s = i - first;
+  if (s >= n - 1 || list.length === 1) return list[0];
+  return list[1 + ((s + ph * 3) % (list.length - 1))];
+}
+function threadOn(ph) {   // does phrase ph have a fly-through (bars TW0–TW1 of the phrase)?
+  if (params.camMode === 'orbit' || params.camMode === 'skim' || genusOfPhrase(ph) < 1) return false;
+  const every = Math.max(1, Math.round(params.throughEvery / 8));
+  return params.camMode === 'thread' || ph % every === 0;
+}
+function holdRange(ph) {   // in fast phrases the shape holds still while the camera threads it: [first, end) steps
+  if (!threadOn(ph) || stepOf(8 * ph + 3).P > 1) return null;
+  const a = stepOf(8 * ph + TW0), i0 = a.T0 >= 8 * ph + TW0 - 1e-9 ? a.i : a.i + 1;
+  const e = stepOf(8 * ph + TW1 - 1e-6), i1 = e.T1 <= 8 * ph + TW1 + 1e-9 ? e.i + 1 : e.i;
+  return i1 > i0 ? [i0, i1] : null;
+}
+function effKey(i) {   // the keyframe step i lands on, after holds
+  i = Math.max(0, i);
+  const h = holdRange(Math.floor(stepStart(i) / 8 + 1e-9));
+  return h && i >= h[0] && i < h[1] ? keyName(h[0] - 1) : keyName(i);
+}
+function slotEvent(j, bars) {   // a: present, p: neck pinch, w: cut half-width, closed: counts for the genus
+  const ph = Math.floor(bars / 8), b = bars - 8 * ph, g = genusOfPhrase(ph), gPrev = genusOfPhrase(ph - 1), gNext = genusOfPhrase(ph + 1);
+  let a = j < g ? 1 : 0, p = 0, w = 0, closed = j < g;
+  if (gNext === g + 1 && j === g && b >= 4) {   // attach on the next downbeat: stubs grow, the cut closes
+    a = ease(clamp01((b - 4) / 2)); w = 0.12 * (1 - ease(clamp01((b - 6) / 2))); p = ease(clamp01(b - 6));
+  }
+  if (gNext === g - 1 && j === g - 1 && b >= 6) p = 1 - Math.sqrt(1 - clamp01((b - 6) / 2));   // surgery on the next downbeat
+  if (ph > 0 && g === gPrev + 1 && j === gPrev && b < 1) { p = 1 - Math.sqrt(clamp01(b)); closed = b > 0; }   // just attached
+  if (ph > 0 && g === gPrev - 1 && j === g && b < 2) {   // just cut: the stubs cap off and are absorbed
+    p = 1 - ease(clamp01(b / 0.5)); w = 0.12 * ease(clamp01(b / 0.25)); a = 1 - ease(clamp01((b - 0.5) / 1.5)); closed = false;
+  }
+  return { a, p, w, closed };
+}
+
+// ---------- the body SDF (genus 0) ----------
+const liftOf = P => { const L0 = 2.5 * (P.h + P.rb) + 0.3; return L0 + (THICK + 0.03 - L0) * P.cav; };
+function bodyF(P, x, y, z) {
+  const sc = 1 + P.taper * Math.max(-1, Math.min(1, y));
+  const dx = Math.hypot(x / sc, z / sc) - P.ra, dy = Math.abs(y) - P.h;
+  let b = (Math.min(Math.max(dx, dy), 0) + Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) - P.rb) * Math.min(1, sc);
+  if (P.box > 0.001) {
+    const qx = Math.abs(x) - P.ra, qy = Math.abs(y) - P.h, qz = Math.abs(z) - P.ra;
+    const bx = Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qy, qz), 0) - P.rb;
+    b = b + (bx - b) * P.box;
+  }
+  if (P.dimple > 0.001) { const dd = Math.hypot(x, y - (P.h + P.rb + 0.1), z) - 0.2; b = b + (smax(b, -dd, 0.08) - b) * P.dimple; }
+  if (P.capR > 0.001) {
+    const rx = P.capR, ry = P.capR * 0.45, yy = y - P.capY;
+    const k0 = Math.hypot(x / rx, yy / ry, z / rx), k1 = Math.hypot(x / (rx * rx), yy / (ry * ry), z / (rx * rx));
+    b = smin(b, k0 * (k0 - 1) / Math.max(k1, 1e-6), 0.06);
+  }
+  if (P.barL > 0.001) b = smin(b, segDist(x, y, z, -P.barL, 0, 0, P.barL, 0, 0) - P.barR, 0.04);
+  if (P.spike > 0.0001) b -= P.spike * Math.sin(6 * x) * Math.sin(6 * y + 1) * Math.sin(6 * z + 2);
+  return b;
+}
+function bodyParts(P, x, y, z) {   // body + spout + knob (before the cavity), with what the bump caps need
+  let b = bodyF(P, x, y, z);
+  const R0 = P.ra + P.rb, spR = SPR * clamp01(R0 / 0.3);
+  const spD = segDist(x, y, z, -R0 * 0.4, 0, 0, -R0 * 0.4 + (-R0 - 0.30 + R0 * 0.4) * P.spout, 0.32 * P.spout, 0);
+  b = smin(b, spD - spR, 0.06);
+  const kR = 0.07 * (0.3 + 0.7 * P.knob), knD = Math.hypot(x, y - (P.h + P.rb + 0.04) * P.knob, z);
+  b = smin(b, knD - kR, 0.04);
+  return { b, spD, spR, knD, kR };
+}
+function bodyFull(P, x, y, z) {   // the whole genus-0 body, cavity included (anchors sit on this)
+  let b = bodyParts(P, x, y, z).b;
+  if (P.cav > 0.001) b = smax(b, -(bodyF(P, x, y - P.lift, z) + THICK), 0.03);
+  return b;
+}
+function anchorOn(P, d) {   // the outermost surface point of the body along d (sphere tracing inward)
+  let s = 2.4;
+  for (let i = 0; i < 80; i++) { const f = bodyFull(P, d[0] * s, d[1] * s, d[2] * s); if (f < 0.0005) break; s -= Math.max(0.0005, 0.8 * f); if (s <= 0) { s = 0; break; } }
+  return mul3(d, s);
+}
+
+// ---------- handles ----------
+function slotGeom(K, j, v) {   // a keyframe's own slot geometry if it fits the slot's kind, else the parked one
+  const g = K.slots[j], wantKnot = j === 0 && v === 1;
+  return g && ((g.Rk > 0) === wantKnot) ? g : PARK[v][j];
+}
+function slotState(K0, K1, u, j, bars, Pb, ev) {
+  const v = slotVariant(j, bars), A = slotGeom(K0, j, v), Bq = slotGeom(K1, j, v), isKnot = j === 0 && v === 1;
+  const d = norm3(lerp3(norm3(A.d), norm3(Bq.d), u));
+  let n = lerp3(norm3(A.n), norm3(Bq.n), u); n = norm3(sub3(n, mul3(d, dot3(n, d))));
+  const R = lerp(A.R, Bq.R, u), r = lerp(A.r, Bq.r, u), pen = lerp(A.pen, Bq.pen, u), Rk = isKnot ? lerp(A.Rk, Bq.Rk, u) : 0;
+  const anc = anchorOn(Pb, d), c = add3(anc, mul3(d, R + Rk - pen));
+  const e = ev || slotEvent(j, bars);
+  return { slot: j, type: isKnot ? 'knot' : 'ring', c, u: d, v: cross3(n, d), n, R, r, Rk, pen, a: e.a, p: e.p, w: e.w, closed: e.closed };
+}
+function handleJS(s, x, y, z) {
+  if (s.a <= 0.001) return { d: 1e3, tubeD: 1e3, rl: 0 };
+  const qx = x - s.c[0], qy = y - s.c[1], qz = z - s.c[2];
+  const a1 = qx * s.u[0] + qy * s.u[1] + qz * s.u[2], a2 = qx * s.v[0] + qy * s.v[1] + qz * s.v[2], a3 = qx * s.n[0] + qy * s.n[1] + qz * s.n[2];
+  const al = Math.atan2(a2, a1), pin = 1 - s.p * Math.exp(-(al * al) / 0.16), rho = Math.hypot(a1, a2);
+  let d, tubeD, rl, cutter;
+  if (s.Rk === 0) {
+    rl = s.r * s.a * pin; tubeD = Math.hypot(rho - s.R, a3); d = tubeD - rl;
+    cutter = Math.max(Math.abs(a2) - s.w, -a1);
+  } else {   // (2,3) torus knot: at azimuth al its two strands sit at tube angles b0 and b0 + 3π
+    const r0 = s.r * s.a * pin, r1 = s.r * s.a, b0 = 1.5 * (al - Math.PI), cb = Math.cos(b0), sb = Math.sin(b0);
+    const t0 = Math.hypot(rho - (s.R + s.Rk * cb), a3 - s.Rk * sb), t1 = Math.hypot(rho - (s.R - s.Rk * cb), a3 + s.Rk * sb);
+    if (t0 - r0 < t1 - r1) { tubeD = t0; rl = r0; d = 0.8 * (t0 - r0); } else { tubeD = t1; rl = r1; d = 0.8 * (t1 - r1); }
+    cutter = Math.max(Math.abs(a2) - s.w, -a1, -a3);
+  }
+  if (s.w > 0) d = smax(d, -cutter, Math.min(0.03, s.w));
+  return { d, tubeD, rl };
+}
+
+// ---------- the state at any bar position (pure, so QA can rebuild any moment) ----------
+function bodyExtent(P) {
+  return Math.max(P.ra + P.rb, P.h + P.rb, P.capR, P.barL + P.barR) * (1 + Math.abs(P.taper)) + 0.45 * P.spout + 0.15 * P.knob + P.spike;
+}
+function buildState(bars, K0, K1, u, events) {
+  const Pb = {}; for (const k of BODY_KEYS) Pb[k] = lerp(K0.body[k], K1.body[k], u);
+  Pb.lift = liftOf(Pb);
+  const slots = [0, 1, 2].map(j => slotState(K0, K1, u, j, bars, Pb, events && events[j]));
+  const beats = bars * params.bpb, spb = 60 / params.bpm;
+  // music, deterministic from the patterns: kick rings, breathing, hats, snare waves, kick squash
+  const rings = [];
+  for (let b = Math.floor(beats); b > beats - 3 && b >= 0 && rings.length < 4; b--) {
+    if (params.kick[(b * 4) % 16] !== 'x') continue;
+    const age = beats - b, th = hash(b) * 2 * Math.PI, z = hash(b + 7777) * 2 - 1, r = Math.sqrt(1 - z * z);
+    rings.push([Math.cos(th) * r * 0.7, z * 0.7, Math.sin(th) * r * 0.7, age]);
+  }
+  const env = (lane, tau) => {
+    const step = Math.floor(beats * 4);
+    for (let s2 = step; s2 > step - 16 && s2 >= 0; s2--) if (params[lane][s2 % 16] === 'x') return Math.exp(-((beats * 4 - s2) * spb / 4) / tau);
+    return 0;
+  };
+  const wave = { A: params.bumpAmp * 0.16, bass: 0.5 + 0.5 * Math.sin(2 * Math.PI * beats / 8), hat: env('hat', 0.06), snare: env('snare', 0.15) };
+  let sq = 0;
+  const kb = Math.floor(beats);
+  if (params.kick[(kb * 4) % 16] === 'x' && beats - kb < 0.25) sq = params.squash * Math.sin(Math.PI * (beats - kb) / 0.25);
+  const sqInv = [Math.sqrt(1 + sq), 1 / (1 + sq), Math.sqrt(1 + sq)], sqMin = 1 / Math.max(...sqInv);
+  let cx = 0, cy = 0, cz = 0, ws = 1;
+  for (const s of slots) if (s.a > 0.001) { const k = 0.6 * s.a; cx += k * s.c[0]; cy += k * s.c[1]; cz += k * s.c[2]; ws += k; }
+  const center = [cx / ws, cy / ws, cz / ws];
+  let bound = bodyExtent(Pb) + len3(center);
+  for (const s of slots) if (s.a > 0.001) bound = Math.max(bound, len3(sub3(s.c, center)) + s.R + s.Rk + s.r);
+  bound = (bound + wave.A + 0.15) * (1 + sq);
+  for (const rg of rings) { rg[0] += center[0]; rg[1] += center[1]; rg[2] += center[2]; }
+  return { bars, beats, u, k0: K0.name, k1: K1.name, Pb, slots, genus: slots.filter(s => s.closed).length, rings, wave, sq, sqInv, sqMin, center, bound };
+}
+function stateAt(bars) {
+  bars = Math.max(0, bars);
+  const so = stepOf(bars), K0 = KF[effKey(so.i - 1)], K1 = KF[effKey(so.i)];
+  const hold = Math.min(1 / params.bpb, so.P / 2), u = ease(clamp01((bars - so.T0 - hold) / (so.P - hold)));
+  const st = buildState(bars, K0, K1, u);
+  const ph = Math.floor(bars / 8);
+  return Object.assign(st, { step: so, ph, b: bars - 8 * ph, phraseGenus: genusOfPhrase(ph), variant: variantOfPhrase(ph), song: songAt(bars).name });
+}
+function keyState(name) {   // one keyframe on its own, every handle of its genus closed (for QA)
+  const K = KF[name], ev = [0, 1, 2].map(j => ({ a: j < K.genus ? 1 : 0, p: 0, w: 0, closed: j < K.genus }));
+  const save = params.bumpAmp; params.bumpAmp = 0;
+  const g = maxG(); params.maxGenus = 3;
+  // the slot kind follows the keyframe's variant
+  const ph = K.variant === 1 ? 6 + 1 : 1;
+  const st = buildState(8 * ph + 3, K, K, 0, ev);
+  params.bumpAmp = save; params.maxGenus = g;
+  return st;
+}
+
+// ---------- the full SDF in JS (the GLSL below is the same, line for line) ----------
+function wavesJS(st, x, y, z) {
+  let w = 0;
+  for (const r of st.rings) { const d = Math.hypot(x - r[0], y - r[1], z - r[2]) - 0.9 * r[3]; w += Math.exp(-(d * d) / 0.0144) * Math.exp(-r[3] / 0.8); }
+  w += 0.5 * st.wave.bass;
+  w += 0.25 * st.wave.hat * Math.sin(23 * x + 17 * y + 29 * z + st.beats * 12);
+  w += 0.35 * st.wave.snare * Math.sin(y * 9 - st.beats * 6.2832);
+  return Math.max(-1, Math.min(1, w));
+}
+function sdfJS(st, x0, y0, z0, noBumps) {
+  const c = st.center, S = st.sqInv, P = st.Pb;
+  const x = c[0] + (x0 - c[0]) * S[0], y = c[1] + (y0 - c[1]) * S[1], z = c[2] + (z0 - c[2]) * S[2];
+  const bp = bodyParts(P, x, y, z);
+  let A = noBumps ? 0 : st.wave.A, hAll = 1e3;
+  for (const s of st.slots) { const h = handleJS(s, x, y, z); hAll = Math.min(hAll, h.d); if (h.tubeD < 1e2) A = capA(A, h.rl, h.tubeD); }
+  let base = smin(bp.b, hAll, 0.04);
+  if (P.cav > 0.001) { const dIn = bodyF(P, x, y - P.lift, z) + THICK; base = smax(base, -dIn, 0.03); A = capA(A, THICK, Math.abs(dIn)); }
+  A = capA(A, bp.spR, bp.spD); A = capA(A, bp.kR, bp.knD);
+  if (P.barL > 0.001) A = capA(A, P.barR, segDist(x, y, z, -P.barL, 0, 0, P.barL, 0, 0));
+  A = capA(A, P.ra + P.rb, Math.hypot(x, z));
+  const w = A > 0 ? wavesJS(st, x, y, z) : 0;
+  return (base - A * w) * st.sqMin;
+}
+
+// ---------- QA: genus from the solid's cubical complex, ∫K dA by co-area (as 23, box = the bound) ----------
+function genusAt(st, n = 64) {
+  const c = st.center, L = st.bound, h = 2 * L / n, inside = new Uint8Array(n * n * n);
+  let C = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+    const v = sdfJS(st, c[0] - L + (i + 0.5) * h, c[1] - L + (j + 0.5) * h, c[2] - L + (k + 0.5) * h) < 0 ? 1 : 0;
+    inside[(i * n + j) * n + k] = v; C += v;
+  }
+  const at = (i, j, k) => i >= 0 && j >= 0 && k >= 0 && i < n && j < n && k < n && inside[(i * n + j) * n + k] === 1;
+  let V = 0, E = 0, F = 0;
+  for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) for (let k = 0; k <= n; k++) {
+    // a lattice vertex belongs to the complex if any of its 8 cubes is inside
+    let vIn = false;
+    for (let a = -1; a <= 0 && !vIn; a++) for (let b = -1; b <= 0 && !vIn; b++) for (let d = -1; d <= 0 && !vIn; d++) if (at(i + a, j + b, k + d)) vIn = true;
+    if (vIn) V++;
+    // edges along x, y, z starting here (4 cubes each)
+    if (i < n && (at(i, j - 1, k - 1) || at(i, j, k - 1) || at(i, j - 1, k) || at(i, j, k))) E++;
+    if (j < n && (at(i - 1, j, k - 1) || at(i, j, k - 1) || at(i - 1, j, k) || at(i, j, k))) E++;
+    if (k < n && (at(i - 1, j - 1, k) || at(i, j - 1, k) || at(i - 1, j, k) || at(i, j, k))) E++;
+    // faces normal to x, y, z (2 cubes each)
+    if (j < n && k < n && (at(i - 1, j, k) || at(i, j, k))) F++;
+    if (i < n && k < n && (at(i, j - 1, k) || at(i, j, k))) F++;
+    if (i < n && j < n && (at(i, j, k - 1) || at(i, j, k))) F++;
+  }
+  const chiSolid = V - E + F - C;
+  return { n, V, E, F, C, chiSolid, chi: 2 * chiSolid, g: 1 - chiSolid };
+}
+function curvJS(st, x, y, z, e = 0.006) {
+  const f = (a, b, c) => sdfJS(st, x + a, y + b, z + c), f0 = f(0, 0, 0);
+  const fpx = f(e, 0, 0), fmx = f(-e, 0, 0), fpy = f(0, e, 0), fmy = f(0, -e, 0), fpz = f(0, 0, e), fmz = f(0, 0, -e);
+  const gx = (fpx - fmx) / (2 * e), gy = (fpy - fmy) / (2 * e), gz = (fpz - fmz) / (2 * e);
+  const fxx = (fpx - 2 * f0 + fmx) / (e * e), fyy = (fpy - 2 * f0 + fmy) / (e * e), fzz = (fpz - 2 * f0 + fmz) / (e * e);
+  const fxy = (f(e, e, 0) - f(e, -e, 0) - f(-e, e, 0) + f(-e, -e, 0)) / (4 * e * e);
+  const fxz = (f(e, 0, e) - f(e, 0, -e) - f(-e, 0, e) + f(-e, 0, -e)) / (4 * e * e);
+  const fyz = (f(0, e, e) - f(0, e, -e) - f(0, -e, e) + f(0, -e, -e)) / (4 * e * e);
+  const A11 = fyy * fzz - fyz * fyz, A22 = fxx * fzz - fxz * fxz, A33 = fxx * fyy - fxy * fxy;
+  const A12 = fxz * fyz - fxy * fzz, A13 = fxy * fyz - fxz * fyy, A23 = fxy * fxz - fxx * fyz;
+  const g2 = gx * gx + gy * gy + gz * gz;
+  const K = (gx * gx * A11 + gy * gy * A22 + gz * gz * A33 + 2 * (gx * gy * A12 + gx * gz * A13 + gy * gz * A23)) / (g2 * g2 + 1e-12);
+  return { f0, K, grad: Math.sqrt(g2) };
+}
+function totalKAt(st, n = 96) {   // ∫K dA ≈ Σ K |∇f| δ_ε(f) h³ over the grid (δ a cosine bump, ε = 1.5h)
+  const c = st.center, L = st.bound, h = 2 * L / n, eps = 1.5 * h;
+  let sum = 0, cells = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+    const x = c[0] - L + (i + 0.5) * h, y = c[1] - L + (j + 0.5) * h, z = c[2] - L + (k + 0.5) * h;
+    const f0 = sdfJS(st, x, y, z); if (Math.abs(f0) >= eps) continue;
+    const q = curvJS(st, x, y, z), delta = (1 + Math.cos(Math.PI * q.f0 / eps)) / (2 * eps);
+    sum += q.K * q.grad * delta * h * h * h; cells++;
+  }
+  return { n, totalK: sum, over2pi: sum / (2 * Math.PI), cells };
+}
+
+// ---------- WebGL ----------
+const canvas = document.getElementById('c'), hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+if (!gl) fail('WebGL2 is not available in this browser.');
+function compile(type, src) { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(sh)); return sh; }
+function program(vs, fs) {
+  const p = gl.createProgram(); gl.attachShader(p, compile(gl.VERTEX_SHADER, vs)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name.replace('[0]', ''); u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u };
+}
+const FULL_VS = `#version 300 es
+out vec2 vUv;
+void main() { vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = p; gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+const marchProg = program(FULL_VS, `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 o;
+uniform float uB[15];      // ra rb h taper dimple cav spout knob box spike capR capY barL barR lift
+uniform vec4 uHc[3], uHu[3], uHv[3], uHn[3], uHx[3];   // (c, R) (u, r) (v, a) (n, p) (w, Rk, -, -)
+uniform vec4 uRing[4];     // centre, age in beats (< 0 = off)
+uniform vec4 uWave;        // A, bass, hat, snare
+uniform vec4 uSq;          // squash: 1/sx, 1/sy, 1/sz, min scale
+uniform float uBeats, uAspect, uStepK, uCurv, uKick, uFlash, uFocal, uBound;
+uniform int uSteps, uPal;
+uniform vec3 uEye, uFwd, uRight, uUp, uCenter;
+const float THICK = ${THICK.toFixed(2)}, SPR = ${SPR.toFixed(2)}, PI = 3.14159265;
+float smin(float a, float b, float k) { float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return b + (a - b) * h - k * h * (1.0 - h); }
+float smax(float a, float b, float k) { return -smin(-a, -b, k); }
+float capA(float A, float th, float d) { return A + (min(A, 0.4 * th) - A) * (1.0 - smoothstep(th + 0.03, th + 0.15, d)); }
+float segD(vec3 p, vec3 a, vec3 b) { vec3 pa = p - a, ba = b - a; float bb = dot(ba, ba); float h = bb > 1e-12 ? clamp(dot(pa, ba) / bb, 0.0, 1.0) : 0.0; return length(pa - ba * h); }
+float bodyF(vec3 p) {
+  float sc = 1.0 + uB[3] * clamp(p.y, -1.0, 1.0);
+  vec2 d = vec2(length(p.xz / sc) - uB[0], abs(p.y) - uB[2]);
+  float b = (min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - uB[1]) * min(1.0, sc);
+  if (uB[8] > 0.001) { vec3 qb = abs(p) - vec3(uB[0], uB[2], uB[0]); float bx = length(max(qb, 0.0)) + min(max(qb.x, max(qb.y, qb.z)), 0.0) - uB[1]; b = b + (bx - b) * uB[8]; }
+  if (uB[4] > 0.001) { float dd = length(p - vec3(0.0, uB[2] + uB[1] + 0.1, 0.0)) - 0.2; b = b + (smax(b, -dd, 0.08) - b) * uB[4]; }
+  if (uB[10] > 0.001) {
+    vec3 r = vec3(uB[10], uB[10] * 0.45, uB[10]), q = p - vec3(0.0, uB[11], 0.0);
+    float k0 = length(q / r), k1 = length(q / (r * r));
+    b = smin(b, k0 * (k0 - 1.0) / max(k1, 1e-6), 0.06);
+  }
+  if (uB[12] > 0.001) b = smin(b, segD(p, vec3(-uB[12], 0.0, 0.0), vec3(uB[12], 0.0, 0.0)) - uB[13], 0.04);
+  if (uB[9] > 0.0001) b -= uB[9] * sin(6.0 * p.x) * sin(6.0 * p.y + 1.0) * sin(6.0 * p.z + 2.0);
+  return b;
+}
+float handleD(int i, vec3 p, out float tubeD, out float rl) {
+  vec4 C = uHc[i], U = uHu[i], V = uHv[i], N = uHn[i], X = uHx[i];
+  tubeD = 1e3; rl = 0.0;
+  if (V.w <= 0.001) return 1e3;
+  vec3 q = p - C.xyz;
+  // far from the handle (0.35 beyond its reach) its distance is bounded below by lq - ext and its bump caps
+  // do nothing, so skip the atan and the tube (a far-field bound only: the surface is the same as sdfJS's)
+  float ext = C.w + X.y + U.w * V.w, lq = length(q);
+  if (lq > ext + 0.35) return lq - ext;
+  float a1 = dot(q, U.xyz), a2 = dot(q, V.xyz), a3 = dot(q, N.xyz);
+  float al = atan(a2, a1), pin = 1.0 - N.w * exp(-(al * al) / 0.16), rho = length(vec2(a1, a2));
+  float d, cutter;
+  if (X.y <= 0.0) {
+    rl = U.w * V.w * pin; tubeD = length(vec2(rho - C.w, a3)); d = tubeD - rl;
+    cutter = max(abs(a2) - X.x, -a1);
+  } else {
+    float r0 = U.w * V.w * pin, r1 = U.w * V.w, b0 = 1.5 * (al - PI), cb = cos(b0), sb = sin(b0);
+    float t0 = length(vec2(rho - (C.w + X.y * cb), a3 - X.y * sb)), t1 = length(vec2(rho - (C.w - X.y * cb), a3 + X.y * sb));
+    if (t0 - r0 < t1 - r1) { tubeD = t0; rl = r0; d = 0.8 * (t0 - r0); } else { tubeD = t1; rl = r1; d = 0.8 * (t1 - r1); }
+    cutter = max(max(abs(a2) - X.x, -a1), -a3);
+  }
+  if (X.x > 0.0) d = smax(d, -cutter, min(0.03, X.x));
+  return d;
+}
+float waves(vec3 p) {
+  float w = 0.0;
+  for (int i = 0; i < 4; i++) { vec4 r = uRing[i]; if (r.w < 0.0) continue; float d = length(p - r.xyz) - 0.9 * r.w; w += exp(-(d * d) / 0.0144) * exp(-r.w / 0.8); }
+  w += 0.5 * uWave.y + 0.25 * uWave.z * sin(23.0 * p.x + 17.0 * p.y + 29.0 * p.z + uBeats * 12.0) + 0.35 * uWave.w * sin(p.y * 9.0 - uBeats * 6.2832);
+  return clamp(w, -1.0, 1.0);
+}
+float sdf(vec3 p0) {
+  vec3 p = uCenter + (p0 - uCenter) * uSq.xyz;
+  float b = bodyF(p), R0 = uB[0] + uB[1], spR = SPR * clamp(R0 / 0.3, 0.0, 1.0);
+  float spD = segD(p, vec3(-R0 * 0.4, 0.0, 0.0), vec3(-R0 * 0.4 + (-R0 - 0.30 + R0 * 0.4) * uB[6], 0.32 * uB[6], 0.0));
+  b = smin(b, spD - spR, 0.06);
+  float kR = 0.07 * (0.3 + 0.7 * uB[7]), knD = length(p - vec3(0.0, (uB[2] + uB[1] + 0.04) * uB[7], 0.0));
+  b = smin(b, knD - kR, 0.04);
+  float A = uWave.x, hAll = 1e3;
+  for (int i = 0; i < 3; i++) { float td, rl; float dh = handleD(i, p, td, rl); hAll = min(hAll, dh); if (td < 1e2) A = capA(A, rl, td); }
+  float base = smin(b, hAll, 0.04);
+  if (uB[5] > 0.001) { float dIn = bodyF(p - vec3(0.0, uB[14], 0.0)) + THICK; base = smax(base, -dIn, 0.03); A = capA(A, THICK, abs(dIn)); }
+  A = capA(A, spR, spD); A = capA(A, kR, knD);
+  if (uB[12] > 0.001) A = capA(A, uB[13], segD(p, vec3(-uB[12], 0.0, 0.0), vec3(uB[12], 0.0, 0.0)));
+  A = capA(A, uB[0] + uB[1], length(p.xz));
+  float w = A > 0.0 ? waves(p) : 0.0;
+  return (base - A * w) * uSq.w;
+}
+vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
+vec3 env(vec3 d) { return mix(vec3(0.02, 0.02, 0.05), vec3(0.35, 0.42, 0.6), smoothstep(-0.3, 0.9, d.y)) + vec3(1.0, 0.85, 0.7) * pow(max(dot(d, normalize(vec3(0.6, 0.8, 0.4))), 0.0), 40.0) * 2.0; }
+void main() {
+  vec2 sp = (vUv * 2.0 - 1.0) * vec2(uAspect, 1.0);
+  vec3 rd = normalize(uFwd * uFocal + uRight * sp.x + uUp * sp.y), ro = uEye;
+  vec3 bg = mix(vec3(0.015, 0.015, 0.03), vec3(0.06, 0.05, 0.1), vUv.y) + vec3(0.2, 0.15, 0.35) * 0.08 * exp(-dot(sp, sp));
+  vec3 oc = ro - uCenter; float bq = dot(oc, rd), cc = dot(oc, oc) - uBound * uBound, disc = bq * bq - cc;
+  if (disc < 0.0) { o = vec4(bg, 1.0); return; }
+  float t = max(0.0, -bq - sqrt(disc)), tEnd = -bq + sqrt(disc);
+  bool hit = false; vec3 p = ro;
+  for (int i = 0; i < 160; i++) {
+    if (i >= uSteps) break;
+    p = ro + rd * t; float d = sdf(p);
+    if (d < 0.0006 * t + 0.0004) { hit = true; break; }
+    t += d > 0.3 ? max(d - 2.0 * uWave.x, d * uStepK) : d * uStepK;
+    if (t > tEnd) break;
+  }
+  if (!hit) { o = vec4(bg, 1.0); return; }
+  float e = 0.006, f0 = sdf(p);
+  float fpx = sdf(p + vec3(e, 0, 0)), fmx = sdf(p - vec3(e, 0, 0)), fpy = sdf(p + vec3(0, e, 0)), fmy = sdf(p - vec3(0, e, 0)), fpz = sdf(p + vec3(0, 0, e)), fmz = sdf(p - vec3(0, 0, e));
+  vec3 g = vec3(fpx - fmx, fpy - fmy, fpz - fmz) / (2.0 * e);
+  float fxx = (fpx - 2.0 * f0 + fmx) / (e * e), fyy = (fpy - 2.0 * f0 + fmy) / (e * e), fzz = (fpz - 2.0 * f0 + fmz) / (e * e);
+  // mixed partials from 3 forward taps instead of 12 central ones (colour only; QA's curvature is curvJS)
+  float fxy = (sdf(p + vec3(e, e, 0)) - fpx - fpy + f0) / (e * e);
+  float fxz = (sdf(p + vec3(e, 0, e)) - fpx - fpz + f0) / (e * e);
+  float fyz = (sdf(p + vec3(0, e, e)) - fpy - fpz + f0) / (e * e);
+  float A11 = fyy * fzz - fyz * fyz, A22 = fxx * fzz - fxz * fxz, A33 = fxx * fyy - fxy * fxy;
+  float A12 = fxz * fyz - fxy * fzz, A13 = fxy * fyz - fxz * fyy, A23 = fxy * fxz - fxx * fyz;
+  float g2 = dot(g, g);
+  float K = (g.x * g.x * A11 + g.y * g.y * A22 + g.z * g.z * A33 + 2.0 * (g.x * g.y * A12 + g.x * g.z * A13 + g.y * g.z * A23)) / (g2 * g2 + 1e-12);
+  vec3 n = normalize(g), v = -rd, l = normalize(vec3(0.6, 0.8, 0.4));
+  float kt = K / (abs(K) + 4.0);
+  vec3 curv = kt > 0.0 ? mix(vec3(0.9, 0.85, 0.8), vec3(1.0, 0.45, 0.15), kt) : mix(vec3(0.9, 0.85, 0.8), vec3(0.15, 0.45, 1.0), -kt);
+  float sh = 1.0, st = 0.02;
+  for (int i = 0; i < 12; i++) { float h = sdf(p + n * 0.002 + l * st); sh = min(sh, 10.0 * h / st); st += clamp(h, 0.03, 0.25); if (sh < 0.02 || st > 2.0) break; }
+  sh = clamp(sh, 0.0, 1.0);
+  float ao = 0.0; for (int i = 1; i <= 4; i++) { float hh = 0.03 * float(i); ao += (hh - sdf(p + n * hh)) / hh; }
+  ao = clamp(1.0 - 0.25 * ao, 0.2, 1.0);
+  float diff = max(dot(n, l), 0.0), fres = pow(1.0 - max(dot(n, v), 0.0), 3.0), spec = pow(max(dot(reflect(-l, n), v), 0.0), 60.0);
+  vec3 col;
+  if (uPal == 0) {
+    vec3 alb = mix(vec3(0.86, 0.83, 0.78), curv, uCurv);
+    col = alb * (0.12 + 0.88 * diff * sh) * ao + vec3(1.0) * spec * 0.5 * sh + alb * fres * 0.4;
+  } else if (uPal == 1) {
+    vec3 r = reflect(rd, n);
+    col = env(r) * mix(vec3(1.0), curv, uCurv * 0.8) * (0.4 + 0.6 * ao) + spec * sh;
+  } else {
+    vec3 film = hue(0.55 + 1.2 * (1.0 - dot(n, v)) + kt * 0.25);
+    col = mix(film, curv, uCurv * 0.5) * (0.15 + 0.85 * diff * sh) * ao + spec * sh * 0.8 + film * fres * 0.6;
+  }
+  col += curv * uKick * 0.12 + vec3(1.0, 0.95, 0.9) * uFlash * 0.5;
+  col = vec3(1.0) - exp(-col * 1.4);
+  o = vec4(pow(col, vec3(0.92)), 1.0);
+}`);
+const emptyVao = gl.createVertexArray();
+// Dynamic resolution renders into the lower-left corner of one full-size target and stretches that to the canvas,
+// so a scale step reallocates nothing (QA #57 round 5: resizing the canvas on each step stalled 100–333 ms).
+const blitProg = program(FULL_VS, `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 o;
+uniform sampler2D uTex;
+uniform vec2 uScale, uMax;
+void main() { o = texture(uTex, min(vUv * uScale, uMax)); }`);
+const rt = { tex: null, fbo: null, w: 0, h: 0 };
+function ensureRT(w, h) {   // allocated once per canvas size (at load and on a window resize), never on a scale step
+  if (rt.w === w && rt.h === h) return;
+  if (!rt.tex) { rt.tex = gl.createTexture(); rt.fbo = gl.createFramebuffer(); }
+  gl.bindTexture(gl.TEXTURE_2D, rt.tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, rt.fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rt.tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  rt.w = w; rt.h = h;
+}
+
+// ---------- camera: orbit, skim and thread, mixed by the song ----------
+const noise1 = x => 0.5 * Math.sin(x) + 0.3 * Math.sin(2.3 * x + 1.3) + 0.2 * Math.sin(4.7 * x + 2.1);
+const dropsUpTo = bars => Math.max(0, Math.floor((bars - DROP_BAR) / 32) + 1);
+function envR(P, dv) {   // a smooth envelope of the genus-0 body (superellipsoid, p = 4), radius along unit dv
+  const t = 1 + Math.abs(P.taper) * Math.min(1, P.h + P.rb);
+  const ax = Math.max(P.ra + P.rb, P.barL + P.barR, P.capR) * t + 0.45 * P.spout + P.spike;
+  const az = Math.max(P.ra + P.rb, P.capR) * t + 0.1 * P.spout + P.spike;
+  const ay = Math.max(P.h + P.rb, P.capY + 0.45 * P.capR) + 0.15 * P.knob + 0.15 * P.spout + P.spike;
+  const q = (dv[0] / ax) ** 4 + (dv[1] / ay) ** 4 + (dv[2] / az) ** 4;
+  return 1 / Math.sqrt(Math.sqrt(q));
+}
+const DEG = Math.PI / 180;
+function orbitTh(bars) { const cuts = params.cutOnDrop ? dropsUpTo(bars) : 0; return 2 * Math.PI * bars / params.orbitBars + Math.PI * cuts; }
+const fitR = st => Math.max(0.3, st.bound / (1 + st.sq) - st.wave.A - 0.15);   // the shape's reach from its centre (the bound without margins or squash)
+function orbitPos(bars, st) {   // on a sphere round the centre, near enough that the shape fills the frame's height; breathes every 2 bars
+  // QA #57 round 3: at 1.4× the bound (which has margins) the shape filled 21% of the frame on average
+  const c = st.center, rF = fitR(st), th = orbitTh(bars), el = 0.22 + 0.3 * noise1(bars * 0.17 + 5);
+  const D = Math.max(rF + 0.3, rF * (1.55 + 0.1 * noise1(bars * 0.31) + 0.06 * Math.sin(Math.PI * bars)));
+  return [c[0] + D * Math.cos(el) * Math.sin(th), c[1] + D * Math.sin(el), c[2] + D * Math.cos(el) * Math.cos(th)];
+}
+function skimWeight(bars) {
+  if (params.camMode === 'skim') return 1;
+  if (params.camMode !== 'auto') return 0;
+  const r = ((bars % 32) + 32) % 32;
+  return sstep(16, 17, r) * (1 - sstep(23.25, 24, r));
+}
+function skimPos(bars, st) {   // rides 0.3 above a smooth envelope of the body at the orbit's azimuth; rises over each handle's footprint
+  const th = orbitTh(bars), el = 0.45 * Math.sin(bars * 0.9);
+  const dv = [Math.cos(el) * Math.sin(th), Math.sin(el), Math.cos(el) * Math.cos(th)];
+  let s = envR(st.Pb, dv) + 0.3;
+  for (const h of st.slots) {
+    if (h.a <= 0.001) continue;
+    const cl = len3(h.c), ext = cl + h.R + h.Rk + h.r + 0.25;
+    if (ext <= s || cl < 1e-6) continue;
+    const half = Math.asin(Math.min(1, (h.R + h.Rk + h.r + 0.25) / cl)), cosA = dot3(dv, h.c) / cl;
+    s += (ext - s) * sstep(Math.cos(Math.min(Math.PI, half + 0.35)), Math.cos(half), cosA) * h.a;
+  }
+  return mul3(dv, s);
+}
+function basePos(bars) {
+  const st = stateAt(bars), o = orbitPos(bars, st), ws = skimWeight(bars);
+  if (ws <= 0) return o;
+  // blend round the centre (direction on the sphere, then distance): a straight lerp between the two cut
+  // across the shape and swung the view (QA #57 round 3: jump at bar 55.53, the end of a skim)
+  const c = st.center, a = sub3(o, c), b = sub3(skimPos(bars, st), c);
+  return add3(c, mul3(slerpDir(norm3(a), norm3(b), ws), lerp(len3(a), len3(b), ws)));
+}
+const baseVel = bars => mul3(sub3(basePos(bars + 0.01), basePos(bars - 0.01)), 1 / 0.02);
+function threadWindow(bars) {
+  const ph = Math.floor(bars / 8), b = bars - 8 * ph;
+  if (!threadOn(ph) || b < TW0 || b >= TW1) return null;
+  return { ph, ts: 8 * ph + TW0, te: 8 * ph + TW1 };
+}
+const planCache = new Map();
+function threadPlan(win) {   // which holes, in which order, from which side, and whether to come back round a rim: fixed per window
+  const key = win.ph;
+  if (planCache.has(key)) return planCache.get(key);
+  const st = stateAt(win.ts), holes = st.slots.filter(s => s.closed);
+  let plan = null;
+  if (holes.length) {
+    const p0 = basePos(win.ts), pe = basePos(win.te), v0 = baseVel(win.ts), ve = baseVel(win.te);
+    let list = holes.slice().sort((a, b) => dot3(sub3(a.c, p0), v0) - dot3(sub3(b.c, p0), v0));
+    if (!params.slalom) list = [list.slice().sort((a, b) => len3(sub3(a.c, p0)) - len3(sub3(b.c, p0)))[0]];
+    // at most two holes a dive, taking turns through the phrases (QA #57 round 4: three holes in 3.5 bars made
+    // U-turns of about a bar, turn rate p99 192°/s)
+    if (list.length > 2) { const k = win.ph % list.length; list = [list[k], list[(k + 1) % list.length]].sort((a, b) => dot3(sub3(a.c, p0), v0) - dot3(sub3(b.c, p0), v0)); }
+    // enter each hole from the side the camera is on, so it crosses each spanning disk once
+    const signs = [];
+    let cur = p0;
+    for (const h of list) { const s = dot3(h.n, sub3(h.c, cur)) >= 0 ? 1 : -1; signs.push(s); cur = add3(h.c, mul3(h.n, s * (h.R + 0.8))); }
+    // if the base path waits on the side the camera came from, come back round the far rim (outside the disk)
+    const last = list[list.length - 1], detour = dot3(last.n, sub3(pe, last.c)) * signs[signs.length - 1] < 0;
+    plan = { order: list.map(h => h.slot), signs, detour, p0, pe, v0, ve };
+  }
+  planCache.set(key, plan);
+  if (planCache.size > 64) planCache.delete(planCache.keys().next().value);
+  return plan;
+}
+function hermite(p0, m0, p1, m1, u) {
+  const u2 = u * u, u3 = u2 * u, a = 2 * u3 - 3 * u2 + 1, b = u3 - 2 * u2 + u, c = -2 * u3 + 3 * u2, d = u3 - u2;
+  return [0, 1, 2].map(i => a * p0[i] + b * m0[i] + c * p1[i] + d * m1[i]);
+}
+function threadPos(t, win, plan, st) {
+  st = st || stateAt(t);
+  const hs = plan.order.map(j => st.slots[j]), k = hs.length, pts = [plan.p0, ...hs.map(h => h.c)], tans = [null];
+  hs.forEach((h, i) => tans.push(mul3(h.n, plan.signs[i])));
+  if (plan.detour) {   // a point beyond the far rim of the last hole, crossed going back
+    const h = hs[k - 1];
+    pts.push(add3(h.c, mul3(h.u, h.R + h.Rk + h.r + 0.7))); tans.push(mul3(h.n, -plan.signs[k - 1]));
+  }
+  pts.push(plan.pe);
+  const segs = pts.length - 1, Dt = (win.te - win.ts) / segs;
+  tans[0] = mul3(plan.v0, Dt); tans.push(mul3(plan.ve, Dt));
+  for (let i = 1; i < segs; i++) tans[i] = mul3(tans[i], Math.max(2.0, 0.5 * len3(sub3(pts[i + 1], pts[i - 1]))));
+  const x = (t - win.ts) / Dt, seg = Math.max(0, Math.min(segs - 1, Math.floor(x)));
+  let p = hermite(pts[seg], tans[seg], pts[seg + 1], tans[seg + 1], Math.max(0, Math.min(1, x - seg)));
+  // stay near the shape: never inside the body's envelope, and legs pulled in (softly) beyond the holes;
+  // radial from the body centre, so points nearer than every hole's far rim (and the rim detour) don't move
+  const w = sstep(0, 0.5, t - win.ts) * sstep(0, 0.5, win.te - t), r = len3(p);
+  if (w > 0 && r > 1e-6) {
+    let r2 = Math.max(r, envR(st.Pb, mul3(p, 1 / r)) + 0.05);
+    const Rc = Math.max(...hs.map(h => len3(h.c) + h.R + h.Rk + h.r + 0.8));
+    if (r2 > Rc) r2 = Rc + (r2 - Rc) / (1 + (r2 - Rc) / 0.6);
+    p = mul3(p, 1 + (r2 / r - 1) * w);
+  }
+  return p;
+}
+function posAt(t) {
+  const win = threadWindow(t), plan = win && threadPlan(win);
+  return plan ? threadPos(t, win, plan) : basePos(t);
+}
+function slerpDir(a, b, k, maxAng = Math.PI) {   // turn unit vector a toward b by the fraction k (at most maxAng), on the great circle
+  const th = Math.acos(Math.max(-1, Math.min(1, dot3(a, b))));
+  if (th < 1e-5 || k <= 0) return a;
+  let axis = cross3(a, b);
+  if (len3(axis) < 1e-5) axis = cross3(a, [0, 1, 0]);
+  if (len3(axis) < 1e-5) axis = [1, 0, 0];
+  axis = norm3(axis);
+  const ang = Math.min(th * Math.min(1, k), maxAng), ca = Math.cos(ang), sa = Math.sin(ang);
+  return norm3(add3(add3(mul3(a, ca), mul3(cross3(axis, a), sa)), mul3(axis, dot3(axis, a) * (1 - ca))));
+}
+function eyeAt(bars, st) {   // the eye on its path (thread or base), pushed out of the shape along the gradient
+  const win = threadWindow(bars), plan = win && threadPlan(win);
+  let eye = plan ? threadPos(bars, win, plan, st) : basePos(bars);
+  let d = sdfJS(st, ...eye), pushes = 0;
+  while (d < 0.08 && pushes < 20) {
+    const e = 0.01, g = norm3([sdfJS(st, eye[0] + e, eye[1], eye[2]) - d, sdfJS(st, eye[0], eye[1] + e, eye[2]) - d, sdfJS(st, eye[0], eye[1], eye[2] + e) - d]);
+    eye = add3(eye, mul3(g, 0.08 - d + 0.02)); d = sdfJS(st, ...eye); pushes++;
+  }
+  return { eye, d, pushes, win, plan };
+}
+const threadWeight = (bars, win, plan) => plan ? sstep(0, 0.5, bars - win.ts) * sstep(0, 1, win.te - bars) : 0;
+function lookCone(eye, st, wt) {   // how far the view may turn off the shape's centre and keep the shape in shot
+  // 28° outside a thread; in one, 0.6× the shape's angular radius + 12° (QA #57 round 3: looking down the
+  // path past the last hole left the frame empty for up to 2.1 s)
+  const dist = len3(sub3(st.center, eye)), rho = Math.asin(Math.min(1, 0.6 * fitR(st) / Math.max(dist, 1e-6)));
+  return lerp(28 * DEG, 0.6 * rho + 12 * DEG, wt);
+}
+// The look is a pure function of the bar too, but filtered: a raw aim on a grid of LOOK_G bars, then a Hann
+// window of ±LOOK_W bars, so the view turns smoothly where the raw aim swings (QA #57 round 3: p99 223°/s).
+const LOOK_G = 1 / 32, LOOK_W = 0.5, lookCache = new Map();
+function rawLook(i) {   // the aim at grid point i: a direction near the shape's centre, and the bank (degrees)
+  let r = lookCache.get(i);
+  if (r) return r;
+  const bars = i * LOOK_G, st = stateAt(bars), { eye, win, plan } = eyeAt(bars, st);
+  const ws = skimWeight(bars), wt = threadWeight(bars, win, plan);
+  const ahead = posAt(bars + 0.3), behind = posAt(bars - 0.05), next = posAt(bars + 0.05);
+  // turn from the shape's centre toward the path ahead (directions blended, never points), within the cone
+  const toC = norm3(sub3(st.center, eye));
+  let toA = sub3(ahead, eye);
+  toA = len3(toA) > 0.05 ? norm3(toA) : norm3(sub3(next, behind));
+  let near = 0;
+  if (plan) for (const j of plan.order) { const h = st.slots[j]; near = Math.max(near, 1 - sstep(0.8, 2.0, len3(sub3(eye, h.c)) / (h.R + h.Rk + 0.4))); }
+  const dir = slerpDir(toC, toA, Math.max(0.6 * ws, wt * Math.max(0.35, near)), lookCone(eye, st, wt));
+  // bank into turns: roll against the sideways acceleration of the path (deg per unit/bar²)
+  const right = norm3(cross3(dir, [0, 1, 0])), acc = mul3(add3(sub3(next, mul3(eye, 2)), behind), 1 / (0.05 * 0.05));
+  r = { dir, roll: Math.max(-params.bank, Math.min(params.bank, -1.5 * dot3(acc, right))) };
+  lookCache.set(i, r);
+  if (lookCache.size > 1024) lookCache.delete(lookCache.keys().next().value);
+  return r;
+}
+function lookAt(bars) {   // the Hann-weighted mean of the raw aims within ±LOOK_W bars (weights reach 0 at the ends, so it is continuous)
+  const x = bars / LOOK_G, n = LOOK_W / LOOK_G, i0 = Math.ceil(x - n), i1 = Math.floor(x + n);
+  let s = [0, 0, 0], roll = 0, wsum = 0;
+  for (let i = i0; i <= i1; i++) {
+    const w = 0.5 + 0.5 * Math.cos(Math.PI * (i - x) / n);
+    if (w <= 1e-6) continue;
+    const r = rawLook(i);
+    s = add3(s, mul3(r.dir, w)); roll += w * r.roll; wsum += w;
+  }
+  return { dir: norm3(s), roll: wsum > 0 ? roll / wsum : 0 };
+}
+function cameraAt(bars) {
+  const st = stateAt(bars), { eye, d, pushes, win, plan } = eyeAt(bars, st);
+  const ws = skimWeight(bars), look = lookAt(bars), toC = norm3(sub3(st.center, eye));
+  // the filtered aim, kept within the cone (+8°) round the centre as seen from here
+  const fwd = slerpDir(toC, look.dir, 1, lookCone(eye, st, threadWeight(bars, win, plan)) + 8 * DEG), at = add3(eye, fwd);
+  let right = norm3(cross3(fwd, [0, 1, 0])), up = cross3(right, fwd);
+  const roll = look.roll * DEG, cr = Math.cos(roll), sr = Math.sin(roll);
+  [right, up] = [add3(mul3(right, cr), mul3(up, sr)), sub3(mul3(up, cr), mul3(right, sr))];
+  // FOV kick on the drop: +8°, easing back over one beat
+  const r = ((bars % 32) + 32) % 32, tb = (r - DROP_BAR) * params.bpb;
+  const fov = 64 + (tb >= 0 && tb < 1 ? 8 * (1 - ease(tb)) : 0);
+  const mode = plan ? 'thread' : ws > 0.5 ? 'skim' : 'orbit';
+  return { eye, at, fwd, right, up, roll: roll * 180 / Math.PI, fov, mode, sdf: d, pushes, st };
+}
+function threadCheck(bars, N = 600) {   // signed crossings of each hole's spanning disk by the camera path
+  const win = threadWindow(bars), plan = win && threadPlan(win);
+  if (!plan) return null;
+  const holes = plan.order.map(j => ({ slot: j, crossings: 0, linking: 0, minClearance: Infinity, innerRadius: 0, ratio: null }));
+  let prev = threadPos(win.ts, win, plan), minSdf = Infinity;
+  for (let i = 1; i <= N; i++) {
+    const t = win.ts + (win.te - win.ts) * i / N - 1e-7, st = stateAt(t), p = threadPos(t, win, plan, st);
+    minSdf = Math.min(minSdf, sdfJS(st, ...p));
+    plan.order.forEach((j, k) => {
+      const s = st.slots[j], d0 = dot3(sub3(prev, s.c), s.n), d1 = dot3(sub3(p, s.c), s.n);
+      if ((d0 < 0) === (d1 < 0)) return;
+      const x = lerp3(prev, p, d0 / (d0 - d1)), rr = len3(sub3(x, s.c)), disk = s.Rk > 0 ? s.R - s.Rk : s.R;
+      if (rr >= disk) return;
+      const h = holes[k];
+      h.crossings++; h.linking += (d1 > d0 ? 1 : -1) * (s.Rk > 0 ? 2 : 1);
+      h.innerRadius = s.Rk > 0 ? s.R - s.Rk - s.r : s.R - s.r;
+      h.minClearance = Math.min(h.minClearance, sdfJS(st, ...x));
+      h.ratio = h.minClearance / h.innerRadius;
+    });
+    prev = p;
+  }
+  return { ph: win.ph, ts: win.ts, te: win.te, holes, minSdf };
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+$('play').onclick = () => {
+  if (metronome.playing) metronome.stop(); else metronome.start();
+  clockStart = performance.now();
+  $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', metronome.playing);
+};
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('full').onclick = () => { const w = $('wrap'); if (document.fullscreenElement) document.exitFullscreen(); else (w.requestFullscreen || w.webkitRequestFullscreen).call(w); };
+const GROUPS = [['paces', ['auto', ...PACES], 'pace'], ['cams', ['auto', 'orbit', 'skim', 'thread'], 'camMode'], ['genera', [1, 2, 3], 'maxGenus'], ['palettes', ['auto', ...PALETTES], 'palette']];
+for (const [box, list, key] of GROUPS) for (const val of list) {
+  const b = document.createElement('button'); b.textContent = String(val); b.dataset.v = String(val);
+  b.onclick = () => { params[key] = val; changed(); }; $(box).appendChild(b);
+}
+$('t-slalom').onclick = () => { params.slalom = !params.slalom; changed(); };
+$('t-cut').onclick = () => { params.cutOnDrop = !params.cutOnDrop; changed(); };
+const SLIDERS = { throughEvery: 0, orbitBars: 0, bank: 0, squash: 2, bumpAmp: 2, curvColor: 2, steps: 0, bpm: 0 };
+for (const [name, dec] of Object.entries(SLIDERS)) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name].toFixed(dec); planCache.clear(); lookCache.clear(); });
+function changed() { planCache.clear(); lookCache.clear(); sync(); }
+function sync() {
+  for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
+  for (const [box, , key] of GROUPS) for (const b of $(box).children) b.classList.toggle('on', b.dataset.v === String(params[key]));
+  $('t-slalom').classList.toggle('on', params.slalom); $('t-cut').classList.toggle('on', params.cutOnDrop);
+  $('mute').classList.toggle('on', params.muted);
+}
+$('copy').onclick = async e => {
+  const q = new URLSearchParams({ pace: params.pace, maxGenus: params.maxGenus, camMode: params.camMode, throughEvery: params.throughEvery, slalom: +params.slalom,
+    bank: params.bank, cutOnDrop: +params.cutOnDrop, squash: params.squash, palette: params.palette, bumpAmp: params.bumpAmp, curvColor: params.curvColor,
+    orbitBars: params.orbitBars, steps: params.steps, bpm: params.bpm });
+  const text = `25 · Shape Shifter II\n${location.origin + location.pathname}?${q}`;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓'; setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
+};
+window.__modules = { 'shape-shifter-2': { inputs: [
+  { name: 'pace', type: 'long', values: ['auto', ...PACES.map(String)], default: 'auto' },
+  { name: 'maxGenus', type: 'long', default: 3, min: 1, max: 3 },
+  { name: 'camMode', type: 'long', values: ['auto', 'orbit', 'skim', 'thread'], default: 'auto' },
+  { name: 'throughEvery', type: 'long', default: 8, min: 8, max: 32 },
+  { name: 'slalom', type: 'bool', default: true }, { name: 'cutOnDrop', type: 'bool', default: false },
+  { name: 'bank', type: 'float', default: 8, min: 0, max: 30 }, { name: 'squash', type: 'float', default: 0.04, min: 0, max: 0.1 },
+  { name: 'palette', type: 'long', values: ['auto', ...PALETTES], default: 'auto' },
+  { name: 'bumpAmp', type: 'float', default: 0.5, min: 0, max: 1 }, { name: 'curvColor', type: 'float', default: 0.7, min: 0, max: 1 },
+  { name: 'orbitBars', type: 'long', default: 4, min: 2, max: 16 }, { name: 'steps', type: 'long', default: 128, min: 48, max: 160 },
+] } };
+
+// ---------- main loop ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+  const cap = (params.res === 'native' ? 1 : Math.min(1, Math.sqrt(1920 * 1080 / (w * h)))) * params.scale;   // dyn.scale is applied inside the frame, not to the canvas
+  w = Math.max(1, Math.round(w * cap)); h = Math.max(1, Math.round(h * cap));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; dynStart(w, h); }
+}
+// A very large canvas starts at a predicted scale (about 4.2 MP rendered), so the first steps don't land in the
+// measured window (QA #57 round 6: 7 frames over 20 ms at native 4K were the early steps down).
+function dynStart(w, h) { if (params.dynres) { const px = w * h; dyn.scale = px > 4.2e6 ? Math.max(DYN_MIN, Math.sqrt(4.2e6 / px)) : 1; dyn.slowFor = 0; dyn.fastFor = 0; } }
+// floor 0.5 (QA #57 round 7: at native 4K the heavy second shape ran at 20–30 fps even at the old 0.7 floor)
+const DYN_MIN = 0.5;
+// dynamic resolution: when frames average > 17.5 ms for a quarter second, render 12% fewer pixels a side, down to
+// 0.7, and look again 0.3 s later. It settles within about a second (QA #57 round 4: the old 1 s + 2 s steps left
+// 24 frames over 20 ms at native 4K). It never scales back up by itself; a window resize or ?dynres=0 resets it.
+// Steps are cheap now (no canvas resize), so it also steps back up 6 % a side after 2 s of frames under 12.5 ms.
+const dyn = { scale: 1, slowFor: 0, fastFor: 0, ema: 1 / 60, since: performance.now(), grace: 1000 };
+window.addEventListener('resize', () => { dyn.scale = 1; dyn.slowFor = 0; dyn.fastFor = 0; dyn.since = performance.now(); dyn.grace = 1000; });
+function dynRes(dt, now) {
+  if (!params.dynres || dt <= 0 || now - dyn.since < dyn.grace) return;
+  dyn.ema += (dt - dyn.ema) * 0.25;
+  if (dyn.ema < 0.0125 && dyn.scale < 1) {
+    dyn.slowFor = 0; dyn.fastFor += dt;
+    if (dyn.fastFor > 2) { dyn.scale = Math.min(1, dyn.scale * 1.06); dyn.fastFor = 0; dyn.since = now; dyn.grace = 300; }
+    return;
+  }
+  dyn.fastFor = 0;
+  if (dyn.ema <= 0.0175) { dyn.slowFor = 0; return; }
+  dyn.slowFor += dt;
+  if (dyn.slowFor > 0.25 && dyn.scale > DYN_MIN) {   // a bigger step when far too slow
+    dyn.scale = Math.max(DYN_MIN, dyn.scale * (dyn.ema > 0.025 ? 0.8 : 0.88)); dyn.slowFor = 0; dyn.ema = 1 / 60; dyn.since = now; dyn.grace = 300;
+  }
+}
+let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastNow = 0;
+const errors = [], events = [], logged = new Set(), angHistory = [];
+const prev = { genus: null, step: null, win: null, fwd: null, flash: 0, song: null };
+function logEvent(e, now) {
+  if (!metronome.playing) { e.tBeat = null; e.perfDrawn = now; events.push(e); if (events.length > 512) events.shift(); return; }
+  e.tHeard = e.tBeat + metronome.latency();
+  e.perfHeard = performance.now() + (e.tHeard - metronome.ctx.currentTime) * 1000;
+  e.perfDrawn = now;
+  events.push(e); if (events.length > 512) events.shift();
+}
+const stepTime = step => { const s = metronome.playing && metronome.steps.find(x => x.step === step); return s ? s.time : null; };
+function logAt(type, bar, extra, now) {
+  const key = type + ':' + bar.toFixed(4); if (logged.has(key)) return; logged.add(key); if (logged.size > 2000) logged.clear();
+  logEvent({ type, bar, ...extra, tBeat: stepTime(Math.round(bar * params.bpb * 4)) }, now);
+}
+function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
+}
+const nice = s => s.trim();
+function draw(now) {
+  resize();
+  const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
+  dynRes(dt, now);
+  const mb = metronome.beats();
+  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60);
+  const bars = beats / params.bpb, cam = cameraAt(bars), st = cam.st;
+  // logged events
+  if (metronome.playing) {
+    const heard = metronome.ctx.currentTime - metronome.latency();
+    for (const h of metronome.hits) { if (h.logged || h.time > heard) continue; h.logged = true; logEvent({ type: h.lane, vel: h.vel, tBeat: h.time }, now); }
+  }
+  if (prev.genus !== null && st.genus !== prev.genus) {
+    logAt(st.genus < prev.genus ? 'surgery' : 'attach', 8 * st.ph, { from: prev.genus, to: st.genus }, now); prev.flash = 1;
+  }
+  if (prev.step !== null && st.step.i !== prev.step) logAt('land', st.step.T0, { shape: nice(st.k0), genus: KF[st.k0].genus }, now);
+  const win = threadWindow(bars), plan = win && threadPlan(win);
+  // the crossings are not counted here: threadCheck (240 camera samples) in the frame froze the page ~300 ms at the
+  // start of every fly-through (QA #57 round 7, 21.7 s); __qa.thread(bars) counts them on demand
+  if (plan && prev.win !== win.ph) logAt('thread', win.ts, { slots: plan.order, signs: plan.signs }, now);
+  const song = st.song;
+  if (prev.song !== null && song === 'drop' && prev.song !== 'drop') { const db = 32 * Math.floor(bars / 32) + DROP_BAR; logAt('drop', db, {}, now); if (params.cutOnDrop) logAt('cut', db, {}, now); }
+  prev.genus = st.genus; prev.step = st.step.i; prev.win = plan ? win.ph : null; prev.song = song;
+  prev.flash = Math.max(0, prev.flash - dt * 2);
+  if (prev.fwd && dt > 0) { const ang = Math.acos(Math.max(-1, Math.min(1, dot3(prev.fwd, cam.fwd)))) * 180 / Math.PI / dt; window.__qa.angSpeed = ang; angHistory.push(ang); if (angHistory.length > 3600) angHistory.shift(); }
+  prev.fwd = cam.fwd;
+  const beat = Math.floor(beats), kickLevel = params.kick[(beat * 4) % 16] === 'x' ? Math.exp(-(beats - beat) * 60 / params.bpm / 0.15) : 0;
+
+  const W = canvas.width, H = canvas.height, w = st.wave, P = st.Pb;
+  const L = w.A * (2 * 0.9 / 0.12 + 0.25 * w.hat * 40 + 0.35 * w.snare * 9);
+  if (params.dynres) ensureRT(W, H);
+  const useRT = params.dynres && dyn.scale < 1, RW = useRT ? Math.max(1, Math.round(W * dyn.scale)) : W, RH = useRT ? Math.max(1, Math.round(H * dyn.scale)) : H;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, useRT ? rt.fbo : null);
+  gl.viewport(0, 0, RW, RH);
+  gl.useProgram(marchProg.p);
+  const u = marchProg.u;
+  gl.uniform1fv(u.uB, [...BODY_KEYS.map(k => P[k]), P.lift]);
+  const hc = [], hu = [], hv = [], hn = [], hx = [];
+  for (const s of st.slots) { hc.push(...s.c, s.R); hu.push(...s.u, s.r); hv.push(...s.v, s.a); hn.push(...s.n, s.p); hx.push(s.w, s.Rk, 0, 0); }
+  gl.uniform4fv(u.uHc, hc); gl.uniform4fv(u.uHu, hu); gl.uniform4fv(u.uHv, hv); gl.uniform4fv(u.uHn, hn); gl.uniform4fv(u.uHx, hx);
+  const rings = new Float32Array(16).fill(-1);
+  st.rings.forEach((r, i) => rings.set(r, i * 4));
+  gl.uniform4fv(u.uRing, rings);
+  gl.uniform4f(u.uWave, w.A, w.bass, w.hat, w.snare);
+  gl.uniform4f(u.uSq, st.sqInv[0], st.sqInv[1], st.sqInv[2], st.sqMin);
+  gl.uniform1f(u.uBeats, beats); gl.uniform1f(u.uAspect, W / H); gl.uniform1f(u.uStepK, 1 / (1 + L));
+  gl.uniform1f(u.uCurv, params.curvColor); gl.uniform1f(u.uKick, kickLevel); gl.uniform1f(u.uFlash, prev.flash);
+  gl.uniform1f(u.uFocal, 1 / Math.tan(cam.fov * Math.PI / 360)); gl.uniform1f(u.uBound, st.bound);
+  gl.uniform1i(u.uSteps, Math.round(params.steps));
+  const pal = params.palette === 'auto' ? Math.floor(st.ph / 2) % 3 : PALETTES.indexOf(params.palette);
+  gl.uniform1i(u.uPal, pal);
+  gl.uniform3fv(u.uEye, cam.eye); gl.uniform3fv(u.uFwd, cam.fwd); gl.uniform3fv(u.uRight, cam.right); gl.uniform3fv(u.uUp, cam.up); gl.uniform3fv(u.uCenter, st.center);
+  gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  if (useRT) {   // stretch the rendered corner to the canvas
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, W, H);
+    gl.useProgram(blitProg.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, rt.tex); gl.uniform1i(blitProg.u.uTex, 0);
+    gl.uniform2f(blitProg.u.uScale, RW / W, RH / H);
+    gl.uniform2f(blitProg.u.uMax, (RW - 0.5) / W, (RH - 0.5) / H);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  Object.assign(window.__qa, {
+    bars, beats, genusNow: st.genus, shape: { from: nice(st.k0), to: nice(st.k1), u: st.u, step: st.step },
+    cam: { pos: cam.eye, fwd: cam.fwd, mode: cam.mode, sdf: cam.sdf, pushes: cam.pushes, fov: cam.fov, roll: cam.roll },
+    palette: PALETTES[pal], song, renderScale: dyn.scale, canvas: [W, H], render: [RW, RH],
+  });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    hud.textContent = `Shape Shifter II · ${nice(st.k0)} → ${nice(st.k1)} · genus ${st.genus} · ${song} · ${cam.mode} · ${PALETTES[pal]} · ${params.bpm} bpm · ${state}\n` +
+      `bar ${bars.toFixed(1)} · ${W}×${H} · ${fps} fps`;
+  }
+}
+
+const angP99 = () => { if (!angHistory.length) return null; const a = angHistory.slice().sort((x, y) => x - y); return a[Math.floor(0.99 * (a.length - 1))]; };
+window.__qa = {
+  errors, events, THICK, angSpeed: 0, angP99,
+  keyframes: KEYS.map(([name, genus, variant]) => ({ name: name.trim(), id: name, genus, variant })),
+  state: b => stateAt(b ?? window.__qa.bars),
+  genusExpected: b => stateAt(b ?? window.__qa.bars).genus,
+  keyframeAt: b => { const st = stateAt(b ?? window.__qa.bars); return { from: nice(st.k0), to: nice(st.k1), u: st.u, step: st.step }; },
+  sdf: (x, y, z, b) => sdfJS(stateAt(b ?? window.__qa.bars), x, y, z),
+  genus: (n = 64, b) => genusAt(stateAt(b ?? window.__qa.bars), n),
+  totalK: (n = 96, b) => totalKAt(stateAt(b ?? window.__qa.bars), n),
+  keyGenus: (id, n = 96) => genusAt(keyState(id), n),   // id from keyframes[].id
+  keyTotalK: (id, n = 160) => totalKAt(keyState(id), n),
+  curvature: (x, y, z, b) => curvJS(stateAt(b ?? window.__qa.bars), x, y, z),
+  handles: b => stateAt(b ?? window.__qa.bars).slots.filter(s => s.a > 0.001).map(s => ({ slot: s.slot, type: s.type, c: s.c, n: s.n, R: s.R, r: s.r, Rk: s.Rk, a: s.a, p: s.p, w: s.w, closed: s.closed })),
+  camera: b => { const c = cameraAt(b ?? window.__qa.bars); return { eye: c.eye, fwd: c.fwd, up: c.up, mode: c.mode, sdf: c.sdf, pushes: c.pushes, fov: c.fov, roll: c.roll }; },
+  thread: (b, N = 600) => threadCheck(b ?? window.__qa.bars, N),
+};
+const q = k => query.get(k);
+if (q('pace') === 'auto') params.pace = 'auto'; else if (PACES.includes(parseFloat(q('pace')))) params.pace = parseFloat(q('pace'));
+if (['auto', 'orbit', 'skim', 'thread'].includes(q('camMode'))) params.camMode = q('camMode');
+if (['auto', ...PALETTES].includes(q('palette'))) params.palette = q('palette');
+for (const k of ['slalom', 'cutOnDrop']) if (q(k) !== null) params[k] = q(k) !== '0';
+for (const k of ['maxGenus', ...Object.keys(SLIDERS)]) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
+if (q('res') === 'native') params.res = 'native';
+params.scale = Math.max(0.25, Math.min(1, parseFloat(q('scale')) || 1));
+params.muted = q('muted') === '1';
+params.dynres = q('dynres') !== '0';
+sync();
+// Warm up before the first frame: compile both programs, allocate the render target and fill the camera's look
+// cache, so none of it lands mid-show (QA #57 round 7: 117–167 ms spikes in the first 4 s).
+(function warmUp() {
+  try {
+    resize();
+    if (params.dynres) ensureRT(canvas.width, canvas.height);
+    gl.useProgram(marchProg.p);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, rt.fbo || null);
+    gl.viewport(0, 0, 1, 1);
+    gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (rt.tex) {
+      gl.useProgram(blitProg.p);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, rt.tex); gl.uniform1i(blitProg.u.uTex, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    gl.finish();
+    cameraAt(0);
+  } catch (e) { errors.push('warm-up: ' + String(e && e.stack || e)); }
+})();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
