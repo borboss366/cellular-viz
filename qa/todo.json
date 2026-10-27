@@ -36,15 +36,15 @@
  {
   "id": "07-creatures",
   "from": "VIZ QA / QA box",
-  "title": "07 Particle Lenia: 12 new creatures — swipe 2 rounds (22 picks)",
-  "note": "Your top 4–5 become preset buttons. 20 s warm-up, 20 s each.",
+  "title": "07 Particle Lenia: 12 new creatures \u2014 swipe 2 rounds (22 picks)",
+  "note": "Your top 4\u20135 become preset buttons. 20 s warm-up, 20 s each.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/07-particle-lenia/2026-10-23-2124/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/07-particle-lenia/2026-10-23-2124"
    }
   ],
@@ -53,7 +53,7 @@
  {
   "id": "08-blend-first",
   "from": "QA box",
-  "title": "08 Blend (PR #30): watch the first switches — density vs fade",
+  "title": "08 Blend (PR #30): watch the first switches \u2014 density vs fade",
   "note": "Density on the new version has only short dark moments; fade still dips when 06 glow/pulse come in dark.",
   "links": [
    {
@@ -71,14 +71,14 @@
   "id": "blend-shootout-1",
   "from": "VIZ QA / QA box",
   "title": "Blend shootout round 1: fade vs mask vs cut vs screen vs color vs difference",
-  "note": "Same switch every time: 06 dream ↔ 07 small-ring, 60 s each. Swipe 2 rounds (10 picks). More methods join as they're built.",
+  "note": "Same switch every time: 06 dream \u2194 07 small-ring, 60 s each. Swipe 2 rounds (10 picks). More methods join as they're built.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/08-blend/2026-10-24-1917/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/08-blend/2026-10-24-1917"
    }
   ],
@@ -87,15 +87,15 @@
  {
   "id": "09-riemann",
   "from": "QA box",
-  "title": "09 Riemann: first look (PR #38) — maths checks all pass, 60 fps at 1080p",
-  "note": "Every zero is a rainbow pinwheel on the line x = ½. Clips are small here; on the laptop press Fullscreen.",
+  "title": "09 Riemann: first look (PR #38) \u2014 maths checks all pass, 60 fps at 1080p",
+  "note": "Every zero is a rainbow pinwheel on the line x = \u00bd. Clips are small here; on the laptop press Fullscreen.",
   "links": [
    {
-    "label": "▶ watch",
+    "label": "\u25b6 watch",
     "href": "/run/09-riemann/2026-10-24-1958"
    },
    {
-    "label": "⇄ travel vs overview",
+    "label": "\u21c4 travel vs overview",
     "href": "/run/09-riemann/2026-10-24-1958/compare"
    }
   ],
@@ -104,15 +104,15 @@
  {
   "id": "10-bsd",
   "from": "QA box",
-  "title": "10 Birch–Swinnerton-Dyer: first look (PR #39) — all maths checks pass, 60 fps at 1080p",
+  "title": "10 Birch\u2013Swinnerton-Dyer: first look (PR #39) \u2014 all maths checks pass, 60 fps at 1080p",
   "note": "A point hops along the curve each beat; the dust is the curve mod a new prime each bar. Press Fullscreen on the laptop.",
   "links": [
    {
-    "label": "▶ watch",
+    "label": "\u25b6 watch",
     "href": "/run/10-bsd/2026-10-24-2042"
    },
    {
-    "label": "⇄ x³+17 vs x³−25x",
+    "label": "\u21c4 x\u00b3+17 vs x\u00b3\u221225x",
     "href": "/run/10-bsd/2026-10-24-2042/compare"
    }
   ],
@@ -125,11 +125,11 @@
   "note": "All maths and speed checks pass. 2 rounds = 10 picks. Your picks decide which scenes stay in the show.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/11-riemann-show/2026-10-24-2203/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/11-riemann-show/2026-10-24-2203"
    }
   ],
@@ -138,15 +138,15 @@
  {
   "id": "11-canyon-pulses",
   "from": "VIZ QA / QA box",
-  "title": "11 canyon: before vs with surface pulses (PR #41) — which is better?",
-  "note": "60 s each, same scene. The new one moves ~3.7× more and pulses right after each beat. 1 pick is enough.",
+  "title": "11 canyon: before vs with surface pulses (PR #41) \u2014 which is better?",
+  "note": "60 s each, same scene. The new one moves ~3.7\u00d7 more and pulses right after each beat. 1 pick is enough.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/11-riemann-show/2026-10-24-2321-canyon/compare"
    },
    {
-    "label": "▶ watch both",
+    "label": "\u25b6 watch both",
     "href": "/run/11-riemann-show/2026-10-24-2321-canyon"
    }
   ],
@@ -155,15 +155,15 @@
  {
   "id": "12-mass-gap",
   "from": "QA box",
-  "title": "12 Mass Gap: first look — field, tube, glueball, lava. Which scenes stay?",
-  "note": "All physics checks pass (rings at speed 1, gap rings at ω = m, glueball masses from lattice QCD), 60 fps at 1080p. 2 rounds = 6 picks.",
+  "title": "12 Mass Gap: first look \u2014 field, tube, glueball, lava. Which scenes stay?",
+  "note": "All physics checks pass (rings at speed 1, gap rings at \u03c9 = m, glueball masses from lattice QCD), 60 fps at 1080p. 2 rounds = 6 picks.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/12-mass-gap/2026-10-25-0035/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/12-mass-gap/2026-10-25-0035"
    }
   ],
@@ -172,15 +172,15 @@
  {
   "id": "17-skater",
   "from": "VIZ QA / QA box",
-  "title": "17 BSD Skater vs old 10: does the skater beat the old version? (x³−25x, x³+17, x³−2x vs old 10 on x³−25x)",
+  "title": "17 BSD Skater vs old 10: does the skater beat the old version? (x\u00b3\u221225x, x\u00b3+17, x\u00b3\u22122x vs old 10 on x\u00b3\u221225x)",
   "note": "Every trick is the real point addition (checked exactly); 60 fps at 1080p. 2 rounds = 6 picks.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/17-bsd-skater/2026-10-25-0855/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/17-bsd-skater/2026-10-25-0855"
    }
   ],
@@ -190,14 +190,14 @@
   "id": "17-skater-chill",
   "from": "QA box",
   "title": "17 Skater, chill pace (slow slide, a trick every 2 bars) on three curves vs old 10",
-  "note": "Your fast-version picks: skater beat old 10 every time (3–0). This is the slower version you asked for. 2 rounds = 6 picks.",
+  "note": "Your fast-version picks: skater beat old 10 every time (3\u20130). This is the slower version you asked for. 2 rounds = 6 picks.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/17-bsd-skater/2026-10-25-0925/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/17-bsd-skater/2026-10-25-0925"
    }
   ],
@@ -206,11 +206,11 @@
  {
   "id": "fhp-pick",
   "from": "VIZ research / QA box",
-  "title": "FHP lattice gas: pick which visualisations to build (F1–F6)",
+  "title": "FHP lattice gas: pick which visualisations to build (F1\u2013F6)",
   "note": "Six options with mock-up pictures. Tick as many as you like, then Save.",
   "links": [
    {
-    "label": "✓ pick",
+    "label": "\u2713 pick",
     "href": "/pick/fhp"
    }
   ],
@@ -219,15 +219,15 @@
  {
   "id": "19-vs-17",
   "from": "QA box",
-  "title": "BSD: 19 Skate Park (torus, morph, free ride) vs 17 Skater chill — which ride do you want?",
+  "title": "BSD: 19 Skate Park (torus, morph, free ride) vs 17 Skater chill \u2014 which ride do you want?",
   "note": "Recorded with the current pacing; slower trick settings are coming from VIZ dev and I'll re-record then. 2 rounds = 10 picks.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/19-skate-park/2026-10-25-1209/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/19-skate-park/2026-10-25-1209"
    }
   ],
@@ -236,15 +236,15 @@
  {
   "id": "riemann-main",
   "from": "QA box",
-  "title": "Riemann on main now: canyon (bumps + beat lead) and ribbon — watch what was built",
+  "title": "Riemann on main now: canyon (bumps + beat lead) and ribbon \u2014 watch what was built",
   "note": "This is what's merged (#42 + #48). Canyon reacts 35 ms after the sound. Tap a video; 'watch all' plays both.",
   "links": [
    {
-    "label": "▶ watch",
+    "label": "\u25b6 watch",
     "href": "/run/11-riemann-show/2026-10-25-1209"
    },
    {
-    "label": "⇄ canyon vs ribbon",
+    "label": "\u21c4 canyon vs ribbon",
     "href": "/run/11-riemann-show/2026-10-25-1209/compare"
    }
   ],
@@ -253,15 +253,15 @@
  {
   "id": "19-vs-17-slow",
   "from": "QA box",
-  "title": "BSD final: 19 Skate Park (torus, morph, free) vs 17 Skater on x³−2x, with the slow tricks",
-  "note": "Tricks are now 4× slower and only at section changes. 64 s each so every clip has at least one trick. 2 rounds = 6 picks; the winner becomes the BSD page.",
+  "title": "BSD final: 19 Skate Park (torus, morph, free) vs 17 Skater on x\u00b3\u22122x, with the slow tricks",
+  "note": "Tricks are now 4\u00d7 slower and only at section changes. 64 s each so every clip has at least one trick. 2 rounds = 6 picks; the winner becomes the BSD page.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/19-skate-park/2026-10-25-1327/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/19-skate-park/2026-10-25-1327"
    }
   ],
@@ -271,14 +271,14 @@
   "id": "13-flow-lab-looks",
   "from": "QA box",
   "title": "13 Flow Lab: swipe the six looks (vortex, kh, plume, ink, rocks, curl)",
-  "note": "Navier–Stokes page, build 40f2885. All run at 60 fps up to 4K and the vortex street lands on the beat. 40 s each, as shipped (colour top-up on). Curl's colour drifts with the top-up off; that's being looked at, but it doesn't show here.",
+  "note": "Navier\u2013Stokes page, build 40f2885. All run at 60 fps up to 4K and the vortex street lands on the beat. 40 s each, as shipped (colour top-up on). Curl's colour drifts with the top-up off; that's being looked at, but it doesn't show here.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/13-flow-lab/2026-10-25-1705/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/13-flow-lab/2026-10-25-1705"
    }
   ],
@@ -291,11 +291,11 @@
   "note": "Build ccad444 passes every check: 60 fps up to 4K, colour holds on every look, and the vortex street lands on the beat within 0.1 % at 90/120/150 BPM. 40 s each.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/13-flow-lab/2026-10-25-1957/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/13-flow-lab/2026-10-25-1957"
    }
   ],
@@ -304,15 +304,15 @@
  {
   "id": "14-round-point",
   "from": "QA box",
-  "title": "14 Round Point (Poincaré): swipe curve vs pinch vs auto — ready to merge",
-  "note": "PR #55 @1bad7e6 passes every gate: the curve's area shrinks at exactly 2π (−0.9999), it never crosses itself, rounds off to a point on the section's last beat; the neck pinches on the drop into exactly 2 pieces; 60 fps up to 4K; sync 17–19 ms. 40 s each. Merge #55 when you like.",
+  "title": "14 Round Point (Poincar\u00e9): swipe curve vs pinch vs auto \u2014 ready to merge",
+  "note": "PR #55 @1bad7e6 passes every gate: the curve's area shrinks at exactly 2\u03c0 (\u22120.9999), it never crosses itself, rounds off to a point on the section's last beat; the neck pinches on the drop into exactly 2 pieces; 60 fps up to 4K; sync 17\u201319 ms. 40 s each. Merge #55 when you like.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/14-round-point/2026-10-26-0835/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/14-round-point/2026-10-26-0835"
    }
   ],
@@ -321,15 +321,15 @@
  {
   "id": "23-shape-shifter",
   "from": "QA box",
-  "title": "23 Shape Shifter: swipe auto vs one-hole vs no-hole vs auto at native 4K — ready to merge",
-  "note": "PR #56 @aa04702: the mug/kettle/doughnut keep their one hole and the vase/bowl/sphere keep none, checked exactly; the handle snaps on the drop and grows back on the next; the camera never goes inside; 60 fps up to 4K (native 4K too); sync 7–9 ms. 'auto' clips are 64 s so you see the snap at ~28 s. Merge #56 when you like.",
+  "title": "23 Shape Shifter: swipe auto vs one-hole vs no-hole vs auto at native 4K \u2014 ready to merge",
+  "note": "PR #56 @aa04702: the mug/kettle/doughnut keep their one hole and the vase/bowl/sphere keep none, checked exactly; the handle snaps on the drop and grows back on the next; the camera never goes inside; 60 fps up to 4K (native 4K too); sync 7\u20139 ms. 'auto' clips are 64 s so you see the snap at ~28 s. Merge #56 when you like.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/23-shape-shifter/2026-10-26-1117/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/23-shape-shifter/2026-10-26-1117"
    }
   ],
@@ -338,15 +338,15 @@
  {
   "id": "25-preview",
   "from": "QA box",
-  "title": "25 Shape Shifter II — preview to watch (not final yet)",
-  "note": "Build 9363bf0: 35 shapes with 0–3 holes, morphing on the beat, the camera slaloms through every hole. 64 s each, normal and native 4K. Two tiny glitches are still being fixed (an extra hole for ~¼ s at two moments, two quick camera snaps). Watch and leave notes; the final run replaces this one.",
+  "title": "25 Shape Shifter II \u2014 preview to watch (not final yet)",
+  "note": "Build 9363bf0: 35 shapes with 0\u20133 holes, morphing on the beat, the camera slaloms through every hole. 64 s each, normal and native 4K. Two tiny glitches are still being fixed (an extra hole for ~\u00bc s at two moments, two quick camera snaps). Watch and leave notes; the final run replaces this one.",
   "links": [
    {
-    "label": "▶ watch",
+    "label": "\u25b6 watch",
     "href": "/run/25-shape-shifter-2/2026-10-26-1540"
    },
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/25-shape-shifter-2/2026-10-26-1540/compare"
    }
   ],
@@ -355,15 +355,15 @@
  {
   "id": "18-little-bang",
   "from": "QA box",
-  "title": "18 Little Bang (Yang–Mills take two): swipe collide / quench / strings / auto — ready to merge",
-  "note": "PR #49 @2ed06a0 re-checked tonight as a build: all physics exact (track curvature, elliptic flow, fireball cooling to T_c, string breaks keep energy, jet asymmetry), 60 fps up to 4K at the default 100k tracks, sync 17–18 ms. 40 s each.",
+  "title": "18 Little Bang (Yang\u2013Mills take two): swipe collide / quench / strings / auto \u2014 ready to merge",
+  "note": "PR #49 @2ed06a0 re-checked tonight as a build: all physics exact (track curvature, elliptic flow, fireball cooling to T_c, string breaks keep energy, jet asymmetry), 60 fps up to 4K at the default 100k tracks, sync 17\u201318 ms. 40 s each.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/18-little-bang/2026-10-26-1826/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/18-little-bang/2026-10-26-1826"
    }
   ],
@@ -372,15 +372,15 @@
  {
   "id": "18-white-blob",
   "from": "QA box",
-  "title": "18 Little Bang: the white blob is gone — swipe old collide vs new (collide, quench, auto)",
-  "note": "PR #49 @9d71ef5 passes every check: no pixel clipped in any frame of the collision (old build: up to 10 %), all physics still exact, 60 fps up to 4K, sync 17–18 ms. 30k tracks, colours by charge and momentum. 40 s each. Merge #49 when you like.",
+  "title": "18 Little Bang: the white blob is gone \u2014 swipe old collide vs new (collide, quench, auto)",
+  "note": "PR #49 @9d71ef5 passes every check: no pixel clipped in any frame of the collision (old build: up to 10 %), all physics still exact, 60 fps up to 4K, sync 17\u201318 ms. 30k tracks, colours by charge and momentum. 40 s each. Merge #49 when you like.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/18-little-bang/2026-10-27-0822/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/18-little-bang/2026-10-27-0822"
    }
   ],
@@ -389,18 +389,34 @@
  {
   "id": "25-shape-shifter-2",
   "from": "QA box",
-  "title": "25 Shape Shifter II: new camera vs round 4 — swipe, then merge #57",
-  "note": "PR #57 @cbbe220 passes every check: genus right on all 35 keyframes and 768 live moments, slalom through 1–2 holes per dive, no empty picture, framing 26 %, turns p99 148°/s, sync 8 ms, 60 fps up to native 4K (page settles at half scale on the box GPU). Swipe the new auto camera against round 4 (the one you said flew away), 40 s each. Merge #57 when you like.",
+  "title": "25 Shape Shifter II: new camera vs round 4 \u2014 swipe, then merge #57",
+  "note": "PR #57 @cbbe220 passes every check: genus right on all 35 keyframes and 768 live moments, slalom through 1\u20132 holes per dive, no empty picture, framing 26 %, turns p99 148\u00b0/s, sync 8 ms, 60 fps up to native 4K (page settles at half scale on the box GPU). Swipe the new auto camera against round 4 (the one you said flew away), 40 s each. Merge #57 when you like.",
   "links": [
    {
-    "label": "⇄ compare",
+    "label": "\u21c4 compare",
     "href": "/run/25-shape-shifter-2/2026-10-27-1259-pr57-swipe/compare"
    },
    {
-    "label": "▶ watch all",
+    "label": "\u25b6 watch all",
     "href": "/run/25-shape-shifter-2/2026-10-27-1259-pr57-swipe"
    }
   ],
   "done": "2026-10-27T14:00:23.503Z"
+ },
+ {
+  "id": "14-pulse-fades",
+  "from": "QA box",
+  "title": "14 Round Point: kick pulse + soft scene changes vs main \u2014 swipe, then merge #68",
+  "note": "PR #68 @c3b8250 passes all 17 checks: curve flow and neck pinch still exact, no brightness jump at scene changes (worst 22 %, old hard cut 66 %), white curve core kept, 60 fps to 4K, sync 7\u20139 ms. Swipe the new auto against main's (hard cut, no pulse), 40 s each. Merge #68 when you like.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/14-round-point/2026-10-27-1823-pr68-swipe/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/14-round-point/2026-10-27-1823-pr68-swipe"
+   }
+  ]
  }
 ]
