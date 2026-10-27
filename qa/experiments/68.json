@@ -22,7 +22,7 @@
   "debug": {
     "frameTimes": true,
     "screenshotAt": [13.8, 14.1, 14.4, 14.8, 15.4, 29.9, 30.3],
-    "qaDump": { "every": 0.05, "read": { "bars": "__qa.bars", "scene": "__qa.scene", "breath": "__qa.breath", "glow": "__qa.glow", "roundFlash": "__qa.roundFlash", "transition": "__qa.transition", "area": "__qa.area" } },
+    "qaDump": { "every": 0.1, "read": { "bars": "__qa.bars", "scene": "__qa.scene", "breath": "__qa.breath", "glow": "__qa.glow", "roundFlash": "__qa.roundFlash", "transition": "__qa.transition", "area": "__qa.area" } },
     "console": true
   }
 }
