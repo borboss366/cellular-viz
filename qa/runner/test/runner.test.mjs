@@ -207,8 +207,8 @@ test('post: history entry, report files and a commit of only those paths', async
   fs.writeFileSync(path.join(run, 'report.md'), '# r\n');
   const left = await P.commitReports(home);
   assert.equal(left.ok, true, left.why);
-  assert.match(g('log', '-1', '--format=%s'), /^qa: #57 25-x @abc1234 ready 0\/0 \(viz-57-1\)$/);
-  assert.equal(g('log', '-1', '--format=%an <%ae>'), 't <t@t>');      // the repo's own identity wins when it has one
+  assert.match(g('log', '-1', '--format=%s').trim(), /^qa: #57 25-x @abc1234 ready 0\/0 \(viz-57-1\)$/);
+  assert.equal(g('log', '-1', '--format=%an <%ae>').trim(), 't <t@t>');      // the repo's own identity wins when it has one
 });
 
 test('post: commits without a git identity in QA_HOME, and a failed commit leaves nothing staged', async () => {
