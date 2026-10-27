@@ -1,0 +1,8 @@
+[Unit]
+Description=cellular-viz QA runner API forward (read only)
+Requires=cellular-viz-runner-api.socket
+After=cellular-viz-runner-api.socket
+
+[Service]
+EnvironmentFile=%h/.config/cellular-viz-runner.env
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd ${RUNNER_SOCKET_HOST}

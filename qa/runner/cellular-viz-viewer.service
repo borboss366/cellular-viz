@@ -1,0 +1,26 @@
+# systemd user unit for the QA viewer at :8787 (QA box's qa/serve.mjs). Install on the box itself (the host), once:
+#   cp qa/runner/cellular-viz-viewer.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now cellular-viz-viewer
+# It uses the runner's env file (VIEWER_PORT, VIEWER_SOCKET, QA_HOME, RUNNER_HOME, RUNNER_STATE, CONTAINER).
+# On start, viewer.sh stops a viewer started by hand (the nohup one) and a stale socket, so no step before it.
+# The host's :8787 forward (systemd-socket-proxyd to VIEWER_SOCKET, qa/README.md "Host side") stays as it is.
+# qa/update-runner.sh restarts the viewer too (kill -TERM; systemd starts it again 5 s later).
+[Unit]
+Description=cellular-viz QA viewer (:8787 builds, runs, swipe grading)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/cellular-viz-runner.env
+ExecStart=/usr/bin/podman exec --env-file %h/.config/cellular-viz-runner.env ${CONTAINER} sh ${RUNNER_HOME}/qa/runner/viewer.sh
+# Stop the viewer inside the container and wait until it is gone (podman exec alone leaves it running).
+ExecStop=/usr/bin/podman exec ${CONTAINER} sh -c 'p="$$(cat ${RUNNER_STATE}/viewer.pid)"; kill -TERM "$$p" 2>/dev/null; i=0; while kill -0 "$$p" 2>/dev/null && [ $$i -lt 50 ]; do sleep 0.2; i=$$((i+1)); done; true'
+SuccessExitStatus=1 143 SIGTERM
+TimeoutStopSec=20
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

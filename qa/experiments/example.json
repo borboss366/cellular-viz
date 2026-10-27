@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "id": "18-little-bang",
+  "note": "Example (the #49 white-blob fix as an experiment file). A real one is named after its PR: qa/experiments/49.json.",
+  "params": { "scene": "collide" },
+  "resolutions": ["1080p", "4k"],
+  "warmup": 4,
+  "seconds": 16,
+  "variants": [
+    { "name": "collide", "params": {} },
+    { "name": "quench", "params": { "scene": "quench" } },
+    { "name": "collide-1M", "params": { "n": 1000000 } }
+  ],
+  "values": { "drawn": "__qa.drawnTracks", "bars": "__qa.bars" },
+  "gates": [
+    { "metric": "clip", "max": 1, "variant": ["collide", "quench"], "name": "no white blob: ≤ 1 % pixels clipped in the worst frame" },
+    { "metric": "fps.p05", "min": 55, "variant": ["collide", "quench"], "resolution": "1080p" },
+    { "metric": "errors", "max": 0 },
+    { "metric": "gpuBusy", "max": 20 }
+  ],
+  "checks": ["check-18"],
+  "swipe": { "vs": "2ed06a0", "seconds": 40, "variants": ["collide", "quench"] },
+  "debug": { "gpu": true, "console": true }
+}

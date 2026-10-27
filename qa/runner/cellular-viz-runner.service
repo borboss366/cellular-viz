@@ -1,0 +1,30 @@
+# systemd user unit for the QA runner. Install on the box itself (the host, outside Puggie's container):
+#   cp qa/runner/cellular-viz-runner.service ~/.config/systemd/user/
+#   cp qa/runner/runner.env.example ~/.config/cellular-viz-runner.env   (then fill it in)
+#   systemctl --user daemon-reload && systemctl --user enable --now cellular-viz-runner
+#   journalctl --user -u cellular-viz-runner -f
+# It runs inside Puggie's worker container, where Node, Playwright, the Mesa libs and the GPU already are.
+# For a runner straight on the host instead, replace both Exec lines with:
+#   ExecStart=/usr/bin/node ${RUNNER_HOME}/qa/runner/runner.mjs
+[Unit]
+Description=cellular-viz QA runner (watches PRs, runs page checks, read-only API)
+Wants=network-online.target
+After=network-online.target
+# never give up restarting: a start limit would leave the pipeline silently stopped after a container restart
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/cellular-viz-runner.env
+ExecStart=/usr/bin/podman exec --env-file %h/.config/cellular-viz-runner.env -w ${QA_HOME} ${CONTAINER} node ${RUNNER_HOME}/qa/runner/runner.mjs
+# Stop the runner inside the container and wait until it is gone (up to 20 s), so podman exec returns 0 on its own
+# before systemd signals it; podman exec killed by systemd reports 1 or 143, which also count as a clean stop.
+# ($$ passes a literal $ through systemd to sh; ${RUNNER_STATE} is filled in by systemd.)
+ExecStop=/usr/bin/podman exec ${CONTAINER} sh -c 'p="$$(cat ${RUNNER_STATE}/runner.pid)"; kill -TERM "$$p" 2>/dev/null; i=0; while kill -0 "$$p" 2>/dev/null && [ $$i -lt 100 ]; do sleep 0.2; i=$$((i+1)); done; true'
+SuccessExitStatus=1 143 SIGTERM
+TimeoutStopSec=30
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target
