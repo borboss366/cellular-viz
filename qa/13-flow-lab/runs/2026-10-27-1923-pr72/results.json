@@ -1,0 +1,294 @@
+{
+ "id": "13-flow-lab",
+ "page": "13-flow-lab",
+ "pr": 72,
+ "sha": "e5b1a9ca990ccbbdaf1b2d6565c25fcc88d57e30",
+ "vs": "963f38a",
+ "at": "2026-10-27T19:45:37.574Z",
+ "host": "3adc2b2ec197",
+ "hasGpu": true,
+ "runs": [
+  {
+   "label": "rocks@1080p",
+   "variant": "rocks",
+   "base": "rocks",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "preset": "rocks"
+   },
+   "url": "13-flow-lab.html?preset=rocks",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 723,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 97,
+    "lum.mean": 1.94,
+    "lum.min": 1.47,
+    "lum.max": 3.29,
+    "errors": 0
+   },
+   "values": {},
+   "stills": [
+    "stills/rocks@1080p-1.png",
+    "stills/rocks@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "rocks@4k",
+   "variant": "rocks",
+   "base": "rocks",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "preset": "rocks"
+   },
+   "url": "13-flow-lab.html?preset=rocks",
+   "metrics": {
+    "gpuBusy": 6,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 721,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 81,
+    "lum.mean": 1.95,
+    "lum.min": 1.46,
+    "lum.max": 3.19,
+    "errors": 0
+   },
+   "values": {},
+   "stills": [
+    "stills/rocks@4k-1.png",
+    "stills/rocks@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "vortex@1080p",
+   "variant": "vortex",
+   "base": "vortex",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "preset": "vortex"
+   },
+   "url": "13-flow-lab.html?preset=vortex",
+   "metrics": {
+    "gpuBusy": 6,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 733,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 99,
+    "lum.mean": 0.53,
+    "lum.min": 0.39,
+    "lum.max": 1.26,
+    "errors": 0
+   },
+   "values": {},
+   "stills": [
+    "stills/vortex@1080p-1.png",
+    "stills/vortex@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "vortex@4k",
+   "variant": "vortex",
+   "base": "vortex",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "preset": "vortex"
+   },
+   "url": "13-flow-lab.html?preset=vortex",
+   "metrics": {
+    "gpuBusy": 6,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 730,
+    "clip": 0.003,
+    "clip.mean": 0,
+    "clipFrames": 83,
+    "lum.mean": 0.53,
+    "lum.min": 0.4,
+    "lum.max": 1.27,
+    "errors": 0
+   },
+   "values": {},
+   "stills": [
+    "stills/vortex@4k-1.png",
+    "stills/vortex@4k-2.png"
+   ],
+   "errors": []
+  }
+ ],
+ "checks": [
+  {
+   "script": "check-13",
+   "code": 0,
+   "dir": "checks/check-13",
+   "gates": [
+    {
+     "name": "check-13: dye kept in a closed box, raw (?conserve=0, sources and hit splats off), |drift| ≤ 5 % per 10 s — vortex/rocks are open (dye exits by design)",
+     "ok": true,
+     "value": "plume: -0.30 % in 21 s (-0.15 %/10 s, page log -0.34 %) · kh: -0.59 % in 21 s (-0.28 %/10 s, page log -0.62 %) · ink: -0.11 % in 21 s (-0.05 %/10 s, page log -0.02 %) · curl: -1.47 % in 21 s (-0.71 %/10 s, page log -1.60 %) · plume+conserve: -0.00 % in 21 s (-0.00 %/10 s, page log -0.03 %)"
+    },
+    {
+     "name": "check-13: natural St steady ±10 % across 90/120/150 BPM (?lock=0, real clock)",
+     "ok": true,
+     "value": "calibrate(): fNat 1.2081 → 1.2135 · 90 BPM: 0.756 Hz real (Fourier 0.755), St 0.1992 (sim 0.1992), amp 151.32 · 120 BPM: 1.005 Hz real (Fourier 1.005), St 0.1987 (sim 0.1987), amp 151.05 · 150 BPM: 1.254 Hz real (Fourier 1.255), St 0.1984 (sim 0.1984), amp 151.36"
+    },
+    {
+     "name": "check-13: art mode (lock on): swirl on the beat, BPM/120 ±5 %",
+     "ok": true,
+     "value": "90 BPM: want 0.750, got 0.748 (Fourier 0.75), wake amp 155.41 · 120 BPM: want 1.000, got 1.001 (Fourier 1), wake amp 156.76 · 150 BPM: want 1.250, got 1.249 (Fourier 1.25), wake amp 156.36"
+    },
+    {
+     "name": "check-13: sync from __qa.events (≤ 40 ms)",
+     "ok": true,
+     "value": "kick 8.6 ms (n 60) · hat 8.5 ms (n 119) · snare 8.5 ms (n 30)"
+    },
+    {
+     "name": "check-13: 🎲 then morph finishes, no NaN",
+     "ok": true,
+     "value": "vortex → kh (25 % at 4 s) → kh"
+    },
+    {
+     "name": "check-13: page alive",
+     "ok": true,
+     "value": ""
+    },
+    {
+     "name": "check-13: 1080p p95 ≤ 16.8 ms (hard)",
+     "ok": true,
+     "value": ""
+    },
+    {
+     "name": "check-13: 1440p p95 ≤ 16.8 ms",
+     "ok": true,
+     "value": ""
+    },
+    {
+     "name": "check-13: errors",
+     "ok": true,
+     "value": "none"
+    }
+   ]
+  }
+ ],
+ "swipe": {
+  "dir": "13-flow-lab/runs/2026-10-27-1923-pr72-swipe",
+  "url": "/run/13-flow-lab/2026-10-27-1923-pr72-swipe/compare",
+  "old": "963f38a",
+  "new": "e5b1a9ca990ccbbdaf1b2d6565c25fcc88d57e30"
+ },
+ "gates": [
+  {
+   "name": "fps.p05 ≥ 55",
+   "ok": true,
+   "value": "rocks@1080p 59.88 · rocks@4k 59.88 · vortex@1080p 59.88 · vortex@4k 59.88"
+  },
+  {
+   "name": "longFrames ≤ 0.5",
+   "ok": true,
+   "value": "rocks@1080p 0 · rocks@4k 0 · vortex@1080p 0 · vortex@4k 0"
+  },
+  {
+   "name": "errors ≤ 0",
+   "ok": true,
+   "value": "rocks@1080p 0 · rocks@4k 0 · vortex@1080p 0 · vortex@4k 0"
+  },
+  {
+   "name": "gpuBusy ≤ 10",
+   "ok": true,
+   "value": "rocks@1080p 0 · rocks@4k 6 · vortex@1080p 6 · vortex@4k 6"
+  },
+  {
+   "name": "clip ≤ 2 (rocks)",
+   "ok": true,
+   "value": "rocks@1080p 0 · rocks@4k 0"
+  },
+  {
+   "name": "brightness, reported (rocks vs base in the swipe)",
+   "ok": true,
+   "value": "rocks@1080p 1.94 · rocks@4k 1.95 · vortex@1080p 0.53 · vortex@4k 0.53"
+  },
+  {
+   "name": "check-13: dye kept in a closed box, raw (?conserve=0, sources and hit splats off), |drift| ≤ 5 % per 10 s — vortex/rocks are open (dye exits by design)",
+   "ok": true,
+   "value": "plume: -0.30 % in 21 s (-0.15 %/10 s, page log -0.34 %) · kh: -0.59 % in 21 s (-0.28 %/10 s, page log -0.62 %) · ink: -0.11 % in 21 s (-0.05 %/10 s, page log -0.02 %) · curl: -1.47 % in 21 s (-0.71 %/10 s, page log -1.60 %) · plume+conserve: -0.00 % in 21 s (-0.00 %/10 s, page log -0.03 %)"
+  },
+  {
+   "name": "check-13: natural St steady ±10 % across 90/120/150 BPM (?lock=0, real clock)",
+   "ok": true,
+   "value": "calibrate(): fNat 1.2081 → 1.2135 · 90 BPM: 0.756 Hz real (Fourier 0.755), St 0.1992 (sim 0.1992), amp 151.32 · 120 BPM: 1.005 Hz real (Fourier 1.005), St 0.1987 (sim 0.1987), amp 151.05 · 150 BPM: 1.254 Hz real (Fourier 1.255), St 0.1984 (sim 0.1984), amp 151.36"
+  },
+  {
+   "name": "check-13: art mode (lock on): swirl on the beat, BPM/120 ±5 %",
+   "ok": true,
+   "value": "90 BPM: want 0.750, got 0.748 (Fourier 0.75), wake amp 155.41 · 120 BPM: want 1.000, got 1.001 (Fourier 1), wake amp 156.76 · 150 BPM: want 1.250, got 1.249 (Fourier 1.25), wake amp 156.36"
+  },
+  {
+   "name": "check-13: sync from __qa.events (≤ 40 ms)",
+   "ok": true,
+   "value": "kick 8.6 ms (n 60) · hat 8.5 ms (n 119) · snare 8.5 ms (n 30)"
+  },
+  {
+   "name": "check-13: 🎲 then morph finishes, no NaN",
+   "ok": true,
+   "value": "vortex → kh (25 % at 4 s) → kh"
+  },
+  {
+   "name": "check-13: page alive",
+   "ok": true,
+   "value": ""
+  },
+  {
+   "name": "check-13: 1080p p95 ≤ 16.8 ms (hard)",
+   "ok": true,
+   "value": ""
+  },
+  {
+   "name": "check-13: 1440p p95 ≤ 16.8 ms",
+   "ok": true,
+   "value": ""
+  },
+  {
+   "name": "check-13: errors",
+   "ok": true,
+   "value": "none"
+  }
+ ],
+ "notes": []
+}
