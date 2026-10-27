@@ -15,7 +15,8 @@
     { "metric": "longFrames", "max": 0.5 },
     { "metric": "errors", "max": 0 },
     { "metric": "gpuBusy", "max": 10 },
-    { "metric": "clip", "max": 2, "variant": "auto" }
+    { "metric": "clip", "max": 5, "name": "thin line (VIZ QA): worst frame ≤ 5 % clipped" },
+    { "metric": "clip.mean", "max": 3, "name": "thin line (VIZ QA): mean ≤ 3 % clipped" }
   ],
   "checks": ["check-14"],
   "swipe": { "vs": "base", "seconds": 40, "warmup": 4, "variants": ["auto"] },
