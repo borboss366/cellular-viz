@@ -26,6 +26,8 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { gpuGate, unlock as gpuUnlock, GPU } from './gpu.mjs';
 import { loadFile } from './experiment.mjs';
+import { historyEntry, commitPaths, reportFiles, buildDirs, messageFor } from './post.mjs';
+import { sync as boardSync } from './board.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -42,6 +44,8 @@ const CFG = {
   state: path.resolve(flag('state', env('RUNNER_STATE', path.join(os.homedir(), '.cache', 'cellular-viz-runner')))),
   timeoutMin: Math.max(1, +flag('timeout', env('RUNNER_TIMEOUT_MIN', '90')) || 90),
   label: env('RUNNER_LABEL', 'qa-ready'),
+  commit: env('RUNNER_COMMIT', '1') !== '0',   // after each build: commit its .md/.json reports + history entry in QA_HOME (never pushes)
+  board: env('RUNNER_BOARD', '1') !== '0',     // after each build and merge: move the board cards (gh, the box's login)
   once: argv.includes('--once'),
 };
 if (!/^[\w.-]+\/[\w.-]+$/.test(CFG.repo)) throw new Error('bad repo ' + CFG.repo);
@@ -74,10 +78,12 @@ const status = { started: new Date().toISOString(), lastPoll: null, lastError: n
 
 // ---------- processes (no shell; argument arrays only) ----------
 let child = null;
+let trace = null;   // the commands of the running build, for its qa/history .sh
 function run(cmd, args, { cwd, timeoutMs = 10 * 60e3, quiet = false } = {}) {
   return new Promise(resolve => {
     const p = spawn(cmd, args, { cwd, env: process.env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     if (!quiet) child = p;
+    if (trace) trace.push([cmd, args]);
     let out = '', err = '';
     const cap = (s, d) => (s.length > 2e6 ? s.slice(-1e6) : s) + d;
     p.stdout.on('data', d => { out = cap(out, d); });
@@ -153,7 +159,11 @@ async function poll() {
     if (open.has(n)) continue;
     try {
       const pr = await gh(`pulls/${n}`);
-      if (pr.data.merged) for (const b of latestBuilds().filter(b => b.pr === n && b.status !== 'merged')) { b.status = 'merged'; b.waitingOn = null; appendBuild(b); log(`#${n} merged: ${b.id}`); }
+      if (pr.data.merged) {
+        const marked = latestBuilds().filter(b => b.pr === n && b.status !== 'merged');
+        for (const b of marked) { b.status = 'merged'; b.waitingOn = null; appendBuild(b); log(`#${n} merged: ${b.id}`); }
+        if (marked.length) await afterMerge(n, marked);
+      }
     } catch (e) { log(`#${n} closed, merge state unknown: ${e.message}`); }
     delete state.seen[n]; if (state.expDone) delete state.expDone[n]; state.queue = state.queue.filter(j => j.pr !== n); save();
   }
@@ -209,6 +219,7 @@ async function runExperiment(job, gate) {
     const dir = path.join(CFG.qaHome, 'qa', page, 'runs', `${stamp}-pr${job.pr}`);
     failCheck(dir, [[why, detail]]); saveGate(dir, gate);
     if (!id) id = (await builds('start', '--page', page, '--pr', String(job.pr), '--commit', short)).trim().split('\n').pop();
+    status.running = { ...(status.running || job), id, page };
     await builds('finish', '--id', id, '--check', dir, '--status', 'failed', '--waiting', waiting, '--note', why);
     result = `failed: ${why}`;
   };
@@ -328,6 +339,32 @@ async function runBuild(job, gate) {
   }
 }
 
+// ---------- after each build: history entry, report commit, board (QA box no longer types these) ----------
+async function moveCards() {
+  if (!CFG.board) return;
+  try { await boardSync({ buildsFile: BUILDS_FILE, stateDir: CFG.state, log: s => log(`board: ${s}`) }); }
+  catch (e) { log(`board: not synced: ${e.message}`); }
+}
+async function afterBuild(rec, gate, tr) {
+  const b = rec.id && latestBuilds().find(x => x.id === rec.id);
+  if (!b) { log(`after build: no build line for #${rec.pr}; no history, commit or board move`); return; }
+  let paths = [];
+  try { paths = historyEntry({ qaHome: CFG.qaHome, b, trace: tr || [], result: rec.result, gate, checksRef: CFG.checksRef }); }
+  catch (e) { log(`history entry for ${b.id}: ${e.message}`); }
+  if (CFG.commit) {
+    const r = await commitPaths(CFG.qaHome, [...paths, ...reportFiles(CFG.qaHome, buildDirs(b)), 'qa/builds.json'], messageFor(b));
+    log(r.ok ? `reports of ${b.id} committed as ${r.sha} (not pushed)` : `reports of ${b.id} not committed: ${r.why}`);
+  }
+  await moveCards();
+}
+async function afterMerge(n, marked) {
+  if (CFG.commit) {
+    const r = await commitPaths(CFG.qaHome, ['qa/builds.json'], `qa: #${n} merged (${marked.map(b => b.id).join(', ')})\n\nMade-by: QA runner\n`);
+    log(r.ok ? `builds log for merged #${n} committed as ${r.sha}` : `builds log for merged #${n} not committed: ${r.why}`);
+  }
+  await moveCards();
+}
+
 // ---------- loops ----------
 let stopping = false, working = false;
 async function work() {
@@ -340,9 +377,14 @@ async function work() {
       const gate = await gpuGate({ what: `runner #${job.pr} ${job.page}`, log, shouldStop: () => stopping });
       status.gpu = gate;
       if (!gate.ok) { log(`not starting #${job.pr} ${job.page}: ${gate.why}`); break; }
+      trace = [];
+      const before = (state.recent || [])[0];
       try { await (job.kind === 'experiment' ? runExperiment(job, gate) : runBuild(job, gate)); }
       catch (e) { log(`build for #${job.pr} ${job.page} could not start: ${e.message}`); status.running = null; }
       finally { gpuUnlock(); }
+      const tr = trace; trace = null;
+      const rec = (state.recent || [])[0];
+      if (rec && rec !== before) await afterBuild(rec, gate, tr);
       state.queue = state.queue.filter(j => j !== job && !(j.pr === job.pr && j.page === job.page && j.sha === job.sha));
       save();
     }
@@ -409,7 +451,7 @@ if (!CFG.once) fs.writeFileSync(PID_FILE, String(process.pid));
 // folder, so qa/run-next.sh inside the container runs with the same QA_HOME, checks ref and GPU gate.
 if (!CFG.once) {
   const vals = { RUNNER_REPO: CFG.repo, QA_HOME: CFG.qaHome, CHECKS_REF: CFG.checksRef, RUNNER_AUTHORS: CFG.authors.join(','), RUNNER_POLL: CFG.poll,
-    RUNNER_TIMEOUT_MIN: CFG.timeoutMin, RUNNER_STATE: CFG.state, RUNNER_LABEL: CFG.label,
+    RUNNER_TIMEOUT_MIN: CFG.timeoutMin, RUNNER_STATE: CFG.state, RUNNER_LABEL: CFG.label, RUNNER_COMMIT: CFG.commit ? 1 : 0, RUNNER_BOARD: CFG.board ? 1 : 0,
     GPU_BUSY_FILE: GPU.file, GPU_IDLE_MAX: GPU.idleMax, GPU_IDLE_SECS: GPU.idleSecs, GPU_WAIT_MIN: GPU.waitMin, GPU_LOCK: GPU.lock };
   const q = v => `'${String(v).replace(/'/g, `'\\''`)}'`;
   try { fs.writeFileSync(path.join(CFG.state, 'runner.env'), '# written by the runner service at start; qa/run-next.sh reads it\n' + Object.entries(vals).map(([k, v]) => `${k}=${q(v)}`).join('\n') + '\n'); }

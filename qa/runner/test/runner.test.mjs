@@ -148,3 +148,108 @@ test('GPU gate waits for idle readings and saves them', async () => {
   assert.match(none.note, /no reading/);
   G.unlock();
 });
+
+// ---------- after-build steps: board moves, history entry, report commit ----------
+const B = await import('../board.mjs');
+const P = await import('../post.mjs');
+const bl = (pr, page, round, status, extra = {}) => ({ id: `viz-${pr}-${round}`, pr, page, round, status, commit: 'abc1234', at: `2026-10-27T0${round}:00:00Z`, gates: [], ...extra });
+
+test('board: one status per PR, the worst page wins, newest round per page', () => {
+  const s = B.prStatus([bl(57, '25-x', 1, 'failed'), bl(57, '25-x', 2, 'ready'), bl(49, '18-a', 1, 'ready'), bl(49, '17-b', 1, 'running')], { now: Date.parse('2026-10-27T01:30:00Z') });
+  assert.equal(s[57].status, 'ready');
+  assert.equal(s[49].status, 'running');
+});
+
+test('board: plan follows the rules and leaves hand moves alone', () => {
+  const items = { 57: { status: 'QA' }, 49: { status: 'Your review' }, 40: { status: 'Your review' }, 22: { status: 'Next' } };
+  const states = { 57: 'OPEN', 49: 'OPEN', 40: 'MERGED', 22: 'OPEN', 65: 'OPEN', 23: 'CLOSED' };
+  const builds = [bl(57, '25-x', 3, 'failed'), bl(49, '18-a', 5, 'ready')];
+  const m = Object.fromEntries(B.plan(items, states, builds).filter(x => !x.noop).map(x => [x.n, x.to]));
+  assert.deepEqual(m, { 57: 'In progress', 40: 'Done', 65: 'Ideas' });
+  // once applied, a card moved by hand stays until the next build
+  const again = B.plan({ ...items, 57: { status: 'Next' } }, states, builds, { 57: 'viz-57-3:failed', 49: 'viz-49-5:ready' });
+  assert.equal(again.some(x => x.n === 57), false);
+});
+
+test('post: commit message, dirs and sh quoting', () => {
+  const b = bl(57, '25-shape-shifter-2', 7, 'failed', { gates: [{ name: 'fps', ok: true }, { name: 'clip ≤ 1', ok: false }],
+    report: 'qa/25-shape-shifter-2/runs/2026-10-27-1130-pr57/check.md', swipe: '/run/25-shape-shifter-2/2026-10-27-1130-pr57-swipe/compare' });
+  const msg = P.messageFor(b);
+  assert.match(msg, /^qa: #57 25-shape-shifter-2 @abc1234 failed 1\/2 \(viz-57-7\)\n/);
+  assert.match(msg, /Failed: clip ≤ 1/);
+  assert.match(msg, /Made-by: QA runner/);
+  assert.deepEqual(P.buildDirs(b), ['qa/25-shape-shifter-2/runs/2026-10-27-1130-pr57', 'qa/25-shape-shifter-2/runs/2026-10-27-1130-pr57-swipe']);
+  assert.equal(P.shLine('node', ['a b', "it's", '--x=1']), `node 'a b' 'it'\\''s' --x=1`);
+});
+
+test('post: history entry, report files and a commit of only those paths', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const home = fs.mkdtempSync(path.join(tmp, 'qahome-'));
+  const g = (...a) => execFileSync('git', ['-C', home, ...a], { encoding: 'utf8' });
+  g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't');
+  const run = path.join(home, 'qa', '25-x', 'runs', 's-pr57');
+  fs.mkdirSync(path.join(run, 'stills'), { recursive: true });
+  fs.writeFileSync(path.join(run, 'check.md'), '# c\n'); fs.writeFileSync(path.join(run, 'results.json'), '{}');
+  const b = bl(57, '25-x', 1, 'ready', { report: 'qa/25-x/runs/s-pr57/check.md' });
+  fs.writeFileSync(path.join(run, 'stills', 'a.png'), 'png'); fs.writeFileSync(path.join(home, 'qa', 'builds.json'), JSON.stringify(b) + '\n');
+  fs.writeFileSync(path.join(home, 'other.txt'), 'x'); g('add', 'other.txt');          // QA box's own staged work
+  const hist = P.historyEntry({ qaHome: home, b, trace: [['git', ['-C', '/w', 'fetch']], ['node', ['exp-run.mjs', '--out', '/t/o']]], result: 'viz-57-1 ready 2/2', checksRef: 'qa/headless-runner' });
+  assert.match(fs.readFileSync(path.join(home, hist[1]), 'utf8'), /\ngit -C \/w fetch\nnode exp-run.mjs --out \/t\/o\n$/);
+  const files = P.reportFiles(home, P.buildDirs(b));
+  assert.deepEqual(files.sort(), ['qa/25-x/runs/s-pr57/check.md', 'qa/25-x/runs/s-pr57/results.json']);
+  const r = await P.commitPaths(home, [...hist, ...files, 'qa/builds.json'], P.messageFor(b));
+  assert.equal(r.ok, true, r.why);
+  const committed = g('show', '--name-only', '--format=', 'HEAD').trim().split('\n').sort();
+  assert.equal(committed.length, 5);
+  assert.ok(!committed.some(f => f.endsWith('.png') || f === 'other.txt'));
+  assert.match(g('diff', '--cached', '--name-only'), /other\.txt/);                   // still staged, untouched
+  assert.equal((await P.commitPaths(home, files, 'again')).why, 'nothing changed');
+  fs.writeFileSync(path.join(run, 'report.md'), '# r\n');
+  const left = await P.commitReports(home);
+  assert.equal(left.ok, true, left.why);
+  assert.match(g('log', '-1', '--format=%s').trim(), /^qa: #57 25-x @abc1234 ready 0\/0 \(viz-57-1\)$/);
+  assert.equal(g('log', '-1', '--format=%an <%ae>').trim(), 't <t@t>');      // the repo's own identity wins when it has one
+});
+
+test('post: commits without a git identity in QA_HOME, and a failed commit leaves nothing staged', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const home = fs.mkdtempSync(path.join(tmp, 'noid-'));
+  const g = (...a) => execFileSync('git', ['-C', home, ...a], { encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' } });
+  g('init', '-q');
+  fs.mkdirSync(path.join(home, 'qa'));
+  fs.writeFileSync(path.join(home, 'qa', 'a.md'), '# a\n');
+  const saved = process.env.GIT_CONFIG_GLOBAL; process.env.GIT_CONFIG_GLOBAL = '/dev/null'; process.env.GIT_CONFIG_NOSYSTEM = '1';
+  try {
+    const r = await P.commitPaths(home, ['qa/a.md'], 'qa: a\n');
+    assert.equal(r.ok, true, r.why);
+    assert.equal(g('log', '-1', '--format=%an <%ae>').trim(), 'QA box <qa-box@puggie.local>');
+    fs.writeFileSync(path.join(home, 'qa', 'b.md'), '# b\n');
+    fs.mkdirSync(path.join(home, '.git', 'hooks'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const bad = await P.commitPaths(home, ['qa/b.md'], 'qa: b\n');
+    assert.equal(bad.ok, false);
+    assert.equal(g('diff', '--cached', '--name-only').trim(), '');
+  } finally { delete process.env.GIT_CONFIG_NOSYSTEM; if (saved === undefined) delete process.env.GIT_CONFIG_GLOBAL; else process.env.GIT_CONFIG_GLOBAL = saved; }
+});
+
+test('board: no-check-script failures and stale running builds say nothing; finished running = passed', () => {
+  const now = Date.parse('2026-10-27T12:00:00Z');
+  const noScript = bl(21, '07-particle-lenia', 2, 'failed', { gates: [{ name: 'a check script for 07-particle-lenia', ok: false }] });
+  assert.equal(B.boardStatus(noScript, { now }), null);
+  assert.equal(B.boardStatus(bl(45, '17-x', 1, 'failed', { gates: [{ name: 'groupLaw', ok: false }] }), { now }), 'failed');
+  assert.equal(B.boardStatus(bl(39, '13-x', 1, 'running', { started: '2026-10-26T20:30:00Z', finished: '2026-10-26T20:39:00Z' }), { now }), 'passed');
+  assert.equal(B.boardStatus(bl(39, '13-x', 1, 'running', { started: '2026-10-26T20:30:00Z' }), { now }), null);
+  assert.equal(B.boardStatus(bl(39, '13-x', 1, 'running', { started: '2026-10-27T11:30:00Z' }), { now }), 'running');
+});
+
+test('board: the first sync records builds and moves only closed and missing items', () => {
+  const items = { 21: { status: 'Your review' }, 45: { status: 'Your review' }, 53: { status: 'Your review' } };
+  const states = { 21: 'OPEN', 45: 'OPEN', 53: 'MERGED', 58: 'OPEN' };
+  const builds = [bl(45, '17-x', 1, 'failed', { gates: [{ name: 'groupLaw', ok: false }] })];
+  const moves = B.plan(items, states, builds, {}, { seed: true });
+  assert.deepEqual(moves.filter(m => !m.noop).map(m => [m.n, m.to]), [[53, 'Done'], [58, 'Ideas']]);
+  assert.deepEqual(moves.filter(m => m.noop).map(m => [m.n, m.key]), [[45, 'viz-45-1:failed']]);
+  // the next build of #45 moves it
+  const next = B.plan(items, states, [...builds, bl(45, '17-x', 2, 'failed', { gates: [{ name: 'groupLaw', ok: false }] })], { 45: 'viz-45-1:failed' });
+  assert.deepEqual(next.filter(m => !m.noop && m.n === 45).map(m => m.to), ['In progress']);
+});

@@ -21,6 +21,10 @@ sh <RUNNER_HOME>/qa/run-next.sh          # one round without the service: poll o
 git -C /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz push -q     # on its own, as today
 ```
 
+Two more fixed scripts exist for the rare case something is left over; the runner already does both after every build:
+`sh <RUNNER_HOME>/qa/board-sync.sh` (board moves, replaces `qa/board.py`) and `sh <RUNNER_HOME>/qa/commit-reports.sh`
+(commits changed .md/.json reports, never pushes).
+
 Nothing about which PR to run is on a command line: the runner finds the work itself (below). Both scripts read
 `~/.config/cellular-viz-runner.env` inside the container if it is there (`RUNNER_ENV` points elsewhere). Otherwise
 `run-next.sh` uses `RUNNER_STATE/runner.env`, the copy of its settings the service writes every time it starts
@@ -38,6 +42,28 @@ runner validates the file, then runs it with its own measuring code (`exp-run.mj
 and the build to `qa/builds.json` (start → running → finish, with `--swipe` when there is one).
 Pass or fail is in `state.json` (`recent`) and `/api/status`.
 Unlabelled PRs keep the page checks below.
+
+## After each build (the runner, not QA box)
+
+1. **Builds log:** `qa/builds.mjs` start → running → finish `--check <dir>` [`--swipe <url>`], and merged when the PR merges.
+2. **History:** `qa/history/<YYYY-MM-DD-HHMM>-runner-pr<N>-<page>.md` (build, result, report, swipe, GPU readings) and the
+   same-name `.sh` with every command the runner ran for it, in order.
+3. **Reports commit** (`RUNNER_COMMIT=1`): a local commit in QA_HOME of only that build's `.md`/`.json` files, the history
+   entry and `qa/builds.json` (no stills, no videos). Other staged work in QA_HOME stays staged. The message comes from
+   the results: `qa: #57 25-shape-shifter-2 @e046b75 failed 13/15 (viz-57-7)`, then the failed gates and where the
+   report is. It never pushes: QA box's push command sends it.
+4. **Board** (`RUNNER_BOARD=1`, `board.mjs`, with the box's gh login): the latest build of each open PR moves its card
+   (queued/running → QA, failed → In progress, ready → Your review, merged → Done); closed items → Done; open items not
+   on the board → Ideas. Each build moves a card once (`RUNNER_STATE/board.json`), so a card moved by hand stays put
+   until the PR's next build. The first sync (no board.json yet) only records the builds there are and moves no card
+   for them. A failure that is only "no check script for this page" moves nothing (that is QA box's gap, not dev's),
+   nor does a queued/running build older than `RUNNER_TIMEOUT_MIN` that never finished; a finished "running" build
+   (every gate passed, swipe run to come) counts as Your review.
+
+The commit uses QA_HOME's git identity, or `RUNNER_GIT_NAME` / `RUNNER_GIT_EMAIL` (default `QA box`,
+`qa-box@puggie.local`) when it has none. If the commit fails, what it staged is unstaged again.
+
+A failed step is logged and never fails the build.
 
 ## GPU gate
 
