@@ -130,8 +130,6 @@ for (const sc of ['curve', 'pinch']) {
     await page.close();
   }
 }
-await browser.close(); server.close();
-
 // ---- 6: no brightness jump at a scene change (#58 "no hard cuts", VIZ dev's ask 27 Oct) ----
 // Every frame, right after the page draws, the canvas is shrunk to 64×36 and its mean luminance taken (Rec. 709 on the
 // sRGB values, 0–255). Around each scene change (while __qa.transition is under way, and ±½ s of the frame __qa.scene
@@ -167,6 +165,8 @@ try {
   res.lum = { frames: L.length, flips, windowFrames: wj.length, worstAtChange: top(wj), worstElsewhere: top(oj), over25AtChange: wj.filter(j => j.rel > 0.25).length,
     lumRange: L.length ? [Math.min(...L.map(x => x.lum)), Math.max(...L.map(x => x.lum))] : null };
 } catch (e) { res.lum.error = e.message; errors.push('gate 6: ' + e.message); }
+await browser.close(); server.close();
+
 const N = res.curveNoKicks, K = res.curveKicks, P = res.pinch;
 const pass = {
   areaLaw: N.slopes.length > 0 && N.slopes.every(x => Math.abs(x + 1) <= 0.03) && N.roundEarlyBars !== null && Math.abs(N.roundEarlyBars) <= 0.3,

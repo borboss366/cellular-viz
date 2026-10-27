@@ -5,6 +5,6 @@ git fetch -q origin; git fetch -q origin pull/68/head:pr68
 rm -rf /tmp/q14l && mkdir -p /tmp/q14l/old /tmp/q14l/new
 git archive 1bad7e6 experiments | tar -x -C /tmp/q14l/old
 git archive pr68 experiments | tar -x -C /tmp/q14l/new
-flock /tmp/cellular-viz-gpu.lock node qa/check-14.mjs --experiments /tmp/q14l/old/experiments > /tmp/q14l/old.out 2>&1
-flock /tmp/cellular-viz-gpu.lock node qa/check-14.mjs --experiments /tmp/q14l/new/experiments > /tmp/q14l/new.out 2>&1
+sh qa/gpu-lock.sh check-14 node qa/check-14.mjs --experiments /tmp/q14l/old/experiments > /tmp/q14l/old.out 2>&1
+sh qa/gpu-lock.sh check-14 node qa/check-14.mjs --experiments /tmp/q14l/new/experiments > /tmp/q14l/new.out 2>&1
 touch /tmp/q14l/DONE
