@@ -999,7 +999,9 @@ function resize() {
 }
 // A very large canvas starts at a predicted scale (about 4.2 MP rendered), so the first steps don't land in the
 // measured window (QA #57 round 6: 7 frames over 20 ms at native 4K were the early steps down).
-function dynStart(w, h) { if (params.dynres) { const px = w * h; dyn.scale = px > 4.2e6 ? Math.max(0.7, Math.sqrt(4.2e6 / px)) : 1; dyn.slowFor = 0; dyn.fastFor = 0; } }
+function dynStart(w, h) { if (params.dynres) { const px = w * h; dyn.scale = px > 4.2e6 ? Math.max(DYN_MIN, Math.sqrt(4.2e6 / px)) : 1; dyn.slowFor = 0; dyn.fastFor = 0; } }
+// floor 0.5 (QA #57 round 7: at native 4K the heavy second shape ran at 20–30 fps even at the old 0.7 floor)
+const DYN_MIN = 0.5;
 // dynamic resolution: when frames average > 17.5 ms for a quarter second, render 12% fewer pixels a side, down to
 // 0.7, and look again 0.3 s later. It settles within about a second (QA #57 round 4: the old 1 s + 2 s steps left
 // 24 frames over 20 ms at native 4K). It never scales back up by itself; a window resize or ?dynres=0 resets it.
@@ -1017,7 +1019,9 @@ function dynRes(dt, now) {
   dyn.fastFor = 0;
   if (dyn.ema <= 0.0175) { dyn.slowFor = 0; return; }
   dyn.slowFor += dt;
-  if (dyn.slowFor > 0.25 && dyn.scale > 0.7) { dyn.scale = Math.max(0.7, dyn.scale * 0.88); dyn.slowFor = 0; dyn.ema = 1 / 60; dyn.since = now; dyn.grace = 300; }
+  if (dyn.slowFor > 0.25 && dyn.scale > DYN_MIN) {   // a bigger step when far too slow
+    dyn.scale = Math.max(DYN_MIN, dyn.scale * (dyn.ema > 0.025 ? 0.8 : 0.88)); dyn.slowFor = 0; dyn.ema = 1 / 60; dyn.since = now; dyn.grace = 300;
+  }
 }
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastNow = 0;
 const errors = [], events = [], logged = new Set(), angHistory = [];
@@ -1056,10 +1060,9 @@ function draw(now) {
   }
   if (prev.step !== null && st.step.i !== prev.step) logAt('land', st.step.T0, { shape: nice(st.k0), genus: KF[st.k0].genus }, now);
   const win = threadWindow(bars), plan = win && threadPlan(win);
-  if (plan && prev.win !== win.ph) {
-    const chk = threadCheck(bars, 240);
-    logAt('thread', win.ts, { slots: plan.order, linking: chk ? chk.holes.map(h => h.linking) : null, minSdf: chk ? chk.minSdf : null }, now);
-  }
+  // the crossings are not counted here: threadCheck (240 camera samples) in the frame froze the page ~300 ms at the
+  // start of every fly-through (QA #57 round 7, 21.7 s); __qa.thread(bars) counts them on demand
+  if (plan && prev.win !== win.ph) logAt('thread', win.ts, { slots: plan.order, signs: plan.signs }, now);
   const song = st.song;
   if (prev.song !== null && song === 'drop' && prev.song !== 'drop') { const db = 32 * Math.floor(bars / 32) + DROP_BAR; logAt('drop', db, {}, now); if (params.cutOnDrop) logAt('cut', db, {}, now); }
   prev.genus = st.genus; prev.step = st.step.i; prev.win = plan ? win.ph : null; prev.song = song;
@@ -1146,6 +1149,26 @@ params.scale = Math.max(0.25, Math.min(1, parseFloat(q('scale')) || 1));
 params.muted = q('muted') === '1';
 params.dynres = q('dynres') !== '0';
 sync();
+// Warm up before the first frame: compile both programs, allocate the render target and fill the camera's look
+// cache, so none of it lands mid-show (QA #57 round 7: 117–167 ms spikes in the first 4 s).
+(function warmUp() {
+  try {
+    resize();
+    if (params.dynres) ensureRT(canvas.width, canvas.height);
+    gl.useProgram(marchProg.p);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, rt.fbo || null);
+    gl.viewport(0, 0, 1, 1);
+    gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (rt.tex) {
+      gl.useProgram(blitProg.p);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, rt.tex); gl.uniform1i(blitProg.u.uTex, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    gl.finish();
+    cameraAt(0);
+  } catch (e) { errors.push('warm-up: ' + String(e && e.stack || e)); }
+})();
 requestAnimationFrame(frame);
 </script>
 </body>
