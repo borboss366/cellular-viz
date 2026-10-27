@@ -405,6 +405,16 @@ try { older = +fs.readFileSync(PID_FILE, 'utf8'); if (older && older !== process
 if (older && CFG.once) { console.error(`a runner (pid ${older}) is already running on ${CFG.state}; --once would race it. Use another --state for a dry run.`); process.exit(1); }
 if (older) { log(`stopping the older runner ${older}`); try { process.kill(older, 'SIGTERM'); } catch {} await new Promise(r => setTimeout(r, 3000)); }
 if (!CFG.once) fs.writeFileSync(PID_FILE, String(process.pid));
+// The service's settings come from an env file on the host, which the container can't see. Keep a copy in the state
+// folder, so qa/run-next.sh inside the container runs with the same QA_HOME, checks ref and GPU gate.
+if (!CFG.once) {
+  const vals = { RUNNER_REPO: CFG.repo, QA_HOME: CFG.qaHome, CHECKS_REF: CFG.checksRef, RUNNER_AUTHORS: CFG.authors.join(','), RUNNER_POLL: CFG.poll,
+    RUNNER_TIMEOUT_MIN: CFG.timeoutMin, RUNNER_STATE: CFG.state, RUNNER_LABEL: CFG.label,
+    GPU_BUSY_FILE: GPU.file, GPU_IDLE_MAX: GPU.idleMax, GPU_IDLE_SECS: GPU.idleSecs, GPU_WAIT_MIN: GPU.waitMin, GPU_LOCK: GPU.lock };
+  const q = v => `'${String(v).replace(/'/g, `'\\''`)}'`;
+  try { fs.writeFileSync(path.join(CFG.state, 'runner.env'), '# written by the runner service at start; qa/run-next.sh reads it\n' + Object.entries(vals).map(([k, v]) => `${k}=${q(v)}`).join('\n') + '\n'); }
+  catch (e) { log(`could not write runner.env: ${e.message}`); }
+}
 if (!fs.existsSync(BUILDS_CLI)) log(`warning: ${BUILDS_CLI} not found; set QA_HOME to QA box's working copy`);
 log(`runner up: ${CFG.repo}, checks from ${CFG.checksRef}, authors ${CFG.authors.join(',')}, label ${CFG.label}, every ${CFG.poll} s, state ${CFG.state}, GPU idle ≤ ${GPU.idleMax} % (${GPU.file})`);
 if (state.queue.length) log(`resuming ${state.queue.length} queued build(s)`);
