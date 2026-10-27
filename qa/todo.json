@@ -384,5 +384,21 @@
     "href": "/run/18-little-bang/2026-10-27-0822"
    }
   ]
+ },
+ {
+  "id": "25-shape-shifter-2",
+  "from": "QA box",
+  "title": "25 Shape Shifter II: new camera vs round 4 \u2014 swipe, then merge #57",
+  "note": "PR #57 @cbbe220 passes every check: genus right on all 35 keyframes and 768 live moments, slalom through 1\u20132 holes per dive, no empty picture, framing 26 %, turns p99 148\u00b0/s, sync 8 ms, 60 fps up to native 4K (page settles at half scale on the box GPU). Swipe the new auto camera against round 4 (the one you said flew away), 40 s each. Merge #57 when you like.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/25-shape-shifter-2/2026-10-27-1259-pr57-swipe/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/25-shape-shifter-2/2026-10-27-1259-pr57-swipe"
+   }
+  ]
  }
 ]
