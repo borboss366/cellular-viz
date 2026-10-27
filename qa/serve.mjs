@@ -80,7 +80,8 @@ const TODO = path.join(here, 'todo.json');
 const loadTodo = () => { try { return JSON.parse(fs.readFileSync(TODO, 'utf8')); } catch { return []; } };
 
 function runState(r) {
-  const d = load(r.dir), n = d.results.length, picks = loadComparisons(r.dir).length, verdicts = Object.keys(loadVerdicts(r.dir)).length;
+  // runner experiment folders (…-prN) have no results list
+  const d = load(r.dir) || {}, n = Array.isArray(d.results) ? d.results.length : 0, picks = loadComparisons(r.dir).length, verdicts = Object.keys(loadVerdicts(r.dir)).length;
   const software = /SwiftShader|none/i.test(d.meta?.gpu || '');
   const target = Math.max(1, n - 1) * 2;            // two rounds of picks
   const graded = picks >= target || (verdicts >= n && n > 0);
@@ -217,7 +218,7 @@ function compareRoute(req, res, exp, stamp, dir, action) {
 const CHIP = { queued: ['#5b6478', 'queued'], running: ['#2b5cff', 'running'], failed: ['#d6455d', 'failed'], ready: ['#2bd96b', 'ready to merge'], merged: ['#3a4560', 'merged'] };
 const chip = st => { const [c, t] = CHIP[st] || ['#5b6478', st]; return `<span style="background:${c};color:#fff;border-radius:8px;padding:2px 8px;font-size:12px;white-space:nowrap">${esc(t)}</span>`; };
 const ago = iso => { if (!iso) return ''; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min` : m < 2880 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; };
-const gatesCell = b => b.gates.length ? `${b.gates.filter(g => g.ok).length}/${b.gates.length}` : '–';
+const gatesCell = b => (b.gates || []).length ? `${b.gates.filter(g => g.ok).length}/${b.gates.length}` : '–';
 const waitTxt = { dev: 'VIZ dev', 'qa-box': 'QA box', user: 'you' };
 function buildsPage() {
   const all = loadBuilds(), last = new Map();
@@ -323,8 +324,15 @@ const handler = (req, res) => {
       return sendFile(req, res, path.join(repo, 'experiments', parts[1])); // "open live" link
     }
     res.writeHead(404); res.end('not found');
-  } catch (e) { res.writeHead(500); res.end(String(e.message)); }
+  } catch (e) {
+    // a route that already sent its headers and then threw used to crash the whole viewer here (27 Oct, ERR_HTTP_HEADERS_SENT)
+    console.error(`${new Date().toISOString()} ${req.method} ${req.url}: ${e.stack || e.message}`);
+    if (!res.headersSent) res.writeHead(500);
+    try { res.end(String(e.message)); } catch {}
+  }
 };
+// last line of defence: log and keep serving instead of taking the grading page down
+process.on('uncaughtException', e => console.error(`${new Date().toISOString()} uncaught: ${e.stack || e.message}`));
 http.createServer(handler).listen(port, '0.0.0.0', () => console.log(`QA viewer on :${port}`));
 if (sock) {
   try { fs.unlinkSync(sock); } catch {}
