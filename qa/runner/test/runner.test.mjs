@@ -85,6 +85,12 @@ test('gates: min, max, equals, filters, missing values', () => {
   assert.equal(E.evalGates(exp, runs)[2].ok, false);
 });
 
+test('gates: luminance metrics are known and gate like any other', () => {
+  const { exp } = E.validate({ ...min, gates: [{ metric: 'lum.mean', min: 20 }, { metric: 'lum.max', max: 90 }] });
+  const runs = E.expand(exp).map(r => ({ ...r, metrics: { 'lum.mean': 25.5, 'lum.max': 95 }, values: {} }));
+  assert.deepEqual(E.evalGates(exp, runs).map(x => x.ok), [true, false]);
+});
+
 test('check.md round trip with qa/builds.mjs rules', () => {
   const md = E.checkMd('t', [{ name: 'a | b', ok: true, value: 'x\ny' }, { name: 'c', ok: false, value: '' }], [['GPU', 'idle']]);
   const g = E.gatesFromMd(md);

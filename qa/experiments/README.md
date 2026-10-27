@@ -59,6 +59,7 @@ answers to its parent's name). The report shows the value of every run and which
 | `longFrames` | % of frames over 20 ms |
 | `clip` | % of pixels with any channel ≥ 254, worst sampled frame (canvas copied right after the page draws, up to 16 s) |
 | `clip.mean` | the same, mean over the sampled frames |
+| `lum.mean`, `lum.min`, `lum.max` | mean luminance of the sampled frames (same frames as `clip`), and the darkest and brightest frame, % of white |
 | `errors` | page errors + `__qa.errors` |
 | `gpuBusy` | GPU busy % before the run's page opens: the lowest of 6 readings over 3 s, so the previous run's tail doesn't count |
 | `value.<name>` | a number or value from `values` |
