@@ -1,5 +1,5 @@
 // Unit tests for the experiment format, gates, probes and the GPU gate. No browser, no network.
-//   node --test qa/runner/test/
+//   node --test qa/runner/test/*.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

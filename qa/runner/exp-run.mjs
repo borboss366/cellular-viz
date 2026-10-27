@@ -59,8 +59,11 @@ const needClip = exp.gates.some(g => g.metric.startsWith('clip'));
 const shared = {};
 
 async function measure(browser, run) {
-  await sleep(1000);
-  const busy = readGpuBusy();   // before this run's page exists: load from outside (or a page that did not let go)
+  // before this run's page exists: the lowest of 6 readings over 3 s, so the tail of our own previous run (a 6 fps
+  // page keeps the GPU busy for a while after it closes) doesn't count, and only load from outside does
+  const seen = [];
+  for (let i = 0; i < 6; i++) { await sleep(500); const b = readGpuBusy(); if (b !== null) seen.push(b); }
+  const busy = seen.length ? Math.min(...seen) : null;
   const page = await browser.newPage({ viewport: { width: run.size.w, height: run.size.h }, deviceScaleFactor: 1 });
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
@@ -215,6 +218,6 @@ const vkeys = Object.keys(exp.values);
 fs.writeFileSync(path.join(OUT, 'report.md'), `# ${exp.id} · #${PR} @${SHA.slice(0, 7)}\n\n${exp.note ? exp.note + '\n\n' : ''}`
   + `${gates.filter(g => g.ok).length}/${gates.length} gates pass · warm-up ${exp.warmup} s · ${exp.seconds} s per run${swipe ? ` · swipe run \`qa/${swipe.dir}\`` : ''}\n\n`
   + (runs.length ? `| run | ${[...keys, ...vkeys.map(k => 'value.' + k)].join(' | ')} |\n|---|${[...keys, ...vkeys].map(() => '---').join('|')}|\n`
-    + runs.map(r => `| ${r.label} | ${[...keys.map(k => r.metrics[k] ?? '—'), ...vkeys.map(k => JSON.stringify(r.values[k]).slice(0, 60))].join(' | ')} |`).join('\n') + '\n\n' : '')
+    + runs.map(r => `| ${r.label} | ${[...keys.map(k => r.metrics[k] ?? '—'), ...vkeys.map(k => (JSON.stringify(r.values[k], (_, v) => (typeof v === 'number' ? +v.toPrecision(6) : v)) ?? '—').slice(0, 60))].join(' | ')} |`).join('\n') + '\n\n' : '')
   + gates.map(g => `- ${g.ok ? '✅' : '❌'} ${g.name}${g.value ? ` · ${g.value}` : ''}`).join('\n') + '\n');
 console.log(OUT);

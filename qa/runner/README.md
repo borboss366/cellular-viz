@@ -46,7 +46,7 @@ go with the result (`gpu-gate.json` and an ℹ️ row in `check.md`). If the GPU
 nothing is measured: the job stays queued and is tried again after the next poll, and `/api/status` shows why (`gpu`).
 Each measured run also records `gpuBusy` just before its page opens, so an experiment can gate on it.
 
-Tests (no browser, no network): `node --test qa/runner/test/`.
+Tests (no browser, no network): `node --test qa/runner/test/*.test.mjs` (Node 22 does not search a folder given to `--test`).
 
 ## What it does (unlabelled PRs)
 

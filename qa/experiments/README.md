@@ -60,7 +60,7 @@ answers to its parent's name). The report shows the value of every run and which
 | `clip` | % of pixels with any channel ≥ 254, worst sampled frame (canvas copied right after the page draws, up to 16 s) |
 | `clip.mean` | the same, mean over the sampled frames |
 | `errors` | page errors + `__qa.errors` |
-| `gpuBusy` | GPU busy % read just before the run's page opens |
+| `gpuBusy` | GPU busy % before the run's page opens: the lowest of 6 readings over 3 s, so the previous run's tail doesn't count |
 | `value.<name>` | a number or value from `values` |
 
 Each check script's own ✅/❌ rows become gates too, named `check-18: <its gate>`. A script that doesn't finish,
@@ -91,7 +91,7 @@ on the box. Each probe writes into the run folder's `debug/`.
 | `console` | `true` | `<run>-console.log`: console messages, page errors, failed requests |
 | `screenshotAt` | `[2, 8]` seconds into the window | `<run>-t2.png` |
 | `screenshotAtFrame` | `[120]` frames since load | `<run>-f120.png`, the canvas right after the page drew that frame |
-| `gpu` | `true` | `gpu.json`: WebGL vendor, renderer, limits, extensions and `chrome://gpu` |
+| `gpu` | `true` | `gpu.json`: WebGL vendor, renderer, limits, extensions, Chromium version (headless can't open `chrome://gpu`) |
 | `frameTimes` | `true` | `<run>-frames.json`: every frame time of the window |
 | `qaDump` | `{"every": 0.5, "read": {"cam": "__qa.camera(__qa.bars)"}}` | `<run>-qa.jsonl` |
 | `gpuBusy` | `{"every": 1}` | `<run>-gpu-busy.jsonl` |
@@ -103,5 +103,5 @@ needs: `init`, `start`, `tick`, `end`, `done`), one row in this table and a test
 ## Example
 
 [`example.json`](example.json): 18 Little Bang's white-blob fix (#49) as an experiment: three variants at 1080p and 4K,
-a clip gate on collide and quench, a speed gate at 1080p, no errors, an idle GPU, `check-18`, and a 40 s swipe run
+a clip gate on collide and quench, a speed gate on collide and quench at 1080p (1M tracks really runs at ~16 fps), no errors, an idle GPU, `check-18`, and a 40 s swipe run
 against the old collide commit.

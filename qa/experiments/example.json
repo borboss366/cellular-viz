@@ -14,7 +14,7 @@
   "values": { "drawn": "__qa.drawnTracks", "bars": "__qa.bars" },
   "gates": [
     { "metric": "clip", "max": 1, "variant": ["collide", "quench"], "name": "no white blob: ≤ 1 % pixels clipped in the worst frame" },
-    { "metric": "fps.p05", "min": 55, "resolution": "1080p" },
+    { "metric": "fps.p05", "min": 55, "variant": ["collide", "quench"], "resolution": "1080p" },
     { "metric": "errors", "max": 0 },
     { "metric": "gpuBusy", "max": 20 }
   ],

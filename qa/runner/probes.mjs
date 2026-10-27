@@ -79,7 +79,7 @@ export const PROBES = {
   },
 
   gpu: {
-    about: 'WebGL vendor/renderer/limits and chrome://gpu, once per experiment → debug/gpu.json',
+    about: 'WebGL vendor/renderer/limits/extensions and the GPU busy file, once per experiment → debug/gpu.json',
     check: v => (v === true ? null : 'true'),
     async start(ctx) {
       if (ctx.shared.gpuDone) return;
@@ -91,9 +91,8 @@ export const PROBES = {
         return { webgl2: true, vendor: g.getParameter(d ? d.UNMASKED_VENDOR_WEBGL : g.VENDOR), renderer: g.getParameter(d ? d.UNMASKED_RENDERER_WEBGL : g.RENDERER),
           maxTexture: g.getParameter(g.MAX_TEXTURE_SIZE), maxRenderbuffer: g.getParameter(g.MAX_RENDERBUFFER_SIZE), extensions: g.getSupportedExtensions() };
       }).catch(e => ({ error: e.message }));
-      let gpuPage = '';
-      try { const p = await ctx.browser.newPage(); await p.goto('chrome://gpu'); await p.waitForTimeout(1500); gpuPage = await p.evaluate(() => document.body.innerText); await p.close(); } catch (e) { gpuPage = 'chrome://gpu: ' + e.message; }
-      ctx.write('gpu.json', JSON.stringify({ chromium: ctx.browser.version(), webgl, chromeGpu: gpuPage.slice(0, 200000) }, null, 1));
+      // chrome://gpu is not reachable from headless Chromium (net::ERR_FAILED), so only what WebGL reports
+      ctx.write('gpu.json', JSON.stringify({ chromium: ctx.browser.version(), webgl, gpuBusy: readGpuBusy() }, null, 1));
     },
   },
 
