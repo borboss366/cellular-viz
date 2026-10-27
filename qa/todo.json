@@ -407,7 +407,7 @@
   "id": "14-pulse-fades",
   "from": "QA box",
   "title": "14 Round Point: kick pulse + soft scene changes vs main \u2014 swipe, then merge #68",
-  "note": "PR #68 @c3b8250 passes all 17 checks: curve flow and neck pinch still exact, no brightness jump at scene changes (worst 22 %, old hard cut 66 %), white curve core kept, 60 fps to 4K, sync 7\u20139 ms. Swipe the new auto against main's (hard cut, no pulse), 40 s each. Merge #68 when you like.",
+  "note": "PR #68 @c3b8250 passes all 17 checks: curve flow and neck pinch still exact, no brightness jump at scene changes (worst 14 %, old hard cut 66 %), white curve core kept, 60 fps to 4K, sync 7\u20139 ms. Swipe the new auto against main's (hard cut, no pulse), 40 s each. Merge #68 when you like.",
   "links": [
    {
     "label": "\u21c4 compare",
