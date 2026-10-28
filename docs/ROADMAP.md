@@ -6,6 +6,8 @@ The goal (from the user): a visualisation platform for live DJ sets on a powerfu
 
 ## Step 1: a solid live set
 
+The user is in charge ("for now I want to be in charge"): during step 1 the user runs the set live by hand with the controller, choosing, blending and switching scenes. Nothing automatic picks scenes.
+
 1. **Finish the MVPs for all seven Millennium problems.** Remaining: 15 P vs NP and 16 Hodge.
 2. **Controller.** Once the Novation Launch Control XL 3 arrives (the user is waiting for it), build controller support for the visualisations: Web MIDI in Chromium, mapped to each module's ISF-style controls.
 3. **Blending.** With the controller, work further on blending scenes together. The Lenia blends (08, #27–#35) are the proof of concept; fade and screen won round 1.
@@ -38,6 +40,6 @@ Rule for every MVP: art first, maths true underneath, a QA truth check, 60 fps a
 
 Add input from the party: dancers and crowd, through a depth camera with skeleton tracking (Orbbec Femto Bolt, or a used Kinect v2 for a cheap test), a 2D lidar "laser curtain", camera optical flow, or wrist sensors. The research is done (VIZ evangelist reports, 28 Oct); the build comes after step 1.
 
-## Later: the orchestrator
+## Later: auto modes and the orchestrator
 
-A separate project that picks and switches modules live through a set, using each module's declared controls.
+Only after step 1. First auto modes (for example the Riemann show's auto-mix), then the orchestrator: a separate project that picks and switches modules live through a set, using each module's declared controls.
