@@ -1,0 +1,700 @@
+<!doctype html>
+<!--
+  17 · BSD Skater   (Millennium track #37: 10 take two, the user's idea; spec #37 comment 6391386393)
+
+  The elliptic curve y² = x³ + ax + b becomes a glowing half-pipe and the camera is a skater
+  riding it. Pace (the user: "way slower, chill"): by default the skater carves slowly along
+  the pipe and lands one trick every 4 bars, each trick floating over 2 bars, with the camera
+  low over the ramp (?cam). Trick pacing (user: still too often and too fast, ~4× slower):
+  trickOn = sections (a trick at each phrase's drop and change, phrase = trickEvery = 16 bars),
+  bars (every trickEvery bars) or drops; a trick lasts 2/trickSpeed bars (8 at 0.25), and one
+  that would overlap the last is skipped; glideSpeed sets the carving. A grind every 4th trick (?pace=beat is the first
+  version: one trick per beat, a grind on each downbeat). The tricks are the group law, exact:
+    add (every beat)   ollie along the chord from P through Q, land on the third crossing R,
+                       then flip across the x-axis onto P + Q = −R
+    double (downbeat)  grind along the tangent at P to where it meets the curve again, flip to 2P
+    big air            when the sum is the point at infinity O (the line is vertical), launch
+                       straight up into the sky and drop back in, reseeded, on the next bar
+  The real points stay exact BigInt fractions (as in 10); floats are only for drawing. The view
+  squashes the plane with asinh (x, y → 3·asinh(v/3)) so huge points stay on screen; it is odd,
+  so the flip across the x-axis is still a mirror. Chords are drawn through the same squash.
+  Below, the curve mod p is a city of lights rebuilt each bar for the next good prime, with
+  a_p = p + 1 − #E(F_p) setting its brightness. On x³+17 its whole-number points are coins.
+  Default curve x³−25x (the user's "maybe"): two pieces, a closed egg and the main run.
+  window.__qa: the last hop as exact "n/d" strings {type, P, Q, R, sum} plus onCurve flags,
+  bigAirs (each with the reason), p, count, ap, hasse, countPoints(a, b, p).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>17 · BSD Skater</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #9fb0c3; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0;
+      position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Curve</h3>
+  <div class="buttons" id="presets"></div>
+  <div class="buttons"><button id="reseed">Reseed</button></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <h3>Pace</h3>
+  <div class="buttons"><button id="pace-chill">Chill: slide, trick now and then</button><button id="pace-beat">Trick every beat</button></div>
+  <div class="buttons" id="trickOn"><button data-on="sections">tricks on sections</button><button data-on="bars">every N bars</button><button data-on="drops">drops only</button></div>
+  <div class="row"><label for="trickEvery">trick every</label><input id="trickEvery" type="range" min="4" max="64" step="4"><output id="trickEveryOut"></output></div>
+  <div class="row"><label for="trickSpeed">trick speed</label><input id="trickSpeed" type="range" min="0.25" max="2" step="0.05"><output id="trickSpeedOut"></output></div>
+  <div class="row"><label for="glideSpeed">glide speed</label><input id="glideSpeed" type="range" min="0.25" max="2" step="0.05"><output id="glideSpeedOut"></output></div>
+  <div class="row"><label for="cam">camera</label><input id="cam" type="range" min="0.2" max="1.5" step="0.05"><output id="camOut"></output></div>
+  <div class="row"><label for="slide">slide</label><input id="slide" type="range" min="0" max="4" step="0.1"><output id="slideOut"></output></div>
+  <div class="row"><label for="hops">hops / reseed</label><input id="hops" type="range" min="4" max="64" step="1"><output id="hopsOut"></output></div>
+  <div class="buttons"><button id="copy" class="wide">Copy setup</button></div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+// pace: 'chill' (default, the user's ask: "way slower, chill, slowly slides and sometimes jumps")
+// carves along the half-pipe and lands a trick on the schedule (trickOn, trickEvery); 'beat' is the first
+// version, one trick on every beat (?pace=beat).
+// curve: x3-2x is the user's pick in the chill grades (3–0)
+const params = { curve: 'x3-2x', bpm: 120, bpb: 4, hops: 24, pmax: 1500, muted: false,
+                 pace: 'chill', trickEvery: 16, trickSpeed: 0.25, trickOn: 'sections', glideSpeed: 0.5, slide: 1.4, cam: 0.5,
+                 kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+
+// ---------- exact rationals and the group law (as 10) ----------
+const babs = n => n < 0n ? -n : n;
+function bgcd(a, b) { a = babs(a); b = babs(b); while (b) [a, b] = [b, a % b]; return a; }
+function F(n, d = 1n) { n = BigInt(n); d = BigInt(d); if (d < 0n) { n = -n; d = -d; } const g = bgcd(n, d) || 1n; return { n: n / g, d: d / g }; }
+const fadd = (p, q) => F(p.n * q.d + q.n * p.d, p.d * q.d);
+const fsub = (p, q) => F(p.n * q.d - q.n * p.d, p.d * q.d);
+const fmul = (p, q) => F(p.n * q.n, p.d * q.d);
+const fdiv = (p, q) => F(p.n * q.d, p.d * q.n);
+const feq = (p, q) => p.n === q.n && p.d === q.d;
+const fneg = p => ({ n: -p.n, d: p.d });
+const fstr = p => p.d === 1n ? `${p.n}` : `${p.n}/${p.d}`;
+const blen = n => babs(n).toString(2).length;
+function fnum(p) { const s = Math.max(0, Math.max(blen(p.n), blen(p.d)) - 60); const n = Number(p.n >> BigInt(s)), d = Number(p.d >> BigInt(s)); return d === 0 ? Math.sign(n) * Infinity : n / d; }
+
+const PRESETS = {
+  'x3-25x': { label: 'x³−25x', a: -25, b: 0, P: [-4, 6], G: [45, 300] },   // (45, 300): 91125 − 1125 = 90000
+  'x3+17':  { label: 'x³+17',  a: 0,   b: 17, P: [2, 5], G: [-1, 4] },
+  'x3-2x':  { label: 'x³−2x',  a: -2,  b: 0, P: [2, 2], G: [-1, 1] },
+};
+const curve = { key: 'x3-25x', a: -25, b: 0, A: F(-25) };
+const onCurve = P => !P || feq(fmul(P.y, P.y), fadd(fadd(fmul(fmul(P.x, P.x), P.x), fmul(curve.A, P.x)), F(curve.b)));
+function third(P, Q, s) {
+  const xr = fsub(fsub(fmul(s, s), P.x), Q.x);
+  const yr = fadd(P.y, fmul(s, fsub(xr, P.x)));
+  return { sum: { x: xr, y: fneg(yr) }, R: { x: xr, y: yr } };
+}
+function dbl(P) {
+  if (!P || P.y.n === 0n) return { sum: null, R: null, why: 'vertical tangent (y = 0)' };
+  return third(P, P, fdiv(fadd(fmul(F(3), fmul(P.x, P.x)), curve.A), fmul(F(2), P.y)));
+}
+function add(P, Q) {
+  if (feq(P.x, Q.x)) return feq(P.y, Q.y) ? dbl(P) : { sum: null, R: null, why: 'P + (−P): vertical chord' };
+  return third(P, Q, fdiv(fsub(Q.y, P.y), fsub(Q.x, P.x)));
+}
+const pt = ([x, y]) => ({ x: F(x), y: F(y) });
+
+// ---------- mod p (as 10) ----------
+function countPoints(a, b, p) {
+  const cnt = new Int32Array(p); for (let y = 0; y < p; y++) cnt[(y * y) % p]++;
+  const am = ((a % p) + p) % p, bm = ((b % p) + p) % p; let N = 1;
+  for (let x = 0; x < p; x++) N += cnt[((x * x % p) * x % p + am * x % p + bm) % p];
+  return N;
+}
+function cellsMod(a, b, p) {
+  const roots = Array.from({ length: p }, () => []); for (let y = 0; y < p; y++) roots[(y * y) % p].push(y);
+  const am = ((a % p) + p) % p, bm = ((b % p) + p) % p, out = [];
+  for (let x = 0; x < p; x++) for (const y of roots[((x * x % p) * x % p + am * x % p + bm) % p]) out.push(x, y);
+  return out;
+}
+const PRIMES = (() => { const n = 5001, s = new Uint8Array(n), o = []; for (let i = 2; i < n; i++) { if (s[i]) continue; o.push(i); for (let j = i * i; j < n; j += i) s[j] = 1; } return o; })();
+const isBad = p => p === 2 || p === 3 || ((4 * curve.a ** 3 + 27 * curve.b ** 2) % p === 0);
+
+// ---------- the view squash ----------
+const SQ = 3;
+const M = v => SQ * Math.asinh(v / SQ);
+const Minv = X => SQ * Math.sinh(X / SQ);
+const fx = x => x * x * x + curve.a * x + curve.b;
+
+// ---------- metronome (as 04, reduced) ----------
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [],
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume(); this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+    this.playing = true; this.timer = setInterval(() => this.schedule(), 25); this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  schedule() {
+    while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / params.bpm / 4; this.step++; }
+    const old = this.ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, time) {
+    const inBar = step % (params.bpb * 4); this.steps.push({ time, step });
+    for (const lane of LANES) { if (params[lane][inBar % 16] !== 'x') continue; const vel = inBar === 0 ? 1 : 0.7; this.hits.push({ lane, time, vel }); this.click(lane, time, vel); }
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain(); g.connect(this.master);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') { src = ctx.createOscillator(); src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08); src.connect(g); }
+    else { src = ctx.createBufferSource(); src.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = lane === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = lane === 'snare' ? 1800 : 8000; src.connect(f); f.connect(g); }
+    const end = t + TAU[lane] * 4; g.gain.exponentialRampToValueAtTime(0.001, end); src.start(t); src.stop(end + 0.01);
+  },
+  // levels and the beat position, at the moment the listener hears it
+  read() {
+    const out = { kick: 0, snare: 0, hat: 0, beats: -1 };
+    if (!this.ctx) return out;
+    const now = this.ctx.currentTime - Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0);
+    for (const h of this.hits) { const dt = now - h.time; if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane])); }
+    let last = null; for (const s of this.steps) if (s.time <= now) last = s;
+    if (last) out.beats = (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / 4;
+    return out;
+  },
+};
+
+// ---------- WebGL ----------
+const canvas = document.getElementById('c');
+const hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
+if (!gl) fail('WebGL2 is not available in this browser.');
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+function compile(type, src) { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(sh)); return sh; }
+function program(vs, fs) {
+  const p = gl.createProgram(); gl.attachShader(p, compile(gl.VERTEX_SHADER, vs)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name.replace('[0]', ''); u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u };
+}
+const skyProg = program(`#version 300 es
+out vec2 vUv;
+void main() { vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = p; gl_Position = vec4(p * 2.0 - 1.0, 0.999, 1.0); }`, `#version 300 es
+precision highp float;
+uniform float uFlash, uAir;
+in vec2 vUv; out vec4 o;
+void main() {
+  vec3 c = mix(vec3(0.01, 0.01, 0.03), vec3(0.07, 0.03, 0.12), vUv.y);
+  c += vec3(0.6, 0.7, 1.0) * uAir * smoothstep(0.3, 1.0, vUv.y);   // the point at infinity is up there
+  o = vec4(c + uFlash * 0.35, 1.0);
+}`);
+const meshProg = program(`#version 300 es
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNor;
+layout(location = 2) in vec2 aData;   // arc length, kind (0 surface, 1 rail)
+uniform mat4 uVP;
+out vec3 vP; out vec3 vN; out vec2 vD;
+void main() { vP = aPos; vN = aNor; vD = aData; gl_Position = uVP * vec4(aPos, 1.0); }`, `#version 300 es
+precision highp float;
+uniform vec3 uEye; uniform float uKick, uHat, uBeat;
+in vec3 vP; in vec3 vN; in vec2 vD; out vec4 o;
+void main() {
+  float fog = exp(-length(uEye - vP) * 0.045);
+  if (vD.y > 0.5) {   // rails: neon
+    float fres = pow(1.0 - abs(dot(normalize(vN), normalize(uEye - vP))), 1.5);
+    vec3 c = vec3(0.25, 0.85, 1.0) * (0.6 + 1.2 * fres) * (1.0 + 0.8 * uKick);
+    o = vec4(c * fog, 1.0);
+  } else {            // the half-pipe floor: dim, with ties that run on the beat
+    float tie = smoothstep(0.92, 1.0, fract(vD.x * 1.5 - uBeat));
+    vec3 c = vec3(0.05, 0.12, 0.2) + vec3(0.3, 0.6, 1.0) * tie * (0.35 + 0.8 * uKick) + vec3(1.0) * uHat * 0.04;
+    o = vec4(c * fog, 1.0);
+  }
+}`);
+const pointProg = program(`#version 300 es
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec4 aCol;   // rgb, size
+uniform mat4 uVP; uniform float uScale;
+out vec3 vC;
+void main() { gl_Position = uVP * vec4(aPos, 1.0); gl_PointSize = clamp(aCol.a * uScale / gl_Position.w, 1.0, 64.0); vC = aCol.rgb; }`, `#version 300 es
+precision highp float;
+in vec3 vC; out vec4 o;
+void main() { float d = length(gl_PointCoord - 0.5) * 2.0; o = vec4(vC * (1.0 - smoothstep(0.2, 1.0, d)), 1.0); }`);
+const lineProg = program(`#version 300 es
+layout(location = 0) in vec3 aPos;
+uniform mat4 uVP;
+void main() { gl_Position = uVP * vec4(aPos, 1.0); }`, `#version 300 es
+precision highp float;
+uniform vec4 uColor; out vec4 o;
+void main() { o = uColor; }`);
+const emptyVao = gl.createVertexArray();
+
+// ---------- matrices ----------
+function perspective(fovy, aspect, near, far) { const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far); return new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0]); }
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const mul3 = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm3 = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const lerp3 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+function lookAt(eye, at, up) { const z = norm3(sub3(eye, at)), x = norm3(cross3(up, z)), y = cross3(z, x); return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot3(x, eye), -dot3(y, eye), -dot3(z, eye), 1]); }
+function mul4(a, b) { const o = new Float32Array(16); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + j] * b[i * 4 + k]; o[i * 4 + j] = s; } return o; }
+
+// ---------- the track: branches of the real curve, squashed, as a half-pipe ----------
+const HALF = 0.45, RAIL_R = 0.045, XMAX = 400;
+const HEIGHT_BITS = 600;   // reseed once a point's x needs more than this many bits
+function branches() {   // polylines of [X, Y] in squashed space
+  const X0 = M(-60), X1 = M(XMAX), N = 6000, runs = []; let cur = null;
+  const root = (lo, hi) => { for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (Math.sign(fx(m)) === Math.sign(fx(lo))) lo = m; else hi = m; } return (lo + hi) / 2; };
+  let prevX = null;
+  for (let i = 0; i <= N; i++) {
+    const x = Minv(X0 + (X1 - X0) * i / N), v = fx(x);
+    if (v >= 0) {
+      if (!cur) { cur = []; if (prevX !== null) cur.push(root(prevX, x)); }
+      cur.push(x);
+    } else if (cur) { cur.push(root(cur[cur.length - 1], x)); runs.push(cur); cur = null; }
+    prevX = x;
+  }
+  if (cur) runs.push(cur);
+  // each run of x becomes one polyline: lower half back to the root, then the upper half
+  return runs.map(xs => {
+    const up = xs.map(x => [M(x), M(Math.sqrt(Math.max(0, fx(x))))]);
+    const lo = up.map(([X, Y]) => [X, -Y]).reverse();
+    const closed = fx(xs[xs.length - 1] + 1e-6) < 0 || xs[xs.length - 1] < XMAX * 0.99;   // the egg closes
+    return closed ? [...up, ...lo.slice(1)] : [...lo, ...up.slice(1)];
+  });
+}
+let track = null;
+function buildTrack() {
+  const pos = [], nor = [], dat = [], idx = [];
+  const pushTube = (pts, zoff) => {   // a rail along a polyline in the z = zoff plane
+    const base = pos.length / 3, RING = 6;
+    for (let i = 0; i < pts.length; i++) {
+      const p = [pts[i][0], pts[i][1], zoff];
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+      const T = norm3([b[0] - a[0], b[1] - a[1], 0]), N1 = [-T[1], T[0], 0], N2 = [0, 0, 1];
+      for (let r = 0; r < RING; r++) {
+        const ang = r / RING * Math.PI * 2, n = add3(mul3(N1, Math.cos(ang)), mul3(N2, Math.sin(ang)));
+        pos.push(...add3(p, mul3(n, RAIL_R))); nor.push(...n); dat.push(0, 1);
+      }
+    }
+    for (let i = 0; i < pts.length - 1; i++) for (let r = 0; r < RING; r++) {
+      const a = base + i * RING + r, b = base + i * RING + (r + 1) % RING; idx.push(a, a + RING, b, b, a + RING, b + RING);
+    }
+  };
+  const lines = [];
+  for (const pl of branches()) {
+    // kept for the slide: arc length along the squashed polyline, and whether it closes (the egg)
+    const cum = [0]; for (let i = 1; i < pl.length; i++) cum.push(cum[i - 1] + Math.hypot(pl[i][0] - pl[i - 1][0], pl[i][1] - pl[i - 1][1]));
+    const a = pl[0], b = pl[pl.length - 1];
+    lines.push({ pts: pl, cum, len: cum[cum.length - 1], closed: Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.05 });
+    pushTube(pl, -HALF); pushTube(pl, HALF);
+    const base = pos.length / 3; let s = 0;   // the floor between the rails
+    for (let i = 0; i < pl.length; i++) {
+      if (i) s += Math.hypot(pl[i][0] - pl[i - 1][0], pl[i][1] - pl[i - 1][1]);
+      for (const z of [-HALF, HALF]) { pos.push(pl[i][0], pl[i][1], z); nor.push(0, 0, 1); dat.push(s, 0); }
+    }
+    for (let i = 0; i < pl.length - 1; i++) { const a = base + i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+  }
+  if (track) { gl.deleteVertexArray(track.vao); }
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  for (const [loc, data, size] of [[0, pos, 3], [1, nor, 3], [2, dat, 2]]) {
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
+  }
+  const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(idx), gl.STATIC_DRAW);
+  gl.bindVertexArray(null);
+  track = { vao, count: idx.length, lines };
+}
+// dynamic buffers for points (city, coins, skater trail) and the ghost chord
+function dynBuffer(attrs) {
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  const stride = attrs.reduce((s, a) => s + a.size, 0) * 4; let off = 0;
+  for (const a of attrs) { gl.enableVertexAttribArray(a.loc); gl.vertexAttribPointer(a.loc, a.size, gl.FLOAT, false, stride, off); off += a.size * 4; }
+  gl.bindVertexArray(null);
+  return { vao, buf, count: 0 };
+}
+const cityBuf = dynBuffer([{ loc: 0, size: 3 }, { loc: 1, size: 4 }]);
+const fxBuf = dynBuffer([{ loc: 0, size: 3 }, { loc: 1, size: 4 }]);
+const chordBuf = dynBuffer([{ loc: 0, size: 3 }]);
+function fill(b, arr) { gl.bindBuffer(gl.ARRAY_BUFFER, b.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.DYNAMIC_DRAW); }
+
+// ---------- state ----------
+const st = { P0: null, G: null, P: null, hop: null, hopBeat: -1, hops: 0, bigAirs: [], lastHop: null, heightResets: 0,
+             pIndex: -1, p: 0, count: 0, ap: 0, hasse: [], coins: [], coinFlash: new Map(),
+             trail: [], cam: { eye: null, at: null, dir: [1, 0, 0] }, flash: 0 };
+const W3 = (x, y, z = 0) => [M(x), M(y), z];
+function setCurve(key) {
+  const c = PRESETS[key] || PRESETS['x3-25x'];
+  Object.assign(curve, { key: PRESETS[key] ? key : 'x3-25x', a: c.a, b: c.b, A: F(c.a) });
+  st.P0 = pt(c.P); st.G = pt(c.G); st.P = st.P0; st.hop = null; st.hops = 0; st.trail = [];
+  st.pIndex = -1; st.hasse = []; st.cam.eye = null;
+  st.coins = curve.key === 'x3+17' ? [[-2, 3], [-1, 4], [2, 5], [4, 9], [8, 23], [43, 282], [52, 375], [5234, 378661]].flatMap(([x, y]) => [[x, y], [x, -y]]) : [];
+  buildTrack(); nextPrime(); publish();
+}
+function nextPrime() {
+  let i = st.pIndex;
+  for (let t = 0; t < PRIMES.length; t++) { i = (i + 1) % PRIMES.length; if (PRIMES[i] > params.pmax) { i = -1; continue; } if (PRIMES[i] >= 5 && !isBad(PRIMES[i])) break; }
+  st.pIndex = i; const p = st.p = PRIMES[i];
+  st.count = countPoints(curve.a, curve.b, p); st.ap = p + 1 - st.count;
+  st.hasse.push({ p, count: st.count, ap: st.ap, ok: Math.abs(st.ap) <= 2 * Math.sqrt(p) }); if (st.hasse.length > 400) st.hasse.shift();
+  // the city: (x, y) mod p laid out on the ground under the track
+  const cells = cellsMod(curve.a, curve.b, p), t = Math.max(-1, Math.min(1, st.ap / (2 * Math.sqrt(p))));
+  const col = t >= 0 ? [0.3, 0.9, 0.8] : [1.0, 0.45, 0.75], bright = 0.45 + 0.5 * Math.abs(t), arr = [];
+  const XA = M(-8), XB = M(60);
+  for (let k = 0; k < cells.length; k += 2) arr.push(XA + (XB - XA) * cells[k] / p, -9, -30 + 60 * cells[k + 1] / p, col[0] * bright, col[1] * bright, col[2] * bright, 14);
+  fill(cityBuf, arr); cityBuf.count = cells.length / 2;
+}
+// One trick per cycle: add G, or double (on the downbeat in beat pace, every 4th trick in
+// chill pace); the sum O is big air.
+function doHop(beat, dblNow, newCity) {
+  if (newCity) nextPrime();
+  // Keep the numbers small enough to stay live: reseed after `hops` tricks, or as soon as x
+  // passes 600 bits (~180 digits). Each downbeat doubling roughly quadruples the digits, so
+  // the hop count alone let x reach 37k digits and the frame rate fall to 4–11 fps (QA box).
+  const hx = Math.max(blen(st.P.x.n), blen(st.P.x.d));
+  if (st.hops >= params.hops || hx > HEIGHT_BITS) { st.P = st.P0; st.hops = 0; st.heightResets += hx > HEIGHT_BITS ? 1 : 0; }
+  const type = dblNow ? 'dbl' : 'add';
+  const P = st.P, Q = type === 'dbl' ? P : st.G;
+  const r = type === 'dbl' ? dbl(P) : add(P, Q);
+  if (!r.sum) {   // big air: the line is vertical, the sum is the point at infinity
+    st.hop = { type: 'air', P: [fnum(P.x), fnum(P.y)], D: [fnum(st.P0.x), fnum(st.P0.y)] };
+    st.bigAirs.push({ beat, why: r.why }); st.flash = 1;
+    st.lastHop = { type: 'air', P: { x: fstr(P.x), y: fstr(P.y) }, why: r.why };
+    st.P = st.P0; st.hops = 0;
+  } else {
+    const fl = q => [fnum(q.x), fnum(q.y)];
+    st.hop = { type, P: fl(P), Q: fl(Q), R: fl(r.R), S: fl(r.sum) };
+    st.lastHop = { type, P: { x: fstr(P.x), y: fstr(P.y), onCurve: onCurve(P) }, Q: { x: fstr(Q.x), y: fstr(Q.y), onCurve: onCurve(Q) },
+                   R: { x: fstr(r.R.x), y: fstr(r.R.y), onCurve: onCurve(r.R) }, sum: { x: fstr(r.sum.x), y: fstr(r.sum.y), onCurve: onCurve(r.sum) } };
+    st.P = r.sum; st.hops++;
+  }
+  st.slideAt = nearestOnTrack(st.hop.type === 'air' ? st.hop.D : st.hop.S);
+  publish();
+}
+// Where on the drawn track a point sits (for the slide); null when it is off the drawn part.
+function nearestOnTrack(q) {
+  if (!q.every(Number.isFinite)) return null;
+  const X = M(q[0]), Y = M(q[1]); let best = null;
+  for (const ln of track.lines) for (let i = 0; i < ln.pts.length; i++) {
+    const d = Math.hypot(ln.pts[i][0] - X, ln.pts[i][1] - Y);
+    if (!best || d < best.d) best = { d, ln, s: ln.cum[i] };
+  }
+  return best && best.d < 0.3 ? best : null;
+}
+function alongTrack(ln, s) {
+  if (ln.closed) s = ((s % ln.len) + ln.len) % ln.len; else s = Math.max(0, Math.min(ln.len, s));
+  let lo = 0, hi = ln.cum.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ln.cum[m] <= s) lo = m; else hi = m; }
+  const f = (s - ln.cum[lo]) / Math.max(1e-9, ln.cum[hi] - ln.cum[lo]), a = ln.pts[lo], b = ln.pts[hi];
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+}
+function publish() {
+  window.__qa = Object.assign(window.__qa || {}, {
+    curve: { key: curve.key, a: curve.a, b: curve.b }, lastHop: st.lastHop, bigAirs: st.bigAirs.slice(-20), hops: st.hops,
+    heightResets: st.heightResets, heightBits: Math.max(blen(st.P.x.n), blen(st.P.x.d)),
+    trick: { on: params.trickOn, every: params.trickEvery, speed: params.trickSpeed, start: st.trickStart, dur: st.trickDur, next: st.trickNext },
+    trickSchedule,
+    p: st.p, count: st.count, ap: st.ap, hasse: st.hasse.slice(), countPoints,
+  });
+}
+
+// Where the skater is at beat phase u of the current hop (squashed world space).
+const ease = u => u * u * (3 - 2 * u);
+// Chill pace: u is the trick's phase (first bar of the cycle), w the slide after it, wt the
+// whole cycle. The slide carves out from the landing and back, so the next trick starts exactly
+// on the exact point P.
+function skaterAt(u, w, wt) {
+  const h = st.hop;
+  if (!h) { const p = [fnum(st.P.x), fnum(st.P.y)]; return { pos: W3(p[0], p[1], 0), roll: 0 }; }
+  if (params.pace === 'chill' && h.type === 'air') {   // up off the end of the line, down onto the seed
+    const e = ease(wt), x = h.P[0] + (h.D[0] - h.P[0]) * e;
+    const Y = M(h.P[1]) + (M(h.D[1]) - M(h.P[1])) * e + 12 * Math.sin(Math.PI * wt);
+    return { pos: [M(x), Y, 0.6 * Math.sin(Math.PI * wt)], roll: Math.PI * 2 * ease(Math.min(1, Math.max(0, (wt - 0.3) / 0.4))), air: Math.sin(Math.PI * wt) };
+  }
+  if (w > 0) {
+    const sl = st.slideAt, sway = Math.sin(Math.PI * w), n = st.glideN || 1;
+    if (!sl) return { pos: [M(h.S[0]), M(h.S[1]) + 0.08 * sway, 0.15 * Math.sin(2 * Math.PI * n * w)], roll: 0 };
+    const p = alongTrack(sl.ln, sl.s + params.slide * Math.sin(2 * Math.PI * n * w) * sway);
+    return { pos: [p[0], p[1], 0.25 * Math.sin(4 * Math.PI * n * w) * sway], roll: 0.12 * Math.sin(2 * Math.PI * n * w) };
+  }
+  if (h.type === 'air') { const e = ease(Math.min(1, u * 1.2)); return { pos: [M(h.P[0]), M(h.P[1]) + 30 * e, 0.6 * Math.sin(Math.PI * e)], roll: 0, air: e }; }
+  if (u < 0.55) {   // along the chord (or tangent) in real coordinates, squashed for drawing
+    const e = ease(u / 0.55), x = h.P[0] + (h.R[0] - h.P[0]) * e, y = h.P[1] + (h.R[1] - h.P[1]) * e;
+    return { pos: [M(x), M(y), 0.5 * Math.sin(Math.PI * e)], roll: 0 };
+  }
+  if (u < 0.8) {    // flip across the x-axis: R → −R = P + Q, with a barrel roll
+    const e = ease((u - 0.55) / 0.25), y = h.R[1] + (h.S[1] - h.R[1]) * e;
+    return { pos: [M(h.S[0]), M(y), 0.7 * Math.sin(Math.PI * e)], roll: Math.PI * 2 * e };
+  }
+  return { pos: W3(h.S[0], h.S[1], 0), roll: 0 };
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+for (const pace of ['chill', 'beat']) $('pace-' + pace).onclick = () => { params.pace = pace; st.hopBeat = -1; sync(); };
+$('play').onclick = () => {
+  if (metronome.playing) metronome.stop(); else metronome.start();
+  clockStart = performance.now(); st.hopBeat = -1;
+  $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', metronome.playing);
+};
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('full').onclick = () => { const w = $('wrap'); if (document.fullscreenElement) document.exitFullscreen(); else (w.requestFullscreen || w.webkitRequestFullscreen).call(w); };
+$('reseed').onclick = () => { st.P = st.P0; st.hops = 0; };
+for (const key of Object.keys(PRESETS)) {
+  const b = document.createElement('button'); b.textContent = PRESETS[key].label; b.dataset.key = key;
+  b.onclick = () => { setCurve(key); sync(); }; $('presets').appendChild(b);
+}
+const SLIDERS = ['bpm', 'hops', 'trickEvery', 'trickSpeed', 'glideSpeed', 'slide', 'cam'];
+for (const b of $('trickOn').children) b.onclick = () => { params.trickOn = b.dataset.on; st.hopBeat = -1; sync(); };
+for (const name of SLIDERS) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name]; });
+function sync() {
+  for (const name of SLIDERS) { $(name).value = params[name]; $(name + 'Out').textContent = params[name]; }
+  for (const pace of ['chill', 'beat']) $('pace-' + pace).classList.toggle('on', params.pace === pace);
+  for (const b of $('trickOn').children) b.classList.toggle('on', b.dataset.on === params.trickOn);
+  $('mute').classList.toggle('on', params.muted);
+  for (const b of $('presets').children) b.classList.toggle('on', b.dataset.key === curve.key);
+}
+$('copy').onclick = async e => {
+  const q = new URLSearchParams({ curve: curve.key, bpm: params.bpm, hops: params.hops, pace: params.pace, trickOn: params.trickOn, trickEvery: params.trickEvery, trickSpeed: params.trickSpeed, glideSpeed: params.glideSpeed, slide: params.slide, cam: params.cam });
+  const text = `17 · BSD Skater · y² = ${PRESETS[curve.key].label} · p ${st.p} · a_p ${st.ap}\n${location.origin + location.pathname}?${q}`;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓'; setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
+};
+
+// ---------- main loop ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(3840, Math.round(canvas.clientWidth * dpr)), h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
+const errors = [];
+// window.__qa.events: each drum hit and each hop (a trick lands on every beat), logged on the
+// frame that first draws it, so sync is timed from flashes, not the always-moving camera.
+//   tBeat  scheduled (AudioContext s) · tHeard = tBeat + output latency · perfHeard: tHeard on
+//   the performance.now() clock (ms) · perfDrawn: rAF timestamp of the first frame drawing it
+const events = [];
+const latency = () => metronome.ctx ? Math.min(0.3, metronome.ctx.outputLatency || metronome.ctx.baseLatency || 0) : 0;
+function logEvent(e, now) {
+  e.tHeard = e.tBeat + latency();
+  e.perfHeard = performance.now() + (e.tHeard - metronome.ctx.currentTime) * 1000;
+  e.perfDrawn = now;
+  events.push(e); if (events.length > 256) events.shift();
+}
+function logBeats(beat, hopped, now) {
+  const heard = metronome.ctx.currentTime - latency();
+  for (const h of metronome.hits) {
+    if (h.logged || h.time > heard) continue;
+    h.logged = true; logEvent({ type: h.lane, vel: h.vel, tBeat: h.time }, now);
+  }
+  if (hopped) {
+    const s = metronome.steps.find(x => x.step === beat * 4);
+    if (s) logEvent({ type: st.lastHop && st.lastHop.type === 'air' ? 'air' : 'hop', beat, tBeat: s.time }, now);
+  }
+}
+// Trick schedule (the same in 17 and 19). Candidates: every `every` bars (on = bars), or at each
+// section start and drop (sections), or at drops only (drops); a candidate that falls inside the
+// last accepted trick (start + dur) is skipped, so tricks never overlap. Returns the last
+// accepted start at or before `bar` and the next one after it (in bars).
+function trickSchedule(bar, o) {
+  const S = o.on === 'bars' ? o.every : o.section;
+  let lastEnd = -Infinity, prev = null, next = null;
+  for (let k = 0; next === null && k < 1e5; k++) {
+    const c = [];
+    if (o.on === 'bars') c.push(k * S);
+    else {
+      const dropOk = o.dropBars > 0 && !(o.skipDrop && o.skipDrop(k));
+      if (o.on === 'sections' || !dropOk) c.push(k * S);
+      if (dropOk) c.push(k * S + S - o.dropBars);
+    }
+    for (const t of c) {
+      if (t < lastEnd) continue;
+      lastEnd = t + o.dur;
+      if (t <= bar) prev = t; else if (next === null) next = t;
+    }
+  }
+  return { prev, next };
+}
+function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
+}
+function draw(now) {
+  resize();
+  const L = metronome.read();
+  const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * params.bpm / 60);
+  // beat pace: one trick per beat. Chill: tricks from the schedule (trickOn, trickEvery), each
+  // lasting 2/trickSpeed bars, then a glide back to the exact point before the next one.
+  const chill = params.pace === 'chill';
+  let u, w = 0, wt, key, startBeat;
+  if (chill) {
+    const bar = beats / params.bpb, dur = 2 / Math.max(0.05, params.trickSpeed), S = Math.max(4, Math.round(params.trickEvery));
+    const sch = trickSchedule(bar, { on: params.trickOn, every: S, section: S, dropBars: S >= 8 ? 4 : 0, dur });
+    if (sch.prev === null) { key = -1; u = 1; wt = 0; startBeat = 0; }   // drops only: glide-free wait for the first one
+    else {
+      const s0 = sch.prev, nx = sch.next ?? s0 + S, end = s0 + dur;
+      key = s0; startBeat = s0 * params.bpb;
+      u = Math.min(1, (bar - s0) / dur); wt = Math.min(1, (bar - s0) / (nx - s0));
+      w = bar > end && nx > end ? (bar - end) / (nx - end) : 0;
+      st.glideN = Math.max(1, Math.round(params.glideSpeed * (nx - end) / 4));
+      Object.assign(st, { trickStart: s0, trickDur: dur, trickNext: nx });
+    }
+  } else {
+    key = Math.floor(beats); startBeat = key; u = beats - key; wt = u;
+  }
+  const hopped = key >= 0 && key !== st.hopBeat;
+  if (hopped) {
+    st.tricks = (st.tricks || 0) + 1;
+    const dblNow = chill ? st.tricks % 4 === 0 : key % params.bpb === 0;
+    const newCity = chill ? st.tricks > 1 : key % params.bpb === 0 && key > 0;
+    doHop(startBeat, dblNow, newCity); st.hopBeat = key;
+  }
+  if (metronome.playing) logBeats(startBeat, hopped, now);
+  const sk = skaterAt(u, w, wt);
+  st.trail.push(sk.pos); if (st.trail.length > 40) st.trail.shift();
+  st.flash = Math.max(0, st.flash - 0.03);
+
+  // chase camera: behind the direction of travel, above and out of the plane
+  const prev = st.trail.length > 2 ? st.trail[st.trail.length - 3] : sk.pos;
+  const mv = sub3(sk.pos, prev);
+  if (Math.hypot(mv[0], mv[1]) > 1e-4) st.cam.dir = norm3(lerp3(st.cam.dir, norm3([mv[0], mv[1], 0]), 0.15));
+  const d = st.cam.dir, side = [-d[1], d[0], 0];
+  const cz = params.cam;   // 1 = the first version's distance; smaller rides closer to the ramp
+  const eyeT = add3(add3(sub3(sk.pos, mul3(d, 2.4 * cz)), mul3(side, 0.5 * cz)), [0, 0, (2.2 + 0.2 * L.kick) * cz + 0.15]);
+  const atT = add3(sk.pos, mul3(d, 1.2 + 0.4 * cz));
+  st.cam.eye = st.cam.eye ? lerp3(st.cam.eye, eyeT, 0.12) : eyeT;
+  st.cam.at = st.cam.at ? lerp3(st.cam.at, atT, 0.18) : atT;
+  const viewDir = norm3(sub3(st.cam.at, st.cam.eye));
+  const roll = sk.roll + 0.06 * Math.sin(beats * Math.PI) * L.kick;
+  const side0 = cross3(viewDir, [0, 1, 0]);
+  const up0 = Math.hypot(...side0) < 1e-3 ? [0, 0, 1] : norm3(cross3(side0, viewDir));   // world up, made perpendicular to the view
+  const up = norm3(add3(mul3(up0, Math.cos(roll)), mul3(cross3(viewDir, up0), Math.sin(roll))));
+  const W = canvas.width, H = canvas.height;
+  const vp = mul4(perspective(1.05, W / H, 0.03, 200), lookAt(st.cam.eye, st.cam.at, up));
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, W, H);
+  gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.disable(gl.DEPTH_TEST);
+  gl.useProgram(skyProg.p); gl.uniform1f(skyProg.u.uFlash, st.flash); gl.uniform1f(skyProg.u.uAir, sk.air || 0);
+  gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);   // city lights below
+  gl.useProgram(pointProg.p); gl.uniformMatrix4fv(pointProg.u.uVP, false, vp); gl.uniform1f(pointProg.u.uScale, H / 120 * (1 + 0.4 * L.kick));
+  gl.bindVertexArray(cityBuf.vao); gl.drawArrays(gl.POINTS, 0, cityBuf.count);
+  gl.disable(gl.BLEND);
+
+  gl.enable(gl.DEPTH_TEST);
+  gl.useProgram(meshProg.p); gl.uniformMatrix4fv(meshProg.u.uVP, false, vp); gl.uniform3fv(meshProg.u.uEye, st.cam.eye);
+  gl.uniform1f(meshProg.u.uKick, L.kick); gl.uniform1f(meshProg.u.uHat, L.hat); gl.uniform1f(meshProg.u.uBeat, beats);
+  gl.bindVertexArray(track.vao); gl.drawElements(gl.TRIANGLES, track.count, gl.UNSIGNED_INT, 0);
+  gl.disable(gl.DEPTH_TEST);
+
+  // ghost chord (or tangent), drawn through the same squash, fading over the beat
+  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+  const h = st.hop;
+  if (h && h.type !== 'air') {
+    const arr = [], ext = 0.6;
+    for (let i = 0; i <= 96; i++) {
+      const t = -ext + (1 + 2 * ext) * i / 96, x = h.P[0] + (h.R[0] - h.P[0]) * t, y = h.P[1] + (h.R[1] - h.P[1]) * t;
+      arr.push(M(x), M(y), 0);
+    }
+    arr.push(M(h.S[0]), M(h.R[1]), 0, M(h.S[0]), M(h.S[1]), 0);   // the flip, R to −R
+    fill(chordBuf, arr);
+    gl.useProgram(lineProg.p); gl.uniformMatrix4fv(lineProg.u.uVP, false, vp);
+    gl.uniform4f(lineProg.u.uColor, 1.0, 0.8, 0.45, 0.65 * (1 - u * 0.7) * (1 - w));
+    gl.bindVertexArray(chordBuf.vao); gl.drawArrays(gl.LINE_STRIP, 0, 97); gl.drawArrays(gl.LINES, 97, 2);
+  }
+  // sprites: P, Q, R markers, coins, the skater and its trail
+  const sp = [];
+  const mark = (q, c, s) => { if (q && q.every(Number.isFinite)) sp.push(M(q[0]), M(q[1]), 0, ...c, s); };
+  if (h && h.type !== 'air') { mark(h.Q, [0.4, 0.8, 1.0], 22); mark(h.R, [1.0, 0.7, 0.3], 18); mark(h.S, [1.0, 1.0, 0.9], 26); }
+  for (const [cx, cy] of st.coins) {
+    const pos = W3(cx, cy, 0), near = Math.hypot(pos[0] - sk.pos[0], pos[1] - sk.pos[1]) < 0.35;
+    if (near) st.coinFlash.set(`${cx},${cy}`, now);
+    const f = Math.max(0, 1 - (now - (st.coinFlash.get(`${cx},${cy}`) || -1e9)) / 600);
+    sp.push(...pos, 1.0, 0.85, 0.2, 18 + 40 * f);
+  }
+  st.trail.forEach((q, i) => sp.push(...q, 1.0, 0.55, 0.2, 6 + 10 * i / st.trail.length));
+  sp.push(...sk.pos, 1.0, 1.0, 1.0, 30 * (1 + 0.6 * L.kick));
+  fill(fxBuf, sp); fxBuf.count = sp.length / 7;
+  gl.blendFunc(gl.ONE, gl.ONE);
+  gl.useProgram(pointProg.p); gl.uniformMatrix4fv(pointProg.u.uVP, false, vp); gl.uniform1f(pointProg.u.uScale, H / 120);
+  gl.bindVertexArray(fxBuf.vao); gl.drawArrays(gl.POINTS, 0, fxBuf.count);
+  gl.disable(gl.BLEND);
+
+  Object.assign(window.__qa, { beats, errors });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    const t = h ? (h.type === 'air' ? 'BIG AIR (sum = O)' : h.type === 'dbl' ? 'grind: 2P' : 'ollie: P + G') : '';
+    hud.textContent = `BSD skater · y² = ${PRESETS[curve.key].label} · ${params.bpm} bpm · ${state}\n` +
+      `${t} · hop ${st.hops}/${params.hops} · height ${Math.max(blen(st.P.x.n), blen(st.P.x.d))} bits\n` +
+      `p ${st.p} · a_p ${st.ap} · ${W}×${H} · ${fps} fps`;
+  }
+}
+
+const q = k => query.get(k);
+for (const k of ['bpm', 'hops', 'trickEvery', 'trickSpeed', 'glideSpeed', 'slide', 'cam']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
+if (['bars', 'sections', 'drops'].includes(q('trickOn'))) params.trickOn = q('trickOn');
+if (q('pace') === 'beat' || q('pace') === 'chill') params.pace = q('pace');
+params.muted = q('muted') === '1';
+window.__qa = { errors, events };
+setCurve(q('curve') || params.curve);
+sync();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

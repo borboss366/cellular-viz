@@ -1,0 +1,599 @@
+<!doctype html>
+<!--
+  08 · Blend: crossfade between experiments on the beat   (issue #27, blending track)
+
+  A playlist of experiment pages runs in two hidden iframe slots. Each slot's canvas
+  is turned into a <video> with captureStream() (a WebGL canvas without
+  preserveDrawingBuffer reads back blank from outside its own frame, a stream does
+  not), and this page draws both videos through one transition shader.
+
+  Timing: a bar clock (BPM slider, 4/4) starts with ▶ Play, together with every
+  slot's own metronome (all slots get the same ?bpm=, clicks muted).
+    hold  bars showing one experiment
+    warm  bars before a switch, the next experiment loads and runs unseen, so it
+          has creatures by the time it fades in (both sims run then: fps dips)
+    blend bars of transition, starting on a downbeat; after it the old slot is
+          unloaded to free the GPU
+  Dark guard: each slot's picture is sampled 4× a second (share of lit pixels).
+  A switch waits, a bar at a time (up to 2 extra bars), until the incoming page is
+  at least 8% lit, then skips it and warms up the next one. A page that stays under
+  8% for a whole bar while showing starts the next warm-up at once.
+  Transitions, in the GL Transitions style: mix(from, to, m(uv, progress)).
+    fade      plain crossfade
+    dissolve  blocky noise threshold
+    density   the incoming picture's own brightness is the mask, so its creatures
+              appear first and the old ones fade between them (research's idea)
+    iris      circle opening from the centre
+    mask      (#31) a small Gray-Scott sim grows coral from 14 seeds during the switch;
+              wherever coral has been, the next page shows (falls back to dissolve
+              on phones without float render targets)
+    cut       (#34) a one-beat hard cut with a random radial / clock / spiral /
+              plasma edge, MilkDrop's fast blend
+    screen, color, difference   (#32) layer modes: the next page runs the whole
+              time and is layered on top (screen adds light, color puts its palette
+              on the current shapes, difference inverts where they overlap), its
+              weight breathing over 4 bars; the switch then fades to it. Two sims
+              run all the time with these.
+    random    a different switch kind (not a layer mode) each time
+  ?list= sets the playlist: comma-separated items, each a file number with optional
+  query after a colon, e.g. list=04,06:look=dream,05 . Default: 06 dream, 05 blobs,
+  06 glow, 05 cells, 06 pulse (all lit from the start). Other params: bpm, hold,
+  warm, blend, kind.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>08 · Blend</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
+    margin: 0 auto; flex: none; z-index: 1; background: #05070c; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  /* Slots sit behind the page, in the viewport (offscreen frames may be throttled), invisible. */
+  .slot { position: fixed; left: 0; top: 0; width: 560px; height: 900px; border: 0;
+    opacity: 0; pointer-events: none; z-index: 0; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; position: relative; z-index: 1; background: #05070c; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .row input[type=text] { flex: 1; min-width: 0; padding: 6px; border: 1px solid #2a3647;
+    border-radius: 6px; background: #0b111a; color: inherit; font: 13px ui-monospace, Menlo, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0;
+      position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="skip">Next now</button>
+  </div>
+  <div class="buttons" id="kinds"></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="row"><label for="hold">hold bars</label><input id="hold" type="range" min="2" max="32" step="1"><output id="holdOut"></output></div>
+  <div class="row"><label for="warm">warm-up bars</label><input id="warm" type="range" min="1" max="8" step="1"><output id="warmOut"></output></div>
+  <div class="row"><label for="blend">blend bars</label><input id="blend" type="range" min="0.25" max="4" step="0.25"><output id="blendOut"></output></div>
+  <div class="row"><label for="list">playlist</label><input id="list" type="text" spellcheck="false" autocomplete="off"></div>
+  <div class="buttons">
+    <button id="copy" class="wide">Copy setup</button>
+  </div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+const FILES = { '01': '01-gray-scott.html', '02': '02-lenia.html', '04': '04-lenia-metronome.html',
+                '05': '05-flow-lenia.html', '06': '06-lenia-effects.html', '07': '07-particle-lenia.html' };
+// Pages that are lit from the first second: 06 looks and 05 soups. 02 needs ~12 s from its
+// seed and 04 sits near-empty until the Auto fix (#26) lands, so they are opt-in via ?list=.
+const DEFAULT_LIST = '06:look=dream,05:preset=blobs,06:look=glow,05:preset=cells,06:look=pulse';
+const MIN_LIT = 0.08;      // share of lit pixels a page needs to fade in, or to keep the screen
+const MAX_WAIT = 2;        // extra bars a switch waits for the incoming page before skipping it
+// Shader order matters: the index is uKind. mask = #31, cut = #34, screen/color/difference = #32.
+const KINDS = ['fade', 'dissolve', 'density', 'iris', 'mask', 'cut', 'screen', 'color', 'difference', 'random'];
+const SWITCH_KINDS = ['fade', 'dissolve', 'density', 'iris', 'mask', 'cut'];   // what random picks from
+const LAYER_KINDS = ['screen', 'color', 'difference'];   // the next page stays layered on top
+const CUT_BARS = 0.25;     // a cut is one beat long (~0.5 s at 120 bpm, MilkDrop's fast blend)
+
+const params = { bpm: 120, hold: 8, warm: 2, blend: 1, kind: 'fade', list: DEFAULT_LIST };   // fade: user picked it over density 2–0
+for (const k of ['bpm', 'hold', 'warm', 'blend']) {
+  const v = parseFloat(query.get(k));
+  if (Number.isFinite(v)) params[k] = v;
+}
+if (KINDS.includes(query.get('kind'))) params.kind = query.get('kind');
+if (query.get('list')) params.list = query.get('list');
+
+// "06:look=dream" → { file, query, label }
+function parseList(s) {
+  return s.split(',').map(x => x.trim()).filter(Boolean).map(x => {
+    const [num, q = ''] = x.split(':');
+    const file = FILES[num.padStart(2, '0')];
+    return file ? { file, query: q, label: num.padStart(2, '0') + (q ? ' ' + q.replace(/&/g, ' ') : '') } : null;
+  }).filter(Boolean);
+}
+let playlist = parseList(params.list);
+if (!playlist.length) playlist = parseList(DEFAULT_LIST);
+
+// ---------- Slots: an iframe running one experiment, seen through a video ----------
+function makeSlot() {
+  const frame = document.createElement('iframe');
+  frame.className = 'slot';
+  frame.setAttribute('allow', 'autoplay');   // lets the slot's AudioContext start without its own tap
+  frame.setAttribute('tabindex', '-1');
+  frame.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(frame);
+  const video = document.createElement('video');
+  video.muted = true; video.playsInline = true;
+  return { frame, video, item: null, ready: false, loadedAt: 0, lit: 0, darkSince: null };
+}
+
+// Share of lit pixels in a slot's picture, from a 32² copy of its video.
+const probe = document.createElement('canvas');
+probe.width = probe.height = 32;
+const pctx = probe.getContext('2d', { willReadFrequently: true });
+function measureLit(slot) {
+  if (!live(slot)) { slot.lit = 0; return; }
+  pctx.drawImage(slot.video, 0, 0, 32, 32);
+  const d = pctx.getImageData(0, 0, 32, 32).data;
+  let lit = 0;
+  for (let i = 0; i < d.length; i += 4) if (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] > 30) lit++;
+  slot.lit = lit / 1024;
+}
+const slots = [makeSlot(), makeSlot()];
+
+function loadSlot(slot, item) {
+  slot.item = item; slot.ready = false; slot.video.srcObject = null;
+  slot.loadedAt = performance.now(); slot.lit = 0; slot.darkSince = null;
+  const q = new URLSearchParams(item.query);
+  q.set('bpm', params.bpm);
+  q.set('muted', '1');
+  q.set('hud', 'short');
+  slot.frame.onload = () => attach(slot);
+  slot.frame.src = item.file + '?' + q;
+}
+function unloadSlot(slot) {
+  slot.item = null; slot.ready = false; slot.video.srcObject = null;
+  slot.frame.onload = null;
+  slot.frame.src = 'about:blank';
+}
+// Once the page is in: press its Play if the show is running, and stream its canvas.
+function attach(slot) {
+  let doc;
+  try { doc = slot.frame.contentDocument; } catch { return; }
+  const cv = doc && doc.querySelector('canvas');
+  if (!cv) return;
+  if (clock.playing) pressPlay(slot);
+  try {
+    slot.video.srcObject = cv.captureStream(60);
+    slot.video.play().catch(() => {});
+    slot.ready = true;
+  } catch (e) { console.warn('captureStream failed', e); }
+}
+function pressPlay(slot) {
+  try {
+    const b = slot.frame.contentDocument.getElementById('play');
+    if (b && !b.classList.contains('on')) b.click();
+  } catch { /* not loaded yet */ }
+}
+
+// ---------- WebGL: two video textures through a transition ----------
+const canvas = document.getElementById('c');
+const hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+if (!gl) fail('WebGL2 is not available in this browser.');
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+
+const VERT = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+const FRAG = `#version 300 es
+precision highp float;
+uniform sampler2D uFrom, uTo;
+uniform sampler2D uMask;   // Gray-Scott state for kind 4: b = how much coral has passed here
+uniform float uProgress;   // 0 = all from, 1 = all to
+uniform int uKind;         // index into KINDS
+uniform int uPattern;      // cut: 0 radial, 1 clock, 2 spiral, 3 plasma
+uniform float uLayer;      // layer kinds: weight of the blended layer while holding
+in vec2 vUv;
+out vec4 outColor;
+float hash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+// W3C 'color' blend: hue and saturation of s, brightness of d.
+vec3 setLum(vec3 s, float l) {
+  vec3 c = s + (l - lum(s));
+  float L = lum(c), n = min(min(c.r, c.g), c.b), x = max(max(c.r, c.g), c.b);
+  if (n < 0.0) c = L + (c - L) * L / max(L - n, 1e-4);
+  if (x > 1.0) c = L + (c - L) * (1.0 - L) / max(x - L, 1e-4);
+  return c;
+}
+void main() {
+  vec3 a = texture(uFrom, vUv).rgb, b = texture(uTo, vUv).rgb;
+  float p = uProgress, m;
+  if (uKind >= 6) {   // layered: op(a, b) mixed in by uLayer, then the switch fades to b
+    vec3 l = uKind == 6 ? 1.0 - (1.0 - a) * (1.0 - b)
+           : uKind == 7 ? setLum(b, lum(a))
+           : abs(a - b);
+    outColor = vec4(mix(mix(a, clamp(l, 0.0, 1.0), uLayer), b, p), 1.0);
+    return;
+  }
+  if (uKind == 4) {
+    float seen = texture(uMask, vUv).b;
+    m = max(smoothstep(0.15, 0.5, seen), smoothstep(0.85, 1.0, p));   // coral reveals, the end finishes
+  } else if (uKind == 5) {
+    vec2 q = vUv - 0.5;
+    float d = length(q) * 1.42, ang = atan(q.y, q.x) / 6.2832 + 0.5, t;
+    if (uPattern == 0) t = d;
+    else if (uPattern == 1) t = ang;
+    else if (uPattern == 2) t = fract(ang + d * 1.5);
+    else t = 0.5 + 0.5 * sin(vUv.x * 9.0 + sin(vUv.y * 7.0) * 2.0) * cos(vUv.y * 8.0 - vUv.x * 3.0);
+    m = smoothstep(t - 0.03, t, p * 1.03);
+  } else if (uKind == 1) {
+    float n = hash(floor(vUv * 96.0));
+    m = smoothstep(n - 0.08, n + 0.08, p * 1.16 - 0.08);
+  } else if (uKind == 2) {
+    float l = clamp(dot(b, vec3(0.299, 0.587, 0.114)) * 1.6, 0.0, 1.0);   // bright creatures first
+    m = smoothstep(1.0 - l - 0.25, 1.0 - l + 0.05, p * 1.3);
+    m = max(m, smoothstep(0.75, 1.0, p));   // the dark background follows at the end
+  } else if (uKind == 3) {
+    float d = length(vUv - 0.5) * 1.42;
+    m = smoothstep(d - 0.12, d, p * 1.12);
+  } else {
+    m = p;
+  }
+  outColor = vec4(mix(a, b, m), 1.0);
+}`;
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(s));
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(prog));
+const U = {};
+for (const n of ['uFrom', 'uTo', 'uMask', 'uProgress', 'uKind', 'uPattern', 'uLayer']) U[n] = gl.getUniformLocation(prog, n);
+gl.bindVertexArray(gl.createVertexArray());
+
+// ---------- Mask kind (#31): a small Gray-Scott grows coral from a few seeds ----------
+// r = U, g = V, b = highest V seen so far (where coral has been, the next page shows).
+const GS_SIZE = 192, GS_STEPS = 32;
+const GS_FRAG = `#version 300 es
+precision highp float;
+uniform sampler2D uS;
+out vec4 outColor;
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy), s = ivec2(${GS_SIZE});
+  vec4 c = texelFetch(uS, p, 0);
+  vec2 lap = -c.rg
+    + 0.2 * (texelFetch(uS, (p + ivec2(1, 0) + s) % s, 0).rg + texelFetch(uS, (p + ivec2(-1, 0) + s) % s, 0).rg
+           + texelFetch(uS, (p + ivec2(0, 1) + s) % s, 0).rg + texelFetch(uS, (p + ivec2(0, -1) + s) % s, 0).rg)
+    + 0.05 * (texelFetch(uS, (p + ivec2(1, 1) + s) % s, 0).rg + texelFetch(uS, (p + ivec2(-1, 1) + s) % s, 0).rg
+            + texelFetch(uS, (p + ivec2(1, -1) + s) % s, 0).rg + texelFetch(uS, (p + ivec2(-1, -1) + s) % s, 0).rg);
+  float u = c.r, v = c.g, uvv = u * v * v;
+  const float F = 0.0545, K = 0.062;   // coral
+  u += 1.0 * lap.x - uvv + F * (1.0 - u);
+  v += 0.5 * lap.y + uvv - (F + K) * v;
+  outColor = vec4(clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0), max(c.b, v * 3.0), 1.0);
+}`;
+const gsProg = gl.createProgram();
+gl.attachShader(gsProg, compile(gl.VERTEX_SHADER, VERT));
+gl.attachShader(gsProg, compile(gl.FRAGMENT_SHADER, GS_FRAG));
+gl.linkProgram(gsProg);
+const gsU = gl.getUniformLocation(gsProg, 'uS');
+const gs = (() => {   // ping-pong float targets, or null when the phone can't render to floats
+  if (!gl.getExtension('EXT_color_buffer_float') && !gl.getExtension('EXT_color_buffer_half_float')) return null;
+  const list = [];
+  for (let i = 0; i < 2; i++) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, GS_SIZE, GS_SIZE, 0, gl.RGBA, gl.FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) return null;
+    list.push({ tex, fbo });
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { list, cur: 0 };
+})();
+// Clean field (U 1, V 0) with 14 seed spots of V.
+function gsSeed() {
+  const d = new Float32Array(GS_SIZE * GS_SIZE * 4);
+  for (let i = 0; i < GS_SIZE * GS_SIZE; i++) { d[i * 4] = 1; d[i * 4 + 3] = 1; }
+  for (let s = 0; s < 14; s++) {
+    const cx = Math.random() * GS_SIZE, cy = Math.random() * GS_SIZE;
+    for (let y = -4; y <= 4; y++) for (let x = -4; x <= 4; x++) {
+      if (x * x + y * y > 16) continue;
+      const i = ((Math.floor(cy + y) + GS_SIZE) % GS_SIZE * GS_SIZE + (Math.floor(cx + x) + GS_SIZE) % GS_SIZE) * 4;
+      d[i] = 0.5; d[i + 1] = 0.25; d[i + 2] = 1;
+    }
+  }
+  gl.bindTexture(gl.TEXTURE_2D, gs.list[gs.cur].tex);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, GS_SIZE, GS_SIZE, gl.RGBA, gl.FLOAT, d);
+}
+function gsStep(n) {
+  gl.useProgram(gsProg);
+  gl.viewport(0, 0, GS_SIZE, GS_SIZE);
+  gl.activeTexture(gl.TEXTURE2);
+  gl.uniform1i(gsU, 2);
+  for (let i = 0; i < n; i++) {
+    const next = 1 - gs.cur;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gs.list[next].fbo);
+    gl.bindTexture(gl.TEXTURE_2D, gs.list[gs.cur].tex);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gs.cur = next;
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+const textures = slots.map(() => {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([5, 7, 12, 255]));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+});
+// Copy the slot's latest video frame; keep the last one if no frame is there yet.
+function upload(i) {
+  const v = slots[i].video;
+  if (!slots[i].ready || v.readyState < 2 || !v.videoWidth) return;
+  gl.bindTexture(gl.TEXTURE_2D, textures[i]);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, v);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+}
+
+// ---------- The show: bar clock, playlist, switches ----------
+const clock = { playing: false, start: 0 };
+const show = { cur: 0, index: 0, skip: 1, phase: 'hold', switchAt: 0, warmedAt: 0, kind: 'fade', switches: 0, skipped: 0,
+               pattern: 0, len: 1, layerFrom: null };
+// pattern/len: the cut's shape and the blend's length in bars; layerFrom: bar the layer became visible.
+// skip: how far ahead in the playlist the incoming page is (grows when a dark page is skipped).
+// cur: slot showing; index: playlist position of what it shows; switchAt: bar the next blend starts.
+const barMs = () => 4 * 60000 / params.bpm;
+const barsNow = now => clock.playing ? (now - clock.start) / barMs() : 0;
+
+function pickKind() {
+  let k = params.kind === 'random' ? SWITCH_KINDS[Math.floor(Math.random() * SWITCH_KINDS.length)] : params.kind;
+  if (k === 'mask' && !gs) k = 'dissolve';   // no float targets on this phone
+  show.pattern = Math.floor(Math.random() * 4);
+  show.len = k === 'cut' ? CUT_BARS : params.blend;
+  if (k === 'mask') gsSeed();
+  return k;
+}
+const isLayer = () => LAYER_KINDS.includes(params.kind);
+function scheduleNext(fromBar) {
+  show.switchAt = Math.ceil(fromBar + params.hold - 1e-6);   // always on a downbeat
+  show.phase = 'hold';
+}
+function nextItem() { return playlist[(show.index + show.skip) % playlist.length]; }
+const live = s => s.ready && s.video.readyState >= 2 && s.video.videoWidth > 0;
+
+function tick(now) {
+  if (!clock.playing || playlist.length < 2) return 0;
+  const bar = barsNow(now);
+  const other = slots[1 - show.cur];
+  // Layer kinds keep the next page running the whole time, so it can sit on top.
+  if (show.phase === 'hold' && (isLayer() || bar >= show.switchAt - params.warm)) {
+    loadSlot(other, nextItem());
+    show.phase = 'warm';
+    show.warmedAt = bar;
+  }
+  // Dark for a bar while holding: start warming the next page now instead of later.
+  if (show.phase === 'hold' && slots[show.cur].darkSince !== null && now - slots[show.cur].darkSince > barMs()) {
+    loadSlot(other, nextItem());
+    show.phase = 'warm';
+    show.warmedAt = bar;
+    show.switchAt = Math.min(show.switchAt, Math.floor(bar) + 1 + params.warm);
+  }
+  if (show.phase === 'warm' && bar >= show.switchAt) {
+    // Never fade into a page that is still dark: wait a bar at a time, up to MAX_WAIT bars,
+    // then skip it and warm up the one after (every page dark: fade in anyway).
+    const waited = bar - show.warmedAt;
+    if (live(other) && other.lit >= MIN_LIT) {
+      show.phase = 'blend'; show.kind = pickKind();
+    } else if (waited > params.warm + MAX_WAIT && show.skip < playlist.length - 1) {
+      show.skip++; show.skipped++;
+      loadSlot(other, nextItem());
+      show.warmedAt = bar;
+      show.switchAt = Math.floor(bar) + 1 + params.warm;
+    } else if (waited > params.warm + MAX_WAIT && live(other)) {
+      show.phase = 'blend'; show.kind = pickKind();
+    } else show.switchAt += 1;
+  }
+  if (show.phase === 'blend') {
+    const p = (bar - show.switchAt) / show.len;
+    if (p < 1) return p;
+    show.layerFrom = null;
+    unloadSlot(slots[show.cur]);   // done: the old one goes
+    show.cur = 1 - show.cur;
+    show.index = (show.index + show.skip) % playlist.length;
+    show.skip = 1;
+    show.switches++;
+    scheduleNext(show.switchAt + params.blend);
+  }
+  return 0;
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+$('play').onclick = () => {
+  if (clock.playing) {   // stop: freeze the clock, keep the picture
+    clock.playing = false;
+  } else {
+    clock.playing = true;
+    clock.start = performance.now();
+    for (const s of slots) if (s.item) pressPlay(s);   // inside the tap, so audio may start
+    scheduleNext(0);
+  }
+  $('play').textContent = clock.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', clock.playing);
+};
+$('skip').onclick = () => {   // switch at the next downbeat, with the warm-up squeezed
+  if (!clock.playing || show.phase !== 'hold') return;
+  const bar = barsNow(performance.now());
+  show.switchAt = Math.floor(bar) + 1 + params.warm;
+};
+for (const k of KINDS) {
+  const b = document.createElement('button');
+  b.textContent = k;
+  b.onclick = () => { params.kind = k; syncControls(); };
+  $('kinds').appendChild(b);
+}
+const sliders = { bpm: 0, hold: 0, warm: 0, blend: 2 };
+for (const [name, dec] of Object.entries(sliders)) {
+  $(name).addEventListener('input', e => {
+    params[name] = parseFloat(e.target.value);
+    $(name + 'Out').textContent = params[name].toFixed(dec);
+  });
+}
+$('list').addEventListener('change', e => {
+  const next = parseList(e.target.value);
+  if (next.length) { playlist = next; params.list = e.target.value; }
+  e.target.value = params.list;
+});
+function syncControls() {
+  for (const [name, dec] of Object.entries(sliders)) {
+    $(name).value = params[name];
+    $(name + 'Out').textContent = Number(params[name]).toFixed(dec);
+  }
+  $('list').value = params.list;
+  for (const b of $('kinds').children) b.classList.toggle('on', b.textContent === params.kind);
+}
+
+function setupLink() {
+  const q = new URLSearchParams();
+  for (const k of ['bpm', 'hold', 'warm', 'blend', 'kind', 'list']) q.set(k, params[k]);
+  return location.origin + location.pathname + '?' + q;
+}
+$('copy').onclick = async e => {
+  const text = `08 · Blend · ${params.kind} · ${params.bpm} bpm · hold ${params.hold} · warm ${params.warm} · blend ${params.blend} bars\n` +
+    `playlist: ${playlist.map(p => p.label).join(' → ')}\n${fps} fps · ${show.switches} switches\n` + setupLink();
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    ok = document.execCommand('copy'); ta.remove();
+  }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓';
+  setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
+};
+
+// ---------- Main loop ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(1024, Math.round(canvas.clientWidth * dpr));
+  const h = Math.min(1024, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastProbe = 0;
+function frame(now) {
+  resize();
+  if (now - lastProbe > 250) {   // 4× a second is enough to judge dark or lit
+    lastProbe = now;
+    for (const s of slots) {
+      if (!s.item) continue;
+      measureLit(s);
+      s.darkSince = s.lit < MIN_LIT ? (s.darkSince ?? now) : null;
+    }
+  }
+  const p = tick(now);
+  const blending = show.phase === 'blend';
+  const from = show.cur, to = 1 - show.cur;
+  upload(from);
+  if (blending || show.phase === 'warm') upload(to);
+  if (blending && show.kind === 'mask') gsStep(GS_STEPS);
+  // Layer weight: fades in over a bar once the next page is lit, then breathes over 4 bars.
+  let layer = 0;
+  if (isLayer() && show.phase !== 'hold' && live(slots[to]) && slots[to].lit >= MIN_LIT) {
+    const bar = barsNow(now);
+    show.layerFrom ??= bar;
+    layer = Math.min(1, bar - show.layerFrom) * (0.45 + 0.35 * Math.sin(bar * Math.PI / 2));
+  }
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(prog);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, textures[from]);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, textures[to]);
+  if (gs) { gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, gs.list[gs.cur].tex); }
+  gl.uniform1i(U.uFrom, 0);
+  gl.uniform1i(U.uTo, 1);
+  gl.uniform1i(U.uMask, 2);
+  const eased = show.kind === 'cut' ? p : p * p * (3 - 2 * p);
+  gl.uniform1f(U.uProgress, blending ? eased : 0);
+  // While holding, a layer kind draws with its own index so the layer shows; otherwise fade.
+  const kindNow = blending ? show.kind : (isLayer() ? params.kind : 'fade');
+  gl.uniform1i(U.uKind, Math.max(0, KINDS.indexOf(kindNow)));
+  gl.uniform1i(U.uPattern, show.pattern);
+  gl.uniform1f(U.uLayer, layer);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  frames++;
+  if (now - lastFpsTime > 500) {
+    fps = Math.round(frames * 1000 / (now - lastFpsTime));
+    frames = 0; lastFpsTime = now;
+  }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const bar = barsNow(now);
+    const curItem = slots[show.cur].item, nxt = nextItem();
+    const state = !clock.playing ? 'tap ▶ Play'
+      : show.phase === 'blend' ? `${show.kind} → ${nxt ? nxt.label : ''} ${(p * 100).toFixed(0)}%`
+      : `next ${nxt ? nxt.label : ''} in ${Math.max(0, show.switchAt - bar).toFixed(1)} bars` +
+        (show.phase === 'warm' ? ' (warming up)' : '');
+    hud.textContent = `blend · ${params.bpm} bpm · bar ${Math.floor(bar) + 1}\n` +
+      `now ${curItem ? curItem.label : '—'}${slots[show.cur].ready ? '' : ' (loading)'} · lit ${(slots[show.cur].lit * 100).toFixed(0)}%\n` +
+      `${state}\n${fps} fps · ${show.switches} switches${show.skipped ? ` · ${show.skipped} skipped dark` : ''}`;
+  }
+  requestAnimationFrame(frame);
+}
+
+syncControls();
+loadSlot(slots[0], playlist[0]);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

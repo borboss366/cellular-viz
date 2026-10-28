@@ -1,0 +1,833 @@
+<!doctype html>
+<!--
+  07 · Particle Lenia on a metronome
+
+  Particle Lenia (Mordvintsev, Niklasson, Randazzo, Mordvintsev 2022,
+  https://google-research.github.io/self-organising-systems/particle-lenia/).
+  No grid: N points p_i on an open plane. At any spot x
+    U(x) = w_K · Σ_i exp(−((|x − p_i| − μ_K) / σ_K)²)      ring-shaped field of the others
+    G(U) = exp(−((U − μ_G) / σ_G)²)                          how well that field suits a point
+    R(x) = c_rep / 2 · Σ_i max(1 − |x − p_i|, 0)²            short-range repulsion
+    E(x) = R(x) − G(U(x))
+  Each point slides straight down the slope of E (no momentum):  p_i += dt · (−∇E(p_i)).
+  The gradient is exact (dK/dr and dG/dU in closed form), one O(N²) pair loop per step
+  on the CPU, skipping pairs farther apart than μ_K + 4σ_K where K is ~0.
+  Rotor (article): μ_K 4, σ_K 1, w_K 0.022, μ_G 0.6, σ_G 0.15, c_rep 1, 200 points
+  uniform over 12×12, dt 0.1. Scaling to 800 keeps the shape: μ_K, σ_K ×2, w_K ÷4.
+  Seed spread is 12·sqrt(N/200), so the density stays the same at any N.
+
+  Drawing (GPU): the field is evaluated per pixel into a small RGBA8 texture
+  (?field=256, 128 for slow phones): green where G is high (attraction wins),
+  red where R is high (repulsion wins), faint isolines of U. Points are drawn on top,
+  white when slow, orange when fast. The camera follows the cloud's centre and size.
+
+  Music: the same Web Audio metronome as 04 (kick / snare / hat lanes, pad LFO).
+  Mappings (each toggles; VIZ research's suggestions, untested):
+    kick → rep    c_rep_eff = c_rep · (1 + amount · kick): the shape breathes on the beat
+    kick → burst  strong kicks push every point outward from the centre by 0.3 units
+    pad → μ_G     μ_G_eff = μ_G ± 0.03 over the pad LFO: the form slowly shifts
+    snare → flash brighter field     hat → sparkle   point size flicker
+    pad → hue     slow hue drift of the field
+  Touch: drag stirs the points under the finger; with two fingers down it pushes them away.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>07 · Particle Lenia</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 1;
+    margin: 0 auto; flex: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
+  #hint { position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+    padding: 6px 12px; border-radius: 16px; background: rgba(0,0,0,.6); font-size: 13px;
+    white-space: nowrap; pointer-events: none; transition: opacity .6s; }
+  #hint.gone { opacity: 0; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #9fb0c3; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .row input[type=text] { flex: 1; min-width: 0; padding: 6px; border: 1px solid #2a3647;
+    border-radius: 6px; background: #0b111a; color: inherit;
+    font: 14px ui-monospace, Menlo, monospace; letter-spacing: 1px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  button.wide { flex-basis: 100%; }
+  .maps button { flex-basis: 30%; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(100vh, 62vw); width: min(100dvh, 62vw); margin: 0;
+      position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hint">✍︎ Drag to stir · two fingers push</div>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="padBars">pad 1 bar</button>
+  </div>
+  <h3>Creature</h3>
+  <div class="buttons" id="presets"></div>
+  <div class="row"><label for="N">points</label><input id="N" type="range" min="50" max="800" step="10"><output id="NOut"></output></div>
+  <div class="row"><label for="muK">ring μ_K</label><input id="muK" type="range" min="2" max="10" step="0.1"><output id="muKOut"></output></div>
+  <div class="row"><label for="sigK">ring σ_K</label><input id="sigK" type="range" min="0.3" max="3" step="0.05"><output id="sigKOut"></output></div>
+  <div class="row"><label for="wK">weight w_K</label><input id="wK" type="range" min="0.002" max="0.05" step="0.0005"><output id="wKOut"></output></div>
+  <div class="row"><label for="muG">growth μ_G</label><input id="muG" type="range" min="0.2" max="1.2" step="0.01"><output id="muGOut"></output></div>
+  <div class="row"><label for="sigG">growth σ_G</label><input id="sigG" type="range" min="0.03" max="0.4" step="0.005"><output id="sigGOut"></output></div>
+  <div class="row"><label for="rep">repulsion</label><input id="rep" type="range" min="0" max="3" step="0.05"><output id="repOut"></output></div>
+  <div class="row"><label for="dt">dt</label><input id="dt" type="range" min="0.02" max="0.3" step="0.01"><output id="dtOut"></output></div>
+  <div class="row"><label for="steps">steps/frame</label><input id="steps" type="range" min="1" max="20" step="1"><output id="stepsOut"></output></div>
+  <h3>Groove</h3>
+  <div class="buttons" id="grooves"></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <div class="row"><label for="bpb">beats/bar</label><input id="bpb" type="range" min="2" max="7" step="1"><output id="bpbOut"></output></div>
+  <div class="row"><label for="swing">swing</label><input id="swing" type="range" min="0" max="0.3" step="0.01"><output id="swingOut"></output></div>
+  <div class="row"><label for="human">humanize ms</label><input id="human" type="range" min="0" max="10" step="1"><output id="humanOut"></output></div>
+  <div class="row"><label for="kick">kick</label><input id="kick" type="text" maxlength="16" spellcheck="false" autocomplete="off"></div>
+  <div class="row"><label for="snare">snare</label><input id="snare" type="text" maxlength="16" spellcheck="false" autocomplete="off"></div>
+  <div class="row"><label for="hat">hat</label><input id="hat" type="text" maxlength="16" spellcheck="false" autocomplete="off"></div>
+  <div class="buttons maps">
+    <button id="mKickRep">kick → rep</button>
+    <button id="mKickBurst">kick → burst</button>
+    <button id="mPadMuG">pad → μ_G</button>
+    <button id="mSnareFlash">snare → flash</button>
+    <button id="mHatSparkle">hat → sparkle</button>
+    <button id="mPadHue">pad → hue</button>
+  </div>
+  <div class="row"><label for="kickAmt">kick → rep ×</label><input id="kickAmt" type="range" min="0" max="4" step="0.1"><output id="kickAmtOut"></output></div>
+  <div class="buttons">
+    <button id="reset">Reset</button>
+    <button id="pause">Pause</button>
+    <button id="view">View: field</button>
+    <button id="hudMode">Info: full</button>
+    <button id="copy" class="wide">Copy setup</button>
+  </div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+
+const query = new URLSearchParams(location.search);
+const FIELD = [64, 128, 192, 256, 384].includes(+query.get('field')) ? +query.get('field') : 256;
+const STRONG_KICK = 0.75;   // as in 04: only the bar's downbeat passes this
+const MAX_N = 800;
+
+// Creature presets. The first four are the user's top picks from the 12-variant sweep
+// (qa/07-particle-lenia/runs/2026-10-23-2124, 55 swipes), each a small change from rotor.
+// big = rotor scaled ×2 in space with 4× the points (same density).
+const PRESETS = {
+  'small-ring': { N: 200, muK: 3, sigK: 0.7, wK: 0.04,  muG: 0.6,  sigG: 0.15, rep: 1,   dt: 0.1, steps: 5 },
+  dense:        { N: 300, muK: 4, sigK: 1,   wK: 0.022, muG: 0.6,  sigG: 0.15, rep: 1,   dt: 0.1, steps: 5 },
+  loose:        { N: 200, muK: 4, sigK: 1,   wK: 0.022, muG: 0.45, sigG: 0.2,  rep: 1,   dt: 0.1, steps: 5 },
+  'hard-rep':   { N: 200, muK: 4, sigK: 1,   wK: 0.022, muG: 0.6,  sigG: 0.15, rep: 1.8, dt: 0.1, steps: 5 },
+  rotor: { N: 200, muK: 4, sigK: 1, wK: 0.022,  muG: 0.6, sigG: 0.15, rep: 1, dt: 0.1, steps: 5 },
+  big:   { N: 800, muK: 8, sigK: 2, wK: 0.0055, muG: 0.6, sigG: 0.15, rep: 1, dt: 0.1, steps: 3 },
+};
+// Grooves, as in 04. Patterns: 16 sixteenths, x = hit.
+const GROOVES = {
+  four:  { bpm: 120, bpb: 4, swing: 0,    kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' },
+  break: { bpm: 96,  bpb: 4, swing: 0.15, kick: 'x.....x...x.....', snare: '....x.......x..x', hat: 'x.xxx.x.x.xxx.x.' },
+  half:  { bpm: 140, bpb: 4, swing: 0,    kick: 'x.........x.....', snare: '........x.......', hat: 'x.x.x.x.x.x.x.x.' },
+  waltz: { bpm: 90,  bpb: 3, swing: 0.1,  kick: 'x...............', snare: '....x...x.......', hat: 'x.x.x.x.x.x.....' },
+};
+
+const params = { preset: 'small-ring', groove: 'four', ...PRESETS['small-ring'], ...GROOVES.four,
+                 human: 0, padBars: 1, muted: false, kickAmt: 2, paused: false,
+                 view: 'field', hudShort: false };
+const maps = { mKickRep: true, mKickBurst: false, mPadMuG: true,
+               mSnareFlash: true, mHatSparkle: true, mPadHue: true };
+
+// ---------- Metronome (same as 04) ----------
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+
+const metronome = {
+  ctx: null, master: null, noise: null, timer: 0, playing: false,
+  nextTime: 0, step: 0, hits: [], steps: [],
+
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx;
+      this.master = ctx.createGain();
+      this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume();
+    this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05;
+    this.step = 0;
+    this.hits = []; this.steps = [];
+    this.playing = true;
+    this.timer = setInterval(() => this.schedule(), 25);
+    this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+
+  schedule() {
+    const ctx = this.ctx;
+    while (this.nextTime < ctx.currentTime + 0.1) {
+      this.queueStep(this.step, this.nextTime);
+      this.nextTime += 60 / params.bpm / 4;
+      this.step++;
+    }
+    const old = ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+
+  queueStep(step, gridTime) {
+    const sixteenth = 60 / params.bpm / 4;
+    const stepsPerBar = params.bpb * 4;
+    const inBar = step % stepsPerBar;
+    const swung = gridTime + (step % 2 === 1 ? params.swing * sixteenth : 0);
+    this.steps.push({ time: gridTime, step });
+    for (const lane of LANES) {
+      if (params[lane][inBar % 16] !== 'x') continue;
+      const time = Math.max(this.ctx.currentTime,
+                            swung + (Math.random() * 2 - 1) * params.human / 1000);
+      const vel = inBar === 0 ? 1.0 : 0.7;
+      this.hits.push({ lane, time, vel });
+      this.click(lane, time, vel);
+    }
+  },
+
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain();
+    g.connect(this.master);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') {
+      src = ctx.createOscillator();
+      src.frequency.setValueAtTime(150, t);
+      src.frequency.exponentialRampToValueAtTime(60, t + 0.08);
+      src.connect(g);
+    } else {
+      src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      const f = ctx.createBiquadFilter();
+      f.type = lane === 'snare' ? 'bandpass' : 'highpass';
+      f.frequency.value = lane === 'snare' ? 1800 : 8000;
+      src.connect(f); f.connect(g);
+    }
+    const end = t + TAU[lane] * 4;
+    g.gain.exponentialRampToValueAtTime(0.001, end);
+    src.start(t);
+    src.stop(end + 0.01);
+  },
+
+  read() {
+    const out = { kick: 0, snare: 0, hat: 0, pad: 0, beatPhase: 0, barPhase: 0 };
+    if (!this.ctx) return out;
+    const latency = Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0);
+    const now = this.ctx.currentTime - latency;
+    for (const h of this.hits) {
+      const dt = now - h.time;
+      if (dt < 0) continue;
+      const env = h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane]);
+      out[h.lane] = Math.max(out[h.lane], env);
+    }
+    let last = null;
+    for (const s of this.steps) if (s.time <= now) last = s;
+    if (last) {
+      const sixteenth = 60 / params.bpm / 4;
+      const frac = Math.min(1, (now - last.time) / sixteenth);
+      const stepsPerBar = params.bpb * 4;
+      const inBar = last.step % stepsPerBar;
+      out.beatPhase = ((inBar % 4) + frac) / 4;
+      out.barPhase = (inBar + frac) / stepsPerBar;
+      const bar = Math.floor(last.step / stepsPerBar) % params.padBars;
+      out.pad = 0.5 - 0.5 * Math.cos(2 * Math.PI * (bar + out.barPhase) / params.padBars);
+    }
+    return out;
+  },
+};
+const lanes = metronome;
+
+// ---------- Particle Lenia (CPU) ----------
+const px = new Float64Array(MAX_N), py = new Float64Array(MAX_N);
+const sU = new Float64Array(MAX_N), gUx = new Float64Array(MAX_N), gUy = new Float64Array(MAX_N);
+const gRx = new Float64Array(MAX_N), gRy = new Float64Array(MAX_N);
+const speed = new Float64Array(MAX_N), fit = new Float64Array(MAX_N);   // |v| and G(U) per point
+let N = 0;
+let seededAt = performance.now();
+let simSteps = 0;   // steps since reset
+
+// Uniform square of side 12·sqrt(n/200) around the origin (the article's 12×12 for 200).
+function seed(n) {
+  N = Math.max(1, Math.min(MAX_N, Math.round(n)));
+  const side = 12 * Math.sqrt(N / 200);
+  for (let i = 0; i < N; i++) {
+    px[i] = (Math.random() - 0.5) * side;
+    py[i] = (Math.random() - 0.5) * side;
+    speed[i] = 0; fit[i] = 0;
+  }
+  cam.x = 0; cam.y = 0; cam.half = Math.max(8, side * 0.8);
+  seededAt = performance.now();
+  simSteps = 0;
+}
+
+// One Euler step down −∇E. P: { muK, sigK, wK, muG, sigG, rep }.
+function simStep(dt, P) {
+  const n = N;
+  sU.fill(0, 0, n); gUx.fill(0, 0, n); gUy.fill(0, 0, n); gRx.fill(0, 0, n); gRy.fill(0, 0, n);
+  const cut = P.muK + 4 * P.sigK, cut2 = cut * cut, inv = 1 / P.sigK;
+  for (let i = 0; i < n; i++) {
+    const xi = px[i], yi = py[i];
+    let ui = 0, gxi = 0, gyi = 0, rxi = 0, ryi = 0;
+    for (let j = i + 1; j < n; j++) {
+      const dx = xi - px[j], dy = yi - py[j];
+      const d2 = dx * dx + dy * dy;
+      if (d2 > cut2) continue;
+      const r = Math.sqrt(d2) || 1e-6;
+      const z = (r - P.muK) * inv;
+      const k = Math.exp(-z * z);
+      ui += k; sU[j] += k;
+      // dK/dr · (x_i − x_j)/r, the part of ∇U at i from j (and minus that at j)
+      const dk = -2 * z * inv * k / r;
+      gxi += dk * dx; gyi += dk * dy;
+      gUx[j] -= dk * dx; gUy[j] -= dk * dy;
+      if (r < 1) {   // ∇ of (1−r)²/2 is −(1−r)·(x_i − x_j)/r
+        const q = (1 - r) / r;
+        rxi -= q * dx; ryi -= q * dy;
+        gRx[j] += q * dx; gRy[j] += q * dy;
+      }
+    }
+    sU[i] += ui; gUx[i] += gxi; gUy[i] += gyi; gRx[i] += rxi; gRy[i] += ryi;
+  }
+  const self = Math.exp(-((P.muK * inv) ** 2));   // K(0): each point sits in its own field too
+  for (let i = 0; i < n; i++) {
+    const u = P.wK * (sU[i] + self);
+    const z = (u - P.muG) / P.sigG;
+    const G = Math.exp(-z * z);
+    const dG = -2 * z / P.sigG * G;   // dG/dU
+    // −∇E = −c_rep·∇R + G'(U)·w_K·∇ΣK
+    const vx = -P.rep * gRx[i] + dG * P.wK * gUx[i];
+    const vy = -P.rep * gRy[i] + dG * P.wK * gUy[i];
+    px[i] += dt * vx; py[i] += dt * vy;
+    speed[i] = Math.hypot(vx, vy);
+    fit[i] = G;
+  }
+  simSteps++;
+}
+
+// Centre, rms radius, mean speed and mean G of the cloud.
+const stats = { cx: 0, cy: 0, rms: 1, speed: 0, fit: 0 };
+function measure() {
+  let cx = 0, cy = 0, sp = 0, ft = 0;
+  for (let i = 0; i < N; i++) { cx += px[i]; cy += py[i]; sp += speed[i]; ft += fit[i]; }
+  cx /= N; cy /= N;
+  let r2 = 0;
+  for (let i = 0; i < N; i++) r2 += (px[i] - cx) ** 2 + (py[i] - cy) ** 2;
+  Object.assign(stats, { cx, cy, rms: Math.sqrt(r2 / N) || 1, speed: sp / N, fit: ft / N });
+}
+
+// Strong kick: push every point 0.3 units away from the centre.
+function burst(strength) {
+  for (let i = 0; i < N; i++) {
+    const dx = px[i] - stats.cx, dy = py[i] - stats.cy, r = Math.hypot(dx, dy) || 1;
+    px[i] += 0.3 * strength * dx / r; py[i] += 0.3 * strength * dy / r;
+  }
+}
+
+// ---------- Camera: follows the cloud ----------
+const cam = { x: 0, y: 0, half: 10 };   // world units from the centre to the edge
+function followCloud() {
+  const target = Math.max(6, 1.9 * stats.rms + 0.5 * params.muK);
+  cam.x += 0.08 * (stats.cx - cam.x);
+  cam.y += 0.08 * (stats.cy - cam.y);
+  cam.half += 0.03 * (target - cam.half);
+}
+
+// ---------- WebGL ----------
+const canvas = document.getElementById('c');
+const hud = document.getElementById('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+if (!gl) fail('WebGL2 is not available in this browser.');
+function fail(msg) { hud.textContent = msg; throw new Error(msg); }
+
+const VERT = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+// The field at each pixel, summed over all points (x, y in the texture's r, g).
+const FIELD_FRAG = `#version 300 es
+precision highp float;
+precision highp sampler2D;
+uniform sampler2D uPts;
+uniform int uN;
+uniform vec2 uCenter;
+uniform float uHalf;
+uniform float uMuK, uSigK, uWK, uMuG, uSigG, uRep, uFlash;
+in vec2 vUv;
+out vec4 outColor;
+void main() {
+  vec2 x = uCenter + (vUv * 2.0 - 1.0) * uHalf;
+  float cut = uMuK + 4.0 * uSigK;
+  float U = 0.0, R = 0.0;
+  for (int i = 0; i < uN; i++) {
+    float r = length(x - texelFetch(uPts, ivec2(i, 0), 0).xy);
+    if (r < cut) { float z = (r - uMuK) / uSigK; U += exp(-z * z); }
+    if (r < 1.0) { float q = 1.0 - r; R += q * q; }
+  }
+  U *= uWK;
+  R *= 0.5 * uRep;
+  float z = (U - uMuG) / uSigG;
+  float G = exp(-z * z);
+  vec3 bg = vec3(0.02, 0.027, 0.047);
+  vec3 att = vec3(0.12, 0.85, 0.55), rep = vec3(1.0, 0.28, 0.22), iso = vec3(0.35, 0.45, 0.9);
+  float lines = smoothstep(0.9, 1.0, fract(U / uMuG * 4.0)) * smoothstep(0.02, 0.1, U);
+  vec3 col = bg + att * G * (0.7 + 0.5 * uFlash) + rep * min(R, 1.5) * 0.4 + iso * lines * 0.18;
+  col *= 1.0 + 0.5 * uFlash;
+  outColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`;
+
+// Field texture to the screen with the pad's hue drift.
+const BLIT = `#version 300 es
+precision highp float;
+uniform sampler2D uField;
+uniform float uHue;
+in vec2 vUv;
+out vec4 outColor;
+vec3 hueRotate(vec3 c, float a) {
+  vec3 k = vec3(0.57735);
+  return c * cos(a) + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - cos(a));
+}
+void main() {
+  vec3 c = texture(uField, vUv).rgb;
+  outColor = vec4(clamp(hueRotate(c, uHue), 0.0, 1.0), 1.0);
+}`;
+
+// Points: one vertex per particle, position from the texture by gl_VertexID.
+const PTS_VERT = `#version 300 es
+precision highp float;
+precision highp sampler2D;
+uniform sampler2D uPts;
+uniform vec2 uCenter;
+uniform float uHalf, uSize, uSparkle, uTime, uSpeedScale;
+out float vSpeed;
+out float vSpark;
+void main() {
+  vec4 p = texelFetch(uPts, ivec2(gl_VertexID, 0), 0);
+  gl_Position = vec4((p.xy - uCenter) / uHalf, 0.0, 1.0);
+  float h = fract(sin(float(gl_VertexID) * 12.9898 + floor(uTime * 20.0) * 78.233) * 43758.5453);
+  vSpark = uSparkle * h;
+  vSpeed = clamp(p.z * uSpeedScale, 0.0, 1.0);
+  gl_PointSize = uSize * (1.0 + 0.8 * vSpark);
+}`;
+const PTS_FRAG = `#version 300 es
+precision highp float;
+in float vSpeed;
+in float vSpark;
+out vec4 outColor;
+void main() {
+  float d = length(gl_PointCoord - 0.5) * 2.0;
+  float a = 1.0 - smoothstep(0.6, 1.0, d);
+  vec3 c = mix(vec3(0.88, 0.94, 1.0), vec3(1.0, 0.6, 0.2), vSpeed) + vSpark * 0.5;
+  outColor = vec4(c, a * 0.95);
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(s));
+  return s;
+}
+function program(vertSrc, fragSrc) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vertSrc));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fragSrc));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(p));
+  const u = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) {
+    const name = gl.getActiveUniform(p, i).name.replace('[0]', '');
+    u[name] = gl.getUniformLocation(p, name);
+  }
+  return { p, u };
+}
+const fieldProg = program(VERT, FIELD_FRAG);
+const blitProg = program(VERT, BLIT);
+const ptsProg = program(PTS_VERT, PTS_FRAG);
+gl.bindVertexArray(gl.createVertexArray());
+
+// Points texture: MAX_N × 1 RGBA32F (x, y, speed, G). Sampled with texelFetch only.
+const ptsTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, ptsTex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, MAX_N, 1, 0, gl.RGBA, gl.FLOAT, null);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+const ptsData = new Float32Array(MAX_N * 4);
+function uploadPoints() {
+  for (let i = 0; i < N; i++) {
+    ptsData[i * 4] = px[i]; ptsData[i * 4 + 1] = py[i];
+    ptsData[i * 4 + 2] = speed[i]; ptsData[i * 4 + 3] = fit[i];
+  }
+  gl.bindTexture(gl.TEXTURE_2D, ptsTex);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, N, 1, gl.RGBA, gl.FLOAT, ptsData);
+}
+
+// Field target: FIELD² RGBA8, linear filtered when stretched to the canvas.
+const fieldTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, fieldTex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, FIELD, FIELD, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+const fieldFbo = gl.createFramebuffer();
+gl.bindFramebuffer(gl.FRAMEBUFFER, fieldFbo);
+gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, fieldTex, 0);
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+const pointRange = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE);
+
+// ---------- Touch: stir, or push with two fingers ----------
+const pointer = { down: false, id: -1, x: 0, y: 0, lastX: 0, lastY: 0 };
+const activePointers = new Set();
+function toWorld(e) {
+  const r = canvas.getBoundingClientRect();
+  return [cam.x + ((e.clientX - r.left) / r.width * 2 - 1) * cam.half,
+          cam.y + (1 - (e.clientY - r.top) / r.height * 2) * cam.half];
+}
+canvas.addEventListener('pointerdown', e => {
+  document.getElementById('hint').classList.add('gone');
+  canvas.setPointerCapture(e.pointerId);
+  activePointers.add(e.pointerId);
+  if (pointer.down) return;
+  [pointer.x, pointer.y] = toWorld(e);
+  pointer.lastX = pointer.x; pointer.lastY = pointer.y;
+  pointer.down = true; pointer.id = e.pointerId;
+});
+canvas.addEventListener('pointermove', e => {
+  if (pointer.down && e.pointerId === pointer.id) [pointer.x, pointer.y] = toWorld(e);
+});
+for (const ev of ['pointerup', 'pointercancel']) canvas.addEventListener(ev, e => {
+  activePointers.delete(e.pointerId);
+  if (e.pointerId === pointer.id) pointer.down = false;
+});
+function applyTouch() {
+  if (!pointer.down) return;
+  const rad = 0.18 * cam.half, push = activePointers.size > 1;
+  const mx = pointer.x - pointer.lastX, my = pointer.y - pointer.lastY;
+  for (let i = 0; i < N; i++) {
+    const dx = px[i] - pointer.x, dy = py[i] - pointer.y, r = Math.hypot(dx, dy);
+    if (r >= rad) continue;
+    const w = 1 - (r / rad) ** 2;
+    if (push) { const s = 0.25 * w / (r || 1); px[i] += dx * s; py[i] += dy * s; }
+    else { px[i] += mx * w; py[i] += my * w; }
+  }
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+$('play').onclick = () => {
+  if (metronome.playing) metronome.stop(); else metronome.start();
+  $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
+  $('play').classList.toggle('on', metronome.playing);
+};
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); syncButtons(); };
+$('padBars').onclick = () => { params.padBars = params.padBars === 1 ? 4 : 1; syncButtons(); };
+
+const creatureSliders = { N: 0, muK: 1, sigK: 2, wK: 4, muG: 2, sigG: 3, rep: 2, dt: 2, steps: 0 };
+const grooveSliders = { bpm: 0, bpb: 0, swing: 2, human: 0 };
+const sliders = { ...creatureSliders, ...grooveSliders, kickAmt: 1 };   // name → decimals shown
+
+let basePreset = 'small-ring', baseGroove = 'four';
+function makeButtons(box, names, onPick) {
+  for (const name of names) {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.onclick = () => onPick(name);
+    $(box).appendChild(b);
+  }
+}
+makeButtons('presets', [...Object.keys(PRESETS), '🎲'], name => {
+  if (name === '🎲') randomize(); else applyPreset(name);
+  seed(params.N);
+});
+makeButtons('grooves', Object.keys(GROOVES), name => applyGroove(name));
+
+function markOn(box, name) { for (const b of $(box).children) b.classList.toggle('on', b.textContent === name); }
+function applyPreset(name) {
+  basePreset = name;
+  Object.assign(params, PRESETS[name], { preset: name });
+  markOn('presets', name);
+  syncControls();
+}
+function applyGroove(name) {
+  baseGroove = name;
+  Object.assign(params, GROOVES[name], { groove: name });
+  markOn('grooves', name);
+  syncControls();
+}
+// 🎲: new μ_G, σ_G and repulsion around the current ring; starting points, not known creatures.
+function randomize() {
+  const r = (a, b) => a + Math.random() * (b - a);
+  params.muG = +r(0.35, 0.85).toFixed(2);
+  params.sigG = +(Math.round(r(0.06, 0.25) / 0.005) * 0.005).toFixed(3);
+  params.rep = +(Math.round(r(0.5, 1.8) / 0.05) * 0.05).toFixed(2);
+  params.preset = 'random';
+  markOn('presets', '🎲');
+  syncControls();
+}
+function markCustom(kind) {
+  if (kind === 'creature') { params.preset = 'custom'; markOn('presets', ''); }
+  else { params.groove = 'custom'; markOn('grooves', ''); }
+}
+
+function cleanPattern(s) {
+  return (String(s).toLowerCase().replace(/[^x]/g, '.') + '.'.repeat(16)).slice(0, 16);
+}
+for (const lane of LANES) {
+  $(lane).addEventListener('input', e => { params[lane] = cleanPattern(e.target.value); markCustom('groove'); });
+  $(lane).addEventListener('change', e => { e.target.value = params[lane]; });
+}
+
+function syncControls() {
+  for (const [name, dec] of Object.entries(sliders)) {
+    $(name).value = params[name];
+    $(name + 'Out').textContent = Number(params[name]).toFixed(dec);
+  }
+  for (const lane of LANES) $(lane).value = params[lane];
+  syncButtons();
+}
+for (const [name, dec] of Object.entries(sliders)) {
+  $(name).addEventListener('input', e => {
+    params[name] = parseFloat(e.target.value);
+    $(name + 'Out').textContent = params[name].toFixed(dec);
+    if (name in creatureSliders) markCustom('creature');
+    if (name in grooveSliders) markCustom('groove');
+  });
+}
+$('N').addEventListener('change', () => seed(params.N));   // a new count needs a new cloud
+function syncButtons() {
+  for (const name of Object.keys(maps)) $(name).classList.toggle('on', maps[name]);
+  $('mute').classList.toggle('on', params.muted);
+  $('padBars').textContent = `pad ${params.padBars} bar${params.padBars > 1 ? 's' : ''}`;
+  $('view').textContent = params.view === 'field' ? 'View: field' : 'View: points';
+  $('hudMode').textContent = params.hudShort ? 'Info: short' : 'Info: full';
+  $('pause').classList.toggle('on', params.paused);
+}
+for (const name of Object.keys(maps)) $(name).onclick = () => { maps[name] = !maps[name]; syncButtons(); };
+$('reset').onclick = () => seed(params.N);
+$('pause').onclick = () => { params.paused = !params.paused; syncButtons(); };
+$('view').onclick = () => { params.view = params.view === 'field' ? 'points' : 'field'; syncButtons(); };
+$('hudMode').onclick = () => { params.hudShort = !params.hudShort; syncButtons(); };
+
+function mapsLabel() {
+  const names = { mKickRep: 'kick→rep', mKickBurst: 'kick→burst', mPadMuG: 'pad→μ_G',
+                  mSnareFlash: 'snare→flash', mHatSparkle: 'hat→sparkle', mPadHue: 'pad→hue' };
+  const on = Object.keys(maps).filter(m => maps[m]).map(m => names[m]);
+  return on.length ? on.join(' ') : 'none';
+}
+
+// ---------- Copy setup / URL ----------
+function setupLink() {
+  const q = new URLSearchParams({ preset: basePreset, groove: baseGroove });
+  for (const name of Object.keys(sliders)) q.set(name, params[name]);
+  for (const lane of LANES) q.set(lane, params[lane]);
+  q.set('padBars', params.padBars);
+  for (const name of Object.keys(maps)) q.set(name, maps[name] ? 1 : 0);
+  q.set('muted', params.muted ? 1 : 0);
+  if (params.view !== 'field') q.set('view', params.view);
+  if (params.hudShort) q.set('hud', 'short');
+  if (FIELD !== 256) q.set('field', FIELD);
+  return location.origin + location.pathname + '?' + q;
+}
+function setupText() {
+  const secs = Math.round((performance.now() - seededAt) / 1000);
+  const from = (v, base) => v === 'custom' ? `custom (from ${base})` : v;
+  return `07 · Particle Lenia · ${from(params.preset, basePreset)} · groove ${from(params.groove, baseGroove)}\n` +
+    `N ${N}  μ_K ${params.muK.toFixed(1)}  σ_K ${params.sigK.toFixed(2)}  w_K ${params.wK.toFixed(4)}  ` +
+    `μ_G ${params.muG.toFixed(2)}  σ_G ${params.sigG.toFixed(3)}  rep ${params.rep.toFixed(2)}  dt ${params.dt}  steps ${params.steps}\n` +
+    `${params.bpm} bpm ${params.bpb}/4 swing ${params.swing.toFixed(2)} humanize ${params.human} ms · pad ${params.padBars} bar\n` +
+    `kick ${params.kick}  snare ${params.snare}  hat ${params.hat}\n` +
+    `maps: ${mapsLabel()} · kick→rep ×${params.kickAmt}\n` +
+    `field ${FIELD}² · ${fps} fps · sim ${simMs.toFixed(1)} ms/frame · ${simSteps} steps · ${secs}s since reset\n` +
+    setupLink();
+}
+$('copy').onclick = async e => {
+  const text = setupText(), btn = e.target;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    ok = document.execCommand('copy'); ta.remove();
+  }
+  if (!ok) { prompt('Copy this:', text); return; }
+  btn.textContent = 'Copied ✓';
+  setTimeout(() => { btn.textContent = 'Copy setup'; }, 1500);
+};
+
+function loadFromUrl() {
+  applyPreset(PRESETS[query.get('preset')] ? query.get('preset') : 'small-ring');
+  applyGroove(GROOVES[query.get('groove')] ? query.get('groove') : 'four');
+  let creatureChanged = false, grooveChanged = false;
+  for (const name of Object.keys(sliders)) {
+    const v = parseFloat(query.get(name));
+    if (Number.isNaN(v) || v === params[name]) continue;
+    params[name] = v;
+    if (name in creatureSliders) creatureChanged = true;
+    if (name in grooveSliders) grooveChanged = true;
+  }
+  for (const lane of LANES) {
+    if (!query.has(lane)) continue;
+    const p = cleanPattern(query.get(lane));
+    if (p !== params[lane]) { params[lane] = p; grooveChanged = true; }
+  }
+  if (query.get('padBars') === '4') params.padBars = 4;
+  for (const name of Object.keys(maps)) if (query.has(name)) maps[name] = query.get(name) === '1';
+  params.muted = query.get('muted') === '1';
+  params.view = query.get('view') === 'points' ? 'points' : 'field';
+  params.hudShort = query.get('hud') === 'short';
+  if (creatureChanged) markCustom('creature');
+  if (grooveChanged) markCustom('groove');
+  syncControls();
+  seed(params.N);
+}
+
+// ---------- Main loop ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(1024, Math.round(canvas.clientWidth * dpr));
+  const h = Math.min(1024, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+
+const bar = v => '█'.repeat(Math.round(v * 8)).padEnd(8, '·');
+let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
+let prevKick = 0, bursts = 0, simMs = 0;
+let eff = {};
+function frame(now) {
+  resize();
+  const L = lanes.read();
+
+  eff = { muK: params.muK, sigK: params.sigK, wK: params.wK, sigG: params.sigG,
+          muG: params.muG + (maps.mPadMuG ? 0.03 * (2 * L.pad - 1) : 0),
+          rep: params.rep * (1 + (maps.mKickRep ? params.kickAmt * L.kick : 0)) };
+  const downbeat = !params.paused && L.kick >= STRONG_KICK && prevKick < STRONG_KICK;
+  prevKick = L.kick;
+
+  const t0 = performance.now();
+  applyTouch();
+  pointer.lastX = pointer.x; pointer.lastY = pointer.y;
+  if (!params.paused) {
+    if (maps.mKickBurst && downbeat) { burst(1); bursts++; }
+    for (let s = 0; s < params.steps; s++) simStep(params.dt, eff);
+  }
+  measure();
+  simMs += 0.1 * (performance.now() - t0 - simMs);
+  followCloud();
+  uploadPoints();
+
+  // 1. field → FIELD² texture
+  gl.disable(gl.BLEND);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fieldFbo);
+  gl.viewport(0, 0, FIELD, FIELD);
+  if (params.view === 'field') {
+    gl.useProgram(fieldProg.p);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, ptsTex);
+    gl.uniform1i(fieldProg.u.uPts, 0);
+    gl.uniform1i(fieldProg.u.uN, N);
+    gl.uniform2f(fieldProg.u.uCenter, cam.x, cam.y);
+    gl.uniform1f(fieldProg.u.uHalf, cam.half);
+    gl.uniform1f(fieldProg.u.uMuK, eff.muK);
+    gl.uniform1f(fieldProg.u.uSigK, eff.sigK);
+    gl.uniform1f(fieldProg.u.uWK, eff.wK);
+    gl.uniform1f(fieldProg.u.uMuG, eff.muG);
+    gl.uniform1f(fieldProg.u.uSigG, eff.sigG);
+    gl.uniform1f(fieldProg.u.uRep, eff.rep);
+    gl.uniform1f(fieldProg.u.uFlash, maps.mSnareFlash ? L.snare : 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  } else {
+    gl.clearColor(0.02, 0.027, 0.047, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+
+  // 2. field → screen
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(blitProg.p);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, fieldTex);
+  gl.uniform1i(blitProg.u.uField, 0);
+  gl.uniform1f(blitProg.u.uHue, maps.mPadHue ? (L.pad - 0.5) * 1.6 : 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  // 3. points on top; a point is about one repulsion radius wide
+  const pxPerUnit = canvas.width / (2 * cam.half);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(ptsProg.p);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, ptsTex);
+  gl.uniform1i(ptsProg.u.uPts, 0);
+  gl.uniform2f(ptsProg.u.uCenter, cam.x, cam.y);
+  gl.uniform1f(ptsProg.u.uHalf, cam.half);
+  gl.uniform1f(ptsProg.u.uSize, Math.min(pointRange[1], Math.max(2, 0.6 * pxPerUnit)));
+  gl.uniform1f(ptsProg.u.uSparkle, maps.mHatSparkle ? L.hat : 0);
+  gl.uniform1f(ptsProg.u.uTime, now / 1000);
+  gl.uniform1f(ptsProg.u.uSpeedScale, 1 / Math.max(0.05, 4 * stats.speed));   // fastest ~quarter turn orange
+  gl.drawArrays(gl.POINTS, 0, N);
+  gl.disable(gl.BLEND);
+
+  frames++;
+  if (now - lastFpsTime > 500) {
+    fps = Math.round(frames * 1000 / (now - lastFpsTime));
+    frames = 0; lastFpsTime = now;
+  }
+  if (now - lastHud > 100) {
+    lastHud = now;
+    const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    hud.textContent = params.hudShort
+      ? `${params.preset} · ${params.bpm} bpm · ${state} · ${fps} fps · N ${N} · fit ${stats.fit.toFixed(2)}`
+      :
+      `particle lenia · ${params.preset} · ${params.groove} ${params.bpm} bpm ${params.bpb}/4 · ${state}\n` +
+      `kick  ${bar(L.kick)} ${L.kick.toFixed(2)}   snare ${bar(L.snare)}\n` +
+      `hat   ${bar(L.hat)} ${L.hat.toFixed(2)}   pad   ${bar(L.pad)}\n` +
+      `N ${N} μ_K ${eff.muK.toFixed(1)} σ_K ${eff.sigK.toFixed(2)} w_K ${eff.wK.toFixed(4)}\n` +
+      `μ_G ${eff.muG.toFixed(3)} σ_G ${eff.sigG.toFixed(3)} rep ${eff.rep.toFixed(2)}${bursts ? ` · ${bursts} bursts` : ''}\n` +
+      `fit ${stats.fit.toFixed(2)} · speed ${stats.speed.toFixed(3)} · size ${stats.rms.toFixed(1)} · ${simSteps} steps\n` +
+      `${fps} fps · sim ${simMs.toFixed(1)} ms · field ${FIELD}²`;
+  }
+  requestAnimationFrame(frame);
+}
+
+loadFromUrl();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
