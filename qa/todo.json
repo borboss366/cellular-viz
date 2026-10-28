@@ -485,6 +485,23 @@
     "label": "\u25b6 watch all",
     "href": "/run/13-flow-lab/2026-10-28-1034-pr72-swipe"
    }
+  ],
+  "done": "2026-10-28T11:54:15.949Z"
+ },
+ {
+  "id": "18-beamline",
+  "from": "QA box",
+  "title": "18 Little Bang: new beamline scene + quench Mach cone vs before \u2014 swipe, then merge #75",
+  "note": "PR #75 @9311bdb passes the runner's 17 checks and my new check-18 (camera exactly on the beam axis, bunches cross on every downbeat with the camera halted 0.9 short of the collision point, Mach cone 35.3\u00b0 as physics says, jet pairs on the snares, 9 ms lag, 60 fps to 4K). Note: 'old beamline' is just the old page's default scene (beamline didn't exist). Heads-up: the orange cone is tiny on screen (\u22480.004 % of the picture in a still), so the quench scene looks almost unchanged. 40 s each.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/18-little-bang/2026-10-28-1216-pr75-swipe/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/18-little-bang/2026-10-28-1216-pr75-swipe"
+   }
   ]
  }
 ]

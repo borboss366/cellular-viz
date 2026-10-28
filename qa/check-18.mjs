@@ -12,6 +12,7 @@
 //  5. Jets: collide pairs are balanced (A_J = 0); quench pairs have A_J = q/(2 − q).
 //  6. Sync from __qa.events (≤ 40 ms after the sound), liveness, errors.
 //  8. #58 white blob: in the collide scene, < 2 % of pixels clipped (any channel ≥ 254) in every frame over 16 s.
+//  9–12. #75: beamline camera on axis, bunches cross on the downbeat, Mach cone angle, jets on snares (see block 9–12).
 //  7. fps (vsync p95, frames > 20 ms) at 1080p, 1440p and 4K for collide and quench at
 //     n = 150k and 1M, plus strings and auto at default.
 import { chromium } from 'playwright';
@@ -142,6 +143,92 @@ for (const [label, q] of runs) {
     await page.close();
   }
 }
+// ---- 9–12: beamline scene and the quench Mach cone (#75) ----
+// 9  camera rides the beam axis: its distance from the ring's axis circle (radius 24 from the spec; I also fit the circle
+//    to the camera's own path) stays < 0.35 (the pipe radius), every frame of 16 s.
+// 10 bunches cross on the downbeat: every 'crossing' event lands one bar after the last (±2 ms), ≤ 40 ms after the sound,
+//    and the camera is halted just short of the IP then (distance 0.6–1.2 from the IP, speed ≤ 5 % of its lap average).
+// 11 Mach cone: every frame, the orange wake sprites the page uploads (colour ratio 1 : 0.5 : 0.18) are fitted with my own
+//    line rad = A − tanθ·ax along the wake's direction; the narrowest cone of each wake (before it widens) must be
+//    asin(c_s/v) ± 3°, with c_s and v as the page states them.
+// 12 jets: every dijet sits on a snare step (step 4 or 12 of the bar) and its jet event is ≤ 40 ms after the sound;
+//    escaping side narrow vs the quenched side, from the shader's spread formula (reported as such, not from pixels).
+{
+  const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto(`${base}?scene=beamline`); await page.addStyleTag({ content: FULL }); await page.waitForTimeout(800);
+  await page.click('#play').catch(() => {});
+  await page.waitForTimeout(1500);
+  res.beam = await page.evaluate(async () => {
+    const S = [], seen = new Map(), t0 = performance.now();
+    await new Promise(done => { const f = () => { const c = __qa.camera; if (c && c.pos) S.push({ bars: __qa.bars, p: c.pos.slice() });
+      for (const e of __qa.events || []) if (e.type === 'crossing') seen.set(e.tBeat, e);
+      if (performance.now() - t0 < 16000) requestAnimationFrame(f); else done(); }; requestAnimationFrame(f); });
+    return { S, crossings: [...seen.values()].map(e => ({ bar: e.bar, tBeat: e.tBeat, lag: e.perfDrawn - e.perfHeard })), bpm: __qa.bpm || 120 };
+  });
+  await page.close();
+}
+{
+  const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
+  page.on('pageerror', e => errors.push(e.message));
+  await page.addInitScript(() => {   // keep the orange (wake) sprites of each sprite upload
+    const W = window.__wakeFrames = [], orig = WebGL2RenderingContext.prototype.bufferData;
+    WebGL2RenderingContext.prototype.bufferData = function (target, data, usage) {
+      if (usage === this.DYNAMIC_DRAW && data instanceof Float32Array && data.length % 7 === 0 && data.length) {
+        const pts = [];
+        for (let i = 0; i < data.length; i += 7) { const r = data[i + 3], g = data[i + 4], b = data[i + 5];
+          if (r > 1e-4 && Math.abs(g / r - 0.5) < 0.02 && Math.abs(b / r - 0.18) < 0.02 && data[i + 6] === 5) pts.push([data[i], data[i + 1], data[i + 2]]); }
+        if (pts.length >= 40 && window.__qa) W.push({ bars: window.__qa.bars, pts, wake: (window.__qa.wakes || []).slice(-1)[0] || null });
+        if (W.length > 4000) W.shift();
+      }
+      return orig.call(this, target, data, usage);
+    };
+  });
+  await page.goto(`${base}?scene=quench`); await page.addStyleTag({ content: FULL }); await page.waitForTimeout(800);
+  await page.click('#play').catch(() => {});
+  await page.waitForTimeout(16000);
+  res.wake = await page.evaluate(() => {
+    const fits = [];
+    for (const F of window.__wakeFrames) { const w = F.wake; if (!w || !w.dir) continue;
+      const d = w.dir, n = Math.hypot(...d), u = d.map(x => x / n);
+      const ax = [], rad = [];
+      for (const p of F.pts) { const a = p[0] * u[0] + p[1] * u[1] + p[2] * u[2]; ax.push(a); rad.push(Math.hypot(p[0] - a * u[0], p[1] - a * u[1], p[2] - a * u[2])); }
+      const N = ax.length, mx = ax.reduce((s, x) => s + x, 0) / N, my = rad.reduce((s, x) => s + x, 0) / N;
+      let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < N; i++) { sxy += (ax[i] - mx) * (rad[i] - my); sxx += (ax[i] - mx) ** 2; syy += (rad[i] - my) ** 2; }
+      const slope = sxy / sxx, r2 = sxy * sxy / (sxx * syy);
+      fits.push({ key: `${w.bar}.${w.step}`, bars: +F.bars.toFixed(3), deg: Math.atan(Math.abs(slope)) * 180 / Math.PI, r2, n: N, want: Math.asin(w.cs / w.v) * 180 / Math.PI });
+    }
+    const by = {}; for (const f of fits) (by[f.key] ??= []).push(f);
+    const wakes = Object.entries(by).map(([k, a]) => { const good = a.filter(f => f.r2 > 0.98); const lo = good.length ? Math.min(...good.map(f => f.deg)) : null;
+      return { wake: k, frames: a.length, fitted: good.length, narrowest: lo === null ? null : +lo.toFixed(2), widest: good.length ? +Math.max(...good.map(f => f.deg)).toFixed(2) : null, want: +a[0].want.toFixed(2) }; });
+    const dij = (window.__qa.dijets || []).map(j => ({ bar: j.bar, step: j.step, AJ: j.AJ }));
+    const seen = new Map(); for (const e of window.__qa.events || []) if (e.type === 'jet') seen.set(e.tBeat, e.perfDrawn - e.perfHeard);
+    // escaping vs quenched side spread, from the shader's own formula: φ offset (u − 0.5)·0.16·wide, wide = 1 + 2.5·q·side
+    const q = (window.__qa.lastJet && window.__qa.lastJet.quench) || 0.75, R = window.__qa.rnd, seed = (window.__qa.lastJet && window.__qa.lastJet.seed) || 1;
+    const spread = side => { let s2 = 0; const n = 200; for (let i = 0; i < n; i++) { const u1 = R ? R(seed, i, 1) : Math.random(); const o = (u1 - 0.5) * 0.16 * (1 + 2.5 * q * side); s2 += o * o; } return Math.sqrt(s2 / n) * 180 / Math.PI; };
+    return { wakes, dijets: dij, jetLags: [...seen.values()], escRms: +spread(0).toFixed(2), quRms: +spread(1).toFixed(2), q };
+  });
+  await page.close();
+}
+{   // my numbers from the raw samples
+  const B = res.beam, R0 = 24, barSec = 4 * 60 / (B.bpm || 120);
+  const off = B.S.map(s => Math.hypot(s.p[1], Math.hypot(s.p[0], s.p[2] + R0) - R0));
+  // least-squares circle through the camera path in the x–z plane (Kåsa fit)
+  let Sx = 0, Sz = 0, Sxx = 0, Szz = 0, Sxz = 0, Sxr = 0, Szr = 0, Sr = 0; const N = B.S.length;
+  for (const { p } of B.S) { const x = p[0], z = p[2], r = x * x + z * z; Sx += x; Sz += z; Sxx += x * x; Szz += z * z; Sxz += x * z; Sxr += x * r; Szr += z * r; Sr += r; }
+  const M = [[Sxx, Sxz, Sx], [Sxz, Szz, Sz], [Sx, Sz, N]], v = [-Sxr, -Szr, -Sr];
+  const det = m => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const D = det(M), col = (k) => det(M.map((row, i) => row.map((x, j) => j === k ? v[i] : x)));
+  const a = col(0) / D, b = col(1) / D, c = col(2) / D, cx = -a / 2, cz = -b / 2, fitR = Math.sqrt(cx * cx + cz * cz - c);
+  // speed per sample (units per second) and the state at each downbeat
+  const sp = []; for (let i = 1; i < N; i++) { const db = (B.S[i].bars - B.S[i - 1].bars) * barSec; if (db > 0) sp.push({ bars: B.S[i].bars, v: Math.hypot(...B.S[i].p.map((x, k) => x - B.S[i - 1].p[k])) / db, dIP: Math.hypot(...B.S[i].p) }); }
+  const vMean = sp.reduce((s, x) => s + x.v, 0) / Math.max(1, sp.length);
+  const atDown = sp.filter(x => { const f = x.bars - Math.round(x.bars); return Math.abs(f) <= 0.02; });
+  const cr = B.crossings.sort((x, y) => x.tBeat - y.tBeat), gaps = cr.slice(1).map((x, i) => x.tBeat - cr[i].tBeat);
+  res.beamSum = { frames: N, maxOff: Math.max(...off), fitR, fitCentre: [cx, cz], vMean, downFrames: atDown.length,
+    downMaxV: atDown.length ? Math.max(...atDown.map(x => x.v)) : null, downDIP: atDown.length ? [Math.min(...atDown.map(x => x.dIP)), Math.max(...atDown.map(x => x.dIP))] : null,
+    crossings: cr.length, gapErrMs: gaps.length ? Math.max(...gaps.map(g => Math.abs(g - barSec) * 1000)) : null, crossLagMax: cr.length ? Math.max(...cr.map(x => x.lag)) : null };
+}
 await browser.close(); server.close();
 
 const m = res.maths;
@@ -156,6 +243,10 @@ const pass = {
   alive: Object.values(res.speed).every(o => Object.values(o).every(v => v.alive)),
   fps1440: Object.entries(res.speed).filter(([k]) => !k.includes('1M')).every(([, o]) => !o['1440p'] || (o['1440p'].p95 <= 16.8 && o['1440p'].over20 <= 3)),   // the 1M-track stress setting is reported, not gated (accepted 2026-10-25)
   noClip: res.clip.frames > 50 && res.clip.worstClipAnyFrame < 0.02,   // the blob peaks on the collision itself, which is not always the frame with the highest mean
+  beamAxis: res.beamSum.frames > 300 && res.beamSum.maxOff < 0.35,
+  crossing: res.beamSum.crossings >= 4 && res.beamSum.gapErrMs <= 2 && res.beamSum.crossLagMax <= 40 && res.beamSum.downFrames > 0 && res.beamSum.downMaxV <= 0.05 * res.beamSum.vMean && res.beamSum.downDIP[0] >= 0.6 && res.beamSum.downDIP[1] <= 1.2,
+  machCone: res.wake.wakes.filter(w => w.narrowest !== null).length >= 3 && res.wake.wakes.filter(w => w.narrowest !== null).every(w => Math.abs(w.narrowest - w.want) <= 3),
+  dijets: res.wake.dijets.length >= 4 && res.wake.dijets.every(j => j.step % 8 === 4) && res.wake.jetLags.length > 0 && Math.max(...res.wake.jetLags) <= 40 && res.wake.escRms <= 5 && res.wake.quRms >= 2 * res.wake.escRms,
   noErrors: !errors.length && Object.values(res.speed).every(o => Object.values(o).every(v => !v.caught)),
 };
 const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
@@ -173,6 +264,10 @@ fs.writeFileSync(path.join(dir, 'check.md'), `# 18 Little Bang check · ${stamp}
   `| sync from __qa.events (≤ 40 ms after the sound) | ${ok(pass.sync)} | ${Object.entries(res.sync).map(([k, v]) => `${k} ${v.median} ms (n ${v.n})`).join(' · ')} |\n` +
   `| page keeps animating | ${ok(pass.alive)} | |\n` +
   `| collide: < 2 % of pixels clipped in every frame of 16 s (#58) | ${ok(pass.noClip)} | worst frame ${(res.clip.worstClipAnyFrame * 100).toFixed(2)} % clipped (any channel ≥ 254) of ${res.clip.frames} frames · brightest frame (mean lum ${(res.clip.brightest.lum * 100).toFixed(1)} %): clipped ${(res.clip.brightest.clip * 100).toFixed(2)} %, white ${(res.clip.brightest.white * 100).toFixed(2)} % · ${res.clip.size.join('×')} |\n` +
+  `| beamline: camera on the beam axis (< 0.35 off, every frame) | ${ok(pass.beamAxis)} | worst ${res.beamSum.maxOff.toExponential(2)} over ${res.beamSum.frames} frames · my circle fit to the camera path: R ${res.beamSum.fitR.toFixed(3)} (spec 24) |\n` +
+  `| beamline: bunches cross on the downbeat, camera halted just short of the IP | ${ok(pass.crossing)} | ${res.beamSum.crossings} crossings, bar-to-bar error ≤ ${res.beamSum.gapErrMs?.toFixed(2)} ms, lag ≤ ${res.beamSum.crossLagMax?.toFixed(1)} ms · at downbeats: ${res.beamSum.downDIP ? res.beamSum.downDIP.map(x => x.toFixed(2)).join('–') : '–'} from the IP, speed ≤ ${res.beamSum.downMaxV?.toFixed(2)} (lap mean ${res.beamSum.vMean.toFixed(1)}) |\n` +
+  `| quench: Mach cone half-angle = asin(c_s/v) ± 3° (my fit to the drawn wake) | ${ok(pass.machCone)} | ${res.wake.wakes.map(w => `${w.wake}: ${w.narrowest ?? '–'}° (widens to ${w.widest ?? '–'}°, ${w.fitted}/${w.frames} frames fit)`).join(' · ')} · want ${res.wake.wakes[0]?.want ?? '–'}° |\n` +
+  `| jets: each pair on a snare, ≤ 40 ms; escaping side narrow | ${ok(pass.dijets)} | ${res.wake.dijets.length} pairs on steps ${[...new Set(res.wake.dijets.map(j => j.step))].join('/')} · lag ≤ ${res.wake.jetLags.length ? Math.max(...res.wake.jetLags).toFixed(1) : '–'} ms · φ spread ${res.wake.escRms}° escaping vs ${res.wake.quRms}° quenched (shader formula, q ${res.wake.q}) |\n` +
   `| 1440p: p95 ≤ 16.8 ms, ≤ 3 frames > 20 ms | ${ok(pass.fps1440)} | |\n` +
   `| errors | ${ok(pass.noErrors)} | ${errors.slice(0, 2).join('; ') || 'none'} |\n\n` +
   `## Frame times (vsync)\n\n| run | 1080p p95 / >20 ms | 1440p p95 / >20 ms | 4K p95 / >20 ms | canvas at 4K | tracks drawn |\n|---|---|---|---|---|---|\n` +
