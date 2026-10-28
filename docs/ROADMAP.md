@@ -16,6 +16,7 @@ The user is in charge ("for now I want to be in charge"): during step 1 the user
    - **Knob tags become scene macros.** A grading comment can carry `knob: <what>`. VIZ research turns each tag into a knob spec: mapping, range, default and a `macro1`–`macro4` slot (#85).
    - VIZ dev builds it as that macro, with an on-screen slider until the controller arrives, and exposes it in `__qa`.
    - QA box sweeps the knob, and the scene's picture metric must change across the sweep.
+   - **`button:` tags become scene triggers** (`trigger1`–`trigger4`: bottom buttons 1–4, keys `Z X C V`), specced the same way. Every bump goes through the #88 light limiter, so mashing a button can't break the flash rule.
    - Existing pages get a knob pass later, before the rehearsal; the user accepts redoing them.
 
 How it fits together: one control contract for every scene, an input bus (sliders and keyboard now, the controller later, sensors in step 2) and a host page that blends scene modules in one WebGL context (design #85). A panic key works in every scene: B blackout, ` calm fallback (#86).
