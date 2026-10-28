@@ -139,7 +139,13 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const qaHome = path.resolve(process.env.QA_HOME || path.join(here, '..', '..'));
   const stateDir = path.resolve(process.env.RUNNER_STATE || path.join(os.homedir(), '.cache', 'cellular-viz-runner'));
   if (process.argv[2] !== 'sync') { console.error('usage: node qa/runner/board.mjs sync [--dry]'); process.exit(2); }
-  const r = await sync({ buildsFile: path.join(qaHome, 'qa', 'builds.json'), stateDir, dry: process.argv.includes('--dry') });
+  // Short by default (QA box runs it bare, no | tail): the first 8 lines, then a count. --verbose prints every line.
+  const verbose = process.argv.includes('--verbose'), lines = [];
+  const r = await sync({ buildsFile: path.join(qaHome, 'qa', 'builds.json'), stateDir, dry: process.argv.includes('--dry'), log: l => lines.push(l) });
+  const failed = lines.filter(l => / failed: /.test(l)), rest = lines.filter(l => !/ failed: /.test(l));
+  const shown = verbose ? lines : [...failed, ...rest].slice(0, 8);
+  for (const l of shown) console.log(l);
+  if (shown.length < lines.length) console.log(`… ${lines.length - shown.length} more lines (node qa/runner/board.mjs sync --verbose)`);
   console.log(`${r.filter(m => m.ok).length} moves${r.some(m => !m.ok) ? `, ${r.filter(m => !m.ok).length} failed` : ''}`);
   process.exit(r.some(m => !m.ok) ? 1 : 0);
 }
