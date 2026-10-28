@@ -784,7 +784,7 @@ window.__qa = { errors, events, presets: PRESET_NAMES, hodge, table: TABLE, bett
   get knobs() { return this.macros; },
   press: b => { if (b === 1 || b === 'button1' || b === 'trigger') { trigger(); return true; } return false; },
   // #85 buttons (comment 6481677687): trigger1 = bottom 1 / Z is "next shape"; 2–4 are free
-  triggers: { trigger1: 'next shape on the next beat' }, triggerLog,
+  triggers: [{ slot: 1, name: 'next shape', key: 'Z', does: 'next shape on the next beat' }], triggerLog,
   pressTrigger: (i, holdMs = 0) => { if (i !== 1) return false; trigger(); return true; },
   simulate, rateTruths, morphs, morphSync, liveTruths };
 const q = k => query.get(k);
