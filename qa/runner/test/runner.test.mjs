@@ -259,3 +259,8 @@ test('board: the first sync records builds and moves only closed and missing ite
   const next = B.plan(items, states, [...builds, bl(45, '17-x', 2, 'failed', { gates: [{ name: 'groupLaw', ok: false }] })], { 45: 'viz-45-1:failed' });
   assert.deepEqual(next.filter(m => !m.noop && m.n === 45).map(m => m.to), ['In progress']);
 });
+
+test('board: a closed unmerged PR\'s builds go to Done like merged ones', () => {
+  assert.equal(B.TARGET.closed, 'Done');
+  assert.equal(B.TARGET.merged, 'Done');
+});

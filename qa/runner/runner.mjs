@@ -28,6 +28,7 @@ import { gpuGate, unlock as gpuUnlock, GPU } from './gpu.mjs';
 import { loadFile } from './experiment.mjs';
 import { historyEntry, commitPaths, reportFiles, buildDirs, messageFor } from './post.mjs';
 import { sync as boardSync } from './board.mjs';
+import { runShared } from './shared.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -46,6 +47,8 @@ const CFG = {
   label: env('RUNNER_LABEL', 'qa-ready'),
   commit: env('RUNNER_COMMIT', '1') !== '0',   // after each build: commit its .md/.json reports + history entry in QA_HOME (never pushes)
   board: env('RUNNER_BOARD', '1') !== '0',     // after each build and merge: move the board cards (gh, the box's login)
+  shared: env('SHARED_CHECKS', '1') !== '0',   // after each page's own check: qa/check-shared.mjs (flash + GPU gates, #88)
+  sharedMin: Math.max(1, +env('SHARED_TIMEOUT_MIN', '12') || 12),
   once: argv.includes('--once'),
 };
 if (!/^[\w.-]+\/[\w.-]+$/.test(CFG.repo)) throw new Error('bad repo ' + CFG.repo);
@@ -124,7 +127,20 @@ function enqueue(job) {
   state.queue.push(job);
   log(`queued #${job.pr} ${job.kind === 'experiment' ? 'experiment' : job.page} @${job.sha.slice(0, 7)}`);
 }
+// A qa-ready PR runs only its experiment file. If the runner saw it before the label landed (opened, then labelled a
+// minute later: #86 touched all 19 pages and queued 19 page builds, 01–08 "failed" in 0.7 s for want of a check
+// script, 09+ ran full checks nobody asked for), its page builds are dropped here, also from a queue saved before a
+// restart. A PR is labelled when its seen key carries the label (set below).
+function dropPageJobsOfLabelled() {
+  const labelled = n => String(state.seen[n] || '').endsWith(`+${CFG.label}`);
+  const drop = state.queue.filter(j => j.kind !== 'experiment' && labelled(j.pr));
+  if (!drop.length) return;
+  state.queue = state.queue.filter(j => !drop.includes(j));
+  log(`dropped ${drop.length} queued page build${drop.length > 1 ? 's' : ''} of qa-ready PR${new Set(drop.map(j => j.pr)).size > 1 ? 's' : ''} #${[...new Set(drop.map(j => j.pr))].join(', #')} (${drop.map(j => j.page).join(', ')}): the experiment file runs instead`);
+  save();
+}
 async function poll() {
+  dropPageJobsOfLabelled();
   status.lastPoll = new Date().toISOString();
   if (status.rate && status.rate.remaining === 0 && Date.parse(status.rate.reset) > Date.now()) return;
   const res = await gh('pulls?state=open&per_page=100', state.etag);
@@ -142,6 +158,8 @@ async function poll() {
     const key = labelled ? `${sha}+${CFG.label}` : sha;
     if (state.seen[n] === key) continue;
     if (labelled) {
+      state.seen[n] = key;
+      dropPageJobsOfLabelled();
       if ((state.expDone || {})[n] !== sha) enqueue({ pr: n, sha, kind: 'experiment', page: 'experiment', title: pr.title, at: new Date().toISOString() });
       state.seen[n] = key;
       save();
@@ -154,19 +172,27 @@ async function poll() {
     state.seen[n] = key;
     save();
   }
-  for (const k of Object.keys(state.seen)) {   // a PR left the open list: if it was merged, mark its builds merged
+  for (const k of Object.keys(state.seen)) {   // a PR left the open list: mark its builds merged, or closed if it was closed unmerged
     const n = +k;
     if (open.has(n)) continue;
-    try {
-      const pr = await gh(`pulls/${n}`);
-      if (pr.data.merged) {
-        const marked = latestBuilds().filter(b => b.pr === n && b.status !== 'merged');
-        for (const b of marked) { b.status = 'merged'; b.waitingOn = null; appendBuild(b); log(`#${n} merged: ${b.id}`); }
-        if (marked.length) await afterMerge(n, marked);
-      }
-    } catch (e) { log(`#${n} closed, merge state unknown: ${e.message}`); }
+    await settleLeft(n);
     delete state.seen[n]; if (state.expDone) delete state.expDone[n]; state.queue = state.queue.filter(j => j.pr !== n); save();
   }
+  // builds of PRs that left before the runner saw them go (closed by hand, or closed while it was down):
+  // a few a poll, so the builds page shows only live work
+  const stale = [...new Set(latestBuilds().filter(b => b.pr && !DONE.has(b.status) && !open.has(b.pr)).map(b => b.pr))];
+  for (const n of stale.slice(0, 5)) await settleLeft(n);
+}
+const DONE = new Set(['merged', 'closed']);
+async function settleLeft(n) {
+  try {
+    const pr = await gh(`pulls/${n}`);
+    if (pr.data.state !== 'closed') return;
+    const status = pr.data.merged ? 'merged' : 'closed';
+    const marked = latestBuilds().filter(b => b.pr === n && !DONE.has(b.status));
+    for (const b of marked) { b.status = status; b.waitingOn = null; appendBuild(b); log(`#${n} ${status}: ${b.id}`); }
+    if (marked.length) await afterMerge(n, marked, status);
+  } catch (e) { log(`#${n} left the open list, state unknown: ${e.message}`); }
 }
 
 // ---------- one build ----------
@@ -337,6 +363,11 @@ async function runBuild(job, gate) {
     } else {
       failCheck(fallback, [['the check ran to the end and wrote check.md', `exit ${r.code}: ${(r.err || r.out).trim().split('\n').slice(-3).join(' / ')}`]]);
     }
+    // the shared gates every page gets (#88), still inside this build's GPU lock; their rows join dest/check.md
+    if (CFG.shared) {
+      try { await runShared({ run, tree, page: job.page, dest, timeoutMs: CFG.sharedMin * 60e3, log }); }
+      catch (e) { log(`shared gates for ${job.page} could not run: ${e.message}`); }
+    }
     saveGate(dest, gate);
     const fin = await builds('finish', '--id', id, '--check', dest);
     result = fin.trim();
@@ -372,10 +403,10 @@ async function afterBuild(rec, gate, tr) {
   }
   await moveCards();
 }
-async function afterMerge(n, marked) {
+async function afterMerge(n, marked, status = 'merged') {
   if (CFG.commit) {
-    const r = await commitPaths(CFG.qaHome, ['qa/builds.json'], `qa: #${n} merged (${marked.map(b => b.id).join(', ')})\n\nMade-by: QA runner\n`);
-    log(r.ok ? `builds log for merged #${n} committed as ${r.sha}` : `builds log for merged #${n} not committed: ${r.why}`);
+    const r = await commitPaths(CFG.qaHome, ['qa/builds.json'], `qa: #${n} ${status} (${marked.map(b => b.id).join(', ')})\n\nMade-by: QA runner\n`);
+    log(r.ok ? `builds log for ${status} #${n} committed as ${r.sha}` : `builds log for ${status} #${n} not committed: ${r.why}`);
   }
   await moveCards();
 }
@@ -387,6 +418,8 @@ async function work() {
   working = true;
   try {
     while (!stopping && state.queue.length) {
+      dropPageJobsOfLabelled();   // a label can land while a long build runs
+      if (!state.queue.length) break;
       const job = state.queue[0];
       if (job.after && Date.now() < job.after) break;   // waiting to retry after a network failure
       // one GPU check at a time on the box, and only on an idle GPU; if it stays busy the job stays queued for the next poll

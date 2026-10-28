@@ -28,7 +28,9 @@ fi
 NAMES=$(printf '%s\n' "$FILES" | awk -F/ '
   /^qa\/check-[^\/]*\.mjs$/ { sub(/\.mjs$/, "", $2); print $2; next }
   $3 == "checks" || $3 == "runs" { print $2 " " $4; next }
-  { print $2 }' | sort -u | paste -sd, - | sed 's/,/, /g')
+  { print $2 }' | sort -u | awk '
+  NR <= 5 { s = s (NR > 1 ? ", " : "") $0 }
+  END { if (NR > 5) s = s " +" (NR - 5) " more"; print s }')   # the subject names 5 at most; the body lists every file
 COUNT=$(printf '%s\n' "$FILES" | wc -l | tr -d ' ')
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 MSG_FILE=$(mktemp)

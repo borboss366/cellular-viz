@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "id": "13-flow-lab",
+  "note": "#86 panic key: panic.js loads in a page without errors, B-blackout and calm toggle through window.__panic, and the page still runs at speed underneath.",
+  "resolutions": ["1080p"],
+  "warmup": 4,
+  "seconds": 8,
+  "variants": [{ "name": "kh", "params": { "preset": "kh" } }],
+  "values": {
+    "loaded": "typeof window.__panic === 'object' && window.__panic.mode",
+    "blackout": "(window.__panic.blackout(), window.__panic.mode)",
+    "back": "(window.__panic.blackout(), window.__panic.mode)",
+    "calm": "(window.__panic.calm(), window.__panic.mode)",
+    "cleared": "(window.__panic.clear(), window.__panic.mode)",
+    "overlay": "!!document.getElementById('panicOverlay')"
+  },
+  "gates": [
+    { "metric": "value.loaded", "equals": "off", "name": "panic.js loaded, starts off" },
+    { "metric": "value.blackout", "equals": "blackout", "name": "B: blackout on" },
+    { "metric": "value.back", "equals": "off", "name": "B again: back to the scene" },
+    { "metric": "value.calm", "equals": "calm", "name": "`: calm fallback" },
+    { "metric": "value.cleared", "equals": "off", "name": "clear()" },
+    { "metric": "value.overlay", "equals": true, "name": "overlay element in the page" },
+    { "metric": "errors", "max": 0 },
+    { "metric": "fps.p05", "min": 55 }
+  ],
+  "record": { "stills": 1 },
+  "debug": { "console": true }
+}

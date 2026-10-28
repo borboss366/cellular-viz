@@ -18,8 +18,8 @@ import { fileURLToPath } from 'node:url';
 
 const OWNER = 'borboss366', REPO = 'cellular-viz', NUMBER = 1;
 // passed = every gate passed, waiting on QA box's swipe run (builds.mjs keeps status "running" with a finish time)
-export const TARGET = { queued: 'QA', running: 'QA', failed: 'In progress', passed: 'Your review', ready: 'Your review', merged: 'Done' };
-const RANK = { failed: 0, queued: 1, running: 1, passed: 2, ready: 2, merged: 3 };
+export const TARGET = { queued: 'QA', running: 'QA', failed: 'In progress', passed: 'Your review', ready: 'Your review', merged: 'Done', closed: 'Done' };
+const RANK = { failed: 0, queued: 1, running: 1, passed: 2, ready: 2, merged: 3, closed: 3 };
 
 /** the status a build stands for on the board, or null when it says nothing about the PR:
  *  a failure that is only "no check script for this page" (QA box's gap, not dev's), or a queued/running build that
