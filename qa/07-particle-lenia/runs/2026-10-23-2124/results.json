@@ -1,0 +1,328 @@
+{
+ "meta": {
+  "exp": "07-particle-lenia.html",
+  "stamp": "2026-10-23-2124",
+  "warm": 20,
+  "dur": 20,
+  "host": "3adc2b2ec197",
+  "cpu": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
+  "gpu": "/dev/dri/renderD128 (ANGLE gl-egl, Mesa)",
+  "chromium": "156.0.8078.4",
+  "renderer": "ANGLE (AMD, AMD Radeon Graphics (gfx1103_r1 LLVM 15.0.6 DRM 3.64 7.0.0-31-generic), OpenGL ES 3.2)",
+  "note": ""
+ },
+ "results": [
+  {
+   "label": "rotor-ref",
+   "url": "http://127.0.0.1:41785/experiments/07-particle-lenia.html?preset=rotor",
+   "agg": {
+    "coverage": 0.3074286738528481,
+    "motion": 0.04834570184999777,
+    "motionStd": 0.01177750120848094,
+    "colour": 0.0437053287493795,
+    "contrast": 0.23346747666598147,
+    "fps": 60.2
+   },
+   "score": {
+    "total": 9.3,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.5463166093672437,
+     "fps": 1
+    }
+   },
+   "videoSize": 3922623,
+   "verdict": "",
+   "hud": "particle lenia · rotor · four 120 bpm 4/4 · ▶\nkick  ········ 0.05   snare ········\nhat   ········ 0.02   pad   ········\nN 200 μ_K 4.0 σ_K 1.00 w_K 0.0220\nμ_G 0.571 σ_G 0.150 rep 1.10\nfit 0.93 · speed 0.030 · size 6.3 · 9220 steps\n60 fps · sim 1.7 ms · field 256²",
+   "video": "videos/01-rotor-ref.webm"
+  },
+  {
+   "label": "dense",
+   "url": "http://127.0.0.1:41785/experiments/07-particle-lenia.html?preset=rotor&N=300",
+   "agg": {
+    "coverage": 0.30098521558544306,
+    "motion": 0.04127240153971744,
+    "motionStd": 0.014531670830875153,
+    "colour": 0.04167716994498221,
+    "contrast": 0.22478234758882706,
+    "fps": 60.1
+   },
+   "score": {
+    "total": 9.3,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.5209646243122776,
+     "fps": 1
+    }
+   },
+   "videoSize": 4023999,
+   "verdict": "",
+   "hud": "particle lenia · custom · four 120 bpm 4/4 · ▶\nkick  █······· 0.10   snare ········\nhat   ██······ 0.20   pad   █·······\nN 300 μ_K 4.0 σ_K 1.00 w_K 0.0220\nμ_G 0.576 σ_G 0.150 rep 1.19\nfit 0.92 · speed 0.033 · size 8.1 · 9185 steps\n60 fps · sim 3.0 ms · field 256²",
+   "video": "videos/02-dense.webm"
+  },
+  {
+   "label": "tight",
+   "url": "http://127.0.0.1:41785/experiments/07-particle-lenia.html?preset=rotor&muG=0.7&sigG=0.12",
+   "agg": {
+    "coverage": 0.22327432753164558,
+    "motion": 0.035738810441011674,
+    "motionStd": 0.005329366356895397,
+    "colour": 0.01939178262285927,
+    "contrast": 0.2164593809722892,
+    "fps": 60.1
+   },
+   "score": {
+    "total": 8.2,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 0.5329366356895398,
+     "colour": 0.24239728278574088,
+     "fps": 1
+    }
+   },
+   "videoSize": 4494711,
+   "verdict": "",
+   "hud": "particle lenia · custom · four 120 bpm 4/4 · ▶\nkick  █······· 0.16   snare █·······\nhat   ········ 0.00   pad   █·······\nN 200 μ_K 4.0 σ_K 1.00 w_K 0.0220\nμ_G 0.681 σ_G 0.120 rep 1.33\nfit 0.83 · speed 0.030 · size 5.7 · 9170 steps\n60 fps · sim 2.1 ms · field 256²",
+   "video": "videos/03-tight.webm"
+  },
+  {
+   "label": "loose",
+   "url": "http://127.0.0.1:41785/experiments/07-particle-lenia.html?preset=rotor&muG=0.45&sigG=0.2",
+   "agg": {
+    "coverage": 0.48291015625,
+    "motion": 0.040314834994966756,
+    "motionStd": 0.028130984504147517,
+    "colour": 0.09030145055121203,
+    "contrast": 0.21874460598287956,
+    "fps": 60
+   },
+   "score": {
+    "total": 10,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 1,
+     "fps": 1
+    }
+   },
+   "videoSize": 4391123,
+   "verdict": "",
+   "hud": "particle lenia · custom · four 120 bpm 4/4 · ▶\nkick  █······· 0.14   snare █·······\nhat   ········ 0.00   pad   █·······\nN 200 μ_K 4.0 σ_K 1.00 w_K 0.0220\nμ_G 0.430 σ_G 0.200 rep 1.29\nfit 0.97 · speed 0.022 · size 7.4 · 9150 steps\n60 fps · sim 1.8 ms · field 256²",
+   "video": "videos/04-loose.webm"
+  },
+  {
+   "label": "soft-rep",
+   "url": "http://127.0.0.1:41785/experiments/07-particle-lenia.html?preset=rotor&rep=0.5",
+   "agg": {
+    "coverage": 0.30009827432753167,
+    "motion": 0.038949602052234425,
+    "motionStd": 0.00998232942401483,
+    "colour": 0.050224455057603194,
+    "contrast": 0.21294238750212044,
+    "fps": 60.2
+   },
+   "score": {
+    "total": 9.4,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 0.998232942401483,
+     "colour": 0.6278056882200399,
+     "fps": 1
+    }
+   },
+   "videoSize": 4579503,
+   "verdict": "",
+   "hud": "particle lenia · custom · four 120 bpm 4/4 · ▶\nkick  █······· 0.14   snare █·······\nhat   ········ 0.00   pad   █·······\nN 200 μ_K 4.0 σ_K 1.00 w_K 0.0220\nμ_G 0.580 σ_G 0.150 rep 0.64\nfit 0.97 · speed 0.030 · size 6.3 · 9170 steps\n60 fps · sim 2.0 ms · field 256²",
+   "video": "videos/05-soft-rep.webm"
+  },
+  {
+   "label": "hard-rep",
+   "url": "http://127.0.0.1:41785/experiments/07-particle-lenia.html?preset=rotor&rep=1.8",
+   "agg": {
+    "coverage": 0.2978886471518987,
+    "motion": 0.040480753096794844,
+    "motionStd": 0.01583014995994101,
+    "colour": 0.031678848853623716,
+    "contrast": 0.23939665494171514,
+    "fps": 60.1
+   },
+   "score": {
+    "total": 9.1,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.3959856106702964,
+     "fps": 1
+    }
+   },
+   "videoSize": 3950924,
+   "verdict": "",
+   "hud": "particle lenia · custom · four 120 bpm 4/4 · ▶\nkick  ██······ 0.26   snare ██······\nhat   ········ 0.02   pad   ██······\nN 200 μ_K 4.0 σ_K 1.00 w_K 0.0220\nμ_G 0.587 σ_G 0.150 rep 2.74\nfit 0.81 · speed 0.020 · size 6.4 · 9110 steps\n60 fps · sim 1.8 ms · field 256²",
+   "video": "videos/06-hard-rep.webm"
+  },
+  {
+   "label": "picky",
+   "url": "http://127.0.0.1:41785/experiments/07-particle-lenia.html?preset=rotor&sigG=0.08",
+   "agg": {
+    "coverage": 0.21418549742879747,
+    "motion": 0.03356861310174432,
+    "motionStd": 0.008751940054894273,
+    "colour": 0.013055138656200881,
+    "contrast": 0.207209521446892,
+    "fps": 60.1
+   },
+   "score": {
+    "total": 8.6,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 0.8751940054894273,
+     "colour": 0.163189233202511,
+     "fps": 1
+    }
+   },
+   "videoSize": 3968690,
+   "verdict": "",
+   "hud": "particle lenia · custom · four 120 bpm 4/4 · ▶\nkick  █······· 0.14   snare █·······\nhat   ········ 0.00   pad   █·······\nN 200 μ_K 4.0 σ_K 1.00 w_K 0.0220\nμ_G 0.580 σ_G 0.080 rep 1.29\nfit 0.75 · speed 0.062 · size 5.8 · 9145 steps\n60 fps · sim 1.8 ms · field 256²",
+   "video": "videos/07-picky.webm"
+  },
+  {
+   "label": "tolerant",
+   "url": "http://127.0.0.1:41785/experiments/07-particle-lenia.html?preset=rotor&sigG=0.25",
+   "agg": {
+    "coverage": 0.4538605122626582,
+    "motion": 0.0371871999401294,
+    "motionStd": 0.01828283151096469,
+    "colour": 0.07695056381597999,
+    "contrast": 0.22878226883052613,
+    "fps": 60.1
+   },
+   "score": {
+    "total": 9.9,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.9618820476997498,
+     "fps": 1
+    }
+   },
+   "videoSize": 4462298,
+   "verdict": "",
+   "hud": "particle lenia · custom · four 120 bpm 4/4 · ▶\nkick  █······· 0.10   snare ········\nhat   ██······ 0.25   pad   █·······\nN 200 μ_K 4.0 σ_K 1.00 w_K 0.0220\nμ_G 0.576 σ_G 0.250 rep 1.20\nfit 0.94 · speed 0.026 · size 6.3 · 9165 steps\n60 fps · sim 2.0 ms · field 256²",
+   "video": "videos/08-tolerant.webm"
+  },
+  {
+   "label": "wide-ring",
+   "url": "http://127.0.0.1:41785/experiments/07-particle-lenia.html?preset=rotor&muK=5&sigK=1.5&wK=0.012",
+   "agg": {
+    "coverage": 0.4253269630142405,
+    "motion": 0.03475853108524012,
+    "motionStd": 0.012099466067505562,
+    "colour": 0.04586332423264664,
+    "contrast": 0.22778943241158192,
+    "fps": 60.2
+   },
+   "score": {
+    "total": 9.4,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.573291552908083,
+     "fps": 1
+    }
+   },
+   "videoSize": 4616679,
+   "verdict": "",
+   "hud": "particle lenia · custom · four 120 bpm 4/4 · ▶\nkick  █······· 0.14   snare █·······\nhat   ········ 0.00   pad   █·······\nN 200 μ_K 5.0 σ_K 1.50 w_K 0.0120\nμ_G 0.580 σ_G 0.150 rep 1.29\nfit 0.78 · speed 0.010 · size 5.3 · 9160 steps\n60 fps · sim 2.4 ms · field 256²",
+   "video": "videos/09-wide-ring.webm"
+  },
+  {
+   "label": "small-ring",
+   "url": "http://127.0.0.1:41785/experiments/07-particle-lenia.html?preset=rotor&muK=3&sigK=0.7&wK=0.04",
+   "agg": {
+    "coverage": 0.2937228045886076,
+    "motion": 0.03910504941882902,
+    "motionStd": 0.011636026008035563,
+    "colour": 0.03880266505336311,
+    "contrast": 0.21994254067994012,
+    "fps": 60.1
+   },
+   "score": {
+    "total": 9.2,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.4850333131670389,
+     "fps": 1
+    }
+   },
+   "videoSize": 4026201,
+   "verdict": "",
+   "hud": "particle lenia · custom · four 120 bpm 4/4 · ▶\nkick  ········ 0.05   snare ········\nhat   ········ 0.02   pad   ········\nN 200 μ_K 3.0 σ_K 0.70 w_K 0.0400\nμ_G 0.572 σ_G 0.150 rep 1.10\nfit 0.97 · speed 0.036 · size 6.6 · 9190 steps\n60 fps · sim 1.5 ms · field 256²",
+   "video": "videos/10-small-ring.webm"
+  },
+  {
+   "label": "swarm-400",
+   "url": "http://127.0.0.1:41785/experiments/07-particle-lenia.html?preset=rotor&N=400&muK=5.66&sigK=1.41&wK=0.011",
+   "agg": {
+    "coverage": 0.31095480617088606,
+    "motion": 0.03934599840664591,
+    "motionStd": 0.014357947343435333,
+    "colour": 0.044891270062877464,
+    "contrast": 0.2312720898634239,
+    "fps": 60.4
+   },
+   "score": {
+    "total": 9.3,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 1,
+     "colour": 0.5611408757859683,
+     "fps": 1
+    }
+   },
+   "videoSize": 4050530,
+   "verdict": "",
+   "hud": "particle lenia · custom · four 120 bpm 4/4 · ▶\nkick  ········ 0.04   snare ········\nhat   ········ 0.01   pad   ········\nN 400 μ_K 5.7 σ_K 1.41 w_K 0.0110\nμ_G 0.571 σ_G 0.150 rep 1.08\nfit 0.92 · speed 0.028 · size 8.8 · 9195 steps\n60 fps · sim 5.2 ms · field 256²",
+   "video": "videos/11-swarm-400.webm"
+  },
+  {
+   "label": "rotor-break",
+   "url": "http://127.0.0.1:41785/experiments/07-particle-lenia.html?preset=rotor&groove=break&mKickBurst=1",
+   "agg": {
+    "coverage": 0.3060287282436709,
+    "motion": 0.04577664921078091,
+    "motionStd": 0.008886799328366396,
+    "colour": 0.04602097036071813,
+    "contrast": 0.2283202974986133,
+    "fps": 60.1
+   },
+   "score": {
+    "total": 9.2,
+    "parts": {
+     "motion": 1,
+     "coverage": 1,
+     "pulse": 0.8886799328366396,
+     "colour": 0.5752621295089766,
+     "fps": 1
+    }
+   },
+   "videoSize": 4141872,
+   "verdict": "",
+   "hud": "particle lenia · rotor · break 96 bpm 4/4 · ▶\nkick  ········ 0.01   snare ········\nhat   ········ 0.00   pad   █·······\nN 200 μ_K 4.0 σ_K 1.00 w_K 0.0220\nμ_G 0.580 σ_G 0.150 rep 1.02 · 12 bursts\nfit 0.94 · speed 0.033 · size 6.2 · 9120 steps\n60 fps · sim 1.8 ms · field 256²",
+   "video": "videos/12-rotor-break.webm"
+  }
+ ]
+}

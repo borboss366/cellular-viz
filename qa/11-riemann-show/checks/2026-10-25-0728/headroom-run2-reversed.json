@@ -1,0 +1,107 @@
+{
+ "p74c71ca": {
+  "vsync": {
+   "fps": 60,
+   "median": 16.7,
+   "p99": 16.8,
+   "worst": 16.8,
+   "over20ms": 0,
+   "frames": 1800,
+   "alive": true,
+   "caught": 0,
+   "scene": "canyon"
+  },
+  "motion": {
+   "pairs": 12,
+   "meanDiff": 32.138,
+   "changed": 0.513,
+   "changedMin": 0.458,
+   "changedMax": 0.618
+  },
+  "vsyncConsole": [],
+  "vsyncPageErrors": [],
+  "uncapped": {
+   "fps": 155,
+   "median": 6.4,
+   "p99": 13.6,
+   "worst": 24.3,
+   "over20ms": 3,
+   "frames": 2327,
+   "alive": true,
+   "caught": 0,
+   "scene": "canyon"
+  },
+  "uncappedConsole": [],
+  "uncappedPageErrors": []
+ },
+ "f4106047": {
+  "vsync": {
+   "fps": 60,
+   "median": 16.7,
+   "p99": 16.8,
+   "worst": 16.8,
+   "over20ms": 0,
+   "frames": 1800,
+   "alive": true,
+   "caught": 0,
+   "scene": "canyon"
+  },
+  "motion": {
+   "pairs": 12,
+   "meanDiff": 34.417,
+   "changed": 0.529,
+   "changedMin": 0.459,
+   "changedMax": 0.616
+  },
+  "vsyncConsole": [],
+  "vsyncPageErrors": [],
+  "uncapped": {
+   "fps": 93,
+   "median": 10.5,
+   "p99": 29,
+   "worst": 29.8,
+   "over20ms": 101,
+   "frames": 1396,
+   "alive": true,
+   "caught": 0,
+   "scene": "canyon"
+  },
+  "uncappedConsole": [],
+  "uncappedPageErrors": []
+ },
+ "main": {
+  "vsync": {
+   "fps": 60,
+   "median": 16.7,
+   "p99": 16.8,
+   "worst": 16.8,
+   "over20ms": 0,
+   "frames": 1801,
+   "alive": true,
+   "caught": 0,
+   "scene": "canyon"
+  },
+  "motion": {
+   "pairs": 12,
+   "meanDiff": 31.115,
+   "changed": 0.508,
+   "changedMin": 0.464,
+   "changedMax": 0.615
+  },
+  "vsyncConsole": [],
+  "vsyncPageErrors": [],
+  "uncapped": {
+   "fps": 337.5,
+   "median": 2.9,
+   "p99": 6.1,
+   "worst": 18.7,
+   "over20ms": 0,
+   "frames": 5063,
+   "alive": true,
+   "caught": 0,
+   "scene": "canyon"
+  },
+  "uncappedConsole": [],
+  "uncappedPageErrors": []
+ }
+}

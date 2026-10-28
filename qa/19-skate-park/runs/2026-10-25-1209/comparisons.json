@@ -1,0 +1,64 @@
+[
+ {
+  "a": "17-chill-x3p17",
+  "b": "19-free",
+  "winner": "19-free",
+  "note": "both are good.",
+  "at": "2026-10-26T19:51:50.882Z"
+ },
+ {
+  "a": "19-torus",
+  "b": "17-chill-x3-25x",
+  "winner": "19-torus",
+  "at": "2026-10-26T19:51:59.545Z"
+ },
+ {
+  "a": "19-morph",
+  "b": "17-chill-x3-2x",
+  "winner": "17-chill-x3-2x",
+  "at": "2026-10-26T19:52:07.925Z"
+ },
+ {
+  "a": "19-torus",
+  "b": "17-chill-x3-2x",
+  "winner": "tie",
+  "note": "both are good",
+  "at": "2026-10-26T19:52:30.113Z"
+ },
+ {
+  "a": "17-chill-x3-25x",
+  "b": "17-chill-x3p17",
+  "winner": "17-chill-x3-25x",
+  "at": "2026-10-26T19:52:47.533Z"
+ },
+ {
+  "a": "17-chill-x3-2x",
+  "b": "19-free",
+  "winner": "19-free",
+  "at": "2026-10-26T19:52:52.423Z"
+ },
+ {
+  "a": "17-chill-x3p17",
+  "b": "19-morph",
+  "winner": "19-morph",
+  "at": "2026-10-26T19:52:55.492Z"
+ },
+ {
+  "a": "19-morph",
+  "b": "17-chill-x3-25x",
+  "winner": "19-morph",
+  "at": "2026-10-26T19:53:00.769Z"
+ },
+ {
+  "a": "19-torus",
+  "b": "19-free",
+  "winner": "tie",
+  "at": "2026-10-26T19:53:03.570Z"
+ },
+ {
+  "a": "19-morph",
+  "b": "19-torus",
+  "winner": "tie",
+  "at": "2026-10-26T19:53:35.921Z"
+ }
+]

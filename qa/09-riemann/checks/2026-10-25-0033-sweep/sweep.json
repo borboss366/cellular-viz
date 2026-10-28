@@ -1,0 +1,400 @@
+{
+ "step": 3,
+ "top": 60,
+ "rows": [
+  {
+   "h": 0,
+   "held": 0,
+   "file": "h00.png",
+   "y": [
+    -1.97,
+    1.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.0018420709441835936,
+   "seamP90": 0.0031146995675708777,
+   "seamRows": 540,
+   "zeros": []
+  },
+  {
+   "h": 3,
+   "held": 3,
+   "file": "h03.png",
+   "y": [
+    1.03,
+    4.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.0007475283337352034,
+   "seamP90": 0.0015151515151514972,
+   "seamRows": 540,
+   "zeros": []
+  },
+  {
+   "h": 6,
+   "held": 6,
+   "file": "h06.png",
+   "y": [
+    4.03,
+    7.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.0008865248226950367,
+   "seamP90": 0.0012749898000816023,
+   "seamRows": 540,
+   "zeros": []
+  },
+  {
+   "h": 9,
+   "held": 9,
+   "file": "h09.png",
+   "y": [
+    7.03,
+    10.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.0007793813324733223,
+   "seamP90": 0.0010822510822510872,
+   "seamRows": 540,
+   "zeros": []
+  },
+  {
+   "h": 12,
+   "held": 12,
+   "file": "h12.png",
+   "y": [
+    10.03,
+    13.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.0010282570375514388,
+   "seamP90": 0.006275145619408007,
+   "seamRows": 540,
+   "zeros": []
+  },
+  {
+   "h": 15,
+   "held": 15,
+   "file": "h15.png",
+   "y": [
+    13.03,
+    16.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.0034505089753708584,
+   "seamP90": 0.017777777777777892,
+   "seamRows": 540,
+   "zeros": [
+    {
+     "t": 14.134725,
+     "w": 1
+    }
+   ]
+  },
+  {
+   "h": 18,
+   "held": 18,
+   "file": "h18.png",
+   "y": [
+    16.03,
+    19.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.0010319917440660409,
+   "seamP90": 0.002053666569795609,
+   "seamRows": 540,
+   "zeros": []
+  },
+  {
+   "h": 21,
+   "held": 21,
+   "file": "h21.png",
+   "y": [
+    19.03,
+    22.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.003111482631425244,
+   "seamP90": 0.01753329416372884,
+   "seamRows": 540,
+   "zeros": [
+    {
+     "t": 21.02204,
+     "w": 1
+    }
+   ]
+  },
+  {
+   "h": 24,
+   "held": 24,
+   "file": "h24.png",
+   "y": [
+    22.03,
+    25.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.002823467612200009,
+   "seamP90": 0.018006123230003834,
+   "seamRows": 540,
+   "zeros": [
+    {
+     "t": 25.010858,
+     "w": 1
+    }
+   ]
+  },
+  {
+   "h": 27,
+   "held": 27,
+   "file": "h27.png",
+   "y": [
+    25.03,
+    28.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.001619142642090704,
+   "seamP90": 0.008064516129032251,
+   "seamRows": 540,
+   "zeros": []
+  },
+  {
+   "h": 30,
+   "held": 30,
+   "file": "h30.png",
+   "y": [
+    28.03,
+    31.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.002906755543380629,
+   "seamP90": 0.01747595589960127,
+   "seamRows": 540,
+   "zeros": [
+    {
+     "t": 30.424876,
+     "w": 1
+    }
+   ]
+  },
+  {
+   "h": 33,
+   "held": 33,
+   "file": "h33.png",
+   "y": [
+    31.03,
+    34.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.003156565656565656,
+   "seamP90": 0.017982456140350822,
+   "seamRows": 540,
+   "zeros": [
+    {
+     "t": 32.935062,
+     "w": 1
+    }
+   ]
+  },
+  {
+   "h": 36,
+   "held": 36,
+   "file": "h36.png",
+   "y": [
+    34.03,
+    37.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.0020608635653847907,
+   "seamP90": 0.017955762186531388,
+   "seamRows": 540,
+   "zeros": [
+    {
+     "t": 37.586178,
+     "w": 1
+    }
+   ]
+  },
+  {
+   "h": 39,
+   "held": 39,
+   "file": "h39.png",
+   "y": [
+    37.03,
+    40.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.004582774458399497,
+   "seamP90": 0.03139861172648062,
+   "seamRows": 540,
+   "zeros": [
+    {
+     "t": 37.586178,
+     "w": 1
+    }
+   ]
+  },
+  {
+   "h": 42,
+   "held": 42,
+   "file": "h42.png",
+   "y": [
+    40.03,
+    43.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.006492413650251161,
+   "seamP90": 0.03574069095308513,
+   "seamRows": 540,
+   "zeros": [
+    {
+     "t": 40.918719,
+     "w": 1
+    },
+    {
+     "t": 43.327073,
+     "w": 1
+    }
+   ]
+  },
+  {
+   "h": 45,
+   "held": 45,
+   "file": "h45.png",
+   "y": [
+    43.03,
+    46.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.0021928203611994157,
+   "seamP90": 0.017247171383267493,
+   "seamRows": 540,
+   "zeros": []
+  },
+  {
+   "h": 48,
+   "held": 48,
+   "file": "h48.png",
+   "y": [
+    46.03,
+    49.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.0047212047212047414,
+   "seamP90": 0.03540553666828555,
+   "seamRows": 540,
+   "zeros": [
+    {
+     "t": 48.005151,
+     "w": 1
+    }
+   ]
+  },
+  {
+   "h": 51,
+   "held": 51,
+   "file": "h51.png",
+   "y": [
+    49.03,
+    52.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.003975981824083097,
+   "seamP90": 0.026327077187035752,
+   "seamRows": 540,
+   "zeros": [
+    {
+     "t": 49.773832,
+     "w": 1
+    }
+   ]
+  },
+  {
+   "h": 54,
+   "held": 54,
+   "file": "h54.png",
+   "y": [
+    52.03,
+    55.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.003555400128227554,
+   "seamP90": 0.017562984496124034,
+   "seamRows": 540,
+   "zeros": [
+    {
+     "t": 52.970321,
+     "w": 1
+    }
+   ]
+  },
+  {
+   "h": 57,
+   "held": 57,
+   "file": "h57.png",
+   "y": [
+    55.03,
+    58.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.003514990400236173,
+   "seamP90": 0.017233187134502947,
+   "seamRows": 540,
+   "zeros": [
+    {
+     "t": 56.446248,
+     "w": 1
+    }
+   ]
+  },
+  {
+   "h": 60,
+   "held": 60,
+   "file": "h60.png",
+   "y": [
+    58.03,
+    61.97
+   ],
+   "leftBlack": 0,
+   "rightBlack": 0,
+   "seamMedian": 0.0063719633612107085,
+   "seamP90": 0.034519904817030045,
+   "seamRows": 540,
+   "zeros": [
+    {
+     "t": 59.347044,
+     "w": 1
+    }
+   ]
+  }
+ ],
+ "errors": [],
+ "pass": {
+  "heldAtHeight": true,
+  "leftNotBlack": true,
+  "rightNotBlack": true,
+  "seamMatches": true,
+  "zerosWind": true,
+  "everyZeroSeen": true,
+  "noErrors": true
+ }
+}

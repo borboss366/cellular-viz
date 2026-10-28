@@ -1,0 +1,323 @@
+{
+ "res": {
+  "maths": {
+   "radius": {
+    "n": 200,
+    "worstRel": 1.341784019131141e-15,
+    "B": 0.5
+   },
+   "lossRadius": {
+    "n": 200,
+    "worstRel": 6.815635485664791e-9
+   },
+   "flow": {
+    "v2": 0.09422727752077793,
+    "measured": 0.09520803116094588,
+    "ecc": 0.47113638760388965,
+    "b": 6.595909426454455
+   },
+   "fireball": {
+    "inStart": 3.7020452867727727,
+    "outStart": 6.1744226215495095,
+    "inEnd": 5.560692874368588,
+    "outEnd": 7.476426143618495,
+    "growIn": 1.858647587595815,
+    "growOut": 1.3020035220689854,
+    "Thadron": 0.1558244790151455,
+    "Tc": 0.156,
+    "T0": 0.34600000000000003
+   },
+   "jets": [
+    {
+     "q": 0,
+     "AJ": 0,
+     "want": 0
+    },
+    {
+     "q": 0.6,
+     "AJ": 0.4285714285714288,
+     "want": 0.4285714285714286
+    },
+    {
+     "q": 0.75,
+     "AJ": 0.6,
+     "want": 0.6
+    }
+   ]
+  },
+  "strings": {
+   "cascades": 42,
+   "breaks": 176,
+   "pairRule": true,
+   "neutral": true,
+   "worstDrift": 0
+  },
+  "sync": {
+   "collision": {
+    "n": 8,
+    "median": 16.8,
+    "p90": 17.8
+   },
+   "jet": {
+    "n": 16,
+    "median": 16.7,
+    "p90": 17.9
+   },
+   "pair": {
+    "n": 28,
+    "median": 18,
+    "p90": 19.2
+   }
+  },
+  "clip": {
+   "frames": 138,
+   "brightest": {
+    "t": 12.13,
+    "lum": 0.3170648825806504,
+    "clip": 0,
+    "white": 0.0000028935185185185184
+   },
+   "worstClipAnyFrame": 0,
+   "size": [
+    1920,
+    1080
+   ]
+  },
+  "speed": {
+   "collide": {
+    "1080p": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "worst": 16.8,
+     "alive": true,
+     "drawn": 30000,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "1440p": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "worst": 16.8,
+     "alive": true,
+     "drawn": 30000,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    },
+    "4K": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "worst": 16.8,
+     "alive": true,
+     "drawn": 30000,
+     "caught": 0,
+     "canvas": [
+      3840,
+      2160
+     ]
+    }
+   },
+   "collide 1M": {
+    "1080p": {
+     "fps": 16.1,
+     "p95": 150,
+     "over20": 120,
+     "worst": 249.9,
+     "alive": true,
+     "drawn": 1000000,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "1440p": {
+     "fps": 11.2,
+     "p95": 216.7,
+     "over20": 93,
+     "worst": 300,
+     "alive": true,
+     "drawn": 1000000,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    },
+    "4K": {
+     "fps": 12.7,
+     "p95": 216.6,
+     "over20": 89,
+     "worst": 400,
+     "alive": true,
+     "drawn": 1000000,
+     "caught": 0,
+     "canvas": [
+      3840,
+      2160
+     ]
+    }
+   },
+   "quench": {
+    "1080p": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "worst": 16.8,
+     "alive": true,
+     "drawn": 30000,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "1440p": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "worst": 16.8,
+     "alive": true,
+     "drawn": 30000,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    },
+    "4K": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "worst": 16.8,
+     "alive": true,
+     "drawn": 30000,
+     "caught": 0,
+     "canvas": [
+      3840,
+      2160
+     ]
+    }
+   },
+   "quench 1M": {
+    "1080p": {
+     "fps": 15.8,
+     "p95": 150,
+     "over20": 116,
+     "worst": 233.3,
+     "alive": true,
+     "drawn": 1000000,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "1440p": {
+     "fps": 11.2,
+     "p95": 216.7,
+     "over20": 94,
+     "worst": 233.4,
+     "alive": true,
+     "drawn": 1000000,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    },
+    "4K": {
+     "fps": 10.6,
+     "p95": 216.7,
+     "over20": 76,
+     "worst": 1299.9,
+     "alive": true,
+     "drawn": 1000000,
+     "caught": 0,
+     "canvas": [
+      3840,
+      2160
+     ]
+    }
+   },
+   "strings": {
+    "1440p": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "worst": 16.8,
+     "alive": true,
+     "drawn": 0,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    }
+   },
+   "auto": {
+    "1080p": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "worst": 16.8,
+     "alive": true,
+     "drawn": 30000,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "1440p": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "worst": 16.8,
+     "alive": true,
+     "drawn": 30000,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    },
+    "4K": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "worst": 16.8,
+     "alive": true,
+     "drawn": 30000,
+     "caught": 0,
+     "canvas": [
+      3840,
+      2160
+     ]
+    }
+   }
+  }
+ },
+ "errors": [],
+ "pass": {
+  "radius": true,
+  "lossRadius": true,
+  "flow": true,
+  "fireball": true,
+  "strings": true,
+  "jets": true,
+  "sync": true,
+  "alive": true,
+  "fps1440": true,
+  "noClip": true,
+  "noErrors": true
+ }
+}

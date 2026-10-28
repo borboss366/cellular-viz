@@ -1,0 +1,233 @@
+{
+ "res": {
+  "curveNoKicks": {
+   "section": 1,
+   "frames": 961,
+   "live": 960,
+   "vertices": [
+    71,
+    240
+   ],
+   "A0": 1.698229063042372,
+   "Aend": 0.00033572537076261656,
+   "slopes": [
+    -0.9999
+   ],
+   "worstSlope": -0.9999,
+   "isoStart": 1.3369,
+   "isoEnd": 1.0007,
+   "isoMaxRise": 0.00021,
+   "isoRiseAt": 15.974963718820863,
+   "bumps": 0,
+   "myCrossings": 0,
+   "pageCrossings": 0,
+   "areaAgree": 0,
+   "roundAtBar": 16,
+   "endBar": 16,
+   "roundEarlyBars": 0,
+   "roundEvent": 16
+  },
+  "curveKicks": {
+   "section": 1,
+   "frames": 961,
+   "live": 959,
+   "vertices": [
+    72,
+    240
+   ],
+   "A0": 1.7722458253858386,
+   "Aend": 0.001354140356523573,
+   "slopes": [
+    -0.9987,
+    -0.9994,
+    -0.9998,
+    -0.9998,
+    -0.9999,
+    -0.9998,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9998,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999
+   ],
+   "worstSlope": -0.9987,
+   "isoStart": 1.3458,
+   "isoEnd": 1.0006,
+   "isoMaxRise": 0.000383,
+   "isoRiseAt": 15.985122448979592,
+   "bumps": 28,
+   "myCrossings": 0,
+   "pageCrossings": 0,
+   "areaAgree": 0,
+   "roundAtBar": 15.995,
+   "endBar": 16,
+   "roundEarlyBars": 0.005,
+   "roundEvent": 16
+  },
+  "pinch": {
+   "section": 1,
+   "dropBar": 14,
+   "changes": [
+    {
+     "bars": 14.01,
+     "from": 1,
+     "to": 2
+    }
+   ],
+   "splitOffBars": 0.01,
+   "piecesAfterSplit": [
+    2
+   ],
+   "endPieces": 2,
+   "neckStart": 0.2035,
+   "neckLast": 0.0296,
+   "neckMaxRise": 0.0015,
+   "keyframes": 692,
+   "simNeck": 0.2,
+   "events": [
+    {
+     "bar": 6,
+     "lag": 17.198866117785656
+    },
+    {
+     "bar": 14,
+     "lag": 19.050113283316023
+    }
+   ]
+  },
+  "sync": {
+   "seed": {
+    "n": 2,
+    "median": 17.9,
+    "p10": -83.4,
+    "p90": 17.9
+   },
+   "kick": {
+    "n": 72,
+    "median": 17.9,
+    "p10": -0.4,
+    "p90": 19.1
+   },
+   "hat": {
+    "n": 143,
+    "median": 17.7,
+    "p10": -0.4,
+    "p90": 19.1
+   },
+   "snare": {
+    "n": 36,
+    "median": 17.9,
+    "p10": -0.4,
+    "p90": 19.3
+   },
+   "pinch": {
+    "n": 1,
+    "median": 18.9,
+    "p10": 18.9,
+    "p90": 18.9
+   }
+  },
+  "speed": {
+   "curve": {
+    "1080p": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "1440p": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    },
+    "4K": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      3840,
+      2160
+     ]
+    }
+   },
+   "pinch": {
+    "1080p": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "1440p": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    },
+    "4K": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      3840,
+      2160
+     ]
+    }
+   }
+  }
+ },
+ "errors": [],
+ "pass": {
+  "areaLaw": true,
+  "areaLawWithKicks": true,
+  "roundness": false,
+  "roundnessWithKicks": false,
+  "noCrossings": true,
+  "pinch": false,
+  "sync": true,
+  "alive": true,
+  "fps": true,
+  "noErrors": true
+ }
+}

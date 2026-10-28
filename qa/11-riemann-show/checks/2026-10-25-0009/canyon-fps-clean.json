@@ -1,0 +1,75 @@
+{
+ "pulses-fd01d0f": {
+  "vsync": {
+   "fps": 60,
+   "median": 16.7,
+   "p99": 16.8,
+   "worst": 16.8,
+   "over20ms": 0,
+   "frames": 1800,
+   "alive": true,
+   "caught": 0,
+   "scene": "canyon"
+  },
+  "motion": {
+   "pairs": 12,
+   "meanDiff": 29.891,
+   "changed": 0.526,
+   "changedMin": 0.461,
+   "changedMax": 0.616
+  },
+  "vsyncConsole": [],
+  "vsyncPageErrors": [],
+  "uncapped": {
+   "fps": 113.3,
+   "median": 8.5,
+   "p99": 26.3,
+   "worst": 29.6,
+   "over20ms": 36,
+   "frames": 1701,
+   "alive": true,
+   "caught": 0,
+   "scene": "canyon"
+  },
+  "uncappedConsole": [],
+  "uncappedPageErrors": []
+ },
+ "bumps-c72eafb": {
+  "vsync": {
+   "fps": 60,
+   "median": 16.7,
+   "p99": 16.8,
+   "worst": 16.8,
+   "over20ms": 0,
+   "frames": 1800,
+   "alive": true,
+   "caught": 0,
+   "scene": "canyon"
+  },
+  "motion": {
+   "pairs": 12,
+   "meanDiff": 33.235,
+   "changed": 0.494,
+   "changedMin": 0.467,
+   "changedMax": 0.511
+  },
+  "vsyncConsole": [],
+  "vsyncPageErrors": [],
+  "uncapped": {
+   "fps": 64.7,
+   "median": 17.2,
+   "p99": 32.3,
+   "worst": 249.2,
+   "over20ms": 49,
+   "frames": 973,
+   "alive": true,
+   "caught": 0,
+   "scene": "canyon"
+  },
+  "uncappedConsole": [
+   "warning: [.WebGL-0x59c001bf000] GL_CONTEXT_LOST_KHR: glDebugMessageCallbackKHR: Context has been lost.",
+   "warning: WebGL: CONTEXT_LOST_WEBGL: loseContext: context lost"
+  ],
+  "uncappedPageErrors": []
+ }
+}

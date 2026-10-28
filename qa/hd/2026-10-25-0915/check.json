@@ -1,0 +1,178 @@
+{
+ "canyon": {
+  "1440p": {
+   "fps": 60,
+   "p50": 16.7,
+   "p95": 16.8,
+   "worst": 16.8,
+   "under": 66.1,
+   "alive": true,
+   "canvas": [
+    2560,
+    1440
+   ],
+   "caught": 0,
+   "errors": 0
+  },
+  "4K": {
+   "fps": 60,
+   "p50": 16.7,
+   "p95": 16.7,
+   "worst": 16.8,
+   "under": 65.7,
+   "alive": true,
+   "canvas": [
+    2560,
+    1440
+   ],
+   "caught": 0,
+   "errors": 0
+  },
+  "4K uncapped": {
+   "fps": 930.3,
+   "p50": 1,
+   "p95": 2.1,
+   "worst": 19.7,
+   "under": 100,
+   "alive": true,
+   "canvas": [
+    2560,
+    1440
+   ],
+   "caught": 0,
+   "errors": 0
+  }
+ },
+ "ribbon": {
+  "1440p": {
+   "fps": 60,
+   "p50": 16.7,
+   "p95": 16.8,
+   "worst": 16.8,
+   "under": 68.2,
+   "alive": true,
+   "canvas": [
+    2560,
+    1440
+   ],
+   "caught": 0,
+   "errors": 0
+  },
+  "4K": {
+   "fps": 60,
+   "p50": 16.7,
+   "p95": 16.7,
+   "worst": 16.8,
+   "under": 65.6,
+   "alive": true,
+   "canvas": [
+    2560,
+    1440
+   ],
+   "caught": 0,
+   "errors": 0
+  },
+  "4K uncapped": {
+   "fps": 929.5,
+   "p50": 1,
+   "p95": 2.1,
+   "worst": 18.8,
+   "under": 100,
+   "alive": true,
+   "canvas": [
+    2560,
+    1440
+   ],
+   "caught": 0,
+   "errors": 0
+  }
+ },
+ "12 field": {
+  "1440p": {
+   "fps": 60,
+   "p50": 16.7,
+   "p95": 16.8,
+   "worst": 16.8,
+   "under": 65.2,
+   "alive": true,
+   "canvas": [
+    2560,
+    1440
+   ],
+   "caught": 0,
+   "errors": 0
+  },
+  "4K": {
+   "fps": 60,
+   "p50": 16.7,
+   "p95": 16.8,
+   "worst": 16.8,
+   "under": 66.5,
+   "alive": true,
+   "canvas": [
+    2560,
+    1440
+   ],
+   "caught": 0,
+   "errors": 0
+  },
+  "4K uncapped": {
+   "fps": 1122.6,
+   "p50": 0.9,
+   "p95": 1.6,
+   "worst": 8.3,
+   "under": 100,
+   "alive": true,
+   "canvas": [
+    2560,
+    1440
+   ],
+   "caught": 0,
+   "errors": 0
+  }
+ },
+ "17 skater": {
+  "1440p": {
+   "fps": 60,
+   "p50": 16.7,
+   "p95": 16.7,
+   "worst": 16.8,
+   "under": 65.1,
+   "alive": true,
+   "canvas": [
+    2560,
+    1440
+   ],
+   "caught": 0,
+   "errors": 0
+  },
+  "4K": {
+   "fps": 60,
+   "p50": 16.7,
+   "p95": 16.8,
+   "worst": 16.8,
+   "under": 66.8,
+   "alive": true,
+   "canvas": [
+    3840,
+    2160
+   ],
+   "caught": 0,
+   "errors": 0
+  },
+  "4K uncapped": {
+   "fps": 555.1,
+   "p50": 0.2,
+   "p95": 9.3,
+   "worst": 52.1,
+   "under": 99.2,
+   "alive": true,
+   "canvas": [
+    3840,
+    2160
+   ],
+   "caught": 0,
+   "errors": 0
+  }
+ }
+}

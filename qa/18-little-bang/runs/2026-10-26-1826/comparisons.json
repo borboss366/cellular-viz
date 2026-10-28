@@ -1,0 +1,39 @@
+[
+ {
+  "a": "1-collide",
+  "b": "3-strings",
+  "winner": "1-collide",
+  "at": "2026-10-26T19:49:17.075Z"
+ },
+ {
+  "a": "4-auto",
+  "b": "2-quench",
+  "winner": "tie",
+  "at": "2026-10-26T19:49:23.211Z"
+ },
+ {
+  "a": "3-strings",
+  "b": "2-quench",
+  "winner": "2-quench",
+  "at": "2026-10-26T19:49:28.521Z"
+ },
+ {
+  "a": "4-auto",
+  "b": "1-collide",
+  "winner": "tie",
+  "at": "2026-10-26T19:49:31.125Z"
+ },
+ {
+  "a": "1-collide",
+  "b": "2-quench",
+  "winner": "tie",
+  "note": "when they fly away they look like giant while spot. Maybe decrease the amount of particles?",
+  "at": "2026-10-26T19:50:20.525Z"
+ },
+ {
+  "a": "3-strings",
+  "b": "4-auto",
+  "winner": "4-auto",
+  "at": "2026-10-26T19:51:02.253Z"
+ }
+]

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "id": "13-flow-lab",
+  "note": "13 Flow Lab brightness (#58): curl and plume at +0.6 EV with the display curve's white point capped at 0.97 (no clipping); plume source 1.5x, dissipation 0.35 -> 0.2. kh is the reference (the user's winner): curl and plume should be at least as bright, with < 2 % of pixels clipped.",
+  "resolutions": ["1080p", "4k"],
+  "warmup": 6,
+  "seconds": 12,
+  "variants": [
+    { "name": "kh", "params": { "preset": "kh" } },
+    { "name": "curl", "params": { "preset": "curl" } },
+    { "name": "plume", "params": { "preset": "plume" } }
+  ],
+  "values": { "exposure": "__qa.params.exposure", "tone": "__qa.params.tone" },
+  "gates": [
+    { "metric": "clip", "max": 2, "variant": ["curl", "plume"] },
+    { "metric": "lum.mean", "min": 0, "name": "brightness, reported for kh vs curl vs plume (the min follows from kh)" },
+    { "metric": "fps.p05", "min": 55 },
+    { "metric": "longFrames", "max": 0.5 },
+    { "metric": "errors", "max": 0 },
+    { "metric": "gpuBusy", "max": 10 }
+  ],
+  "checks": ["check-13"],
+  "record": { "stills": 2 },
+  "swipe": { "vs": "base", "seconds": 40, "warmup": 4, "variants": ["curl", "plume"] },
+  "debug": { "console": true }
+}

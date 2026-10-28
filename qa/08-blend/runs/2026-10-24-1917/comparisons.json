@@ -1,0 +1,62 @@
+[
+ {
+  "a": "cut",
+  "b": "difference",
+  "winner": "difference",
+  "at": "2026-10-24T20:31:27.914Z"
+ },
+ {
+  "a": "color",
+  "b": "fade",
+  "winner": "tie",
+  "at": "2026-10-24T20:31:37.691Z"
+ },
+ {
+  "a": "mask",
+  "b": "screen",
+  "winner": "screen",
+  "at": "2026-10-24T20:31:45.108Z"
+ },
+ {
+  "a": "screen",
+  "b": "difference",
+  "winner": "tie",
+  "at": "2026-10-24T20:33:26.228Z"
+ },
+ {
+  "a": "mask",
+  "b": "cut",
+  "winner": "tie",
+  "at": "2026-10-24T20:33:34.121Z"
+ },
+ {
+  "a": "difference",
+  "b": "color",
+  "winner": "color",
+  "at": "2026-10-24T20:33:38.108Z"
+ },
+ {
+  "a": "fade",
+  "b": "screen",
+  "winner": "fade",
+  "at": "2026-10-24T20:33:41.923Z"
+ },
+ {
+  "a": "fade",
+  "b": "difference",
+  "winner": "difference",
+  "at": "2026-10-24T20:33:46.014Z"
+ },
+ {
+  "a": "cut",
+  "b": "screen",
+  "winner": "screen",
+  "at": "2026-10-24T20:38:20.703Z"
+ },
+ {
+  "a": "screen",
+  "b": "color",
+  "winner": "screen",
+  "at": "2026-10-24T20:38:26.650Z"
+ }
+]

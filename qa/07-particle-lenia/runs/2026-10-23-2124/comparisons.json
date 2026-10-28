@@ -1,0 +1,332 @@
+[
+ {
+  "a": "soft-rep",
+  "b": "rotor-break",
+  "winner": "tie",
+  "at": "2026-10-24T18:58:54.891Z"
+ },
+ {
+  "a": "loose",
+  "b": "small-ring",
+  "winner": "small-ring",
+  "at": "2026-10-24T18:59:01.702Z"
+ },
+ {
+  "a": "wide-ring",
+  "b": "rotor-ref",
+  "winner": "wide-ring",
+  "at": "2026-10-24T18:59:05.370Z"
+ },
+ {
+  "a": "tolerant",
+  "b": "tight",
+  "winner": "tight",
+  "at": "2026-10-24T18:59:09.298Z"
+ },
+ {
+  "a": "hard-rep",
+  "b": "dense",
+  "winner": "dense",
+  "at": "2026-10-24T18:59:12.185Z"
+ },
+ {
+  "a": "picky",
+  "b": "swarm-400",
+  "winner": "swarm-400",
+  "at": "2026-10-24T18:59:18.132Z"
+ },
+ {
+  "a": "hard-rep",
+  "b": "picky",
+  "winner": "hard-rep",
+  "at": "2026-10-24T18:59:20.406Z"
+ },
+ {
+  "a": "tolerant",
+  "b": "rotor-ref",
+  "winner": "tolerant",
+  "at": "2026-10-24T18:59:25.818Z"
+ },
+ {
+  "a": "swarm-400",
+  "b": "wide-ring",
+  "winner": "swarm-400",
+  "at": "2026-10-24T19:00:05.968Z"
+ },
+ {
+  "a": "dense",
+  "b": "tight",
+  "winner": "dense",
+  "at": "2026-10-24T19:00:08.960Z"
+ },
+ {
+  "a": "wide-ring",
+  "b": "rotor-break",
+  "winner": "rotor-break",
+  "at": "2026-10-24T19:00:10.906Z"
+ },
+ {
+  "a": "small-ring",
+  "b": "soft-rep",
+  "winner": "small-ring",
+  "at": "2026-10-24T19:00:13.881Z"
+ },
+ {
+  "a": "loose",
+  "b": "tolerant",
+  "winner": "loose",
+  "at": "2026-10-24T19:00:17.199Z"
+ },
+ {
+  "a": "loose",
+  "b": "tight",
+  "winner": "loose",
+  "at": "2026-10-24T19:00:19.293Z"
+ },
+ {
+  "a": "soft-rep",
+  "b": "hard-rep",
+  "winner": "hard-rep",
+  "at": "2026-10-24T19:00:22.621Z"
+ },
+ {
+  "a": "dense",
+  "b": "small-ring",
+  "winner": "small-ring",
+  "at": "2026-10-24T19:00:24.536Z"
+ },
+ {
+  "a": "swarm-400",
+  "b": "dense",
+  "winner": "dense",
+  "at": "2026-10-24T19:00:25.965Z"
+ },
+ {
+  "a": "rotor-break",
+  "b": "swarm-400",
+  "winner": "tie",
+  "at": "2026-10-24T19:00:28.635Z"
+ },
+ {
+  "a": "picky",
+  "b": "wide-ring",
+  "winner": "wide-ring",
+  "at": "2026-10-24T19:00:31.877Z"
+ },
+ {
+  "a": "picky",
+  "b": "rotor-ref",
+  "winner": "rotor-ref",
+  "at": "2026-10-24T19:00:35.547Z"
+ },
+ {
+  "a": "hard-rep",
+  "b": "rotor-break",
+  "winner": "hard-rep",
+  "at": "2026-10-24T19:00:37.999Z"
+ },
+ {
+  "a": "tight",
+  "b": "soft-rep",
+  "winner": "tight",
+  "at": "2026-10-24T19:00:40.969Z"
+ },
+ {
+  "a": "wide-ring",
+  "b": "tolerant",
+  "winner": "tolerant",
+  "at": "2026-10-24T19:01:16.448Z"
+ },
+ {
+  "a": "dense",
+  "b": "loose",
+  "winner": "dense",
+  "at": "2026-10-24T19:01:18.018Z"
+ },
+ {
+  "a": "tight",
+  "b": "swarm-400",
+  "winner": "swarm-400",
+  "at": "2026-10-24T19:01:20.275Z"
+ },
+ {
+  "a": "loose",
+  "b": "hard-rep",
+  "winner": "hard-rep",
+  "at": "2026-10-24T19:01:24.829Z"
+ },
+ {
+  "a": "soft-rep",
+  "b": "wide-ring",
+  "winner": "soft-rep",
+  "at": "2026-10-24T19:01:27.232Z"
+ },
+ {
+  "a": "soft-rep",
+  "b": "tolerant",
+  "winner": "tolerant",
+  "at": "2026-10-24T19:01:29.428Z"
+ },
+ {
+  "a": "rotor-break",
+  "b": "tight",
+  "winner": "rotor-break",
+  "at": "2026-10-24T19:01:31.121Z"
+ },
+ {
+  "a": "loose",
+  "b": "swarm-400",
+  "winner": "loose",
+  "at": "2026-10-24T19:01:32.694Z"
+ },
+ {
+  "a": "rotor-break",
+  "b": "tolerant",
+  "winner": "rotor-break",
+  "at": "2026-10-24T19:01:38.055Z"
+ },
+ {
+  "a": "loose",
+  "b": "rotor-break",
+  "winner": "loose",
+  "at": "2026-10-24T19:01:40.034Z"
+ },
+ {
+  "a": "soft-rep",
+  "b": "rotor-ref",
+  "winner": "rotor-ref",
+  "at": "2026-10-24T19:01:42.880Z"
+ },
+ {
+  "a": "tight",
+  "b": "rotor-ref",
+  "winner": "rotor-ref",
+  "at": "2026-10-24T19:01:44.463Z"
+ },
+ {
+  "a": "wide-ring",
+  "b": "tight",
+  "winner": "wide-ring",
+  "at": "2026-10-24T19:01:45.809Z"
+ },
+ {
+  "a": "swarm-400",
+  "b": "tolerant",
+  "winner": "tolerant",
+  "at": "2026-10-24T19:01:47.205Z"
+ },
+ {
+  "a": "rotor-ref",
+  "b": "swarm-400",
+  "winner": "swarm-400",
+  "at": "2026-10-24T19:01:48.601Z"
+ },
+ {
+  "a": "hard-rep",
+  "b": "small-ring",
+  "winner": "small-ring",
+  "at": "2026-10-24T19:01:50.174Z"
+ },
+ {
+  "a": "rotor-break",
+  "b": "rotor-ref",
+  "winner": "rotor-ref",
+  "at": "2026-10-24T19:01:53.668Z"
+ },
+ {
+  "a": "picky",
+  "b": "soft-rep",
+  "winner": "soft-rep",
+  "at": "2026-10-24T19:01:56.161Z"
+ },
+ {
+  "a": "hard-rep",
+  "b": "swarm-400",
+  "winner": "hard-rep",
+  "at": "2026-10-24T19:01:58.222Z"
+ },
+ {
+  "a": "swarm-400",
+  "b": "soft-rep",
+  "winner": "swarm-400",
+  "at": "2026-10-24T19:02:00.096Z"
+ },
+ {
+  "a": "rotor-ref",
+  "b": "loose",
+  "winner": "loose",
+  "at": "2026-10-24T19:02:01.530Z"
+ },
+ {
+  "a": "tight",
+  "b": "picky",
+  "winner": "tight",
+  "at": "2026-10-24T19:02:03.628Z"
+ },
+ {
+  "a": "tolerant",
+  "b": "hard-rep",
+  "winner": "tolerant",
+  "at": "2026-10-24T19:02:05.535Z"
+ },
+ {
+  "a": "hard-rep",
+  "b": "rotor-ref",
+  "winner": "rotor-ref",
+  "at": "2026-10-24T19:02:08.622Z"
+ },
+ {
+  "a": "wide-ring",
+  "b": "hard-rep",
+  "winner": "hard-rep",
+  "at": "2026-10-24T19:02:10.523Z"
+ },
+ {
+  "a": "tolerant",
+  "b": "dense",
+  "winner": "dense",
+  "at": "2026-10-24T19:02:12.542Z"
+ },
+ {
+  "a": "dense",
+  "b": "small-ring",
+  "winner": "small-ring",
+  "at": "2026-10-24T19:02:14.291Z"
+ },
+ {
+  "a": "hard-rep",
+  "b": "tight",
+  "winner": "hard-rep",
+  "at": "2026-10-24T19:02:16.210Z"
+ },
+ {
+  "a": "wide-ring",
+  "b": "soft-rep",
+  "winner": "soft-rep",
+  "at": "2026-10-24T19:02:17.909Z"
+ },
+ {
+  "a": "rotor-break",
+  "b": "rotor-ref",
+  "winner": "rotor-break",
+  "at": "2026-10-24T19:02:20.063Z"
+ },
+ {
+  "a": "rotor-break",
+  "b": "tolerant",
+  "winner": "rotor-break",
+  "at": "2026-10-24T19:02:24.075Z"
+ },
+ {
+  "a": "dense",
+  "b": "rotor-break",
+  "winner": "dense",
+  "at": "2026-10-24T19:02:25.684Z"
+ },
+ {
+  "a": "wide-ring",
+  "b": "tight",
+  "winner": "tight",
+  "at": "2026-10-24T19:02:29.842Z"
+ }
+]

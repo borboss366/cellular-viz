@@ -1,0 +1,38 @@
+[
+ {
+  "a": "glueball",
+  "b": "lava",
+  "winner": "lava",
+  "at": "2026-10-25T08:53:35.050Z"
+ },
+ {
+  "a": "field",
+  "b": "tube",
+  "winner": "field",
+  "at": "2026-10-25T08:53:54.999Z"
+ },
+ {
+  "a": "tube",
+  "b": "glueball",
+  "winner": "tube",
+  "at": "2026-10-25T08:54:01.848Z"
+ },
+ {
+  "a": "lava",
+  "b": "field",
+  "winner": "field",
+  "at": "2026-10-25T08:54:19.201Z"
+ },
+ {
+  "a": "lava",
+  "b": "tube",
+  "winner": "lava",
+  "at": "2026-10-25T08:54:20.974Z"
+ },
+ {
+  "a": "tube",
+  "b": "glueball",
+  "winner": "tube",
+  "at": "2026-10-25T08:54:22.759Z"
+ }
+]

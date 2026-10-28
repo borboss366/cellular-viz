@@ -1,0 +1,152 @@
+[
+ {
+  "a": "look-dream",
+  "b": "bloom-mid",
+  "winner": "look-dream",
+  "at": "2026-10-23T18:37:55.902Z"
+ },
+ {
+  "a": "trails",
+  "b": "look-chrome",
+  "winner": "trails",
+  "at": "2026-10-23T18:38:36.558Z"
+ },
+ {
+  "a": "look-pulse",
+  "b": "bulge",
+  "winner": "look-pulse",
+  "at": "2026-10-23T18:39:08.575Z"
+ },
+ {
+  "a": "look-glow",
+  "b": "palette",
+  "winner": "look-glow",
+  "at": "2026-10-23T18:39:35.630Z"
+ },
+ {
+  "a": "emboss",
+  "b": "clean",
+  "winner": "clean",
+  "at": "2026-10-23T18:39:53.955Z"
+ },
+ {
+  "a": "emboss",
+  "b": "look-chrome",
+  "winner": "emboss",
+  "at": "2026-10-23T18:40:07.423Z"
+ },
+ {
+  "a": "bloom-mid",
+  "b": "palette",
+  "winner": "palette",
+  "at": "2026-10-23T18:40:47.579Z"
+ },
+ {
+  "a": "clean",
+  "b": "look-glow",
+  "winner": "look-glow",
+  "at": "2026-10-23T18:40:53.798Z"
+ },
+ {
+  "a": "trails",
+  "b": "look-pulse",
+  "winner": "tie",
+  "at": "2026-10-23T18:41:26.001Z"
+ },
+ {
+  "a": "look-dream",
+  "b": "clean",
+  "winner": "look-dream",
+  "at": "2026-10-23T18:41:31.097Z"
+ },
+ {
+  "a": "bulge",
+  "b": "emboss",
+  "winner": "tie",
+  "at": "2026-10-23T18:41:42.360Z"
+ },
+ {
+  "a": "bloom-mid",
+  "b": "look-chrome",
+  "winner": "tie",
+  "at": "2026-10-23T18:43:14.667Z"
+ },
+ {
+  "a": "look-dream",
+  "b": "look-glow",
+  "winner": "look-dream",
+  "at": "2026-10-23T18:43:23.003Z"
+ },
+ {
+  "a": "palette",
+  "b": "trails",
+  "winner": "trails",
+  "at": "2026-10-23T18:43:28.564Z"
+ },
+ {
+  "a": "look-glow",
+  "b": "look-pulse",
+  "winner": "look-glow",
+  "at": "2026-10-23T18:43:34.311Z"
+ },
+ {
+  "a": "bulge",
+  "b": "palette",
+  "winner": "tie",
+  "at": "2026-10-23T18:43:56.525Z"
+ },
+ {
+  "a": "look-pulse",
+  "b": "clean",
+  "winner": "look-pulse",
+  "at": "2026-10-23T18:44:12.360Z"
+ },
+ {
+  "a": "palette",
+  "b": "emboss",
+  "winner": "palette",
+  "at": "2026-10-23T18:44:41.856Z"
+ },
+ {
+  "a": "bulge",
+  "b": "clean",
+  "winner": "bulge",
+  "at": "2026-10-23T18:45:01.589Z"
+ },
+ {
+  "a": "emboss",
+  "b": "bloom-mid",
+  "winner": "bloom-mid",
+  "at": "2026-10-23T21:19:30.589Z"
+ },
+ {
+  "a": "trails",
+  "b": "look-glow",
+  "winner": "tie",
+  "at": "2026-10-23T21:19:39.519Z"
+ },
+ {
+  "a": "bloom-mid",
+  "b": "bulge",
+  "winner": "bulge",
+  "at": "2026-10-23T21:19:53.723Z"
+ },
+ {
+  "a": "clean",
+  "b": "look-chrome",
+  "winner": "look-chrome",
+  "at": "2026-10-23T21:19:59.257Z"
+ },
+ {
+  "a": "look-dream",
+  "b": "trails",
+  "winner": "tie",
+  "at": "2026-10-23T21:20:03.713Z"
+ },
+ {
+  "a": "look-pulse",
+  "b": "palette",
+  "winner": "palette",
+  "at": "2026-10-23T21:20:09.003Z"
+ }
+]
