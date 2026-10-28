@@ -29,6 +29,7 @@ import { loadFile } from './experiment.mjs';
 import { historyEntry, commitPaths, reportFiles, buildDirs, messageFor } from './post.mjs';
 import { sync as boardSync } from './board.mjs';
 import { runShared } from './shared.mjs';
+import { addTodo } from './todo.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -397,6 +398,12 @@ async function afterBuild(rec, gate, tr) {
   let paths = [];
   try { paths = historyEntry({ qaHome: CFG.qaHome, b, trace: tr || [], result: rec.result, gate, checksRef: CFG.checksRef }); }
   catch (e) { log(`history entry for ${b.id}: ${e.message}`); }
+  // a ready build with a swipe waits on the user: put it on the grading page (qa/todo.json)
+  try {
+    const t = addTodo({ qaHome: CFG.qaHome, b, title: rec.title || '' });
+    if (t.error) log(`todo for ${b.id} not added: ${t.error}`);
+    if (t.changed) { paths.push('qa/todo.json'); log(`todo ${t.id} added for the user${t.superseded.length ? `; superseded ${t.superseded.join(', ')}` : ''}`); }
+  } catch (e) { log(`todo for ${b.id}: ${e.message}`); }
   if (CFG.commit) {
     const r = await commitPaths(CFG.qaHome, [...paths, ...reportFiles(CFG.qaHome, buildDirs(b)), 'qa/builds.json'], messageFor(b));
     log(r.ok ? `reports of ${b.id} committed as ${r.sha} (not pushed)` : `reports of ${b.id} not committed: ${r.why}`);
