@@ -1,12 +1,13 @@
 // Panic key for live sets: in every scene, instantly, whatever the scene is doing.
 //   B          blackout on / off (instant black; black is never a strobe)
 //   ` (or §)   calm fallback on / off
-// Not Esc: the browser always leaves fullscreen on Esc, which would drop the projector out of the set.: a slow, dim cobalt-violet drift drawn by CSS alone, so it works even if the
+// Not Esc: the browser always leaves fullscreen on Esc, which would drop the projector out of the set.
+// Calm: a slow, dim cobalt-violet drift drawn by CSS alone, so it works even if the
 //              scene's WebGL has crashed or frozen
 // A lost WebGL context (or 3 frame errors in a second, reported through window.__panicError) switches to the
 // calm fallback by itself. The overlay lives inside whatever element is fullscreen, so it covers the projector.
 // The controller maps a button to window.__panic.blackout() / .calm() / .clear() (issue #85). Include with:
-//   <script src="shared/panic.js"></script>
+//   <script src="panic.js"></script>   (next to the pages, not in a subfolder: the QA check servers serve one folder)
 (() => {
   if (window.__panic) return;
   const css = `

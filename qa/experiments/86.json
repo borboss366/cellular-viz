@@ -1,7 +1,7 @@
 {
   "version": 1,
   "id": "13-flow-lab",
-  "note": "#86 panic key: shared/panic.js loads in a page without errors, B-blackout and calm toggle through window.__panic, and the page still runs at speed underneath.",
+  "note": "#86 panic key: panic.js loads in a page without errors, B-blackout and calm toggle through window.__panic, and the page still runs at speed underneath.",
   "resolutions": ["1080p"],
   "warmup": 4,
   "seconds": 8,
