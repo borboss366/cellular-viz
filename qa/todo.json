@@ -538,5 +538,17 @@
    }
   ],
   "done": "2026-10-28T19:09:35.310Z"
+ },
+ {
+  "id": "16b-hodge-kaleidoscope",
+  "from": "QA box",
+  "title": "16b Hodge Kaleidoscope (PR #84): first look, then say merge or what to change",
+  "note": "PR #84 @2fcb554 passes all 10 checks (build viz-84-2): the Hodge numbers match the spec's table for every preset, both mirror symmetries hold, each row's glow follows its Betti number within 1 %, Euler characteristic right, 60 fps at 1080p and 4K, no errors, at most 1 % of pixels clipped. It's a new page, so there is no old version to swipe against: watch the 40 s clip (auto: curve → K3 → quintic) and tell us 'merge' or what to change.",
+  "links": [
+   {
+    "label": "▶ watch",
+    "href": "/run/16-hodge-kaleidoscope/2026-10-28-1901-pr84-swipe"
+   }
+  ]
  }
 ]
