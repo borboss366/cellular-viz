@@ -12,6 +12,7 @@
 //  5. Jets: collide pairs are balanced (A_J = 0); quench pairs have A_J = q/(2 − q).
 //  6. Sync from __qa.events (≤ 40 ms after the sound), liveness, errors.
 //  8. #58 white blob: in the collide scene, < 2 % of pixels clipped (any channel ≥ 254) in every frame over 16 s.
+//  13–16. #75 neon: kick brightness peak ≤ 40 ms + pulse arrival on the downbeat, hue steps ≥ 15°/bar, no > 25 % jumps outside drops, wire clearance ≥ 0.2.
 //  9–12. #75: beamline camera on axis, bunches cross on the downbeat, Mach cone angle, jets on snares (see block 9–12).
 //  7. fps (vsync p95, frames > 20 ms) at 1080p, 1440p and 4K for collide and quench at
 //     n = 150k and 1M, plus strings and auto at default.
@@ -160,11 +161,21 @@ for (const [label, q] of runs) {
   await page.click('#play').catch(() => {});
   await page.waitForTimeout(1500);
   res.beam = await page.evaluate(async () => {
-    const S = [], seen = new Map(), t0 = performance.now();
+    const S = [], seen = new Map(), pul = new Map(), L = [], t0 = performance.now();
+    const gl = [...document.querySelectorAll('canvas')].sort((a, b) => b.width * b.height - a.width * a.height)[0];
+    const c2 = document.createElement('canvas'); c2.width = 64; c2.height = 36; const x = c2.getContext('2d', { willReadFrequently: true });
     await new Promise(done => { const f = () => { const c = __qa.camera; if (c && c.pos) S.push({ bars: __qa.bars, p: c.pos.slice() });
-      for (const e of __qa.events || []) if (e.type === 'crossing') seen.set(e.tBeat, e);
+      for (const e of __qa.events || []) { if (e.type === 'crossing') seen.set(e.tBeat, e); if (e.type === 'pulse') pul.set(e.tBeat, e); }
+      // whole-frame luminance and the mean hue of saturated, lit pixels (the neon wires dominate the beamline picture)
+      x.drawImage(gl, 0, 0, 64, 36); const d = x.getImageData(0, 0, 64, 36).data; let lum = 0, hx = 0, hy = 0, hw = 0;
+      for (let i = 0; i < d.length; i += 4) { const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+        lum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+        if (mx > 0.25 && mx - mn > 0.4 * mx) { let h = mx === r ? (g - b) / (mx - mn) : mx === g ? 2 + (b - r) / (mx - mn) : 4 + (r - g) / (mx - mn); h = h * 60 * Math.PI / 180; hx += Math.cos(h) * mx; hy += Math.sin(h) * mx; hw += mx; } }
+      const w = __qa.wires;
+      L.push({ t: performance.now(), bars: __qa.bars, lum: lum / (64 * 36), hx, hy, hw, drop: !!(w && w.drop) || !!__qa.drop, clear: w ? w.clearance : null });
       if (performance.now() - t0 < 16000) requestAnimationFrame(f); else done(); }; requestAnimationFrame(f); });
-    return { S, crossings: [...seen.values()].map(e => ({ bar: e.bar, tBeat: e.tBeat, lag: e.perfDrawn - e.perfHeard })), bpm: __qa.bpm || 120 };
+    return { S, L, crossings: [...seen.values()].map(e => ({ bar: e.bar, tBeat: e.tBeat, lag: e.perfDrawn - e.perfHeard })),
+      pulses: [...pul.values()].map(e => ({ bar: e.bar, step: e.step, tBeat: e.tBeat, tArrive: e.tArrive, heard: e.perfHeard, lag: e.perfDrawn - e.perfHeard })), hasWires: !!__qa.wires || L.some(l => l.clear !== null), bpm: __qa.bpm || 120 };
   });
   await page.close();
 }
@@ -177,7 +188,7 @@ for (const [label, q] of runs) {
       if (usage === this.DYNAMIC_DRAW && data instanceof Float32Array && data.length % 7 === 0 && data.length) {
         const pts = [];
         for (let i = 0; i < data.length; i += 7) { const r = data[i + 3], g = data[i + 4], b = data[i + 5];
-          if (r > 1e-4 && Math.abs(g / r - 0.5) < 0.02 && Math.abs(b / r - 0.18) < 0.02 && data[i + 6] === 5) pts.push([data[i], data[i + 1], data[i + 2]]); }
+          if (r > 1e-4 && g / r > 0.35 && g / r < 0.6 && b / r > 0.05 && b / r < 0.25) pts.push([data[i], data[i + 1], data[i + 2]]); }   // orange, whatever the size
         if (pts.length >= 40 && window.__qa) W.push({ bars: window.__qa.bars, pts, wake: (window.__qa.wakes || []).slice(-1)[0] || null });
         if (W.length > 4000) W.shift();
       }
@@ -199,7 +210,7 @@ for (const [label, q] of runs) {
       fits.push({ key: `${w.bar}.${w.step}`, bars: +F.bars.toFixed(3), deg: Math.atan(Math.abs(slope)) * 180 / Math.PI, r2, n: N, want: Math.asin(w.cs / w.v) * 180 / Math.PI });
     }
     const by = {}; for (const f of fits) (by[f.key] ??= []).push(f);
-    const wakes = Object.entries(by).map(([k, a]) => { const good = a.filter(f => f.r2 > 0.98); const lo = good.length ? Math.min(...good.map(f => f.deg)) : null;
+    const wakes = Object.entries(by).map(([k, a]) => { const good = a.filter(f => f.r2 > 0.995); /* one clean cone; a trail of lagged cones fits worse */ const lo = good.length ? Math.min(...good.map(f => f.deg)) : null;
       return { wake: k, frames: a.length, fitted: good.length, narrowest: lo === null ? null : +lo.toFixed(2), widest: good.length ? +Math.max(...good.map(f => f.deg)).toFixed(2) : null, want: +a[0].want.toFixed(2) }; });
     const dij = (window.__qa.dijets || []).map(j => ({ bar: j.bar, step: j.step, AJ: j.AJ }));
     const seen = new Map(); for (const e of window.__qa.events || []) if (e.type === 'jet') seen.set(e.tBeat, e.perfDrawn - e.perfHeard);
@@ -225,6 +236,22 @@ for (const [label, q] of runs) {
   const vMean = sp.reduce((s, x) => s + x.v, 0) / Math.max(1, sp.length);
   const atDown = sp.filter(x => { const f = x.bars - Math.round(x.bars); return Math.abs(f) <= 0.02; });
   const cr = B.crossings.sort((x, y) => x.tBeat - y.tBeat), gaps = cr.slice(1).map((x, i) => x.tBeat - cr[i].tBeat);
+  // 13–16 neon wires
+  const Lf = B.L || [], heard = (B.pulses || []).filter(p => Number.isFinite(p.heard));
+  const peaks = heard.map(p => { const win = Lf.filter(l => l.t >= p.heard - 50 && l.t <= p.heard + 250); if (!win.length) return null; const m = win.reduce((a, l) => l.lum > a.lum ? l : a); return m.t - p.heard; }).filter(x => x !== null).sort((a, b) => a - b);
+  const crossT = (B.crossings || []).map(c => c.tBeat);
+  const lastCross = crossT.length ? Math.max(...crossT) : -Infinity, firstCross = crossT.length ? Math.min(...crossT) : Infinity;
+  const arriveErr = (B.pulses || []).filter(p => Number.isFinite(p.tArrive) && p.tArrive <= lastCross + 0.01 && p.tArrive >= firstCross - 0.01).map(p => Math.min(...crossT.map(t => Math.abs(t - p.tArrive))) * 1000).filter(Number.isFinite);
+  const byBar = {}; for (const l of Lf) { const k = Math.floor(l.bars); (byBar[k] ??= { hx: 0, hy: 0, hw: 0 }); byBar[k].hx += l.hx; byBar[k].hy += l.hy; byBar[k].hw += l.hw; }
+  const hues = Object.entries(byBar).sort((a, b) => a[0] - b[0]).filter(([, v]) => v.hw > 0).map(([k, v]) => ({ bar: +k, hue: ((Math.atan2(v.hy, v.hx) * 180 / Math.PI) + 360) % 360 }));
+  const hueSteps = hues.slice(1).map((h, i) => { const dd = Math.abs(h.hue - hues[i].hue) % 360; return Math.min(dd, 360 - dd); });
+  const jumps = []; for (let i = 1; i < Lf.length; i++) { if (Lf[i].drop || Lf[i - 1].drop) continue; const a0 = Lf[i - 1].lum, b0 = Lf[i].lum; jumps.push({ rel: Math.abs(Math.max(b0, 5) - Math.max(a0, 5)) / Math.max(a0, b0, 5), bars: Lf[i].bars }); }
+  const worstJump = jumps.reduce((a, j) => j.rel > a.rel ? j : a, { rel: 0, bars: null });
+  const clears = Lf.map(l => l.clear).filter(Number.isFinite);
+  res.neon = { has: !!B.hasWires, kicks: heard.length, peakMedMs: peaks.length ? peaks[Math.floor(peaks.length / 2)] : null, peakMaxMs: peaks.length ? peaks[peaks.length - 1] : null,
+    pulseLagMax: (B.pulses || []).length ? Math.max(...B.pulses.map(p => p.lag)) : null, arriveErrMs: arriveErr.length ? Math.max(...arriveErr) : null,
+    bars: hues.length, hueSteps: hueSteps.map(x => +x.toFixed(1)), hueOkShare: hueSteps.length ? hueSteps.filter(x => x >= 15).length / hueSteps.length : 0,
+    worstJump: +(worstJump.rel * 100).toFixed(1), worstJumpBar: worstJump.bars, over25: jumps.filter(j => j.rel > 0.25).length, minClear: clears.length ? Math.min(...clears) : null };
   res.beamSum = { frames: N, maxOff: Math.max(...off), fitR, fitCentre: [cx, cz], vMean, downFrames: atDown.length,
     downMaxV: atDown.length ? Math.max(...atDown.map(x => x.v)) : null, downDIP: atDown.length ? [Math.min(...atDown.map(x => x.dIP)), Math.max(...atDown.map(x => x.dIP))] : null,
     crossings: cr.length, gapErrMs: gaps.length ? Math.max(...gaps.map(g => Math.abs(g - barSec) * 1000)) : null, crossLagMax: cr.length ? Math.max(...cr.map(x => x.lag)) : null };
@@ -247,6 +274,10 @@ const pass = {
   crossing: res.beamSum.crossings >= 4 && res.beamSum.gapErrMs <= 2 && res.beamSum.crossLagMax <= 40 && res.beamSum.downFrames > 0 && res.beamSum.downMaxV <= 0.05 * res.beamSum.vMean && res.beamSum.downDIP[0] >= 0.6 && res.beamSum.downDIP[1] <= 1.2,
   machCone: res.wake.wakes.filter(w => w.narrowest !== null).length >= 3 && res.wake.wakes.filter(w => w.narrowest !== null).every(w => Math.abs(w.narrowest - w.want) <= 3),
   dijets: res.wake.dijets.length >= 4 && res.wake.dijets.every(j => j.step % 8 === 4) && res.wake.jetLags.length > 0 && Math.max(...res.wake.jetLags) <= 40 && res.wake.escRms <= 5 && res.wake.quRms >= 2 * res.wake.escRms,
+  neonKick: !res.neon.has || (res.neon.kicks >= 4 && res.neon.peakMedMs !== null && res.neon.peakMedMs <= 40 && res.neon.pulseLagMax <= 40 && res.neon.arriveErrMs !== null && res.neon.arriveErrMs <= 2),
+  neonHue: !res.neon.has || (res.neon.bars >= 6 && res.neon.hueOkShare >= 0.9),
+  neonJump: !res.neon.has || res.neon.over25 === 0,
+  neonClear: !res.neon.has || (res.beamSum.maxOff < 1e-6 && res.neon.minClear !== null && res.neon.minClear >= 0.2),
   noErrors: !errors.length && Object.values(res.speed).every(o => Object.values(o).every(v => !v.caught)),
 };
 const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
@@ -268,6 +299,10 @@ fs.writeFileSync(path.join(dir, 'check.md'), `# 18 Little Bang check · ${stamp}
   `| beamline: bunches cross on the downbeat, camera halted just short of the IP | ${ok(pass.crossing)} | ${res.beamSum.crossings} crossings, bar-to-bar error ≤ ${res.beamSum.gapErrMs?.toFixed(2)} ms, lag ≤ ${res.beamSum.crossLagMax?.toFixed(1)} ms · at downbeats: ${res.beamSum.downDIP ? res.beamSum.downDIP.map(x => x.toFixed(2)).join('–') : '–'} from the IP, speed ≤ ${res.beamSum.downMaxV?.toFixed(2)} (lap mean ${res.beamSum.vMean.toFixed(1)}) |\n` +
   `| quench: Mach cone half-angle = asin(c_s/v) ± 3° (my fit to the drawn wake) | ${ok(pass.machCone)} | ${res.wake.wakes.map(w => `${w.wake}: ${w.narrowest ?? '–'}° (widens to ${w.widest ?? '–'}°, ${w.fitted}/${w.frames} frames fit)`).join(' · ')} · want ${res.wake.wakes[0]?.want ?? '–'}° |\n` +
   `| jets: each pair on a snare, ≤ 40 ms; escaping side narrow | ${ok(pass.dijets)} | ${res.wake.dijets.length} pairs on steps ${[...new Set(res.wake.dijets.map(j => j.step))].join('/')} · lag ≤ ${res.wake.jetLags.length ? Math.max(...res.wake.jetLags).toFixed(1) : '–'} ms · φ spread ${res.wake.escRms}° escaping vs ${res.wake.quRms}° quenched (shader formula, q ${res.wake.q}) |\n` +
+  `| neon: wire brightness peaks ≤ 40 ms after each kick; its light ring arrives on the downbeat | ${ok(pass.neonKick)} | ${res.neon.has ? `${res.neon.kicks} kicks: frame-brightness peak median ${res.neon.peakMedMs?.toFixed(0)} ms (max ${res.neon.peakMedMs === null ? '–' : res.neon.peakMaxMs.toFixed(0)}) after the sound · pulse launch lag ≤ ${res.neon.pulseLagMax?.toFixed(1)} ms · arrival vs crossing ≤ ${res.neon.arriveErrMs?.toFixed(2)} ms` : 'no neon wires on this page'} |\n` +
+  `| neon: mean hue changes ≥ 15° bar to bar on ≥ 90 % of bars | ${ok(pass.neonHue)} | ${res.neon.has ? `${res.neon.bars} bars, steps ${res.neon.hueSteps.join(', ')}° (${(res.neon.hueOkShare * 100).toFixed(0)} % ≥ 15°; whole-frame hue of saturated lit pixels)` : '–'} |\n` +
+  `| neon: no frame-to-frame brightness jump > 25 % outside drops | ${ok(pass.neonJump)} | ${res.neon.has ? `worst ${res.neon.worstJump} % at bar ${res.neon.worstJumpBar?.toFixed(2)} · ${res.neon.over25} frames over 25 % (both frames floored at 5/255)` : '–'} |\n` +
+  `| neon: wires ≥ 0.2 tube radius from the camera | ${ok(pass.neonClear)} | ${res.neon.has ? `camera ≤ ${res.beamSum.maxOff.toExponential(1)} off the axis (my measure) · nearest wire ${res.neon.minClear?.toFixed(3)} tube radii (page's breath − wobble)` : '–'} |\n` +
   `| 1440p: p95 ≤ 16.8 ms, ≤ 3 frames > 20 ms | ${ok(pass.fps1440)} | |\n` +
   `| errors | ${ok(pass.noErrors)} | ${errors.slice(0, 2).join('; ') || 'none'} |\n\n` +
   `## Frame times (vsync)\n\n| run | 1080p p95 / >20 ms | 1440p p95 / >20 ms | 4K p95 / >20 ms | canvas at 4K | tracks drawn |\n|---|---|---|---|---|---|\n` +
