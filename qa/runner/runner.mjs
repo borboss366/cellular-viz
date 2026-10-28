@@ -124,7 +124,20 @@ function enqueue(job) {
   state.queue.push(job);
   log(`queued #${job.pr} ${job.kind === 'experiment' ? 'experiment' : job.page} @${job.sha.slice(0, 7)}`);
 }
+// A qa-ready PR runs only its experiment file. If the runner saw it before the label landed (opened, then labelled a
+// minute later: #86 touched all 19 pages and queued 19 page builds, 01–08 "failed" in 0.7 s for want of a check
+// script, 09+ ran full checks nobody asked for), its page builds are dropped here, also from a queue saved before a
+// restart. A PR is labelled when its seen key carries the label (set below).
+function dropPageJobsOfLabelled() {
+  const labelled = n => String(state.seen[n] || '').endsWith(`+${CFG.label}`);
+  const drop = state.queue.filter(j => j.kind !== 'experiment' && labelled(j.pr));
+  if (!drop.length) return;
+  state.queue = state.queue.filter(j => !drop.includes(j));
+  log(`dropped ${drop.length} queued page build${drop.length > 1 ? 's' : ''} of qa-ready PR${new Set(drop.map(j => j.pr)).size > 1 ? 's' : ''} #${[...new Set(drop.map(j => j.pr))].join(', #')} (${drop.map(j => j.page).join(', ')}): the experiment file runs instead`);
+  save();
+}
 async function poll() {
+  dropPageJobsOfLabelled();
   status.lastPoll = new Date().toISOString();
   if (status.rate && status.rate.remaining === 0 && Date.parse(status.rate.reset) > Date.now()) return;
   const res = await gh('pulls?state=open&per_page=100', state.etag);
@@ -142,6 +155,8 @@ async function poll() {
     const key = labelled ? `${sha}+${CFG.label}` : sha;
     if (state.seen[n] === key) continue;
     if (labelled) {
+      state.seen[n] = key;
+      dropPageJobsOfLabelled();
       if ((state.expDone || {})[n] !== sha) enqueue({ pr: n, sha, kind: 'experiment', page: 'experiment', title: pr.title, at: new Date().toISOString() });
       state.seen[n] = key;
       save();
@@ -395,6 +410,8 @@ async function work() {
   working = true;
   try {
     while (!stopping && state.queue.length) {
+      dropPageJobsOfLabelled();   // a label can land while a long build runs
+      if (!state.queue.length) break;
       const job = state.queue[0];
       if (job.after && Date.now() < job.after) break;   // waiting to retry after a network failure
       // one GPU check at a time on the box, and only on an idle GPU; if it stays busy the job stays queued for the next poll
