@@ -1,0 +1,798 @@
+{
+ "truth": "LMFDB zeros 1–40",
+ "zerosRes": {
+  "count": 38,
+  "want": 38,
+  "worst": 4.77714465318968e-7,
+  "extra": []
+ },
+ "ribbonRes": {
+  "count": 38,
+  "missing": [],
+  "extra": [],
+  "worstAbsZeta": 0.0358
+ },
+ "scopeRes": {
+  "count": 38,
+  "missing": [],
+  "extra": [],
+  "worst": 0.00016445683033339265
+ },
+ "primesRes": {
+  "piExactOk": true,
+  "approxWorst": 0.4360285510647586,
+  "approxBad": [],
+  "approx10Worst": 0.6136401169506591,
+  "stepsArePrimes": true,
+  "steps": "2…59 (17)"
+ },
+ "lockRes": {
+  "samples": 961,
+  "frameWorst": 1.4210854715202004e-14,
+  "downbeats": 8,
+  "worst": 1.4210854715202004e-14,
+  "nearestFrameWorst": 0.05204087214348263,
+  "atDown": [
+   {
+    "bar": 1,
+    "u": 0.0097,
+    "err": 3.552713678800501e-15,
+    "nearestFrame": 0.038703292451572224
+   },
+   {
+    "bar": 2,
+    "u": 0.0096,
+    "err": 7.105427357601002e-15,
+    "nearestFrame": 0.05204087214348263
+   },
+   {
+    "bar": 3,
+    "u": 0.0095,
+    "err": 0,
+    "nearestFrame": 0.02390083617785521
+   },
+   {
+    "bar": 4,
+    "u": 0.0094,
+    "err": 7.105427357601002e-15,
+    "nearestFrame": 0.043863931562704295
+   },
+   {
+    "bar": 5,
+    "u": 0.0093,
+    "err": 1.4210854715202004e-14,
+    "nearestFrame": 0.031126384976921884
+   },
+   {
+    "bar": 6,
+    "u": 0.0092,
+    "err": 7.105427357601002e-15,
+    "nearestFrame": 0.02227591170588994
+   },
+   {
+    "bar": 7,
+    "u": 0.0092,
+    "err": 0,
+    "nearestFrame": 0.04284525040231557
+   },
+   {
+    "bar": 8,
+    "u": 0.0091,
+    "err": 7.105427357601002e-15,
+    "nearestFrame": 0.016038452844497897
+   }
+  ],
+  "windowSamples": 25,
+  "windowWorst": 0.10309107255089245,
+  "windowMedian": 0.01954611240661208
+ },
+ "speed": {
+  "ribbon": {
+   "fps": 60,
+   "p99": 16.8,
+   "worst": 16.8,
+   "canvas": [
+    1920,
+    1080
+   ],
+   "scene": "ribbon",
+   "alive": true,
+   "caught": [],
+   "caughtN": 0
+  },
+  "march": {
+   "fps": 60,
+   "p99": 16.8,
+   "worst": 16.8,
+   "canvas": [
+    1920,
+    1080
+   ],
+   "scene": "march",
+   "alive": true,
+   "caught": [],
+   "caughtN": 0
+  },
+  "scope": {
+   "fps": 60,
+   "p99": 16.8,
+   "worst": 16.8,
+   "canvas": [
+    1920,
+    1080
+   ],
+   "scene": "scope",
+   "alive": true,
+   "caught": [],
+   "caughtN": 0
+  },
+  "primes": {
+   "fps": 60,
+   "p99": 16.8,
+   "worst": 16.8,
+   "canvas": [
+    1920,
+    1080
+   ],
+   "scene": "primes",
+   "alive": true,
+   "caught": [],
+   "caughtN": 0
+  },
+  "canyon": {
+   "fps": 60,
+   "p99": 16.8,
+   "worst": 16.8,
+   "canvas": [
+    1920,
+    1080
+   ],
+   "scene": "canyon",
+   "alive": true,
+   "caught": [],
+   "caughtN": 0
+  },
+  "map": {
+   "fps": 60,
+   "p99": 16.8,
+   "worst": 16.8,
+   "canvas": [
+    1920,
+    1080
+   ],
+   "scene": "map",
+   "alive": true,
+   "caught": [],
+   "caughtN": 0
+  },
+  "auto": {
+   "fps": 60,
+   "p99": 16.8,
+   "worst": 16.8,
+   "canvas": [
+    1920,
+    1080
+   ],
+   "scene": "ribbon",
+   "alive": true,
+   "caught": [],
+   "caughtN": 0
+  }
+ },
+ "blank": {
+  "ribbon": [
+   {
+    "scene": "ribbon",
+    "bars": 0.81,
+    "lit": 0.13,
+    "mean": 10.7,
+    "sd": 23.5,
+    "blank": false
+   },
+   {
+    "scene": "ribbon",
+    "bars": 1.38,
+    "lit": 0.259,
+    "mean": 21.7,
+    "sd": 36.7,
+    "blank": false
+   },
+   {
+    "scene": "ribbon",
+    "bars": 1.97,
+    "lit": 0.0718,
+    "mean": 7.2,
+    "sd": 15.4,
+    "blank": false
+   },
+   {
+    "scene": "ribbon",
+    "bars": 2.52,
+    "lit": 0.1255,
+    "mean": 11.3,
+    "sd": 26.3,
+    "blank": false
+   },
+   {
+    "scene": "ribbon",
+    "bars": 3.08,
+    "lit": 0.6271,
+    "mean": 21.4,
+    "sd": 34.7,
+    "blank": false
+   },
+   {
+    "scene": "ribbon",
+    "bars": 3.65,
+    "lit": 0.1382,
+    "mean": 11.8,
+    "sd": 23.8,
+    "blank": false
+   },
+   {
+    "scene": "ribbon",
+    "bars": 4.21,
+    "lit": 0.084,
+    "mean": 7.9,
+    "sd": 16.7,
+    "blank": false
+   },
+   {
+    "scene": "ribbon",
+    "bars": 4.76,
+    "lit": 0.1199,
+    "mean": 9.3,
+    "sd": 19.8,
+    "blank": false
+   }
+  ],
+  "march": [
+   {
+    "scene": "march",
+    "bars": 0.81,
+    "lit": 0.1359,
+    "mean": 15.2,
+    "sd": 27.1,
+    "blank": false
+   },
+   {
+    "scene": "march",
+    "bars": 1.37,
+    "lit": 0.1279,
+    "mean": 14.2,
+    "sd": 25.4,
+    "blank": false
+   },
+   {
+    "scene": "march",
+    "bars": 1.92,
+    "lit": 0.1378,
+    "mean": 15,
+    "sd": 26.7,
+    "blank": false
+   },
+   {
+    "scene": "march",
+    "bars": 2.47,
+    "lit": 0.1245,
+    "mean": 14.4,
+    "sd": 26.4,
+    "blank": false
+   },
+   {
+    "scene": "march",
+    "bars": 3.03,
+    "lit": 0.6771,
+    "mean": 37.1,
+    "sd": 38.3,
+    "blank": false
+   },
+   {
+    "scene": "march",
+    "bars": 3.59,
+    "lit": 0.1436,
+    "mean": 15.3,
+    "sd": 27.4,
+    "blank": false
+   },
+   {
+    "scene": "march",
+    "bars": 4.15,
+    "lit": 0.1518,
+    "mean": 15.9,
+    "sd": 27.5,
+    "blank": false
+   },
+   {
+    "scene": "march",
+    "bars": 4.71,
+    "lit": 0.1392,
+    "mean": 15.5,
+    "sd": 28,
+    "blank": false
+   }
+  ],
+  "scope": [
+   {
+    "scene": "scope",
+    "bars": 0.81,
+    "lit": 0.0794,
+    "mean": 8.2,
+    "sd": 17.4,
+    "blank": false
+   },
+   {
+    "scene": "scope",
+    "bars": 1.36,
+    "lit": 0.0785,
+    "mean": 8.2,
+    "sd": 17.6,
+    "blank": false
+   },
+   {
+    "scene": "scope",
+    "bars": 1.88,
+    "lit": 0.0834,
+    "mean": 8.5,
+    "sd": 18,
+    "blank": false
+   },
+   {
+    "scene": "scope",
+    "bars": 2.43,
+    "lit": 0.0772,
+    "mean": 8.1,
+    "sd": 17.2,
+    "blank": false
+   },
+   {
+    "scene": "scope",
+    "bars": 2.97,
+    "lit": 0.0798,
+    "mean": 8.2,
+    "sd": 17.5,
+    "blank": false
+   },
+   {
+    "scene": "scope",
+    "bars": 3.51,
+    "lit": 0.084,
+    "mean": 8.5,
+    "sd": 18.1,
+    "blank": false
+   },
+   {
+    "scene": "scope",
+    "bars": 4.05,
+    "lit": 0.6771,
+    "mean": 21.5,
+    "sd": 19.8,
+    "blank": false
+   },
+   {
+    "scene": "scope",
+    "bars": 4.6,
+    "lit": 0.0834,
+    "mean": 8.4,
+    "sd": 17.8,
+    "blank": false
+   }
+  ],
+  "primes": [
+   {
+    "scene": "primes",
+    "bars": 0.81,
+    "lit": 0.0663,
+    "mean": 7.4,
+    "sd": 16.2,
+    "blank": false
+   },
+   {
+    "scene": "primes",
+    "bars": 1.36,
+    "lit": 0.0663,
+    "mean": 7.4,
+    "sd": 16.2,
+    "blank": false
+   },
+   {
+    "scene": "primes",
+    "bars": 1.88,
+    "lit": 0.0663,
+    "mean": 7.4,
+    "sd": 16.2,
+    "blank": false
+   },
+   {
+    "scene": "primes",
+    "bars": 2.42,
+    "lit": 0.0661,
+    "mean": 7.4,
+    "sd": 16.3,
+    "blank": false
+   },
+   {
+    "scene": "primes",
+    "bars": 2.95,
+    "lit": 0.0661,
+    "mean": 7.4,
+    "sd": 16.2,
+    "blank": false
+   },
+   {
+    "scene": "primes",
+    "bars": 3.48,
+    "lit": 0.0662,
+    "mean": 7.4,
+    "sd": 16.2,
+    "blank": false
+   },
+   {
+    "scene": "primes",
+    "bars": 4.02,
+    "lit": 0.6771,
+    "mean": 26.4,
+    "sd": 19,
+    "blank": false
+   },
+   {
+    "scene": "primes",
+    "bars": 4.57,
+    "lit": 0.0662,
+    "mean": 7.4,
+    "sd": 16.3,
+    "blank": false
+   }
+  ],
+  "canyon": [
+   {
+    "scene": "canyon",
+    "bars": 0.81,
+    "lit": 0.5692,
+    "mean": 84.9,
+    "sd": 83.2,
+    "blank": false
+   },
+   {
+    "scene": "canyon",
+    "bars": 1.45,
+    "lit": 0.5559,
+    "mean": 73.3,
+    "sd": 73.4,
+    "blank": false
+   },
+   {
+    "scene": "canyon",
+    "bars": 2.06,
+    "lit": 0.6771,
+    "mean": 102.6,
+    "sd": 96.1,
+    "blank": false
+   },
+   {
+    "scene": "canyon",
+    "bars": 2.67,
+    "lit": 0.5667,
+    "mean": 83.8,
+    "sd": 77.9,
+    "blank": false
+   },
+   {
+    "scene": "canyon",
+    "bars": 3.29,
+    "lit": 0.5557,
+    "mean": 92.7,
+    "sd": 94.8,
+    "blank": false
+   },
+   {
+    "scene": "canyon",
+    "bars": 3.93,
+    "lit": 0.5588,
+    "mean": 51.5,
+    "sd": 51.3,
+    "blank": false
+   },
+   {
+    "scene": "canyon",
+    "bars": 4.56,
+    "lit": 0.573,
+    "mean": 98.2,
+    "sd": 93.9,
+    "blank": false
+   },
+   {
+    "scene": "canyon",
+    "bars": 5.2,
+    "lit": 0.5589,
+    "mean": 98.9,
+    "sd": 97.2,
+    "blank": false
+   }
+  ],
+  "map": [
+   {
+    "scene": "map",
+    "bars": 0.81,
+    "lit": 0.6771,
+    "mean": 70.8,
+    "sd": 51,
+    "blank": false
+   },
+   {
+    "scene": "map",
+    "bars": 1.45,
+    "lit": 0.6771,
+    "mean": 107.2,
+    "sd": 79.5,
+    "blank": false
+   },
+   {
+    "scene": "map",
+    "bars": 2.06,
+    "lit": 0.6771,
+    "mean": 113.2,
+    "sd": 84,
+    "blank": false
+   },
+   {
+    "scene": "map",
+    "bars": 2.68,
+    "lit": 0.6771,
+    "mean": 92.1,
+    "sd": 69.1,
+    "blank": false
+   },
+   {
+    "scene": "map",
+    "bars": 3.32,
+    "lit": 0.6771,
+    "mean": 73.9,
+    "sd": 55.6,
+    "blank": false
+   },
+   {
+    "scene": "map",
+    "bars": 3.94,
+    "lit": 0.6771,
+    "mean": 63.8,
+    "sd": 51.8,
+    "blank": false
+   },
+   {
+    "scene": "map",
+    "bars": 4.56,
+    "lit": 0.6771,
+    "mean": 67.7,
+    "sd": 54.4,
+    "blank": false
+   },
+   {
+    "scene": "map",
+    "bars": 5.18,
+    "lit": 0.6771,
+    "mean": 92.7,
+    "sd": 71.9,
+    "blank": false
+   }
+  ],
+  "auto (1-bar sections)": [
+   {
+    "scene": "ribbon",
+    "bars": 0.56,
+    "lit": 0.0952,
+    "mean": 9.2,
+    "sd": 21,
+    "blank": false
+   },
+   {
+    "scene": "ribbon",
+    "bars": 0.85,
+    "lit": 0.1337,
+    "mean": 10.8,
+    "sd": 23.2,
+    "blank": false
+   },
+   {
+    "scene": "march",
+    "bars": 1.16,
+    "lit": 0.1367,
+    "mean": 10.2,
+    "sd": 17.9,
+    "blank": false
+   },
+   {
+    "scene": "march",
+    "bars": 1.47,
+    "lit": 0.3051,
+    "mean": 18.2,
+    "sd": 24.6,
+    "blank": false
+   },
+   {
+    "scene": "march",
+    "bars": 1.81,
+    "lit": 0.1417,
+    "mean": 14,
+    "sd": 24.2,
+    "blank": false
+   },
+   {
+    "scene": "scope",
+    "bars": 2.13,
+    "lit": 0.2006,
+    "mean": 17,
+    "sd": 24.4,
+    "blank": false
+   },
+   {
+    "scene": "scope",
+    "bars": 2.46,
+    "lit": 0.1201,
+    "mean": 11.6,
+    "sd": 19.5,
+    "blank": false
+   },
+   {
+    "scene": "scope",
+    "bars": 2.76,
+    "lit": 0.1274,
+    "mean": 10.6,
+    "sd": 18.3,
+    "blank": false
+   },
+   {
+    "scene": "primes",
+    "bars": 3.07,
+    "lit": 0.6771,
+    "mean": 20.2,
+    "sd": 19,
+    "blank": false
+   },
+   {
+    "scene": "primes",
+    "bars": 3.36,
+    "lit": 0.1213,
+    "mean": 9.8,
+    "sd": 18.1,
+    "blank": false
+   },
+   {
+    "scene": "primes",
+    "bars": 3.66,
+    "lit": 0.0732,
+    "mean": 7.6,
+    "sd": 16.2,
+    "blank": false
+   },
+   {
+    "scene": "primes",
+    "bars": 3.96,
+    "lit": 0.0664,
+    "mean": 7.5,
+    "sd": 16.6,
+    "blank": false
+   },
+   {
+    "scene": "canyon",
+    "bars": 4.27,
+    "lit": 0.5326,
+    "mean": 34.2,
+    "sd": 30.8,
+    "blank": false
+   },
+   {
+    "scene": "canyon",
+    "bars": 4.61,
+    "lit": 0.5672,
+    "mean": 57.1,
+    "sd": 53.5,
+    "blank": false
+   },
+   {
+    "scene": "canyon",
+    "bars": 4.98,
+    "lit": 0.5728,
+    "mean": 91.3,
+    "sd": 86.1,
+    "blank": false
+   },
+   {
+    "scene": "map",
+    "bars": 5.39,
+    "lit": 0.6771,
+    "mean": 97.6,
+    "sd": 80,
+    "blank": false
+   },
+   {
+    "scene": "map",
+    "bars": 5.78,
+    "lit": 0.6771,
+    "mean": 105.1,
+    "sd": 78.9,
+    "blank": false
+   },
+   {
+    "scene": "ribbon",
+    "bars": 6.2,
+    "lit": 0.6771,
+    "mean": 84.6,
+    "sd": 61.5,
+    "blank": false
+   },
+   {
+    "scene": "ribbon",
+    "bars": 6.57,
+    "lit": 0.6771,
+    "mean": 49,
+    "sd": 34.9,
+    "blank": false
+   },
+   {
+    "scene": "ribbon",
+    "bars": 6.94,
+    "lit": 0.0735,
+    "mean": 12.6,
+    "sd": 15.4,
+    "blank": false
+   },
+   {
+    "scene": "march",
+    "bars": 7.24,
+    "lit": 0.1461,
+    "mean": 10.9,
+    "sd": 18.2,
+    "blank": false
+   },
+   {
+    "scene": "march",
+    "bars": 7.57,
+    "lit": 0.1569,
+    "mean": 13.5,
+    "sd": 22.4,
+    "blank": false
+   },
+   {
+    "scene": "march",
+    "bars": 7.9,
+    "lit": 0.1511,
+    "mean": 15.9,
+    "sd": 28.2,
+    "blank": false
+   },
+   {
+    "scene": "scope",
+    "bars": 8.24,
+    "lit": 0.1933,
+    "mean": 16.7,
+    "sd": 27.4,
+    "blank": false
+   }
+  ]
+ },
+ "autoOrder": [
+  "ribbon",
+  "march",
+  "scope",
+  "primes",
+  "canyon",
+  "map",
+  "ribbon",
+  "march",
+  "scope"
+ ],
+ "errors": [],
+ "pass": {
+  "zeros": true,
+  "ribbon": true,
+  "scope": true,
+  "primes": true,
+  "beatLock": true,
+  "noBlank": true,
+  "autoSwitch": true,
+  "pageLoopAlive": true,
+  "fps60": true,
+  "noErrors": true
+ }
+}
