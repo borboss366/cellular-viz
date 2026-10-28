@@ -13,9 +13,17 @@ set -eu
 HOME_DIR=$(cd "$(dirname "$0")/../.." && pwd)     # the clone this script lives in = RUNNER_HOME (main)
 STATE=${RUNNER_STATE:-$HOME/.cache/cellular-viz-runner}
 
+# is pid $1 a node process running qa/serve.mjs? (never a grep or a shell that merely mentions the path, nor a reused pid)
+is_viewer() {
+  a0=$(tr '\0' '\n' < "/proc/$1/cmdline" 2>/dev/null | head -n 1 || true)
+  case "$a0" in node|*/node) ;; *) return 1 ;; esac
+  case "$(tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null || true)" in *" qa/serve.mjs"*|*"/qa/serve.mjs"*) return 0 ;; esac
+  return 1
+}
+
 if [ "${1:-}" = "stop" ]; then
   p=$(cat "$STATE/viewer.pid" 2>/dev/null || true)
-  [ -n "$p" ] || exit 0
+  [ -n "$p" ] && is_viewer "$p" || exit 0
   kill -TERM "$p" 2>/dev/null || exit 0
   i=0; while kill -0 "$p" 2>/dev/null && [ "$i" -lt 50 ]; do sleep 0.2; i=$((i + 1)); done
   exit 0
@@ -33,11 +41,7 @@ mkdir -p "$STATE"
 for d in /proc/[0-9]*; do
   p=${d#/proc/}
   [ "$p" = "$$" ] && continue
-  a0=$(tr '\0' '\n' < "$d/cmdline" 2>/dev/null | head -n 1 || true)
-  case "$a0" in node|*/node) ;; *) continue ;; esac
-  case "$(tr '\0' ' ' < "$d/cmdline" 2>/dev/null || true)" in
-    *" qa/serve.mjs"*|*"/qa/serve.mjs"*) echo "stopping an older viewer, pid $p"; kill -TERM "$p" 2>/dev/null || true ;;
-  esac
+  if is_viewer "$p"; then echo "stopping an older viewer, pid $p"; kill -TERM "$p" 2>/dev/null || true; fi
 done
 sleep 1
 # a socket file left behind by a crash makes listen fail

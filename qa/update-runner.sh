@@ -20,7 +20,7 @@ else
 fi
 # the viewer (cellular-viz-viewer service) runs this clone's qa/serve.mjs: restart it so it picks up the pulled code
 VPID=$(cat "$STATE/viewer.pid" 2>/dev/null || true)
-if [ -n "$VPID" ] && kill -0 "$VPID" 2>/dev/null; then
+if [ -n "$VPID" ] && kill -0 "$VPID" 2>/dev/null && tr '\0' ' ' < "/proc/$VPID/cmdline" 2>/dev/null | grep -q 'qa/serve\.mjs'; then
   kill -TERM "$VPID"
   echo "stopped viewer $VPID; systemd starts it again within 5 s"
 else
