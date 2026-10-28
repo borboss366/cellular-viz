@@ -27,7 +27,9 @@
              the interface into billows.
     plume    smoke with buoyancy (GPU Gems 38.4.2): a heat source, f = σ·T·ŷ; the kick adds heat.
     ink      big dye and velocity splats on the downbeat, small ones on kicks, a slow curl wind.
-    rocks    a stream through five rocks, dye streaks from upstream.
+    rocks    a fast stream through five stones (chipped 9-facet outlines with fine roughness, lit
+             granite with veins and a wet rim; obstacles take sides / rot / amp / phase, sides 2 =
+             rock), two-colour dye that swaps every bar.
     curl     engine B alone: curl-noise currents.
   Morph: numeric params and the palette blend over `morphBars`; forces fade by weight and
   rocks shrink out / grow in. Laptop extra (3-D smoke volume) is not built yet.
@@ -149,10 +151,18 @@ const PRESETS = {
     params: { ...BASE, curl: 18, dissipation: 0.12, splatRadius: 0.5, wind: 40 }, palette: ['#ff3d9a', '#29e0c0', '#ffd23f', '#7b5cff'],
     music: { kick: 'splat', snare: 'splat', downbeat: 'bigsplat' } },
   rocks: { name: 'rocks', engine: 'fluid',
-    forces: [{ type: 'inflow', U: 110 }, { type: 'wind', strength: 15 }],
-    obstacles: [{ x: 0.3, y: 0.3, r: 0.06 }, { x: 0.38, y: 0.68, r: 0.08 }, { x: 0.56, y: 0.45, r: 0.05 }, { x: 0.7, y: 0.22, r: 0.07 }, { x: 0.78, y: 0.7, r: 0.055 }],
-    sources: [0.15, 0.3, 0.45, 0.6, 0.75, 0.9].map((y, i) => ({ x: 0.02, y, r: 0.008, c: i % 3, rate: 1.5 })),
-    params: { ...BASE, curl: 4, dissipation: 0.2, wind: 15 }, palette: ['#7cf29c', '#46b3ff', '#f2f2f2'],
+    forces: [{ type: 'inflow', U: 154 }, { type: 'wind', strength: 15 }],
+    // #58, user: "more interesting and not just simple circles, add more flow and make it more contrast":
+    // rounded polygons (3–7 sides) and noise blobs, each turned; inflow 1.4×, vorticity up, two-colour dye
+    // user (28 Oct): "not just polygons. Like actual rocks": sides 2 = a chipped stone, each its own seed (phase)
+    obstacles: [{ x: 0.3, y: 0.3, r: 0.068, sides: 2, rot: 0.4, amp: 0.035, phase: 1.3 }, { x: 0.38, y: 0.68, r: 0.082, sides: 2, rot: 2.2, amp: 0.04, phase: 4.1 },
+                { x: 0.56, y: 0.45, r: 0.062, sides: 2, rot: 1.9, amp: 0.03, phase: 7.7 }, { x: 0.7, y: 0.22, r: 0.072, sides: 2, rot: 5.1, amp: 0.04, phase: 2.9 },
+                { x: 0.8, y: 0.7, r: 0.064, sides: 2, rot: 3.3, amp: 0.035, phase: 5.5 }],
+    // neighbouring streams in fixed vermilion / azure: they blend to magenta where wakes meet (QA box: the
+    // red/cyan swap every bar blended to grey, colour −79 %); `alternate: true` still swaps them per bar
+    // user on the rocks: "Need more fluid coming": ten wider streams at 1.5× the rate (was six at 2.2)
+    sources: [0.07, 0.16, 0.25, 0.34, 0.43, 0.52, 0.61, 0.7, 0.79, 0.88].map((y, i) => ({ x: 0.02, y, r: 0.016, c: i % 2, rate: 3.3 })),
+    params: { ...BASE, curl: 8, dissipation: 0.2, wind: 15 }, palette: ['#ff5a3c', '#2f8bff', '#f2f2f2'],
     music: { kick: 'pulse', snare: 'splat', downbeat: 'none' } },
   curl: { name: 'curl', engine: 'curl',
     forces: [], obstacles: [], sources: [{ x: 0.3, y: 0.5, r: 0.03, c: 0, rate: 1.2 }, { x: 0.7, y: 0.5, r: 0.03, c: 1, rate: 1.2 }, { x: 0.5, y: 0.25, r: 0.03, c: 2, rate: 1.2 }],
@@ -249,12 +259,34 @@ out vec4 o;
 uniform vec2 uTexel;
 uniform float uAspect;
 uniform vec4 uObs[10];
+uniform vec4 uObsS[10];   // shape: sides (0 = disc, 1 = noise blob, 2 = rock, 3–7 = rounded polygon), rotation, bumpiness, phase/seed
 uniform int uObsN;
+float rockH(float seed, float k) { return fract(sin(seed * 91.17 + k * 12.9898) * 43758.5453); }
+float vh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(vh(i), vh(i + vec2(1.0, 0.0)), f.x), mix(vh(i + vec2(0.0, 1.0)), vh(i + vec2(1.0, 1.0)), f.x), f.y); }
+// the obstacle's radius in direction a (star-shaped, so "inside" is length(d) < obsR): the same maths as obsRad() in JS
+float obsR(int i, float a) {
+  float R = uObs[i].z * uObs[i].w;
+  vec4 s = uObsS[i];
+  if (s.x > 1.5 && s.x < 2.5) {   // a rock: 9 chipped facets (straight chords between irregular vertices) plus fine roughness
+    float n = 9.0, dA = 6.2831853 / n, b = mod(a - s.y, 6.2831853), k = min(floor(b / dA), n - 1.0), t = b - k * dA;
+    float r0 = 0.78 + 0.34 * rockH(s.w, k), r1 = 0.78 + 0.34 * rockH(s.w, mod(k + 1.0, n));
+    float rf = r0 * r1 * sin(dA) / (r0 * sin(t) + r1 * sin(dA - t));
+    return R * rf * (1.0 + s.z * (0.5 * sin(13.0 * a + s.w) + 0.3 * sin(23.0 * a + 2.0 * s.w) + 0.2 * sin(37.0 * a + 3.0 * s.w)));
+  }
+  if (s.x > 2.5) {   // rounded polygon: the polygon's radius blended a quarter of the way to its inscribed circle
+    float k = 6.2831853 / s.x, t = mod(a - s.y, k) - 0.5 * k;
+    return R * mix(cos(0.5 * k) / cos(t), cos(0.5 * k), 0.25);
+  }
+  if (s.x > 0.5) return R * (1.0 + s.z * (0.55 * sin(2.0 * a + s.w) + 0.3 * sin(3.0 * a + 2.0 * s.w) + 0.15 * sin(5.0 * a + 3.0 * s.w)));
+  return R;
+}
 float solid(vec2 uv) {
   for (int i = 0; i < 10; i++) {
     if (i >= uObsN) break;
     vec2 d = (uv - uObs[i].xy) * vec2(uAspect, 1.0);
-    if (uObs[i].w > 0.02 && length(d) < uObs[i].z * uObs[i].w) return 1.0;
+    if (uObs[i].w > 0.02 && length(d) < obsR(i, atan(d.y, d.x))) return 1.0;
   }
   return 0.0;
 }
@@ -450,9 +482,25 @@ void main() {
   // the same soft curve; tone 1 caps its white point at 0.97, so the brighter (exposed) dye never clips
   c = (1.0 - 0.03 * uTone) * (vec3(1.0) - exp(-c * (1.4 + 0.4 * uKick)));
   if (solid(vUv) > 0.5) {
-    float rim = 0.0;
-    for (int i = 0; i < 10; i++) { if (i >= uObsN) break; vec2 d = (vUv - uObs[i].xy) * vec2(uAspect, 1.0); float r = uObs[i].z * uObs[i].w; rim = max(rim, smoothstep(r - 0.006, r, length(d))); }
-    c = vec3(0.05, 0.06, 0.08) + vec3(0.5, 0.7, 1.0) * rim * (0.4 + 0.6 * uKick);
+    float rim = 0.0, t = 1.0; int hit = -1; vec2 dd = vec2(1.0, 0.0);
+    for (int i = 0; i < 10; i++) {
+      if (i >= uObsN) break;
+      vec2 d = (vUv - uObs[i].xy) * vec2(uAspect, 1.0); float r = obsR(i, atan(d.y, d.x));
+      rim = max(rim, smoothstep(r - 0.006, r, length(d)));
+      if (hit < 0 && length(d) < r) { hit = i; t = length(d) / r; dd = d; }
+    }
+    if (hit >= 0 && uObsS[hit].x > 1.5 && uObsS[hit].x < 2.5) {
+      // stone (#58, user: "like actual rocks"): a dome lit from the upper left, granite grain, dark veins,
+      // darker towards the waterline, and a wet glint on the rim that flashes with the kick
+      float seed = uObsS[hit].w;
+      vec3 nrm = normalize(vec3(normalize(dd + 1e-6) * t * 1.1, sqrt(max(0.0, 1.0 - t * t)) + 0.25));
+      float lit = 0.22 + 0.78 * max(0.0, dot(nrm, normalize(vec3(-0.5, 0.6, 0.65))));
+      vec2 q = vUv * vec2(uAspect, 1.0) * 70.0 + seed * 17.0;
+      float g = 0.5 * vnoise(q) + 0.3 * vnoise(q * 2.7) + 0.2 * vnoise(q * 7.3);
+      float vein = smoothstep(0.03, 0.0, abs(vnoise(q * 0.3 + 3.0) - 0.5)) * 0.6 + smoothstep(0.02, 0.0, abs(vnoise(q * 0.8 + 9.0) - 0.5)) * 0.35;
+      vec3 stone = mix(vec3(0.30, 0.28, 0.26), vec3(0.46, 0.41, 0.35), fract(seed * 0.37)) * (0.65 + 0.7 * g) * (1.0 - vein);
+      c = stone * lit * mix(0.45, 1.0, smoothstep(1.0, 0.7, t)) + vec3(0.55, 0.75, 1.0) * rim * (0.2 + 0.6 * uKick);
+    } else c = vec3(0.05, 0.06, 0.08) + vec3(0.5, 0.7, 1.0) * rim * (0.4 + 0.6 * uKick);
   }
   float vig = smoothstep(1.2, 0.35, length(vUv - 0.5) * 1.4);
   o = vec4(c * (0.75 + 0.25 * vig) + uHat * 0.01, 1.0);
@@ -504,7 +552,21 @@ function allocate() {
 }
 
 // one full-screen pass into `dst` (a target) with `prog`; set() fills the uniforms
-let obsU = new Float32Array(40), obsN = 0;
+let obsU = new Float32Array(40), obsS = new Float32Array(40), obsN = 0;
+// the obstacle's radius in direction a: the JS twin of obsR() in HEAD_A (solidAt, the QA split, the wake probe)
+function obsRad(i, a) {
+  const R = obsU[i * 4 + 2] * obsU[i * 4 + 3], [n, rot, amp, ph] = obsS.slice(i * 4, i * 4 + 4);
+  if (n > 1.5 && n < 2.5) {   // a rock, as in obsR()
+    const h = k => { const x = Math.sin(ph * 91.17 + k * 12.9898) * 43758.5453; return x - Math.floor(x); };
+    const N = 9, dA = 2 * Math.PI / N, b = (((a - rot) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI), k = Math.min(Math.floor(b / dA), N - 1), t = b - k * dA;
+    const r0 = 0.78 + 0.34 * h(k), r1 = 0.78 + 0.34 * h((k + 1) % N);
+    const rf = r0 * r1 * Math.sin(dA) / (r0 * Math.sin(t) + r1 * Math.sin(dA - t));
+    return R * rf * (1 + amp * (0.5 * Math.sin(13 * a + ph) + 0.3 * Math.sin(23 * a + 2 * ph) + 0.2 * Math.sin(37 * a + 3 * ph)));
+  }
+  if (n > 2.5) { const k = 2 * Math.PI / n, t = (((a - rot) % k) + k) % k - 0.5 * k; return R * (Math.cos(0.5 * k) / Math.cos(t) * 0.75 + Math.cos(0.5 * k) * 0.25); }
+  if (n > 0.5) return R * (1 + amp * (0.55 * Math.sin(2 * a + ph) + 0.3 * Math.sin(3 * a + 2 * ph) + 0.15 * Math.sin(5 * a + 3 * ph)));
+  return R;
+}
 function pass(prog, dst, set) {
   gl.useProgram(prog.p);
   gl.bindFramebuffer(gl.FRAMEBUFFER, dst ? dst.fbo : null);
@@ -512,7 +574,7 @@ function pass(prog, dst, set) {
   const u = prog.u;
   if (u.uTexel) gl.uniform2f(u.uTexel, 1 / F.simW, 1 / F.simH);
   if (u.uAspect) gl.uniform1f(u.uAspect, F.simW / F.simH);
-  if (u.uObs) { gl.uniform4fv(u.uObs, obsU); gl.uniform1i(u.uObsN, obsN); }
+  if (u.uObs) { gl.uniform4fv(u.uObs, obsU); gl.uniform1i(u.uObsN, obsN); if (u.uObsS) gl.uniform4fv(u.uObsS, obsS); }
   if (u.uSolidT && F.mask) { gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D, F.mask.t); gl.uniform1i(u.uSolidT, 7); }
   let unit = 0;
   const tex = (name, t) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t.t); gl.uniform1i(u[name], unit); unit++; };
@@ -603,12 +665,12 @@ function step(dt, eff, L) {
       if (f.type === 'bands') { kh += w; khU += f.U * w; }
       if (f.type === 'buoyancy') { buoy += f.sigma * w; heats.push({ ...f.heat, w, cool: f.cool }); }
     }
-    for (const ob of R.obstacles) obs.push([ob.x, ob.y, ob.r, w]);
+    for (const ob of R.obstacles) obs.push([ob.x, ob.y, ob.r, w, ob.sides || 0, ob.rot || 0, ob.amp || 0, ob.phase || 0]);
   }
   if (inflowW > 0) { inflowU /= inflowW; openRight = 1; }
   if (kh > 0) khU /= kh;
-  obsN = Math.min(10, obs.length); obsU = new Float32Array(40);
-  obs.slice(0, 10).forEach((o, i) => obsU.set(o, i * 4));
+  obsN = Math.min(10, obs.length); obsU = new Float32Array(40); obsS = new Float32Array(40);
+  obs.slice(0, 10).forEach((o, i) => { obsU.set(o.slice(0, 4), i * 4); obsS.set(o.slice(4, 8), i * 4); });
   const walls = inflowW > 0.5 ? [0, 0, 1, 1] : [1, 1, 1, 1];
   const time = st.simTime;
   pass(P.mask, F.mask, () => {});   // the obstacles, once per step
@@ -616,7 +678,9 @@ function step(dt, eff, L) {
   // sources (dye and heat), stronger on the kick when the recipe says so; all dye in one pass
   const pulse = 1 + 2.5 * st.kickPulse, srcS = [], srcC = [];
   if (st.sourcesOn) for (const [R, w] of layers) for (const s of R.sources) {
-    const c = eff.palette[s.c % eff.palette.length], amt = s.rate * w * dt * pulse;
+    // alternate: the inflow swaps between the first two colours every bar, so neighbouring wakes read apart
+    const ci = R.alternate ? (s.c + Math.floor(curBars)) % 2 : s.c;
+    const c = eff.palette[ci % eff.palette.length], amt = s.rate * w * dt * pulse;
     if (s.band) {   // a whole band of colour (Kelvin–Helmholtz layers)
       const y = s.band === 'top' ? 0.85 : 0.15;
       for (let k = 0; k < 6; k++) { srcS.push((k + 0.5) / 6, y, 0.012, 0); srcC.push(...c.map(v => v * amt * 0.6)); }
@@ -716,7 +780,10 @@ function readTarget(t) {
   return out;
 }
 function solidAt(x, y) {   // uv
-  for (let i = 0; i < obsN; i++) { const [ox, oy, r, w] = obsU.slice(i * 4, i * 4 + 4); if (w > 0.02 && Math.hypot((x - ox) * F.simW / F.simH, y - oy) < r * w) return true; }
+  for (let i = 0; i < obsN; i++) {
+    const [ox, oy, , w] = obsU.slice(i * 4, i * 4 + 4), dx = (x - ox) * F.simW / F.simH, dy = y - oy;
+    if (w > 0.02 && Math.hypot(dx, dy) < obsRad(i, Math.atan2(dy, dx))) return true;
+  }
   return false;
 }
 function divergenceRMS() {
@@ -785,7 +852,7 @@ $('rand').onclick = () => {   // 🎲 within safe ranges; keeps the recipe's for
   for (const [k, [a, b]] of Object.entries(RAND)) R.params[k] = +r(a, b).toFixed(2);
   R.params.seed = Math.floor(r(1, 999));
   R.palette = R.palette.map(() => { const h = Math.random(), s = 0.6 + 0.4 * Math.random(); return toHex([0, 1, 2].map(k => { const x = Math.abs(((h * 6 + [0, 4, 2][k]) % 6) - 3) - 1; return 1 - s + s * Math.max(0, Math.min(1, x)); })); });
-  R.obstacles = R.obstacles.map(o => ({ x: +(o.x + r(-0.05, 0.05)).toFixed(3), y: +(o.y + r(-0.08, 0.08)).toFixed(3), r: +(o.r * r(0.7, 1.3)).toFixed(3) }));
+  R.obstacles = R.obstacles.map(o => ({ ...o, x: +(o.x + r(-0.05, 0.05)).toFixed(3), y: +(o.y + r(-0.08, 0.08)).toFixed(3), r: +(o.r * r(0.7, 1.3)).toFixed(3), rot: +((o.rot || 0) + r(0, 6.28)).toFixed(2) }));
   R.name = `${(st.cur.name || 'flow').replace(/ 🎲.*/, '')} 🎲${R.params.seed}`;
   applyPreset(R, true);
 };
