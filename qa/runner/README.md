@@ -25,6 +25,20 @@ Two more fixed scripts exist for the rare case something is left over; the runne
 `sh <RUNNER_HOME>/qa/board-sync.sh` (board moves, replaces `qa/board.py`) and `sh <RUNNER_HOME>/qa/commit-reports.sh`
 (commits changed .md/.json reports, never pushes).
 
+Three more, each run alone, no arguments, no pipes (so the judge sees the same string every time):
+
+```
+sh <RUNNER_HOME>/qa/status.sh          # read only: runner /health + /api/status (now, queue, last 3), last 10 log lines,
+                                       # viewer HTTP codes for / and /builds, gpu_busy_percent
+sh <RUNNER_HOME>/qa/commit-checks.sh   # in QA_HOME: commit only qa/check-*.mjs, todo.json, builds.json and the .md/.json
+                                       # reports as "QA box"; never videos/screenshots, never pushes; nothing changed = no-op
+sh <RUNNER_HOME>/qa/test-pr.sh         # PR from ~/.cache/cellular-viz-runner/test-pr, else newest open PR labelled
+                                       # runner-test: /tmp/test-pr clone, node --check qa/runner/*.mjs + node --test; PASS/FAIL
+```
+
+`board-sync.sh` prints at most 8 lines (failures first) and a count; `node qa/runner/board.mjs sync --verbose` prints all.
+The viewer (`qa/serve.mjs`) is code like the runner: bugs go to VIZ dev as PRs, and `update-runner.sh` restarts it.
+
 Nothing about which PR to run is on a command line: the runner finds the work itself (below). Both scripts read
 `~/.config/cellular-viz-runner.env` inside the container if it is there (`RUNNER_ENV` points elsewhere). Otherwise
 `run-next.sh` uses `RUNNER_STATE/runner.env`, the copy of its settings the service writes every time it starts
