@@ -25,6 +25,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { gpuGate, unlock as gpuUnlock, GPU } from './gpu.mjs';
+import { putJob, superseded } from './queue.mjs';
 import { loadFile } from './experiment.mjs';
 import { historyEntry, commitPaths, reportFiles, buildDirs, messageFor } from './post.mjs';
 import { sync as boardSync } from './board.mjs';
@@ -124,9 +125,9 @@ function appendBuild(b) { b.at = new Date().toISOString(); fs.appendFileSync(BUI
 
 // ---------- watching ----------
 function enqueue(job) {
-  state.queue = state.queue.filter(j => !(j.pr === job.pr && j.page === job.page));   // a newer commit replaces a queued older one
-  state.queue.push(job);
-  log(`queued #${job.pr} ${job.kind === 'experiment' ? 'experiment' : job.page} @${job.sha.slice(0, 7)}`);
+  const { queue, replaced } = putJob(state.queue, job);   // a newer commit replaces a queued older one, in its place
+  state.queue = queue;
+  log(`queued #${job.pr} ${job.kind === 'experiment' ? 'experiment' : job.page} @${job.sha.slice(0, 7)}${replaced ? ` (replaces @${String(replaced.sha).slice(0, 7)})` : ''}`);
 }
 // A qa-ready PR runs only its experiment file. If the runner saw it before the label landed (opened, then labelled a
 // minute later: #86 touched all 19 pages and queued 19 page builds, 01–08 "failed" in 0.7 s for want of a check
@@ -162,7 +163,6 @@ async function poll() {
       state.seen[n] = key;
       dropPageJobsOfLabelled();
       if ((state.expDone || {})[n] !== sha) enqueue({ pr: n, sha, kind: 'experiment', page: 'experiment', title: pr.title, at: new Date().toISOString() });
-      state.seen[n] = key;
       save();
       continue;
     }
@@ -205,6 +205,7 @@ function checkFor(tree, page) {   // qa/runner/checks.json (trusted, next to thi
   const p = path.join(tree, 'qa', c.script);
   return fs.existsSync(p) ? { script: p, args: (c.args || []).map(String) } : null;
 }
+const reportPath = dir => path.relative(CFG.qaHome, path.join(dir, 'check.md'));   // e.g. qa/12-mass-gap/checks/2026-10-28-2051/check.md
 function failCheck(dir, rows) {   // a check.md the builds log can read, for runs that never wrote one
   fs.mkdirSync(dir, { recursive: true });
   const clean = s => String(s).replace(/[|\n\r]/g, ' ').slice(0, 280);
@@ -254,11 +255,11 @@ async function runExperiment(job, gate) {
   try { if (!(await fetchOrRetry(job))) return; } catch {}   // a non-network failure is recorded below, as before
   const short = job.sha.slice(0, 7), stamp = localStamp(), tmp = fs.mkdtempSync(path.join(CFG.state, 'exp-'));
   const rel = `qa/experiments/${job.pr}.json`;
-  let id = null, result = 'failed', page = `pr-${job.pr}`;
+  let id = null, result = 'failed', page = `pr-${job.pr}`, report = null;   // report: its check.md, relative to QA_HOME (status.sh)
   status.running = { ...job, started: new Date().toISOString() };
   const fail = async (why, detail, waiting = 'dev') => {
     const dir = path.join(CFG.qaHome, 'qa', page, 'runs', `${stamp}-pr${job.pr}`);
-    failCheck(dir, [[why, detail]]); saveGate(dir, gate);
+    failCheck(dir, [[why, detail]]); saveGate(dir, gate); report = reportPath(dir);
     if (!id) id = (await builds('start', '--page', page, '--pr', String(job.pr), '--commit', short)).trim().split('\n').pop();
     status.running = { ...(status.running || job), id, page };
     await builds('finish', '--id', id, '--check', dir, '--status', 'failed', '--waiting', waiting, '--note', why);
@@ -306,6 +307,7 @@ async function runExperiment(job, gate) {
     saveGate(dest, gate);
     let swipe = null;
     try { swipe = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8')).swipe; } catch {}
+    report = reportPath(dest);
     const fin = ['finish', '--id', id, '--check', dest];
     if (swipe && swipe.dir && !swipe.dir.includes('..')) {
       fs.cpSync(path.join(tree, 'qa', swipe.dir), path.join(CFG.qaHome, 'qa', swipe.dir), { recursive: true });
@@ -319,7 +321,7 @@ async function runExperiment(job, gate) {
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
     state.expDone = { ...(state.expDone || {}), [job.pr]: job.sha };
-    state.recent = [{ ...status.running, finished: new Date().toISOString(), result }, ...(state.recent || [])].slice(0, 30);
+    state.recent = [{ ...status.running, finished: new Date().toISOString(), result, report }, ...(state.recent || [])].slice(0, 30);
     save();
     status.running = null;
     log(`experiment #${job.pr} @${short} done: ${result}`);
@@ -333,7 +335,7 @@ async function runBuild(job, gate) {
   status.running = { ...job, id, started: new Date().toISOString() };
   log(`build ${id}: #${job.pr} ${job.page} @${short}, checks from ${CFG.checksRef}`);
   const tmp = fs.mkdtempSync(path.join(CFG.state, 'build-'));
-  let result = 'failed';
+  let result = 'failed', report = null;
   try {
     await fetchRefs(job.pr);
     const tree = path.join(tmp, 'tree');
@@ -366,20 +368,24 @@ async function runBuild(job, gate) {
     }
     // the shared gates every page gets (#88), still inside this build's GPU lock; their rows join dest/check.md
     if (CFG.shared) {
+      const t0 = Date.now();
       try { await runShared({ run, tree, page: job.page, dest, timeoutMs: CFG.sharedMin * 60e3, log }); }
       catch (e) { log(`shared gates for ${job.page} could not run: ${e.message}`); }
+      log(`shared gates for ${job.page} took ${((Date.now() - t0) / 60e3).toFixed(1)} min`);
     }
     saveGate(dest, gate);
+    report = reportPath(dest);
     const fin = await builds('finish', '--id', id, '--check', dest);
     result = fin.trim();
   } catch (e) {
     log(`build ${id} broke: ${e.message}`);
     const dir = path.join(CFG.qaHome, 'qa', job.page, 'checks', `${stamp}-runner`);
+    report = reportPath(dir);
     try { failCheck(dir, [['the runner could prepare the build', e.message]]); await builds('finish', '--id', id, '--check', dir, '--status', 'failed', '--waiting', 'qa-box', '--note', 'runner error'); } catch (e2) { log(`could not record the failure: ${e2.message}`); }
     result = `error: ${e.message}`;
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
-    state.recent = [{ ...status.running, finished: new Date().toISOString(), result }, ...(state.recent || [])].slice(0, 30);   // kept in state.json, so it survives restarts
+    state.recent = [{ ...status.running, finished: new Date().toISOString(), result, report }, ...(state.recent || [])].slice(0, 30);   // kept in state.json, so it survives restarts
     save();
     status.running = null;
     log(`build ${id} done: ${result}`);
@@ -429,9 +435,24 @@ async function work() {
       if (!state.queue.length) break;
       const job = state.queue[0];
       if (job.after && Date.now() < job.after) break;   // waiting to retry after a network failure
-      // one GPU check at a time on the box, and only on an idle GPU; if it stays busy the job stays queued for the next poll
-      const gate = await gpuGate({ what: `runner #${job.pr} ${job.page}`, log, shouldStop: () => stopping });
+      // one GPU check at a time on the box, and only on an idle GPU; if it stays busy the job stays queued for the next poll.
+      // GitHub is still polled while the gate waits (up to GPU_WAIT_MIN), so a PR whose head moves overnight gets its
+      // queued jobs swapped to the new commit; the job at the gate then gives way to its replacement (#94, 28 Oct).
+      const gone = () => superseded(state.queue, job);
+      let polling = null;
+      const pollTimer = setInterval(() => {
+        if (polling) return;
+        polling = poll().then(() => { status.lastError = null; }, e => { status.lastError = e.message; log(`poll: ${e.message}`); }).finally(() => { polling = null; });
+      }, CFG.poll * 1000);
+      let gate;
+      try { gate = await gpuGate({ what: `runner #${job.pr} ${job.page}`, log, shouldStop: () => stopping || gone() }); }
+      finally { clearInterval(pollTimer); if (polling) await polling; }
       status.gpu = gate;
+      if (!stopping && gone()) {
+        if (gate.ok) gpuUnlock();
+        log(`#${job.pr} ${job.page} @${job.sha.slice(0, 7)} left the queue while waiting for the GPU (newer commit or label); next job`);
+        continue;
+      }
       if (!gate.ok) { log(`not starting #${job.pr} ${job.page}: ${gate.why}`); break; }
       trace = [];
       const before = (state.recent || [])[0];
