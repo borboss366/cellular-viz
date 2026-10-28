@@ -303,7 +303,8 @@ if (res.perf) {
     `p50 ${s.p50 ?? '–'} · p95 ${p95} · p99 ${p99} ms over ${s.modules ? s.modules.map(m => `${m.module} ${m.n}`).join(', ') : s.n + ' frames'} · ${p.method}${p.disjoint ? ` · ${p.disjoint} disjoint dropped` : ''}`);
   add('canvas 2560×1440 at dpr 1', !!p.canvas && p.canvas[0] === 2560 && p.canvas[1] === 1440 && p.dpr === 1 ? true : 'warn', `${p.canvas ? p.canvas.join('×') : 'none'} · dpr ${p.dpr}`);
   add('rAF interval (solo, headless 60 Hz clock)', null, `p50 ${s.raf.p50} · p95 ${s.raf.p95} · p99 ${s.raf.p99} ms · ${s.raf.over} of ${s.raf.n} > 17.5 ms (${s.raf.overPct} %) · ${s.raf.fps} fps`);
-  add('a drop inside the measured 60 s', p.drop && !String(p.drop).startsWith('threw') ? true : 'warn', p.drop ? `__qa.${p.drop}() at 20 s` : 'no __qa.forceDrop hook: the page ran its own show');
+  // #88 ruling (VIZ research, 28 Oct): __qa.forceDrop() is required on every page, so a missing hook fails
+  add('__qa.forceDrop() puts a drop inside the measured 60 s', !!p.drop && !String(p.drop).startsWith('threw'), p.drop ? `__qa.${p.drop}() at 20 s` : 'no __qa.forceDrop hook (required by #88)');
   add('pair gate (50/50 with the heaviest scene)', null, 'waits for the #85 host: two modules in one context');
   add('timer query bits', null, p.bits ? `TIMESTAMP ${p.bits.stamp ?? p.bits.err} · TIME_ELAPSED ${p.bits.elapsed ?? '–'}` : 'extension not available');
 }
