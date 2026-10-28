@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "id": "18-little-bang",
+  "note": "18 beamline neon wires + bigger quench cone; beamline scene (camera on the beam axis of a ring collider, halts 0.9 before the IP on each downbeat as the bunches cross) and the quench Mach cone (half-angle asin(c_s/v) = 35.3 deg). 120 BPM, 8 bars a section.",
+  "resolutions": ["1080p", "4k"],
+  "warmup": 4,
+  "seconds": 16,
+  "variants": [
+    { "name": "beamline", "params": { "scene": "beamline" } },
+    { "name": "quench", "params": { "scene": "quench" } },
+    { "name": "collide", "params": { "scene": "collide" } }
+  ],
+  "values": { "camS": "__qa.camera ? __qa.camera.s : null", "wakes": "__qa.wakes.length", "dijets": "__qa.dijets.length", "wireClearance": "__qa.wires ? __qa.wires.clearance : null" },
+  "gates": [
+    { "metric": "fps.p05", "min": 55, "resolution": "1080p" },
+    { "metric": "longFrames", "max": 0.5 },
+    { "metric": "errors", "max": 0 },
+    { "metric": "gpuBusy", "max": 10 },
+    { "metric": "clip", "max": 2, "variant": ["collide", "quench", "beamline"] },
+    { "metric": "lum.mean", "min": 0, "name": "brightness, reported" }
+  ],
+  "checks": ["check-18"],
+  "record": { "stills": 2 },
+  "swipe": { "vs": "9311bdb", "seconds": 40, "warmup": 4, "variants": ["beamline", "quench"] },
+  "debug": {
+    "console": true,
+    "screenshotAt": [1.5, 3.9, 4.1, 5],
+    "qaDump": { "every": 0.1, "read": { "bars": "__qa.bars", "scene": "__qa.scene", "camera": "__qa.camera", "lastWake": "__qa.wakes[__qa.wakes.length - 1]", "wires": "__qa.wires" } }
+  }
+}

@@ -1,0 +1,15 @@
+{
+ "waitedS": 4,
+ "readings": [
+  0,
+  0,
+  0,
+  0,
+  0
+ ],
+ "idleMax": 10,
+ "idleSecs": 5,
+ "file": "/sys/class/drm/card0/device/gpu_busy_percent",
+ "at": "2026-10-28T14:53:36.718Z",
+ "ok": true
+}
