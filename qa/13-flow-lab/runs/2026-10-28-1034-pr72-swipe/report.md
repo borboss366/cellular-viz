@@ -31,9 +31,25 @@ Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
 QA sweep · 13-flow-lab · 2026-10-28T10:56
 | variant | score | cover | motion | pulse | colour | fps | verdict |
 |---|---|---|---|---|---|---|---|
-| new-rocks | 7.7 | 45% | 0.0376 | ±0.0031 | 0.015 | 60.3 |  |
+| new-rocks | 7.7 | 45% | 0.0376 | ±0.0031 | 0.015 | 60.3 |  — Way better |
 
 queries:
 - new-rocks: http://127.0.0.1:33707/experiments/13-flow-lab.html?preset=rocks
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+2 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | new-rocks | 2.751 | 2 | 0 | 0 |
+| 2 | old-rocks | 0.363 | 0 | 2 | 0 |
+
+## User notes
+
+**On each look**
+
+- **new-rocks**: Way better
+

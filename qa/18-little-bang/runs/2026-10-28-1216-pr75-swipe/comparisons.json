@@ -1,0 +1,38 @@
+[
+ {
+  "a": "old-beamline",
+  "b": "new-quench",
+  "winner": "new-quench",
+  "at": "2026-10-28T14:45:23.568Z"
+ },
+ {
+  "a": "new-beamline",
+  "b": "old-quench",
+  "winner": "new-beamline",
+  "at": "2026-10-28T14:45:28.578Z"
+ },
+ {
+  "a": "new-quench",
+  "b": "new-beamline",
+  "winner": "new-quench",
+  "at": "2026-10-28T14:45:38.313Z"
+ },
+ {
+  "a": "old-quench",
+  "b": "old-beamline",
+  "winner": "tie",
+  "at": "2026-10-28T14:45:44.070Z"
+ },
+ {
+  "a": "old-beamline",
+  "b": "new-beamline",
+  "winner": "new-beamline",
+  "at": "2026-10-28T14:46:14.526Z"
+ },
+ {
+  "a": "old-quench",
+  "b": "old-beamline",
+  "winner": "tie",
+  "at": "2026-10-28T14:46:18.082Z"
+ }
+]

@@ -1641,7 +1641,8 @@
     ]
    ],
    "hud": "Flow Lab · rocks · 120 bpm · tap ▶ Play\ngrid 455×256 · dye 455×256 · 428×241 · 60 fps · 64 SOR iters · GPU 11.1 ms",
-   "video": "videos/01-new-rocks.webm"
+   "video": "videos/01-new-rocks.webm",
+   "note": "Way better"
   }
  ]
 }
