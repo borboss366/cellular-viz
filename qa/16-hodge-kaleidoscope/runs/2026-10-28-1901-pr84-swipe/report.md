@@ -12,9 +12,16 @@
 QA sweep · 16-hodge-kaleidoscope · 2026-10-28T19:07
 | variant | score | cover | motion | pulse | colour | fps | verdict |
 |---|---|---|---|---|---|---|---|
-| new-auto | 6.6 | 100% | 0.0250 | ±0.0043 | 0.125 | 60.1 |  |
+| new-auto | 6.6 | 100% | 0.0250 | ±0.0043 | 0.125 | 60.1 | keep — I would change the shapes faster or control their speed using the controller |
 
 queries:
 - new-auto: http://127.0.0.1:34529/experiments/16-hodge-kaleidoscope.html
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## User notes
+
+**On each look**
+
+- **new-auto** (keep): I would change the shapes faster or control their speed using the controller
+

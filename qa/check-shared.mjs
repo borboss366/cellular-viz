@@ -1,6 +1,9 @@
 // Shared gates for EVERY scene (#88): A) flash limit (WCAG 2.3.1 general + red flash) and the house comfort rule,
 // B) GPU budget per scene at 1440p.   node qa/check-shared.mjs --page 18-little-bang.html [--experiments dir]
 //   [--query ''] [--warm 120] [--secs 60] [--flashWarm 10] [--flashSecs 90] [--fov 40] [--out dir] [--only flash|perf]
+//   [--press 1,2,3,4 --hz 8 --pressSecs 4]   button mash (#85): inside the flash pass, each listed trigger alone for
+//   pressSecs at hz presses/s through __qa.pressTrigger(i), then all of them together; no drops; the flash and comfort
+//   rows judge the mash, plus a row of presses sent / fires seen per slot (from __qa.triggerLog, performance.now() ms).
 //
 // Both passes: Chromium on the 780M (ANGLE gl-egl), viewport 2560×1440, dpr 1, #wrap fullscreen, Play pressed.
 // Headless has no display: rAF is paced by Chromium's own 60 Hz frame clock, so "vsync" means that clock.
@@ -38,6 +41,11 @@ if (!pageName || !/^[\w.-]+\.html$/.test(pageName)) { console.error('usage: --pa
 const query = arg('query', '');
 const WARM = +arg('warm', 120), SECS = +arg('secs', 60), FWARM = +arg('flashWarm', 10), FSECS = +arg('flashSecs', 90), FOV = +arg('fov', 40);
 const only = arg('only', '');
+// button mash: stages = each slot alone, then all together; the flash clip covers 1 s lead-in + stages + 2 s tail
+const PRESS = arg('press', '') ? String(arg('press')).split(',').map(s => +s.trim()).filter(n => Number.isInteger(n) && n >= 1 && n <= 4) : [];
+const HZ = +arg('hz', 8), PSECS = +arg('pressSecs', 4);   // not --secs: that is the GPU pass's measured window
+const STAGES = PRESS.length ? [...PRESS.map(s => [s]), ...(PRESS.length > 1 ? [PRESS] : [])] : [];
+const FSECS_RUN = PRESS.length && !process.argv.includes('--flashSecs') ? 1 + STAGES.length * PSECS + 2 : FSECS;
 const id = pageName.replace(/\.html$/, '');
 const pad = n => String(n).padStart(2, '0'), d = new Date();
 const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
@@ -297,13 +305,30 @@ if (only !== 'perf') {
   const page = await open('limiter=off');
   await page.addScriptTag({ content: `window.__qaShared.workerSrc = ${JSON.stringify(WORKER)};` + FLASH });
   await page.waitForTimeout(FWARM * 1000);
-  res.flash = await page.evaluate(async ([secs, fov]) => {
+  res.flash = await page.evaluate(async ([secs, fov, stages, hz, psecs]) => {
     const S = window.__qaShared; S.flashStart(fov); if (S.flashErr) return { err: S.flashErr };
-    const qa = window.__qa || {}; let drops = [];
-    for (const at of [0.3, 0.65]) setTimeout(() => { for (const k of ['forceDrop', 'drop']) if (typeof qa[k] === 'function') { try { qa[k](); drops.push(k); } catch (e) {} break; } }, at * secs * 1000);
+    const qa = window.__qa || {}; let drops = [], mash = null;
+    if (stages.length) {   // button mash instead of drops: presses through the page's own path (quantise, repeats, envelope)
+      const t0 = performance.now() + 1000, step = 1000 / hz, sent = {}, threw = {}, plan = [];
+      mash = { hook: typeof qa.pressTrigger === 'function', hz, psecs, stages: [], sent, threw, t0 };
+      stages.forEach((slots, si) => {
+        const s0 = t0 + si * psecs * 1000; mash.stages.push({ slots, start: s0, end: s0 + psecs * 1000 });
+        for (let k = 0; k < Math.round(psecs * hz); k++) plan.push([s0 + k * step, slots]);
+      });
+      if (mash.hook) for (const [at, slots] of plan) setTimeout(() => { for (const i of slots) { sent[i] = (sent[i] || 0) + 1; try { qa.pressTrigger(i); } catch (e) { threw[i] = String(e).slice(0, 120); } } }, Math.max(0, at - performance.now()));
+      mash.end = t0 + stages.length * psecs * 1000;
+    } else for (const at of [0.3, 0.65]) setTimeout(() => { for (const k of ['forceDrop', 'drop']) if (typeof qa[k] === 'function') { try { qa[k](); drops.push(k); } catch (e) {} break; } }, at * secs * 1000);
     await new Promise(r => setTimeout(r, secs * 1000));
-    const r = await S.flashStop(); return { ...r, drops, hook: typeof qa.forceDrop === 'function', tapErr: S.tapErr || null };
-  }, [FSECS, FOV]);
+    const r = await S.flashStop();
+    if (mash) {   // fires seen: logged presses in the mash (+2 s for quantised fires) with a finite firedAt, per slot
+      const log = Array.isArray(qa.triggerLog) ? qa.triggerLog : null;
+      mash.log = !!log; mash.fired = {}; mash.logged = {};
+      if (log) for (const e of log) { if (!e || !(e.t >= mash.t0 - 5 && e.t <= mash.end + 2000)) continue;
+        mash.logged[e.slot] = (mash.logged[e.slot] || 0) + 1; if (Number.isFinite(e.firedAt)) mash.fired[e.slot] = (mash.fired[e.slot] || 0) + 1; }
+      mash.slots = Array.isArray(qa.triggers) ? qa.triggers.map(s => ({ slot: s.slot, name: s.name, timing: s.timing, repeats: s.repeats })) : null;
+    }
+    return { ...r, drops, mash, hook: typeof qa.forceDrop === 'function', tapErr: S.tapErr || null };
+  }, [FSECS_RUN, FOV, STAGES, HZ, PSECS]);
   await page.close();
 }
 await browser.close(); server.close();
@@ -345,12 +370,24 @@ if (res.flash) {
     g('10° window mean L ≤ 0.80', f.winFail, `max ${w.win.v}${w.win.at ? ` at ${w.win.at} (t ${w.win.t} s)` : ''}`);
     g('window mean rises ≤ 0.25 in 100 ms', f.riseFail, `max ${w.rise.v}${w.rise.at ? ` at ${w.rise.at} (t ${w.rise.t} s)` : ''}`);
     g('L ≥ 0.9 on ≤ 5 % of the frame, or ≤ 3 frames in a row', f.whiteFail, `max ${(100 * w.white.v).toFixed(1)} % · longest run over 5 %: ${w.white.run} frames`);
-    add('drops during the flash clip', null, f.drops.length ? f.drops.map(k => '__qa.' + k + '()').join(', ') : 'no drop hook: the page ran its own show');
+    if (f.mash) {
+      const m = f.mash, slots = [...new Set(m.stages.flatMap(s => s.slots))].sort((a, b) => a - b);
+      const at = t => { if (t == null) return '–'; const ms = f.t0 + t * 1000, s = m.stages.find(x => ms >= x.start && ms < x.end); return s ? (s.slots.length > 1 ? 'all together' : 'slot ' + s.slots[0]) : 'outside the mash'; };
+      add('mash: worst flash and rise fall in', null, `general ${(100 * w.flash.v).toFixed(1)} % (${at(w.flash.t)}) · red ${(100 * w.red.v).toFixed(1)} % (${at(w.red.t)}) · rise ${w.rise.v} (${at(w.rise.t)}) · ${m.stages.length} stages of ${m.psecs} s at ${m.hz} presses/s`);
+      if (!m.hook) add('mash: __qa.pressTrigger(i) exists', false, 'no __qa.pressTrigger on the page: nothing was pressed, the flash rows show the plain show');
+      else {
+        const per = slots.map(i => { const info = (m.slots || []).find(s => s.slot === i); return { i, sent: m.sent[i] || 0, fired: m.fired[i] || 0, logged: m.logged[i] || 0, threw: m.threw[i], info }; });
+        const dead = per.filter(p => p.sent > 0 && p.fired === 0);
+        add('mash: presses sent / fires seen (quantised and repeat-limited slots fire less by design)', !m.log ? 'warn' : dead.length === 0 && !per.some(p => p.threw),
+          (m.log ? '' : 'no __qa.triggerLog: fires not counted · ') + per.map(p => `slot ${p.i}${p.info && p.info.name ? ' ' + p.info.name : ''}: ${p.sent} sent / ${p.fired} fired (${p.logged} logged${p.info ? `, ${p.info.timing ?? '–'}, repeats ${p.info.repeats ?? '–'}` : ''})${p.threw ? ' · threw ' + p.threw : ''}`).join(' · ') +
+          (dead.length ? ` · pressed but never fired: ${dead.map(p => p.i).join(', ')}` : ''));
+      }
+    } else add('drops during the flash clip', null, f.drops.length ? f.drops.map(k => '__qa.' + k + '()').join(', ') : 'no drop hook: the page ran its own show');
   }
 }
 add('#88 gating for this page', null, gated ? (legacy ? 'gated: page from before #88 that has __qa.forceDrop' : 'gated: new scene') : 'report-only: page from before #88 without __qa.forceDrop');
 add('page errors', errors.length === 0, errors.length ? errors.slice(0, 3).join(' / ') : 'none');
 fs.writeFileSync(path.join(out, 'check.json'), JSON.stringify(res, null, 1));
 fs.writeFileSync(path.join(out, 'check.md'), `# Shared gates (#88) · ${pageName} · ${stamp}\n\n- ${res.renderer} · Chromium ${res.chromium}\n- 2560×1440, dpr 1, headless (rAF on Chromium's 60 Hz clock)` +
-  `${res.perf ? ` · GPU: warm-up ${WARM} s, measured ${SECS} s` : ''}${res.flash ? ` · flash: ${FSECS} s with limiter=off` : ''}\n\n| gate | result | detail |\n|---|---|---|\n${rows.join('\n')}\n`);
+  `${res.perf ? ` · GPU: warm-up ${WARM} s, measured ${SECS} s` : ''}${res.flash ? ` · flash: ${FSECS_RUN} s with limiter=off` : ''}${STAGES.length ? ` · button mash: triggers ${PRESS.join(',')} at ${HZ}/s, ${PSECS} s each then together` : ''}\n\n| gate | result | detail |\n|---|---|---|\n${rows.join('\n')}\n`);
 console.log(path.relative(process.cwd(), out) || out);

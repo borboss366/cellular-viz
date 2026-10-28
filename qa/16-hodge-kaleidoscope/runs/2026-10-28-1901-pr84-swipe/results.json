@@ -39,7 +39,7 @@
     }
    },
    "videoSize": 7478880,
-   "verdict": "",
+   "verdict": "keep",
    "series": [
     [
      0.01,
@@ -838,7 +838,8 @@
     ]
    ],
    "hud": "Hodge Kaleidoscope · K3 surface · 120 bpm · tap ▶ Play\n428×241 · 60 fps",
-   "video": "videos/01-new-auto.webm"
+   "video": "videos/01-new-auto.webm",
+   "note": "I would change the shapes faster or control their speed using the controller"
   }
  ]
 }
