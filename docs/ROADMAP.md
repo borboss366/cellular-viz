@@ -13,6 +13,12 @@ The user is in charge ("for now I want to be in charge"): during step 1 the user
 3. **Blending.** With the controller, work further on blending scenes together. The Lenia blends (08, #27–#35) are the proof of concept; fade and screen won round 1.
 4. **Fine-tune from reviews.** Once that's solid, adjust each visualisation (add or remove things) based on the user's grades of how it looks.
 
+How it fits together: one control contract for every scene, an input bus (sliders and keyboard now, the controller later, sensors in step 2) and a host page that blends scene modules in one WebGL context (design #85). A panic key works in every scene: B blackout, ` calm fallback (#86).
+
+**First set list:** 10–12 scenes, the user picks.
+
+**Step 1 is done when** a recorded 60-minute rehearsal set plays end to end with no crash, at 60 fps with two scenes blended, with every scene reachable from the controller, on the real projector with real mixer audio.
+
 ### Millennium Prize problems
 
 | Problem | Page(s) | Status |
@@ -23,7 +29,7 @@ The user is in charge ("for now I want to be in charge"): during step 1 the user
 | Navier–Stokes | 13 Flow Lab (stable fluids + curl noise, presets) | ✅ MVP on main (#53): 60 fps to 4K, raw dye drift ≤ 0.7 %/10 s, swirls on the beat. Brighter curl/plume (#69) and stone rocks with more fluid (#72) merged. Next: living obstacles (#54); 3-D smoke and multigrid later |
 | Poincaré | 14 Round Point, **23 Shape Shifter**, 25 Shape Shifter II | ✅ on main: 14 (#55, kick pulse + fades #68), 23 (#56), 25 (#57, user: "Very good") |
 | P vs NP | 15 Hard Problems (2-opt salesman, 3-SAT cliff at 4.26, Rule 110) | ⏳ spec on #37 |
-| Hodge | 16 Calabi–Yau (Fermat n=5 slice, Hodge diamond) | ⏳ spec on #37, plus the psychedelic specs 16a–16e (#37 comment 6444942841). On hold until #68/#69 are done (both merged 28 Oct). Check the formula against Hanson 1994 before building |
+| Hodge | 16 Calabi–Yau (Fermat n=5 slice, Hodge diamond), **16b Hodge Kaleidoscope** | ⏳ 16b on #84 (QA 10/10, waits on the user's grade). Then 16a Liquid Light, 16c 27 Neon Lines, 16d Diamond Sky, one at a time (#37 comment 6444942841). Check the 16 formula against Hanson 1994 before building |
 
 ### Cellular automata and physics
 
@@ -31,7 +37,7 @@ The user is in charge ("for now I want to be in charge"): during step 1 the user
 |---|---|
 | Lenia family 01–08 (Gray-Scott, Lenia, Flow Lenia, effects, Particle Lenia, blends) | ✅ |
 | 26 FHP lattice gas (CA → Navier–Stokes): F1 particle rain, F2 zoom to fluid, F3 vortex street, F4 collision synth, F5 two inks, F6 sound rings | ⏳ build spec on #71. Mock-ups in `docs/proposals/fhp` (#51); all six rated 'workable' by the user |
-| 24 Paint Pour | 💡 idea, held |
+| 24 Paint Pour | ⏳ v1 spec on #87 (closed-form marbling) |
 | Runners-up from the evangelist report: sandpile avalanches, Chladni plates, Turing reaction–diffusion | 💡 ideas |
 
 Rule for every MVP: art first, maths true underneath, a QA truth check, 60 fps at 1440p on the box, and drums drawn ≤ 40 ms after the sound.
