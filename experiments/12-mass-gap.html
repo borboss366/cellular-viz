@@ -625,7 +625,8 @@ function frame(now) {
 function draw(now) {
   resize();
   const L = metronome.read();
-  const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb);
+  const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb) + (window.__qaShift || 0);   // __qaShift: forceDrop moves the clock (QA, #88)
+  window.__qaNowBars = bars;
   const beat = Math.floor(bars * params.bpb);
   const beatEdge = beat !== lastBeat, downbeat = beatEdge && beat % params.bpb === 0;
   lastBeat = beat;
@@ -669,6 +670,8 @@ function draw(now) {
   }
 }
 
+// QA (#88): the drop is the last 2 bars of each section; __qa.forceDrop() (panic.js) jumps the clock to the next one
+window.__qaNextDrop = b => window.__qaSectionDrop(b, params.bars, Math.max(1, params.bars - 2));
 window.__qa = {
   N, DT, SUBSTEPS, probe, splat, clear: kgClear, errors,
   setAuto(on) { field.auto = !!on; }, setMass(m) { PIN.m = m; }, setCoupling(k) { PIN.k = k; },

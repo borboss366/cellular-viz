@@ -963,7 +963,8 @@ function draw(now) {
   const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
   const L = metronome.read(params.lead / 1000);
   bassEnv = Math.max(L.kick, bassEnv * Math.exp(-dt / 0.25));   // the bass: the kick's slow envelope
-  const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb);
+  const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb) + (window.__qaShift || 0);   // __qaShift: forceDrop moves the clock (QA, #88)
+  window.__qaNowBars = bars;
   const beatSec = 60 / params.bpm, barSec = beatSec * params.bpb, tMus = bars * barSec;
   const n = Math.floor(bars), sec = sectionOf(n), beat = Math.floor(bars * params.bpb);
   const beatEdge = beat !== lastBeat; lastBeat = beat;
@@ -1274,6 +1275,8 @@ function drawOverlay(sec, L) {
   c.fillText('glueballs, MeV', X(0), y0 + H / 40);
 }
 
+// QA (#88): the drop is the last 2 bars of each section (sectionOf); __qa.forceDrop() (panic.js) jumps the clock to the next one
+window.__qaNextDrop = b => window.__qaSectionDrop(Math.floor(b), params.bars, Math.max(1, params.bars - 2));
 window.__qa = {
   errors, events, B: B_T, Tc: T_C, kappa: KAPPA, mq: MQ, fbs: FBS, speed: SPEED, jetN: JET_N,
   rnd, pcg, event: n => { const ev = eventFor(n); return ev && summary(ev); },
