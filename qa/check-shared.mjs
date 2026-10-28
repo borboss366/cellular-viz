@@ -44,6 +44,23 @@ const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-$
 const out = path.resolve(arg('out', path.join(here, id, 'checks', `${stamp}-shared`)));
 fs.mkdirSync(out, { recursive: true });
 
+// Gating (VIZ research, 28 Oct, so #80 auto-merge isn't blocked): pages that existed before #88 are gated only
+// once they have __qa.forceDrop(); until then a failing row shows ⚠️ "would fail". New scenes are always gated.
+// When the forceDrop hook PR merges, drop the pages it covers from LEGACY so a lost hook fails again.
+const LEGACY = new Set(['01-gray-scott', '02-lenia', '03-lenia-audio', '04-lenia-metronome', '05-flow-lenia', '06-lenia-effects', '07-particle-lenia',
+  '08-blend', '09-riemann', '10-bsd', '11-riemann-show', '12-mass-gap', '13-flow-lab', '14-round-point', '17-bsd-skater', '18-little-bang', '19-skate-park',
+  '23-shape-shifter', '25-shape-shifter-2']);
+const legacy = LEGACY.has(id) || id.startsWith('16-');   // 16 Hodge (#84) was in flight before #88
+// if this check itself breaks, say so in check.md: ⚠️ on pages from before #88 (never blocks them), ❌ on new scenes
+const crash = e => {
+  try { fs.writeFileSync(path.join(out, 'check.md'), `# Shared gates (#88) · ${pageName} · ${stamp}\n\n| gate | result | detail |\n|---|---|---|\n` +
+    `| the shared check ran to the end | ${legacy ? '⚠️' : '❌'} | ${String(e && e.stack || e).split('\n').slice(0, 2).join(' / ').replace(/[|]/g, ' ').slice(0, 280)} |\n`); } catch {}
+  console.error(e); console.log(out); process.exit(1);
+};
+process.on('uncaughtException', crash); process.on('unhandledRejection', crash);
+// my own deadline, under the runner's SHARED_TIMEOUT_MIN (12), so a hang is reported here and not as the runner's ❌
+setTimeout(() => crash(new Error(`shared check still running after ${+arg('deadlineMin', 11)} min: stopped`)), +arg('deadlineMin', 11) * 60e3).unref();
+
 // static server: the experiments folder, sub-paths allowed (modules, live/), nothing outside it
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.glsl': 'text/plain' };
 const server = http.createServer((q, res) => {
@@ -292,13 +309,6 @@ if (only !== 'perf') {
 await browser.close(); server.close();
 
 // ---------- report ----------
-// Gating (VIZ research, 28 Oct, so #80 auto-merge isn't blocked): pages that existed before #88 are gated only
-// once they have __qa.forceDrop(); until then a failing row shows ⚠️ "would fail". New scenes are always gated.
-// When the forceDrop hook PR merges, drop the pages it covers from LEGACY so a lost hook fails again.
-const LEGACY = new Set(['01-gray-scott', '02-lenia', '03-lenia-audio', '04-lenia-metronome', '05-flow-lenia', '06-lenia-effects', '07-particle-lenia',
-  '08-blend', '09-riemann', '10-bsd', '11-riemann-show', '12-mass-gap', '13-flow-lab', '14-round-point', '17-bsd-skater', '18-little-bang', '19-skate-park',
-  '23-shape-shifter', '25-shape-shifter-2']);
-const legacy = LEGACY.has(id) || id.startsWith('16-');   // 16 Hodge (#84) was in flight before #88
 const hook = !!((res.perf && res.perf.hook) || (res.flash && res.flash.hook));
 const gated = !legacy || hook;
 res.gating = { legacy, hook, gated };
