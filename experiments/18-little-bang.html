@@ -25,7 +25,14 @@
              anticolour (red + cyan, green + magenta, blue + yellow), so every group is white.
     quench   Collisions as above, but each snare jet pair is lopsided: one jet escapes, the other
              crosses the plasma, loses most of its energy (dE/dx) and frays into soft curling
-             sparks. A_J = (E1 − E2)/(E1 + E2) is shown.
+             sparks. A_J = (E1 − E2)/(E1 + E2) is shown. The absorbed jet drives a Mach cone through
+             the plasma: a glowing V behind it with half-angle sin α = c_s / v (c_s = 1/√3, v = c: 35°).
+    beamline (#58, replaces strings in auto) A ring collider. The camera rides the beam axis inside the
+             pipe, passes a blue ring magnet on every beat and red focusing magnets that flash on the
+             kick, and slows to a halt just before the interaction point on each downbeat, when the two
+             bunches cross there. The collision is collide's physics; tracks curl out through the
+             tracker, and calorimeter cells light up where they land (r = 1.6). Then the camera
+             accelerates through the detector and laps the ring for the next crossing.
   A small strip (bottom right) keeps 12's glueball spectrum: nothing below 1730 MeV, the gap.
   Not to scale: the fireball is drawn in femtometres (×0.045), the tracks in metres, and time
   is slowed so a collision lasts about a bar. The fireball is an analytic blast wave, not a
@@ -34,7 +41,10 @@
   Everything per event is a pure function of the bar number and a seed (a PCG hash shared by
   JS and GLSL), so QA can recompute any track. window.__qa: event(bar), trackParams(seed, i),
   trackPos(event, i, t), jetSums(jetSeed, n, quench), fireballAt(event, tfm), strings
-  {cascades, totals}, events, errors. Modules: window.__modules (ISF-style inputs).
+  {cascades, totals}, events, errors, camera {u, s, pos, offAxis, pipeR} (beamline), wakes [{bar, step,
+  dir, entry, fireballR, cs, v, speed, tBeat}] and dijets [{bar, step, pT1, pT2, AJ, tBeat}] (no
+  half-angle: QA fits it from the picture), bunchPos(bar, tSec), ringPoint(s), camS(u).
+  Modules: window.__modules (ISF-style inputs).
 -->
 <html lang="en">
 <head>
@@ -105,7 +115,9 @@
 'use strict';
 
 const query = new URLSearchParams(location.search);
-const SCENES = ['collide', 'strings', 'quench'];
+// beamline replaces strings in auto (#58, user: strings "quite boring"); strings stays one tap away
+const SCENES = ['collide', 'beamline', 'quench', 'strings'];
+const AUTO = ['collide', 'beamline', 'quench'];
 const COARSE = matchMedia('(pointer: coarse)').matches;
 // lead (ms): read the drums this far ahead of the heard clock, if QA box finds the picture late.
 // res: 'cap' draws the particles at up to 2560×1440 pixels and scales the glow up to the
@@ -241,7 +253,7 @@ function makeFireball(energy, b) {
 }
 
 const sectionOf = n => {
-  const scene = params.scene === 'auto' ? SCENES[Math.floor(n / params.bars) % SCENES.length] : params.scene;
+  const scene = params.scene === 'auto' ? AUTO[Math.floor(n / params.bars) % AUTO.length] : params.scene;
   const sb = ((n % params.bars) + params.bars) % params.bars, build = Math.max(1, params.bars - 2), drop = sb >= build;
   return { scene, drop, energy: drop ? 1.3 : 0.3 + 0.7 * sb / build };
 };
@@ -270,6 +282,21 @@ function eventFor(n) {   // the collision on bar n's downbeat, or null (strings 
   return ev;
 }
 const basis = psi => ({ ein: [0, Math.sin(psi), Math.cos(psi)], eout: [0, Math.cos(psi), -Math.sin(psi)] });
+
+// ---------- beamline: a ring collider; the interaction point (IP) is the origin, the beam runs along +x there ----------
+// The camera rides the beam axis round the ring once a bar. Its arclength is C·g(u) − STOP with g(u) = u − sin(2πu)/2π
+// (u = phase in the bar): g'(0) = 0, so it slows to a halt STOP before the IP on every downbeat, watches the
+// collision, then accelerates through the detector and laps the ring. It passes one ring magnet per beat.
+const RING_R = 24, RING_C = 2 * Math.PI * RING_R, PIPE_R = 0.35, CAM_STOP = 0.9, CAL_R = 1.6, CAL_X = 2.4, BUNCH_V = 9;
+const ringG = u => u - Math.sin(2 * Math.PI * u) / (2 * Math.PI);
+function ringPoint(s) {   // arclength s from the IP, along the beam
+  const th = s / RING_R;
+  return { p: [RING_R * Math.sin(th), 0, RING_R * (Math.cos(th) - 1)], t: [Math.cos(th), 0, -Math.sin(th)] };
+}
+const camS = u => RING_C * ringG(u) - CAM_STOP;
+function bunchPos(bar, tSec) {   // the two bunch centres, tSec after bar's downbeat (they cross the IP at tSec = 0)
+  return { a: ringPoint(BUNCH_V * tSec).p, b: ringPoint(-BUNCH_V * tSec).p, sA: BUNCH_V * tSec, sB: -BUNCH_V * tSec };
+}
 
 // One bulk track: the same maths as the vertex shader.
 function trackParams(seed, i, ev) {
@@ -482,6 +509,69 @@ const detBuf = dynBuffer([{ loc: 0, size: 3 }]);
   gl.bindBuffer(gl.ARRAY_BUFFER, detBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
   detBuf.count = v.length / 3;
 })();
+// beamline geometry, built once: the pipe wall (8 lines round the ring, open inside the detector), one ring magnet
+// where the camera is on each beat (dipoles, blue), a focusing magnet between beats (quadrupoles, red, kick),
+// and the calorimeter shell round the IP. beamGeo holds [first, count] of each group for drawArrays.
+const beamBuf = dynBuffer([{ loc: 0, size: 3 }]), beamGeo = {};
+(function buildBeamline() {
+  const v = [], mark = name => { beamGeo[name] = [v.length / 3, 0]; }, end = name => { beamGeo[name][1] = v.length / 3 - beamGeo[name][0]; };
+  const around = (s, r, k = 32) => {   // a circle of radius r round the beam at arclength s
+    const { p, t } = ringPoint(s), n1 = [0, 1, 0], n2 = [t[1] * 0 - t[2] * 1, t[2] * 0 - t[0] * 0, t[0] * 1 - t[1] * 0];   // n2 = t × y
+    for (let i = 0; i < k; i++) {
+      const a = i / k * 2 * Math.PI, b = (i + 1) / k * 2 * Math.PI;
+      for (const c of [a, b]) v.push(p[0] + r * (n1[0] * Math.cos(c) + n2[0] * Math.sin(c)), p[1] + r * (n1[1] * Math.cos(c) + n2[1] * Math.sin(c)), p[2] + r * (n1[2] * Math.cos(c) + n2[2] * Math.sin(c)));
+    }
+  };
+  mark('pipe');
+  const N = 720;
+  for (let w = 0; w < 8; w++) {
+    const a = w / 8 * 2 * Math.PI;
+    for (let i = 0; i < N; i++) {
+      const s0 = i / N * RING_C, s1 = (i + 1) / N * RING_C;
+      if (Math.min(Math.abs(((s0 + RING_C / 2) % RING_C) - RING_C / 2), Math.abs(((s1 + RING_C / 2) % RING_C) - RING_C / 2)) < CAL_X + 0.6) continue;   // open in the detector
+      for (const s of [s0, s1]) {
+        const { p, t } = ringPoint(s), n2 = [-t[2], 0, t[0]];
+        v.push(p[0] + PIPE_R * n2[0] * Math.cos(a), p[1] + PIPE_R * Math.sin(a), p[2] + PIPE_R * n2[2] * Math.cos(a));
+      }
+    }
+  }
+  end('pipe');
+  mark('dipoles');
+  for (let k = 1; k < params.bpb; k++) { around(camS(k / params.bpb), PIPE_R * 1.25); around(camS(k / params.bpb) + 0.08, PIPE_R * 1.25); }
+  end('dipoles');
+  mark('quads');
+  for (let k = 0; k < params.bpb; k++) around(camS((k + 0.5) / params.bpb), PIPE_R * 1.1, 4);   // a square: four poles
+  end('quads');
+  mark('cal');   // the calorimeter shell: rings and staves at CAL_R
+  for (let x = -CAL_X; x <= CAL_X + 1e-6; x += CAL_X / 3) around(x, CAL_R, 64);
+  for (let i = 0; i < 24; i++) { const a = i / 24 * 2 * Math.PI; v.push(-CAL_X, CAL_R * Math.cos(a), CAL_R * Math.sin(a), CAL_X, CAL_R * Math.cos(a), CAL_R * Math.sin(a)); }
+  end('cal');
+  gl.bindBuffer(gl.ARRAY_BUFFER, beamBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+})();
+// calorimeter hits of an event: where a sample of its tracks crosses r = CAL_R (from trackPos, the shader's twin)
+const CAL_N = 600, calCache = new Map();
+function calHits(ev) {
+  let h = calCache.get(ev.seed);
+  if (h) return h;
+  h = [];
+  const rT = q => Math.hypot(q[1], q[2]);
+  for (let k = 0; k < CAL_N; k++) {
+    const i = Math.floor(k * params.n / CAL_N);
+    let lo = 0, hi = null;
+    for (let s = 1; s <= 24; s++) { const t = s / 24 * TRACK_LIFE * 0.6; if (rT(trackPos(ev, i, t)) >= CAL_R) { hi = t; break; } lo = t; }
+    if (hi === null) continue;   // curls up inside the tracker
+    for (let it = 0; it < 8; it++) { const m = (lo + hi) / 2; if (rT(trackPos(ev, i, m)) >= CAL_R) hi = m; else lo = m; }
+    const p = trackPos(ev, i, hi);
+    if (Math.abs(p[0]) > CAL_X) continue;
+    const P = trackParams(ev.seed, i, ev);
+    h.push({ t: hi, p, q: P.q, pT: P.pT });
+  }
+  calCache.set(ev.seed, h); if (calCache.size > 8) calCache.delete(calCache.keys().next().value);
+  return h;
+}
+// jet quenching: the absorbed jet drives a Mach cone through the plasma, half-angle sin α = c_s / v
+const CS = 1 / Math.sqrt(3), V_JET = 1, WAKE_LIFE = 0.9;
+const wakesQA = [], dijetsQA = [];
 
 // post: HDR accumulation with decay (motion trails), bloom at quarter size, tone map
 const decayProg = program(FULL_VS, `#version 300 es
@@ -669,6 +759,9 @@ const MODULES = {
     { name: 'loss', type: 'float', default: 0.06, min: 0, max: 0.3 },
     { name: 'tau', type: 'float', default: 0.08, min: 0, max: 0.4 } ] },
   strings: { inputs: [ { name: 'gain', type: 'float', default: 1, min: 0.1, max: 3 } ] },
+  beamline: { inputs: [
+    { name: 'n', type: 'long', default: 30000, min: 10000, max: 1000000 },
+    { name: 'gain', type: 'float', default: 1, min: 0.1, max: 3 } ] },
   quench: { inputs: [
     { name: 'n', type: 'long', default: 30000, min: 10000, max: 1000000 },
     { name: 'loss', type: 'float', default: 0.06, min: 0, max: 0.3 } ] },
@@ -791,10 +884,22 @@ function draw(now) {
   }
   stepStrings(dt);
 
-  // camera: orbit between a side view (to see the nuclei come in) and a view down the beam
-  const al = 0.75 + 0.45 * Math.sin(bars / 32 * 2 * Math.PI), D = 5.4 - 0.1 * L.kick;
-  const eye = [D * Math.cos(al), D * 0.32 + 0.4 * Math.sin(bars / 16 * 2 * Math.PI), D * Math.sin(al)];
-  const vp = mul4(perspective(0.95, W / H, 0.05, 60), lookAt(eye, [0, 0, 0], [0, 1, 0]));
+  // camera: orbit between a side view (to see the nuclei come in) and a view down the beam;
+  // in beamline it rides the beam axis round the ring and halts CAM_STOP before the IP on each downbeat
+  const beam = sec.scene === 'beamline';
+  let eye, vp;
+  if (beam) {
+    const u = bars - n, s = camS(u), here = ringPoint(s), ahead = ringPoint(s + 2.5);
+    eye = here.p;
+    vp = mul4(perspective(1.15 + 0.06 * L.kick, W / H, 0.02, 80), lookAt(eye, ahead.p, [0, 1, 0]));
+    // the eye is on the beam axis, so its distance from the pipe axis is 0 (< PIPE_R) the whole way in
+    qaState.camera = { u, s: ((s + RING_C / 2) % RING_C) - RING_C / 2, pos: eye, offAxis: 0, pipeR: PIPE_R, stopAt: -CAM_STOP };
+  } else {
+    const al = 0.75 + 0.45 * Math.sin(bars / 32 * 2 * Math.PI), D = 5.4 - 0.1 * L.kick;
+    eye = [D * Math.cos(al), D * 0.32 + 0.4 * Math.sin(bars / 16 * 2 * Math.PI), D * Math.sin(al)];
+    vp = mul4(perspective(0.95, W / H, 0.05, 60), lookAt(eye, [0, 0, 0], [0, 1, 0]));
+    qaState.camera = null;
+  }
 
   // accumulate: decay the old picture, then add this frame
   gl.bindFramebuffer(gl.FRAMEBUFFER, rt.acc.fbo);
@@ -808,7 +913,15 @@ function draw(now) {
 
   gl.useProgram(lineProg.p); gl.uniformMatrix4fv(lineProg.u.uVP, false, vp);
   gl.uniform4f(lineProg.u.uColor, 0.25, 0.45, 0.9, 0.12 * fg * (1 + 0.5 * L.hat));
-  gl.bindVertexArray(detBuf.vao); gl.drawArrays(gl.LINES, 0, detBuf.count);
+  gl.bindVertexArray(detBuf.vao); gl.drawArrays(gl.LINES, 0, detBuf.count - (beam ? 2 : 0));   // no beam line through the camera
+  if (beam) {
+    const lines = (name, r, g, b, a) => { gl.uniform4f(lineProg.u.uColor, r, g, b, a * fg); gl.drawArrays(gl.LINES, beamGeo[name][0], beamGeo[name][1]); };
+    gl.bindVertexArray(beamBuf.vao);
+    lines('pipe', 0.35, 0.55, 0.9, 0.22);
+    lines('dipoles', 0.35, 0.65, 1.0, 0.9 + 0.6 * L.hat);
+    lines('quads', 1.0, 0.3, 0.2, 0.35 + 1.6 * L.kick);   // focusing magnets pulse on the kick
+    lines('cal', 0.9, 0.6, 0.25, 0.18);
+  }
 
   const sprites = [];
   let flash = 0, drawn = 0;
@@ -818,6 +931,17 @@ function draw(now) {
     const t = tMus - m * barSec;
     if (t < -beatSec) continue;
     const { ein, eout } = basis(ev.psi);
+    if (beam && t < 0 && t > -1.8) {   // the two bunches race in along the pipe and cross at the IP on the downbeat
+      const B = bunchPos(m, t), fade = Math.min(1, (t + 1.8) / 0.4) * (ev.drop ? 1.4 : 0.7 + 0.5 * ev.energy);
+      for (const [s0, col] of [[B.sA, [0.55, 0.75, 1.0]], [B.sB, [1.0, 0.8, 0.45]]]) {
+        const { p, t: tg } = ringPoint(s0), n2 = [-tg[2], 0, tg[0]];
+        for (let k = 0; k < 160; k++) {
+          const g = (a, b) => Math.sqrt(-2 * Math.log(Math.max(1e-6, rnd(ev.seed ^ 0x2545f491, k * 2 + (s0 < 0 ? 0 : 1), a)))) * Math.cos(2 * Math.PI * rnd(ev.seed ^ 0x2545f491, k * 2 + (s0 < 0 ? 0 : 1), b));
+          const dl = 0.22 * g(0, 1), dy = 0.04 * g(2, 3), dz = 0.04 * g(4, 5);
+          sprites.push(p[0] + tg[0] * dl + n2[0] * dz, p[1] + dy, p[2] + tg[2] * dl + n2[2] * dz, col[0] * fade, col[1] * fade, col[2] * fade, 6);
+        }
+      }
+    }
     nucleiSprites(sprites, ev, t, beatSec);
     if (t >= 0 && metronome.playing && !logged.has('c' + m)) {
       logged.add('c' + m);
@@ -841,6 +965,16 @@ function draw(now) {
       gl.bindVertexArray(emptyVao); gl.drawArrays(gl.POINTS, 0, FIRE_N);
     }
     const tt = t - ev.fb.thS;
+    if (beam && tt >= 0 && tt < TRACK_LIFE) {   // calorimeter cells light where tracks reach r = CAL_R
+      for (const hit of calHits(ev)) {
+        const age = tt - hit.t;
+        if (age < 0) continue;
+        const a = 2 * Math.PI / 64, ph = Math.round(Math.atan2(hit.p[2], hit.p[1]) / a) * a, x = Math.round(hit.p[0] / 0.2) * 0.2;
+        const f = Math.exp(-age / 0.45) * (0.6 + 0.6 * Math.min(1, hit.pT)) * (ev.drop ? 1.3 : 1);
+        const c = hit.q > 0 ? [1.0, 0.55, 0.2] : hit.q < 0 ? [0.4, 0.6, 1.0] : [0.7, 1.0, 0.55];
+        sprites.push(x, CAL_R * Math.cos(ph), CAL_R * Math.sin(ph), c[0] * f, c[1] * f, c[2] * f, 9);
+      }
+    }
     if (tt >= 0 && tt < TRACK_LIFE) {   // hadrons: the bulk tracks
       gl.useProgram(trackProg.p);
       setTrackUniforms(vp, ev, tt, 0, fg);
@@ -851,10 +985,29 @@ function draw(now) {
     for (const j of ev.jets) {   // jet pairs on the snares
       const tj = t - j.step * beatSec / 4;
       if (tj < 0 || tj >= TRACK_LIFE) continue;
-      if (metronome.playing && !logged.has(`j${m}.${j.step}`)) {
+      const jetDir = [ein[0] * Math.cos(j.phi + Math.PI) + eout[0] * Math.sin(j.phi + Math.PI), ein[1] * Math.cos(j.phi + Math.PI) + eout[1] * Math.sin(j.phi + Math.PI),
+                      ein[2] * Math.cos(j.phi + Math.PI) + eout[2] * Math.sin(j.phi + Math.PI)];   // the quenched side (side 1 in the shader)
+      const Afb = fireballAxes(ev.fb, ev.fb.th), Rfb = 0.5 * (Afb.in + Afb.out) * FBS;
+      if (!logged.has(`j${m}.${j.step}`)) {
         logged.add(`j${m}.${j.step}`);
-        const tb = stepTime(m * params.bpb * 4 + j.step);
+        const tb = metronome.playing ? stepTime(m * params.bpb * 4 + j.step) : null;
         if (tb !== null) logEvent({ type: 'jet', bar: m, quench: j.quench, tBeat: tb }, now);
+        const S = jetSums(j.seed, JET_N, j.quench);
+        dijetsQA.push({ bar: m, step: j.step, pT1: S.E1, pT2: S.E2, AJ: S.AJ, tBeat: tb }); if (dijetsQA.length > 64) dijetsQA.shift();
+        if (j.quench > 0) { wakesQA.push({ bar: m, step: j.step, dir: jetDir, entry: [0, 0, 0], fireballR: Rfb, cs: CS, v: V_JET, speed: SPEED, tBeat: tb }); if (wakesQA.length > 64) wakesQA.shift(); }
+      }
+      if (j.quench > 0 && tj < WAKE_LIFE) {   // the Mach cone: a V behind the absorbed jet, opening at asin(c_s / v)
+        const tanA = Math.tan(Math.asin(CS / V_JET)), run = SPEED * tj, apexD = Math.min(run, Rfb * 1.3), grow = 1 + Math.max(0, run - Rfb * 1.3) * 0.6;
+        const p1 = [1, 0, 0], p2 = [jetDir[1] * p1[2] - jetDir[2] * p1[1], jetDir[2] * p1[0] - jetDir[0] * p1[2], jetDir[0] * p1[1] - jetDir[1] * p1[0]];
+        const fade = (1 - tj / WAKE_LIFE) * (0.7 + 0.5 * j.quench);
+        for (let li = 1; li <= 14; li++) {
+          const l = apexD * li / 14;
+          for (let k = 0; k < 20; k++) {
+            const ps = k / 20 * 2 * Math.PI, r = l * tanA * grow, c = Math.cos(ps), s = Math.sin(ps), f = fade * (1 - 0.5 * li / 14);
+            sprites.push(jetDir[0] * (apexD - l) + (p1[0] * c + p2[0] * s) * r, jetDir[1] * (apexD - l) + (p1[1] * c + p2[1] * s) * r,
+                         jetDir[2] * (apexD - l) + (p1[2] * c + p2[2] * s) * r, 1.0 * f, 0.5 * f, 0.18 * f, 5);
+          }
+        }
       }
       gl.useProgram(trackProg.p);
       setTrackUniforms(vp, ev, tj, 1, fg);
@@ -867,6 +1020,11 @@ function draw(now) {
       qaState.lastJet = { bar: m, step: j.step, seed: j.seed, phi: j.phi, quench: j.quench, ...jetSums(j.seed, JET_N, j.quench) };
     }
     if (t >= 0) qaState.lastEvent = ev;
+    if (beam && t >= 0 && metronome.playing && !logged.has('x' + m)) {   // the bunch crossing (at the IP on the downbeat by construction)
+      logged.add('x' + m);
+      const tb = stepTime(m * params.bpb * 4);
+      if (tb !== null) logEvent({ type: 'crossing', bar: m, tBeat: tb }, now);
+    }
   }
   if (logged.size > 400) logged.clear();
   stringSprites(sprites, L.kick, L.hat);
@@ -901,7 +1059,8 @@ function draw(now) {
   qaState.scene = sec.scene; qaState.bar = n; qaState.drawnTracks = drawn;
   if (now - lastOv > 66) { lastOv = now; drawOverlay(sec, L); }
   Object.assign(window.__qa, { scene: sec.scene, bars, drop: sec.drop, energy: sec.energy, drawnTracks: drawn, render: [W, H], screen: [CW, CH],
-    lastEvent: qaState.lastEvent && summary(qaState.lastEvent), lastJet: qaState.lastJet, strings: stringsQA(), latency: metronome.latency() });
+    lastEvent: qaState.lastEvent && summary(qaState.lastEvent), lastJet: qaState.lastJet, strings: stringsQA(), latency: metronome.latency(),
+    camera: qaState.camera, wakes: wakesQA.slice(), dijets: dijetsQA.slice() });
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
   if (now - lastHud > 200) {
@@ -936,7 +1095,10 @@ function drawOverlay(sec, L) {
   c.textAlign = 'left'; c.fillStyle = 'rgba(230,236,245,0.85)'; c.font = f(H / 34);
   const ev = qaState.lastEvent;
   let line1 = '', line2 = '';
-  if (sec.scene === 'strings') {
+  if (sec.scene === 'beamline') {
+    line1 = 'beamline · the bunches cross on the downbeat';
+    line2 = ev ? `Au + Au · b = ${ev.b.toFixed(1)} fm · tracks curl in 0.5 T · calorimeter lights where they land` : 'ring magnets on the beat · focusing on the kick';
+  } else if (sec.scene === 'strings') {
     const s = stringsQA();
     line1 = 'string breaking · κ = 1 GeV/fm';
     line2 = `${s.totalBreaks} breaks · every group white`;
@@ -971,6 +1133,7 @@ window.__qa = {
   trackPos: (bar, i, t) => { const ev = eventFor(bar); return ev ? trackPos(ev, i, t) : null; },
   helix, jetSums, fireballAt: (bar, tfm) => { const ev = eventFor(bar); return ev ? { axes: fireballAxes(ev.fb, tfm), T: fireballT(ev.fb, tfm) } : null; },
   loss: () => params.loss,
+  bunchPos, ringPoint, camS, ringR: RING_R, pipeR: PIPE_R, calR: CAL_R, cs: CS,
 };
 const q = k => query.get(k);
 if (q('scene') && (q('scene') === 'auto' || SCENES.includes(q('scene')))) params.scene = q('scene');
