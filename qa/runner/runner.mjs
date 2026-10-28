@@ -28,6 +28,7 @@ import { gpuGate, unlock as gpuUnlock, GPU } from './gpu.mjs';
 import { loadFile } from './experiment.mjs';
 import { historyEntry, commitPaths, reportFiles, buildDirs, messageFor } from './post.mjs';
 import { sync as boardSync } from './board.mjs';
+import { runShared } from './shared.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -46,6 +47,8 @@ const CFG = {
   label: env('RUNNER_LABEL', 'qa-ready'),
   commit: env('RUNNER_COMMIT', '1') !== '0',   // after each build: commit its .md/.json reports + history entry in QA_HOME (never pushes)
   board: env('RUNNER_BOARD', '1') !== '0',     // after each build and merge: move the board cards (gh, the box's login)
+  shared: env('SHARED_CHECKS', '1') !== '0',   // after each page's own check: qa/check-shared.mjs (flash + GPU gates, #88)
+  sharedMin: Math.max(1, +env('SHARED_TIMEOUT_MIN', '12') || 12),
   once: argv.includes('--once'),
 };
 if (!/^[\w.-]+\/[\w.-]+$/.test(CFG.repo)) throw new Error('bad repo ' + CFG.repo);
@@ -344,6 +347,11 @@ async function runBuild(job, gate) {
       fs.writeFileSync(path.join(dest, 'runner.log'), `commit ${job.sha}\nchecks ${CFG.checksRef}\nexit ${r.code}\n\n${r.err.slice(-20000)}`);
     } else {
       failCheck(fallback, [['the check ran to the end and wrote check.md', `exit ${r.code}: ${(r.err || r.out).trim().split('\n').slice(-3).join(' / ')}`]]);
+    }
+    // the shared gates every page gets (#88), still inside this build's GPU lock; their rows join dest/check.md
+    if (CFG.shared) {
+      try { await runShared({ run, tree, page: job.page, dest, timeoutMs: CFG.sharedMin * 60e3, log }); }
+      catch (e) { log(`shared gates for ${job.page} could not run: ${e.message}`); }
     }
     saveGate(dest, gate);
     const fin = await builds('finish', '--id', id, '--check', dest);
