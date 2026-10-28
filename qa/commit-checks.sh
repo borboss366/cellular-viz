@@ -13,11 +13,12 @@ if [ -f "$ENV_FILE" ]; then set -a; . "$ENV_FILE"; set +a; fi
 QA_HOME=${QA_HOME:-/home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz}
 cd "$QA_HOME"
 
-# changed (modified, deleted or new, not ignored) files that match the patterns, one per line
-FILES=$(git ls-files -m -o --exclude-standard -- \
-  ':(glob)qa/check-*.mjs' 'qa/todo.json' 'qa/builds.json' \
+# files that match the patterns and differ from HEAD: changed or deleted in the worktree, new and not ignored, or
+# already staged with no further change (git add'ed earlier), one per line
+set -- ':(glob)qa/check-*.mjs' 'qa/todo.json' 'qa/builds.json' \
   ':(glob)qa/*/checks/**/*.md' ':(glob)qa/*/checks/**/*.json' \
-  ':(glob)qa/*/runs/**/report.md' ':(glob)qa/*/runs/**/results.json' ':(glob)qa/*/runs/**/comparisons.json' | sort -u)
+  ':(glob)qa/*/runs/**/report.md' ':(glob)qa/*/runs/**/results.json' ':(glob)qa/*/runs/**/comparisons.json'
+FILES=$( { git ls-files -m -o --exclude-standard -- "$@"; git diff --cached --name-only -- "$@"; } | sort -u)
 if [ -z "$FILES" ]; then
   echo "commit-checks: nothing to commit in $QA_HOME"
   exit 0
@@ -41,7 +42,8 @@ trap 'rm -f "$MSG_FILE"' EXIT
 } > "$MSG_FILE"
 
 # add the new and changed ones (a deleted one is staged as a deletion), then commit only these paths
-printf '%s\n' "$FILES" | while IFS= read -r f; do git add -A -- "$f"; done
+# (a deletion that is already staged has nothing left to add: that add fails harmlessly)
+printf '%s\n' "$FILES" | while IFS= read -r f; do git add -A -- "$f" 2>/dev/null || true; done
 printf '%s\n' "$FILES" | tr '\n' '\0' | xargs -0 git -c user.name="QA box" -c user.email=qa-box@puggie.local \
   commit -q -F "$MSG_FILE" --only --
 echo "commit-checks: $(git log -1 --format='%h %s') on $BRANCH (not pushed)"
