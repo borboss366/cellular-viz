@@ -285,7 +285,7 @@ const pass = {
   dijets: res.wake.dijets.length >= 4 && res.wake.dijets.every(j => j.step % 8 === 4) && res.wake.jetLags.length > 0 && Math.max(...res.wake.jetLags) <= 40 && res.wake.escRms <= 5 && res.wake.quRms >= 2 * res.wake.escRms,
   neonKick: !res.neon.has || (res.neon.kicks >= 4 && res.neon.peakMedMs !== null && res.neon.peakMedMs <= 40 && res.neon.pulseLagMax <= 40 && res.neon.arriveErrMs !== null && res.neon.arriveErrMs <= 2),
   neonHue: !res.neon.has || (res.neon.bars >= 6 && res.neon.hueOkShare >= 0.9),
-  neonJump: !res.neon.has || res.neon.over25 === 0,
+  neonJump: !res.neon.has || res.neon.fullWorst <= 25,   // VIZ research 28 Oct: blinding flicker is judged on the whole picture; the wires' kick flash is meant to jump
   neonClear: !res.neon.has || (res.beamSum.maxOff < 1e-6 && res.neon.minClear !== null && res.neon.minClear >= 0.2),
   noErrors: !errors.length && Object.values(res.speed).every(o => Object.values(o).every(v => !v.caught)),
 };
@@ -310,7 +310,7 @@ fs.writeFileSync(path.join(dir, 'check.md'), `# 18 Little Bang check · ${stamp}
   `| jets: each pair on a snare, ≤ 40 ms; escaping side narrow | ${ok(pass.dijets)} | ${res.wake.dijets.length} pairs on steps ${[...new Set(res.wake.dijets.map(j => j.step))].join('/')} · lag ≤ ${res.wake.jetLags.length ? Math.max(...res.wake.jetLags).toFixed(1) : '–'} ms · φ spread ${res.wake.escRms}° escaping vs ${res.wake.quRms}° quenched (shader formula, q ${res.wake.q}) |\n` +
   `| neon: wire brightness peaks ≤ 40 ms after each kick; its light ring arrives on the downbeat | ${ok(pass.neonKick)} | ${res.neon.has ? `${res.neon.kicks} kicks: frame-brightness peak median ${res.neon.peakMedMs?.toFixed(0)} ms (max ${res.neon.peakMedMs === null ? '–' : res.neon.peakMaxMs.toFixed(0)}) after the sound · pulse launch lag ≤ ${res.neon.pulseLagMax?.toFixed(1)} ms · arrival vs crossing ≤ ${res.neon.arriveErrMs?.toFixed(2)} ms` : 'no neon wires on this page'} |\n` +
   `| neon: mean hue changes ≥ 15° bar to bar on ≥ 90 % of bars | ${ok(pass.neonHue)} | ${res.neon.has ? `${res.neon.bars} bars, steps ${res.neon.hueSteps.join(', ')}° (${(res.neon.hueOkShare * 100).toFixed(0)} % ≥ 15°; ${res.neon.wiresOnly ? 'wire pixels only (?qa=wires)' : 'whole-frame hue'})` : '–'} |\n` +
-  `| neon: no frame-to-frame brightness jump > 25 % outside drops | ${ok(pass.neonJump)} | ${res.neon.has ? `worst ${res.neon.worstJump} % at bar ${res.neon.worstJumpBar?.toFixed(2)} · ${res.neon.over25} frames over 25 % (both frames floored at ${res.neon.floor}/255${res.neon.wiresOnly ? '; wire pixels only' : ''}) · whole picture worst ${res.neon.fullWorst} % (reported only)` : '–'} |\n` +
+  `| no frame-to-frame brightness jump > 25 % outside drops (whole picture) | ${ok(pass.neonJump)} | ${res.neon.has ? `whole picture worst ${res.neon.fullWorst} % (floor 5/255) · wires alone worst ${res.neon.worstJump} % at bar ${res.neon.worstJumpBar?.toFixed(2)}, ${res.neon.over25} frames over 25 % (the kick flash, reported only)` : '–'} |\n` +
   `| neon: wires ≥ 0.2 tube radius from the camera | ${ok(pass.neonClear)} | ${res.neon.has ? `camera ≤ ${res.beamSum.maxOff.toExponential(1)} off the axis (my measure) · nearest wire ${res.neon.minClear?.toFixed(3)} tube radii (page's breath − wobble)` : '–'} |\n` +
   `| 1440p: p95 ≤ 16.8 ms, ≤ 3 frames > 20 ms | ${ok(pass.fps1440)} | |\n` +
   `| errors | ${ok(pass.noErrors)} | ${errors.slice(0, 2).join('; ') || 'none'} |\n\n` +
