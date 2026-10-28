@@ -13,6 +13,9 @@ GitHub (read only, anonymous)          the box
 
 ## The three commands QA box types
 
+All of them run inside Puggie's worker container (QA box's shell). `update-runner.sh` refuses on the host (exit 2, nothing
+pulled); from the host use `podman exec --env-file ~/.config/cellular-viz-runner.env pi-durable-worker sh <RUNNER_HOME>/qa/update-runner.sh`.
+
 Always the same strings, so each needs approval once (RUNNER_HOME is the runner's own clone of main):
 
 ```
