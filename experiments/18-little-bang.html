@@ -25,7 +25,18 @@
              anticolour (red + cyan, green + magenta, blue + yellow), so every group is white.
     quench   Collisions as above, but each snare jet pair is lopsided: one jet escapes, the other
              crosses the plasma, loses most of its energy (dE/dx) and frays into soft curling
-             sparks. A_J = (E1 − E2)/(E1 + E2) is shown.
+             sparks. A_J = (E1 − E2)/(E1 + E2) is shown. The absorbed jet drives a Mach cone through
+             the plasma: a glowing V behind it with half-angle sin α = c_s / v (c_s = 1/√3, v = c: 35°).
+    beamline (#58, replaces strings in auto) A ring collider. The camera rides the beam axis inside the
+             pipe, passes a blue ring magnet on every beat and red focusing magnets that flash on the
+             kick, and slows to a halt just before the interaction point on each downbeat, when the two
+             bunches cross there. The collision is collide's physics; tracks curl out through the
+             tracker, and calorimeter cells light up where they land (r = 1.6). Then the camera
+             accelerates through the detector and laps the ring for the next crossing. The tube's wires
+             are neon (#75 comment 6472180040): hot core + coloured halo, hue bands streaming along the
+             tube, a new palette colour every bar, a rainbow sweep on the drop; each kick fires a light
+             ring that reaches the IP on the next downbeat; the bass breathes and plucks the wires,
+             the hats shimmer them, the snare flashes the magnets in the complementary colour.
   A small strip (bottom right) keeps 12's glueball spectrum: nothing below 1730 MeV, the gap.
   Not to scale: the fireball is drawn in femtometres (×0.045), the tracks in metres, and time
   is slowed so a collision lasts about a bar. The fireball is an analytic blast wave, not a
@@ -34,7 +45,11 @@
   Everything per event is a pure function of the bar number and a seed (a PCG hash shared by
   JS and GLSL), so QA can recompute any track. window.__qa: event(bar), trackParams(seed, i),
   trackPos(event, i, t), jetSums(jetSeed, n, quench), fireballAt(event, tfm), strings
-  {cascades, totals}, events, errors. Modules: window.__modules (ISF-style inputs).
+  {cascades, totals}, events, errors, camera {u, s, pos, offAxis, pipeR} (beamline), wakes [{bar, step,
+  dir, entry, fireballR, cs, v, speed, tBeat}] and dijets [{bar, step, pT1, pT2, AJ, tBeat}] (no
+  half-angle: QA fits it from the picture), bunchPos(bar, tSec), ringPoint(s), camS(u), wires {baseHue,
+  pulses, pulsePhase, wobbleAmp, breath, glowPx, clearance (in tube radii)}; events pulse / pulse-arrive.
+  Modules: window.__modules (ISF-style inputs).
 -->
 <html lang="en">
 <head>
@@ -105,7 +120,9 @@
 'use strict';
 
 const query = new URLSearchParams(location.search);
-const SCENES = ['collide', 'strings', 'quench'];
+// beamline replaces strings in auto (#58, user: strings "quite boring"); strings stays one tap away
+const SCENES = ['collide', 'beamline', 'quench', 'strings'];
+const AUTO = ['collide', 'beamline', 'quench'];
 const COARSE = matchMedia('(pointer: coarse)').matches;
 // lead (ms): read the drums this far ahead of the heard clock, if QA box finds the picture late.
 // res: 'cap' draws the particles at up to 2560×1440 pixels and scales the glow up to the
@@ -241,7 +258,7 @@ function makeFireball(energy, b) {
 }
 
 const sectionOf = n => {
-  const scene = params.scene === 'auto' ? SCENES[Math.floor(n / params.bars) % SCENES.length] : params.scene;
+  const scene = params.scene === 'auto' ? AUTO[Math.floor(n / params.bars) % AUTO.length] : params.scene;
   const sb = ((n % params.bars) + params.bars) % params.bars, build = Math.max(1, params.bars - 2), drop = sb >= build;
   return { scene, drop, energy: drop ? 1.3 : 0.3 + 0.7 * sb / build };
 };
@@ -270,6 +287,21 @@ function eventFor(n) {   // the collision on bar n's downbeat, or null (strings 
   return ev;
 }
 const basis = psi => ({ ein: [0, Math.sin(psi), Math.cos(psi)], eout: [0, Math.cos(psi), -Math.sin(psi)] });
+
+// ---------- beamline: a ring collider; the interaction point (IP) is the origin, the beam runs along +x there ----------
+// The camera rides the beam axis round the ring once a bar. Its arclength is C·g(u) − STOP with g(u) = u − sin(2πu)/2π
+// (u = phase in the bar): g'(0) = 0, so it slows to a halt STOP before the IP on every downbeat, watches the
+// collision, then accelerates through the detector and laps the ring. It passes one ring magnet per beat.
+const RING_R = 24, RING_C = 2 * Math.PI * RING_R, PIPE_R = 0.35, CAM_STOP = 0.9, CAL_R = 1.6, CAL_X = 2.4, BUNCH_V = 9;
+const ringG = u => u - Math.sin(2 * Math.PI * u) / (2 * Math.PI);
+function ringPoint(s) {   // arclength s from the IP, along the beam
+  const th = s / RING_R;
+  return { p: [RING_R * Math.sin(th), 0, RING_R * (Math.cos(th) - 1)], t: [Math.cos(th), 0, -Math.sin(th)] };
+}
+const camS = u => RING_C * ringG(u) - CAM_STOP;
+function bunchPos(bar, tSec) {   // the two bunch centres, tSec after bar's downbeat (they cross the IP at tSec = 0)
+  return { a: ringPoint(BUNCH_V * tSec).p, b: ringPoint(-BUNCH_V * tSec).p, sA: BUNCH_V * tSec, sB: -BUNCH_V * tSec };
+}
 
 // One bulk track: the same maths as the vertex shader.
 function trackParams(seed, i, ev) {
@@ -482,6 +514,155 @@ const detBuf = dynBuffer([{ loc: 0, size: 3 }]);
   gl.bindBuffer(gl.ARRAY_BUFFER, detBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
   detBuf.count = v.length / 3;
 })();
+// beamline geometry, built once: the pipe wall (8 lines round the ring, open inside the detector), one ring magnet
+// where the camera is on each beat (dipoles, blue), a focusing magnet between beats (quadrupoles, red, kick),
+// and the calorimeter shell round the IP. beamGeo holds [first, count] of each group for drawArrays.
+const beamBuf = dynBuffer([{ loc: 0, size: 3 }]), beamGeo = {};
+(function buildBeamline() {
+  const v = [], mark = name => { beamGeo[name] = [v.length / 3, 0]; }, end = name => { beamGeo[name][1] = v.length / 3 - beamGeo[name][0]; };
+  const around = (s, r, k = 32) => {   // a circle of radius r round the beam at arclength s
+    const { p, t } = ringPoint(s), n1 = [0, 1, 0], n2 = [t[1] * 0 - t[2] * 1, t[2] * 0 - t[0] * 0, t[0] * 1 - t[1] * 0];   // n2 = t × y
+    for (let i = 0; i < k; i++) {
+      const a = i / k * 2 * Math.PI, b = (i + 1) / k * 2 * Math.PI;
+      for (const c of [a, b]) v.push(p[0] + r * (n1[0] * Math.cos(c) + n2[0] * Math.sin(c)), p[1] + r * (n1[1] * Math.cos(c) + n2[1] * Math.sin(c)), p[2] + r * (n1[2] * Math.cos(c) + n2[2] * Math.sin(c)));
+    }
+  };
+  mark('pipe');
+  const N = 720;
+  for (let w = 0; w < 8; w++) {
+    const a = w / 8 * 2 * Math.PI;
+    for (let i = 0; i < N; i++) {
+      const s0 = i / N * RING_C, s1 = (i + 1) / N * RING_C;
+      if (Math.min(Math.abs(((s0 + RING_C / 2) % RING_C) - RING_C / 2), Math.abs(((s1 + RING_C / 2) % RING_C) - RING_C / 2)) < CAL_X + 0.6) continue;   // open in the detector
+      for (const s of [s0, s1]) {
+        const { p, t } = ringPoint(s), n2 = [-t[2], 0, t[0]];
+        v.push(p[0] + PIPE_R * n2[0] * Math.cos(a), p[1] + PIPE_R * Math.sin(a), p[2] + PIPE_R * n2[2] * Math.cos(a));
+      }
+    }
+  }
+  end('pipe');
+  mark('dipoles');
+  for (let k = 1; k < params.bpb; k++) { around(camS(k / params.bpb), PIPE_R * 1.25); around(camS(k / params.bpb) + 0.08, PIPE_R * 1.25); }
+  end('dipoles');
+  mark('quads');
+  for (let k = 0; k < params.bpb; k++) around(camS((k + 0.5) / params.bpb), PIPE_R * 1.1, 4);   // a square: four poles
+  end('quads');
+  mark('cal');   // the calorimeter shell: rings and staves at CAL_R
+  for (let x = -CAL_X; x <= CAL_X + 1e-6; x += CAL_X / 3) around(x, CAL_R, 64);
+  for (let i = 0; i < 24; i++) { const a = i / 24 * 2 * Math.PI; v.push(-CAL_X, CAL_R * Math.cos(a), CAL_R * Math.sin(a), CAL_X, CAL_R * Math.cos(a), CAL_R * Math.sin(a)); }
+  end('cal');
+  gl.bindBuffer(gl.ARRAY_BUFFER, beamBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+})();
+// calorimeter hits of an event: where a sample of its tracks crosses r = CAL_R (from trackPos, the shader's twin)
+const CAL_N = 600, calCache = new Map();
+function calHits(ev) {
+  let h = calCache.get(ev.seed);
+  if (h) return h;
+  h = [];
+  const rT = q => Math.hypot(q[1], q[2]);
+  for (let k = 0; k < CAL_N; k++) {
+    const i = Math.floor(k * params.n / CAL_N);
+    let lo = 0, hi = null;
+    for (let s = 1; s <= 24; s++) { const t = s / 24 * TRACK_LIFE * 0.6; if (rT(trackPos(ev, i, t)) >= CAL_R) { hi = t; break; } lo = t; }
+    if (hi === null) continue;   // curls up inside the tracker
+    for (let it = 0; it < 8; it++) { const m = (lo + hi) / 2; if (rT(trackPos(ev, i, m)) >= CAL_R) hi = m; else lo = m; }
+    const p = trackPos(ev, i, hi);
+    if (Math.abs(p[0]) > CAL_X) continue;
+    const P = trackParams(ev.seed, i, ev);
+    h.push({ t: hi, p, q: P.q, pT: P.pT });
+  }
+  calCache.set(ev.seed, h); if (calCache.size > 8) calCache.delete(calCache.keys().next().value);
+  return h;
+}
+// jet quenching: the absorbed jet drives a Mach cone through the plasma, half-angle sin α = c_s / v
+const CS = 1 / Math.sqrt(3), V_JET = 1, WAKE_LIFE = 0.9;
+const WAKE_L = 1.3;   // drawn cone length (art: the plasma is ~0.3 units across, so the true cone would be ~0.004 % of the frame)
+
+// ---------- beamline neon (#75, user: "make the wires ... shine in neon, change colors and vibe to the beats") ----------
+// Each pipe wire and ring magnet is a thin near-white hot core plus a coloured halo (4 offset passes), additive in HDR,
+// then the page's bloom and tone map. Hue = palette base (steps every bar, new palette per section) + a band that streams
+// along the tube with the camera; on the drop a rainbow sweeps the tube once a beat. Kick: a light ring launched from the
+// camera arrives at the IP exactly on the next downbeat. Bass (the kick's slow envelope): tube radius +2 %, halo width
+// ±30 %, wires vibrate as a standing wave (amplitude ≤ 3 % of the radius). Hats: shimmer. Snare: magnets flash in the
+// complementary colour.
+const neonProg = program(`#version 300 es
+precision highp float;
+uniform mat4 uVP;
+uniform float uT, uBase, uBreath, uWob, uHat, uKick, uSnare, uDrop, uSweep, uCamS, uC, uFg, uGlow, uShift, uHalo;
+uniform vec4 uPulse, uPulseA;
+uniform vec2 uOff;
+layout(location = 0) in vec3 aC;   // the beam axis point
+layout(location = 1) in vec3 aN;   // out from the axis, length = radius
+layout(location = 2) in vec2 aS;   // arclength, kind (0 wire, 1 ring magnet)
+out vec4 vC;
+vec3 hue(float h) { return clamp(abs(fract(h + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0); }
+void main() {
+  float s = aS.x, kind = aS.y, ds = mod(s - uCamS, uC);
+  float wob = kind < 0.5 ? uWob * sin(6.2831853 * s / 3.0) * sin(uT * 37.7) : 0.0;   // a plucked standing wave
+  gl_Position = uVP * vec4(aC + aN * (uBreath + wob), 1.0);
+  gl_Position.xy += uOff * gl_Position.w;
+  float h = uBase + 0.11 * sin(6.2831853 * (s - 3.0 * uT) / 14.0);   // bands stream along +s, ±40° round the base
+  h += uDrop * fract(ds / 30.0 - uSweep);
+  if (kind > 0.5) h += 0.5;
+  vec3 c = hue(h);
+  float pulse = 0.0;
+  for (int i = 0; i < 4; i++) { float d = (ds - uPulse[i]) / 0.6; pulse += uPulseA[i] * exp(-d * d); }
+  float I = kind < 0.5 ? 0.55 * (1.0 + 0.5 * uKick) * (1.0 + 0.35 * uHat * sin(53.0 * s + 140.0 * uT)) + 2.6 * pulse
+                       : 0.8 + 2.4 * uSnare + 1.2 * pulse;
+  // a thick tube in three layers, a gradient across it: white-hot core, the hue, then an outer halo shifted round the
+  // colour wheel by uShift (which swings with the beat), all swelling with the bass (uHalo)
+  vec3 col = uGlow < 0.5 ? mix(c, vec3(1.0), 0.5) * 0.6
+           : uGlow < 1.5 ? c * 0.16 * uHalo
+           : hue(h + uShift) * 0.075 * uHalo;
+  vC = vec4(col * I * uFg, 1.0);
+}`, ADD_FS);
+const neonBuf = dynBuffer([{ loc: 0, size: 3 }, { loc: 1, size: 3 }, { loc: 2, size: 2 }]);
+(function buildNeon() {
+  const v = [], put = (s, a, r, kind) => {   // the point at arclength s, angle a round the axis, radius r
+    const { p, t } = ringPoint(s), n2 = [-t[2], 0, t[0]];
+    v.push(p[0], p[1], p[2], r * n2[0] * Math.cos(a), r * Math.sin(a), r * n2[2] * Math.cos(a), s, kind);
+  };
+  const N = 1440, wrap = s => Math.abs(((s + RING_C / 2) % RING_C) - RING_C / 2);
+  for (let w = 0; w < 8; w++) {
+    const a = w / 8 * 2 * Math.PI;
+    for (let i = 0; i < N; i++) {
+      const s0 = i / N * RING_C, s1 = (i + 1) / N * RING_C;
+      if (Math.min(wrap(s0), wrap(s1)) < CAL_X + 0.6) continue;   // open in the detector
+      put(s0, a, PIPE_R, 0); put(s1, a, PIPE_R, 0);
+    }
+  }
+  for (let k = 1; k < params.bpb; k++) for (const ds of [0, 0.08]) {
+    const s = camS(k / params.bpb) + ds;
+    for (let i = 0; i < 48; i++) { put(s, i / 48 * 2 * Math.PI, PIPE_R * 1.25, 1); put(s, (i + 1) / 48 * 2 * Math.PI, PIPE_R * 1.25, 1); }
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, neonBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+  neonBuf.count = v.length / 8;
+})();
+const PALETTES = [[190, 280, 320, 160], [20, 330, 260, 50], [140, 200, 290, 0], [300, 180, 60, 240]];   // degrees
+let bassEnv = 0, wiresQA = null;
+// ?qa=wires (QA box): beamline draws only the neon wires and ring magnets, no detector, tracks, sprites, flash or text,
+// so their hue and brightness can be measured on wire pixels alone
+const QA_WIRES = new URLSearchParams(location.search).get('qa') === 'wires';
+// the palette colour of bar n, gliding from the last bar's over the first 1/16 bar (a hard hue cut is a brightness jump)
+function wireHue(n, u) {
+  const at = m => { const P = PALETTES[(((Math.floor(m / params.bars)) % 4) + 4) % 4]; return P[((m % 4) + 4) % 4]; };
+  const a = at(n - 1), b = at(n), x = Math.min(1, u * 16), k = x * x * (3 - 2 * x);
+  const d = ((b - a) % 360 + 540) % 360 - 180;   // the short way round
+  return ((a + d * k) % 360 + 360) % 360;
+}
+// kick light rings: launched from the camera at kick step i of the bar (u_k = i/16), at the IP (s = C) on the next downbeat
+function pulsesAt(u) {
+  const out = [];
+  for (let i = 0; i < 16 && out.length < 4; i++) {
+    if (params.kick[i] !== 'x') continue;
+    const uk = i / 16;
+    if (u < uk) continue;
+    const w = Math.sqrt((u - uk) / (1 - uk));
+    out.push({ step: i, ahead: (RING_C - camS(u)) * w, a: Math.min(1, (u - uk) * 160) });   // full within ~12 ms of the kick
+  }
+  return out;
+}
+const wakesQA = [], dijetsQA = [];
 
 // post: HDR accumulation with decay (motion trails), bloom at quarter size, tone map
 const decayProg = program(FULL_VS, `#version 300 es
@@ -669,6 +850,9 @@ const MODULES = {
     { name: 'loss', type: 'float', default: 0.06, min: 0, max: 0.3 },
     { name: 'tau', type: 'float', default: 0.08, min: 0, max: 0.4 } ] },
   strings: { inputs: [ { name: 'gain', type: 'float', default: 1, min: 0.1, max: 3 } ] },
+  beamline: { inputs: [
+    { name: 'n', type: 'long', default: 30000, min: 10000, max: 1000000 },
+    { name: 'gain', type: 'float', default: 1, min: 0.1, max: 3 } ] },
   quench: { inputs: [
     { name: 'n', type: 'long', default: 30000, min: 10000, max: 1000000 },
     { name: 'loss', type: 'float', default: 0.06, min: 0, max: 0.3 } ] },
@@ -778,6 +962,7 @@ function draw(now) {
   resize();
   const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
   const L = metronome.read(params.lead / 1000);
+  bassEnv = Math.max(L.kick, bassEnv * Math.exp(-dt / 0.25));   // the bass: the kick's slow envelope
   const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb);
   const beatSec = 60 / params.bpm, barSec = beatSec * params.bpb, tMus = bars * barSec;
   const n = Math.floor(bars), sec = sectionOf(n), beat = Math.floor(bars * params.bpb);
@@ -791,10 +976,23 @@ function draw(now) {
   }
   stepStrings(dt);
 
-  // camera: orbit between a side view (to see the nuclei come in) and a view down the beam
-  const al = 0.75 + 0.45 * Math.sin(bars / 32 * 2 * Math.PI), D = 5.4 - 0.1 * L.kick;
-  const eye = [D * Math.cos(al), D * 0.32 + 0.4 * Math.sin(bars / 16 * 2 * Math.PI), D * Math.sin(al)];
-  const vp = mul4(perspective(0.95, W / H, 0.05, 60), lookAt(eye, [0, 0, 0], [0, 1, 0]));
+  // camera: orbit between a side view (to see the nuclei come in) and a view down the beam;
+  // in beamline it rides the beam axis round the ring and halts CAM_STOP before the IP on each downbeat
+  const beam = sec.scene === 'beamline';
+  let neonDraw = null;
+  let eye, vp;
+  if (beam) {
+    const u = bars - n, s = camS(u), here = ringPoint(s), ahead = ringPoint(s + 2.5);
+    eye = here.p;
+    vp = mul4(perspective(1.15 + 0.06 * L.kick, W / H, 0.02, 80), lookAt(eye, ahead.p, [0, 1, 0]));
+    // the eye is on the beam axis, so its distance from the pipe axis is 0 (< PIPE_R) the whole way in
+    qaState.camera = { u, s: ((s + RING_C / 2) % RING_C) - RING_C / 2, pos: eye, offAxis: 0, pipeR: PIPE_R, stopAt: -CAM_STOP };
+  } else {
+    const al = 0.75 + 0.45 * Math.sin(bars / 32 * 2 * Math.PI), D = 5.4 - 0.1 * L.kick;
+    eye = [D * Math.cos(al), D * 0.32 + 0.4 * Math.sin(bars / 16 * 2 * Math.PI), D * Math.sin(al)];
+    vp = mul4(perspective(0.95, W / H, 0.05, 60), lookAt(eye, [0, 0, 0], [0, 1, 0]));
+    qaState.camera = null;
+  }
 
   // accumulate: decay the old picture, then add this frame
   gl.bindFramebuffer(gl.FRAMEBUFFER, rt.acc.fbo);
@@ -808,16 +1006,73 @@ function draw(now) {
 
   gl.useProgram(lineProg.p); gl.uniformMatrix4fv(lineProg.u.uVP, false, vp);
   gl.uniform4f(lineProg.u.uColor, 0.25, 0.45, 0.9, 0.12 * fg * (1 + 0.5 * L.hat));
-  gl.bindVertexArray(detBuf.vao); gl.drawArrays(gl.LINES, 0, detBuf.count);
+  if (!(QA_WIRES && beam)) { gl.bindVertexArray(detBuf.vao); gl.drawArrays(gl.LINES, 0, detBuf.count - (beam ? 2 : 0)); }   // no beam line through the camera
+  if (QA_WIRES && beam && hud.style.display !== 'none') hud.style.display = 'none';
+  if (beam) {
+    const lines = (name, r, g, b, a) => { gl.uniform4f(lineProg.u.uColor, r, g, b, a * fg); gl.drawArrays(gl.LINES, beamGeo[name][0], beamGeo[name][1]); };
+    gl.bindVertexArray(beamBuf.vao);
+    if (!QA_WIRES) {
+      lines('quads', 1.0, 0.3, 0.2, 0.35 + 1.6 * L.kick);   // focusing magnets pulse on the kick
+      lines('cal', 0.9, 0.6, 0.25, 0.18);
+    }
+    // neon pipe wires and ring magnets
+    const u = bars - n, sIdx = Math.floor(n / params.bars);
+    const baseDeg = wireHue(n, u), pulses = pulsesAt(u);
+    const sc = H / 1080, breath = 1 + 0.02 * bassEnv, wob = 0.03 * bassEnv, glowPx = 2.2 * sc * (0.7 + 0.6 * bassEnv);
+    const beatPh = (bars * params.bpb) % 1, shift = 0.15 + 0.08 * Math.sin(2 * Math.PI * beatPh), halo = 0.9 + 0.25 * bassEnv;
+    const sweep = (bars * params.bpb) % 1, camNow = camS(u);
+    gl.useProgram(neonProg.p); const U = neonProg.u;
+    gl.uniformMatrix4fv(U.uVP, false, vp);
+    gl.uniform1f(U.uT, tMus); gl.uniform1f(U.uBase, baseDeg / 360); gl.uniform1f(U.uBreath, breath); gl.uniform1f(U.uWob, wob);
+    gl.uniform1f(U.uHat, L.hat); gl.uniform1f(U.uKick, L.kick); gl.uniform1f(U.uSnare, L.snare); gl.uniform1f(U.uDrop, sec.drop ? 1 : 0);
+    gl.uniform1f(U.uSweep, sweep); gl.uniform1f(U.uCamS, camNow); gl.uniform1f(U.uC, RING_C); gl.uniform1f(U.uFg, 1);
+    const pv = [0, 0, 0, 0], pa = [0, 0, 0, 0];
+    pulses.forEach((p, i) => { pv[i] = p.ahead % RING_C; pa[i] = p.a; });
+    gl.uniform4fv(U.uPulse, pv); gl.uniform4fv(U.uPulseA, pa);
+    // The wires skip the motion-trail buffer: added at full weight just before the bloom and taken out again after the
+    // tone map, so they show this frame's light only. Through the trails (τ 0.08 s) a kick (τ 0.15 s) peaked ~110 ms late.
+    gl.uniform1f(U.uShift, shift); gl.uniform1f(U.uHalo, halo);
+    // user: "the tubes can be thicker and glow and pulse with gradient light": the core is 5 lines ~3 px wide at 1080p,
+    // the inner halo 8 lines at glowPx, the outer 8 at 2.3 × glowPx (both swell with the bass)
+    const ring8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.707, 0.707], [-0.707, 0.707], [0.707, -0.707], [-0.707, -0.707]];
+    const layers = [[0, [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]], 1.0 * sc], [1, ring8, glowPx * 1.4], [2, ring8, glowPx * 3.2]];
+    neonDraw = () => {
+      gl.useProgram(neonProg.p); gl.bindVertexArray(neonBuf.vao);
+      for (const [layer, offs, r] of layers) {
+        gl.uniform1f(U.uGlow, layer);
+        for (const [ox, oy] of offs) { gl.uniform2f(U.uOff, ox * r * 2 / W, oy * r * 2 / H); gl.drawArrays(gl.LINES, 0, neonBuf.count); }
+      }
+    };
+    gl.useProgram(lineProg.p);
+    wiresQA = { baseHue: baseDeg, palette: ((sIdx % 4) + 4) % 4, pulses: pulses.map(p => ({ step: p.step, ahead: p.ahead, a: p.a })), pulsePhase: pulses.length ? pulses[pulses.length - 1].ahead / Math.max(1e-6, RING_C - camNow) : null,
+      wobbleAmp: wob, breath, glowPx, haloShift: shift * 360, halo, bass: bassEnv, clearance: breath - wob, drop: sec.drop };
+    for (const p of pulses) {   // the pulse launch (on its kick) and its arrival at the IP (the next downbeat)
+      if (!metronome.playing || logged.has(`p${n}.${p.step}`)) continue;
+      logged.add(`p${n}.${p.step}`);
+      const tb = stepTime(n * params.bpb * 4 + p.step);
+      if (tb !== null) logEvent({ type: 'pulse', bar: n, step: p.step, tBeat: tb, tArrive: tb + (params.bpb * 4 - p.step) * beatSec / 4 }, now);
+    }
+  } else wiresQA = null;
 
   const sprites = [];
   let flash = 0, drawn = 0;
-  for (let m = n - 2; m <= n + 1; m++) {
+  for (let m = n - 2; m <= n + 1 && !(QA_WIRES && beam); m++) {
     const ev = eventFor(m);
     if (!ev) continue;
     const t = tMus - m * barSec;
     if (t < -beatSec) continue;
     const { ein, eout } = basis(ev.psi);
+    if (beam && t < 0 && t > -1.8) {   // the two bunches race in along the pipe and cross at the IP on the downbeat
+      const B = bunchPos(m, t), fade = Math.min(1, (t + 1.8) / 0.4) * (ev.drop ? 1.4 : 0.7 + 0.5 * ev.energy);
+      for (const [s0, col] of [[B.sA, [0.55, 0.75, 1.0]], [B.sB, [1.0, 0.8, 0.45]]]) {
+        const { p, t: tg } = ringPoint(s0), n2 = [-tg[2], 0, tg[0]];
+        for (let k = 0; k < 160; k++) {
+          const g = (a, b) => Math.sqrt(-2 * Math.log(Math.max(1e-6, rnd(ev.seed ^ 0x2545f491, k * 2 + (s0 < 0 ? 0 : 1), a)))) * Math.cos(2 * Math.PI * rnd(ev.seed ^ 0x2545f491, k * 2 + (s0 < 0 ? 0 : 1), b));
+          const dl = 0.22 * g(0, 1), dy = 0.04 * g(2, 3), dz = 0.04 * g(4, 5);
+          sprites.push(p[0] + tg[0] * dl + n2[0] * dz, p[1] + dy, p[2] + tg[2] * dl + n2[2] * dz, col[0] * fade, col[1] * fade, col[2] * fade, 6);
+        }
+      }
+    }
     nucleiSprites(sprites, ev, t, beatSec);
     if (t >= 0 && metronome.playing && !logged.has('c' + m)) {
       logged.add('c' + m);
@@ -827,8 +1082,11 @@ function draw(now) {
     if (t >= 0 && t < ev.fb.thS + 0.15) {   // the fireball
       const tf = t / FMC_S, A = fireballAxes(ev.fb, Math.min(tf, ev.fb.th)), T = fireballT(ev.fb, Math.min(tf, ev.fb.th));
       const fade = t < ev.fb.thS ? 1 : 1 - (t - ev.fb.thS) / 0.15;
-      const glow = Math.min(60, (T / T_C) ** 4) * 0.012 * (40000 / FIRE_N) * fade;
-      flash = Math.max(flash, (ev.drop ? 0.3 : 0.12) * Math.min(1, (T / T_C) ** 4 / 40) * fade * Math.exp(-t / 0.12));
+      // beamline (user: "the explosion is a bit too bright and blinding"): the camera sits 0.9 from the IP, so the
+      // fireball fills the view; there it is dimmer, its points smaller, it swells in over 80 ms and the flash is a quarter
+      const near = beam ? 0.3 * Math.min(1, t / 0.08) : 1;
+      const glow = Math.min(60, (T / T_C) ** 4) * 0.012 * (40000 / FIRE_N) * fade * near;
+      flash = Math.max(flash, (ev.drop ? 0.3 : 0.12) * Math.min(1, (T / T_C) ** 4 / 40) * fade * Math.exp(-t / 0.12) * (beam ? 0.25 * Math.min(1, t / 0.08) : 1));
       gl.useProgram(fireProg.p);
       gl.uniformMatrix4fv(fireProg.u.uVP, false, vp);
       gl.uniform1ui(fireProg.u.uSeed, ev.seed);
@@ -836,14 +1094,24 @@ function draw(now) {
       gl.uniform3fv(fireProg.u.uEin, ein); gl.uniform3fv(fireProg.u.uEout, eout);
       gl.uniform3fv(fireProg.u.uCol, fireCol(T, ev.fb.T0));
       gl.uniform1f(fireProg.u.uBright, glow * fg * params.gain);
-      gl.uniform1f(fireProg.u.uScale, H / 45);
+      gl.uniform1f(fireProg.u.uScale, H / (beam ? 80 : 45));
       gl.uniform1f(fireProg.u.uTime, now / 1000);
       gl.bindVertexArray(emptyVao); gl.drawArrays(gl.POINTS, 0, FIRE_N);
     }
     const tt = t - ev.fb.thS;
+    if (beam && tt >= 0 && tt < TRACK_LIFE) {   // calorimeter cells light where tracks reach r = CAL_R
+      for (const hit of calHits(ev)) {
+        const age = tt - hit.t;
+        if (age < 0) continue;
+        const a = 2 * Math.PI / 64, ph = Math.round(Math.atan2(hit.p[2], hit.p[1]) / a) * a, x = Math.round(hit.p[0] / 0.2) * 0.2;
+        const f = Math.exp(-age / 0.45) * (0.6 + 0.6 * Math.min(1, hit.pT)) * (ev.drop ? 1.3 : 1);
+        const c = hit.q > 0 ? [1.0, 0.55, 0.2] : hit.q < 0 ? [0.4, 0.6, 1.0] : [0.7, 1.0, 0.55];
+        sprites.push(x, CAL_R * Math.cos(ph), CAL_R * Math.sin(ph), c[0] * f, c[1] * f, c[2] * f, 9);
+      }
+    }
     if (tt >= 0 && tt < TRACK_LIFE) {   // hadrons: the bulk tracks
       gl.useProgram(trackProg.p);
-      setTrackUniforms(vp, ev, tt, 0, fg);
+      setTrackUniforms(vp, ev, tt, 0, fg * (beam ? 0.6 : 1));
       gl.uniform1f(trackProg.u.uGain, 0.9 * Math.sqrt(100000 / params.n) * fg * params.gain);
       gl.bindVertexArray(emptyVao); gl.drawArrays(gl.LINES, 0, params.n * TRAIL_K * 2);
       drawn += params.n;
@@ -851,10 +1119,35 @@ function draw(now) {
     for (const j of ev.jets) {   // jet pairs on the snares
       const tj = t - j.step * beatSec / 4;
       if (tj < 0 || tj >= TRACK_LIFE) continue;
-      if (metronome.playing && !logged.has(`j${m}.${j.step}`)) {
+      const jetDir = [ein[0] * Math.cos(j.phi + Math.PI) + eout[0] * Math.sin(j.phi + Math.PI), ein[1] * Math.cos(j.phi + Math.PI) + eout[1] * Math.sin(j.phi + Math.PI),
+                      ein[2] * Math.cos(j.phi + Math.PI) + eout[2] * Math.sin(j.phi + Math.PI)];   // the quenched side (side 1 in the shader)
+      const Afb = fireballAxes(ev.fb, ev.fb.th), Rfb = 0.5 * (Afb.in + Afb.out) * FBS;
+      if (!logged.has(`j${m}.${j.step}`)) {
         logged.add(`j${m}.${j.step}`);
-        const tb = stepTime(m * params.bpb * 4 + j.step);
+        const tb = metronome.playing ? stepTime(m * params.bpb * 4 + j.step) : null;
         if (tb !== null) logEvent({ type: 'jet', bar: m, quench: j.quench, tBeat: tb }, now);
+        const S = jetSums(j.seed, JET_N, j.quench);
+        dijetsQA.push({ bar: m, step: j.step, pT1: S.E1, pT2: S.E2, AJ: S.AJ, tBeat: tb }); if (dijetsQA.length > 64) dijetsQA.shift();
+        if (j.quench > 0) { wakesQA.push({ bar: m, step: j.step, dir: jetDir, entry: [0, 0, 0], fireballR: Rfb, cs: CS, v: V_JET, speed: SPEED, tBeat: tb }); if (wakesQA.length > 64) wakesQA.shift(); }
+      }
+      if (j.quench > 0 && tj < WAKE_LIFE + 0.2) {   // the Mach cone: a V behind the absorbed jet, opening at asin(c_s / v)
+        // drawn WAKE_L long (bigger than the plasma, so it reads), with a short glowing trail of the last 0.2 s
+        const tanA = Math.tan(Math.asin(CS / V_JET));
+        const p1 = [1, 0, 0], p2 = [jetDir[1] * p1[2] - jetDir[2] * p1[1], jetDir[2] * p1[0] - jetDir[0] * p1[2], jetDir[0] * p1[1] - jetDir[1] * p1[0]];
+        for (const lag of [0, 0.05, 0.1, 0.15, 0.2]) {
+          const tl = tj - lag;
+          if (tl <= 0 || tl > WAKE_LIFE) continue;
+          const apexD = Math.min(SPEED * tl, WAKE_L), grow = 1 + Math.max(0, SPEED * tl - WAKE_L) * 0.15;
+          const fade = (1 - tl / WAKE_LIFE) * (0.8 + 0.6 * j.quench) * (1 - lag / 0.25) * 1.8;
+          for (let li = 1; li <= 20; li++) {
+            const l = apexD * li / 20, r = l * tanA * grow, f = fade * (1 - 0.6 * li / 20) * Math.min(1, li / 5) * (li <= 2 ? 1.6 : 1);
+            for (let k = 0; k < 36; k++) {
+              const ps = k / 36 * 2 * Math.PI, c = Math.cos(ps), s = Math.sin(ps);
+              sprites.push(jetDir[0] * (apexD - l) + (p1[0] * c + p2[0] * s) * r, jetDir[1] * (apexD - l) + (p1[1] * c + p2[1] * s) * r,
+                           jetDir[2] * (apexD - l) + (p1[2] * c + p2[2] * s) * r, 1.0 * f, 0.45 * f, 0.12 * f, 7);
+            }
+          }
+        }
       }
       gl.useProgram(trackProg.p);
       setTrackUniforms(vp, ev, tj, 1, fg);
@@ -867,15 +1160,21 @@ function draw(now) {
       qaState.lastJet = { bar: m, step: j.step, seed: j.seed, phi: j.phi, quench: j.quench, ...jetSums(j.seed, JET_N, j.quench) };
     }
     if (t >= 0) qaState.lastEvent = ev;
+    if (beam && t >= 0 && metronome.playing && !logged.has('x' + m)) {   // the bunch crossing (at the IP on the downbeat by construction)
+      logged.add('x' + m);
+      const tb = stepTime(m * params.bpb * 4);
+      if (tb !== null) { logEvent({ type: 'crossing', bar: m, tBeat: tb }, now); logEvent({ type: 'pulse-arrive', bar: m, tBeat: tb }, now); }
+    }
   }
   if (logged.size > 400) logged.clear();
-  stringSprites(sprites, L.kick, L.hat);
+  if (!(QA_WIRES && beam)) stringSprites(sprites, L.kick, L.hat);
   if (sprites.length) {
     for (let i = 3; i < sprites.length; i += 7) { sprites[i] *= fg * params.gain; sprites[i + 1] *= fg * params.gain; sprites[i + 2] *= fg * params.gain; }
     gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(sprites), gl.DYNAMIC_DRAW);
     gl.useProgram(spriteProg.p); gl.uniformMatrix4fv(spriteProg.u.uVP, false, vp); gl.uniform1f(spriteProg.u.uScale, H / 160);
     gl.bindVertexArray(spriteBuf.vao); gl.drawArrays(gl.POINTS, 0, sprites.length / 7);
   }
+  if (neonDraw) neonDraw();
   gl.disable(gl.BLEND);
 
   // bloom and tone map
@@ -897,11 +1196,19 @@ function draw(now) {
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, rt.b1.t); gl.uniform1i(p.u.uBloom, 1);
     gl.uniform1f(p.u.uFlash, flash * params.gain);
   });
+  if (neonDraw) {   // take this frame's wires back out of the trail buffer
+    gl.bindFramebuffer(gl.FRAMEBUFFER, rt.acc.fbo); gl.viewport(0, 0, W, H);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
+    neonDraw();
+    gl.blendEquation(gl.FUNC_ADD); gl.disable(gl.BLEND);
+  }
 
   qaState.scene = sec.scene; qaState.bar = n; qaState.drawnTracks = drawn;
-  if (now - lastOv > 66) { lastOv = now; drawOverlay(sec, L); }
+  if (QA_WIRES && beam) { if (!ov.dataset.qaw) { ov.dataset.qaw = 1; octx.clearRect(0, 0, ov.width, ov.height); } }
+  else if (now - lastOv > 66) { lastOv = now; delete ov.dataset.qaw; drawOverlay(sec, L); }
   Object.assign(window.__qa, { scene: sec.scene, bars, drop: sec.drop, energy: sec.energy, drawnTracks: drawn, render: [W, H], screen: [CW, CH],
-    lastEvent: qaState.lastEvent && summary(qaState.lastEvent), lastJet: qaState.lastJet, strings: stringsQA(), latency: metronome.latency() });
+    lastEvent: qaState.lastEvent && summary(qaState.lastEvent), lastJet: qaState.lastJet, strings: stringsQA(), latency: metronome.latency(),
+    camera: qaState.camera, wakes: wakesQA.slice(), dijets: dijetsQA.slice(), wires: wiresQA });
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
   if (now - lastHud > 200) {
@@ -936,7 +1243,10 @@ function drawOverlay(sec, L) {
   c.textAlign = 'left'; c.fillStyle = 'rgba(230,236,245,0.85)'; c.font = f(H / 34);
   const ev = qaState.lastEvent;
   let line1 = '', line2 = '';
-  if (sec.scene === 'strings') {
+  if (sec.scene === 'beamline') {
+    line1 = 'beamline · the bunches cross on the downbeat';
+    line2 = ev ? `Au + Au · b = ${ev.b.toFixed(1)} fm · tracks curl in 0.5 T · calorimeter lights where they land` : 'ring magnets on the beat · focusing on the kick';
+  } else if (sec.scene === 'strings') {
     const s = stringsQA();
     line1 = 'string breaking · κ = 1 GeV/fm';
     line2 = `${s.totalBreaks} breaks · every group white`;
@@ -971,6 +1281,7 @@ window.__qa = {
   trackPos: (bar, i, t) => { const ev = eventFor(bar); return ev ? trackPos(ev, i, t) : null; },
   helix, jetSums, fireballAt: (bar, tfm) => { const ev = eventFor(bar); return ev ? { axes: fireballAxes(ev.fb, tfm), T: fireballT(ev.fb, tfm) } : null; },
   loss: () => params.loss,
+  bunchPos, ringPoint, camS, ringR: RING_R, pipeR: PIPE_R, calR: CAL_R, cs: CS,
 };
 const q = k => query.get(k);
 if (q('scene') && (q('scene') === 'auto' || SCENES.includes(q('scene')))) params.scene = q('scene');
