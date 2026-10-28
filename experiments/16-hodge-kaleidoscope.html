@@ -17,16 +17,26 @@
   truncated Gaussian of the same shape in every cell, so its integral is exactly ∝ h^{p,q}·L_k.
   Presets: genus-g curve (g 0–6), K3, quintic 3-fold, mirror quintic (for 16e), abelian surface (16d).
   Motion: the tiling turns once per 32 bars, breathes (1 ± 0.02 per bar) and leaves oil trails
-  (previous frame × 0.96, zoom 1.002, turn 0.1°); presets morph on phrase changes over 1 bar
-  (old gems shrink as the new ones grow, the numbers crossfade). 60s poster palette, no strobes:
+  (previous frame × 0.96, zoom 1.002, turn 0.1°).
+  Shape rate (round 2, #84 comment 6481396559): each shape is held 8 · 4 · 2 · 1 · ½ bars (shapeRate 0–1
+  snaps to these; default 2 bars), counted in clock beats. The morph is min(1 bar, hold/2), starts on a beat
+  (a downbeat when the hold is ≥ 1 bar), old gems shrink as the new ones grow, the numbers crossfade, and
+  the gems pop +6 % on the beat with a 140 ms tail. trigger() jumps to the next shape on the next beat.
+  auto walks a 15-step cycle that changes dimension every step (no repeats, no two curves in a row).
+  Keys: [ slower, ] faster, T or Z (LIVE button 1) trigger. Controller (#85): macro1 shape rate, macro2 spin, macro3 tiles,
+  macro4 trails; gold sits in the detail panel. 60s poster palette, no strobes:
   every flash has an exponential tail of ≥ 120 ms. Max-channel tone map, so colour never clips to white.
 
   window.__qa: presets, hodge(name, g), table, check() {tableOk, symmetric, bettiOk, eulerOk, details},
   measureRowGlow() (renders the glow layer of the cell with every L_k = 1 into a float buffer before
   tone mapping and integrates it per row: {rows, ratios, expected, maxRelErr, zeroLeak}),
+  check({settled:true}) also re-checks truths 1–5 on every preset that has settled after a morph (settledOk),
+  trigger(), press(1), setMacro(1..4, v) / macros, setShapeRate(v), simulate({hold, bpm, seconds, fps, triggers}), rateTruths() (6, 8, 9, 10 on
+  the scheduler, every step), morphs (live log), morphSync() (truth 7, ms), autoOrder(n),
   preset, genus, morph, bands (the 7 L_k), rowGlow, events (kick/snare/hat/morph with
   tBeat/tHeard/perfHeard/perfDrawn), errors.
-  ?preset=auto|curve|k3|quintic|mirror|abelian, ?genus=0..6, ?bands=audio|flat, ?bpm, ?phrase=8,
+  ?preset=auto|curve|k3|quintic|mirror|abelian (or ?variant=), ?genus=0..6, ?bands=audio|flat, ?bpm,
+  ?shapeRate=0..1 or ?hold=8|4|2|1|0.5 (bars), ?macro1..4=0..1, ?autoTrigger=N (trigger on every N-th kick, for grading),
   ?spin, ?tileRadius, ?goldBoost, ?trail, ?labels=0, ?muted=1.
 -->
 <html lang="en">
@@ -80,15 +90,17 @@
     <button id="mic">Mic in</button>
     <button id="full">Fullscreen</button>
   </div>
+  <h3>Macros</h3>
+  <div class="row"><label for="shapeRate">1 shape rate [ ]</label><input id="shapeRate" type="range" min="0" max="1" step="0.01"><output id="shapeRateOut"></output></div>
+  <div class="row"><label for="spin">2 spin</label><input id="spin" type="range" min="-2" max="2" step="0.05"><output id="spinOut"></output></div>
+  <div class="row"><label for="tileRadius">3 tiles</label><input id="tileRadius" type="range" min="0.6" max="4" step="0.05"><output id="tileRadiusOut"></output></div>
+  <div class="row"><label for="trail">4 oil trails</label><input id="trail" type="range" min="0" max="0.98" step="0.01"><output id="trailOut"></output></div>
+  <div class="buttons"><button id="trigger" class="wide">Next shape (T)</button></div>
   <h3>Preset</h3>
   <div class="buttons" id="presets"></div>
   <div class="row"><label for="genus">genus g</label><input id="genus" type="range" min="0" max="6" step="1"><output id="genusOut"></output></div>
-  <div class="row"><label for="tileRadius">tiles</label><input id="tileRadius" type="range" min="0.6" max="4" step="0.05"><output id="tileRadiusOut"></output></div>
-  <div class="row"><label for="spin">spin</label><input id="spin" type="range" min="-2" max="2" step="0.05"><output id="spinOut"></output></div>
   <div class="row"><label for="goldBoost">gold</label><input id="goldBoost" type="range" min="0" max="2" step="0.05"><output id="goldBoostOut"></output></div>
-  <div class="row"><label for="trail">oil trails</label><input id="trail" type="range" min="0" max="0.98" step="0.01"><output id="trailOut"></output></div>
   <div class="row"><label for="floor">glow floor</label><input id="floor" type="range" min="0" max="1" step="0.05"><output id="floorOut"></output></div>
-  <div class="row"><label for="phrase">bars / preset</label><input id="phrase" type="range" min="2" max="32" step="1"><output id="phraseOut"></output></div>
   <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
   <h3>Band gains (row k ↔ band k, low → high)</h3>
   <div id="bandRows"></div>
@@ -102,8 +114,14 @@
 const $ = id => document.getElementById(id);
 const query = new URLSearchParams(location.search);
 const PRESET_NAMES = ['curve', 'k3', 'quintic', 'mirror', 'abelian'];
-const AUTO = ['curve', 'k3', 'quintic'];
-const params = { preset: 'auto', genus: 2, bpm: 120, bpb: 4, phrase: 8, spin: 1, tileRadius: 1.6, goldBoost: 1,
+// auto: dimension changes every step, never the same preset twice in a row, never two curves in a row.
+// The first 8 are the spec's order; the second pass brings in curve g0, g3, g5 and ends on a non-curve,
+// so the wrap back to curve g1 keeps the rules (the spec's literal 8-step repeat would put g6 next to g1).
+const AUTO = [['curve', 1], ['k3', 0], ['curve', 4], ['quintic', 0], ['abelian', 0], ['curve', 2], ['mirror', 0], ['curve', 6],
+  ['k3', 0], ['curve', 0], ['quintic', 0], ['curve', 3], ['abelian', 0], ['curve', 5], ['mirror', 0]];
+const HOLDS = [8, 4, 2, 1, 0.5];   // bars per shape; shapeRate 0 → 8 bars … 1 → ½ bar
+const holdOf = rate => HOLDS[Math.max(0, Math.min(4, Math.round(rate * 4)))];
+const params = { preset: 'auto', genus: 2, bpm: 120, bpb: 4, shapeRate: 0.5, autoTrigger: 0, spin: 1, tileRadius: 1.6, goldBoost: 1,
   trail: 0.96, floor: 0.3, bands: 'audio', labels: true, muted: false, bandGains: [1, 1, 1, 1, 1, 1, 1],
   kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 
@@ -133,7 +151,7 @@ const EULER = { curve: g => 2 - 2 * g, k3: () => 24, quintic: () => -200, mirror
 // the cells of diamond row k, left → right on screen (x = (q−p)s grows to the right, so p falls)
 function rowCells(n, k) { const out = []; for (let p = Math.min(k, n); p >= Math.max(0, k - n); p--) out.push([p, k - p]); return out; }
 const rowSums = ({ n, h }) => Array.from({ length: 2 * n + 1 }, (_, k) => rowCells(n, k).reduce((s, [p, q]) => s + h[p][q], 0));
-function check() {
+function check(opts = {}) {
   const details = [];
   let tableOk = true, symmetric = true, bettiOk = true, eulerOk = true;
   const cases = [...[0, 1, 2, 3, 4, 5, 6].map(g => ['curve', g]), ['k3', 0], ['quintic', 0], ['mirror', 0], ['abelian', 0]];
@@ -148,8 +166,20 @@ function check() {
     tableOk = tableOk && t; symmetric = symmetric && sym; bettiOk = bettiOk && bOk; eulerOk = eulerOk && eOk;
     details.push({ preset: name, genus: name === 'curve' ? g : undefined, table: t, symmetric: sym, betti: b, bettiOk: bOk, euler: chi, eulerOk: eOk });
   }
-  return { tableOk, symmetric, bettiOk, eulerOk, details };
+  const out = { tableOk, symmetric, bettiOk, eulerOk, details };
+  if (opts.settled) {   // truth 11: every preset that has settled after a morph, re-checked (glow cached per preset)
+    const presets = [...settledSeen].map(key => {
+      const [name, g] = key.split(':');
+      if (!glowCache.has(key)) glowCache.set(key, measureRowGlow(name, Number(g)).maxRelErr);
+      return { preset: name, genus: Number(g), glowErr: glowCache.get(key) };
+    });
+    const glowErr = presets.reduce((m, x) => Math.max(m, x.glowErr), 0);
+    out.settled = { presets, glowErr, nowSettled: st.prev === null };
+    out.settledOk = presets.length > 0 && tableOk && symmetric && bettiOk && eulerOk && glowErr < 0.01;
+  }
+  return out;
 }
+const settledSeen = new Set(), glowCache = new Map();
 
 // ================================================================================================
 // metronome (as 14/19) + a 7-band analyser on what is heard (clicks, or the mic)
@@ -392,13 +422,102 @@ function cellArrays(d, scale, levels, flat) {   // R and W, indexed p·4+q
   for (let i = 0; i < 16; i++) W[i] *= norm * scale;
   return { R, W };
 }
-const st = { cur: null, prev: null, morphStart: -1e9, morph: 1, phrase: -1, lastStep: -1, kickEnv: 0, snareEnv: 0 };
-function presetFor(k) { return params.preset === 'auto' ? AUTO[((k % AUTO.length) + AUTO.length) % AUTO.length] : params.preset; }
-function setPreset(name, bars, now) {
-  const g = name === 'curve' ? params.genus : 0, d = hodge(name, g); d.name = name; d.genus = g;
-  if (st.cur && st.cur.name === name && st.cur.genus === g) return;
-  st.prev = st.cur; st.cur = d; st.morphStart = bars;
-  if (st.prev) logAt('morph', Math.round(bars), { to: name, from: st.prev.name }, now);
+const st = { cur: null, prev: null, morphStart: -1e9, morphBeats: 4, morph: 1, lastStep: -1, kickEnv: 0, snareEnv: 0,
+  popEnv: 0, idx: 0, kicks: 0, rec: null };
+function presetFor(k) {
+  if (params.preset !== 'auto') return [params.preset, params.preset === 'curve' ? params.genus : 0];
+  return AUTO[((k % AUTO.length) + AUTO.length) % AUTO.length];
+}
+const autoOrder = (n = 32) => Array.from({ length: n }, (_, i) => AUTO[i % AUTO.length]);
+
+// The shape clock. Pure (state in s), so QA runs the very same code on synthetic 60 fps frames
+// (simulate) as on the live clock. Beats are clock beats; holds and the grid are in beats.
+const newSched = () => ({ next: null, last: null, hold: null, pending: false, cause: 'auto' });
+const gridOf = (holdBeats, bpb) => holdBeats >= bpb ? bpb : 1;     // hold ≥ 1 bar: downbeats, else beats
+const alignUp = (x, g) => Math.ceil(x / g - 1e-6) * g;
+// trigger: min(1 bar, hold/2) capped at 1 beat, so hits in a row never stack half-finished morphs
+const morphLen = (holdBeats, bpb, cause) => Math.min(bpb, holdBeats / 2, cause === 'trigger' ? 1 : Infinity);
+function schedStep(s, beats, holdBeats, bpb) {
+  const g = gridOf(holdBeats, bpb);
+  if (s.next === null || beats < s.last - 1e-6) {   // first frame, or the clock jumped back: a virtual change on the grid
+    s.hold = holdBeats; s.cause = 'auto'; s.last = Math.floor(beats / g + 1e-6) * g; s.next = alignUp(s.last + holdBeats, g);
+  }
+  if (s.pending !== false) {   // trigger(): the next beat after the press
+    const pressed = s.pending === true ? beats : s.pending;
+    s.pending = false; s.next = Math.floor(pressed + 1e-6) + 1; s.cause = 'trigger';
+  }
+  if (holdBeats !== s.hold) {   // the rate moved: keep the grid, never land in the past
+    s.hold = holdBeats;
+    if (s.cause === 'auto') { s.next = alignUp(s.last + holdBeats, g); if (s.next < beats - 1e-6) s.next = alignUp(beats, g); }
+  }
+  if (beats + 1e-6 < s.next) return null;
+  const ev = { beat: s.next, at: beats, cause: s.cause, hold: holdBeats, morphBeats: morphLen(holdBeats, bpb, s.cause) };
+  s.last = s.next; s.next = alignUp(s.last + holdBeats, g); s.cause = 'auto';
+  return ev;
+}
+const sched = newSched();
+function simulate({ hold = 2, bpm = 120, bpb = 4, seconds = 60, fps = 60, triggers = [], rates = [] } = {}) {
+  const s = newSched(), out = [], tq = triggers.slice().sort((a, b) => a - b), rq = rates.slice().sort((a, b) => a.beat - b.beat);
+  let h = hold * bpb;
+  for (let f = 0; f <= seconds * fps; f++) {
+    const beats = f / fps * bpm / 60;
+    while (rq.length && rq[0].beat <= beats) h = rq.shift().hold * bpb;
+    if (tq.length && tq[0] <= beats) { s.pending = tq.shift(); while (tq.length && tq[0] <= beats) tq.shift(); }
+    const ev = schedStep(s, beats, h, bpb); if (ev) out.push(ev);
+  }
+  return out;
+}
+// truths 6, 8, 9, 10 on the scheduler, at every step, frame-exact (±1 frame = bpm/60/fps beats)
+function rateTruths(bpm = 120, fps = 60) {
+  const bpb = params.bpb, fb = bpm / 60 / fps + 1e-9, rows = [];
+  let holdOk = true, gridOk = true, morphOk = true;
+  for (const hold of HOLDS) {
+    const ev = simulate({ hold, bpm, bpb, fps, seconds: hold * bpb * 6 * 60 / bpm + 1 });
+    const gaps = ev.slice(1).map((e, i) => e.beat - ev[i].beat);
+    const late = ev.reduce((m, e) => Math.max(m, e.at - e.beat), 0);
+    const g = gridOf(hold * bpb, bpb);
+    const hOk = gaps.length >= 4 && gaps.every(x => Math.abs(x - hold * bpb) < 1e-6) && late <= fb;
+    const gOk = ev.every(e => Math.abs(e.beat / g - Math.round(e.beat / g)) < 1e-6);
+    const mOk = ev.every(e => Math.abs(e.morphBeats - Math.min(bpb, hold * bpb / 2)) < 1e-9);
+    holdOk = holdOk && hOk; gridOk = gridOk && gOk; morphOk = morphOk && mOk;
+    rows.push({ hold, changes: ev.length, gaps: [...new Set(gaps)], lateFrames: late / (fb - 1e-9), morphBeats: ev[0] && ev[0].morphBeats, holdOk: hOk, gridOk: gOk, morphOk: mOk });
+  }
+  // trigger: 20 presses at uneven times, hold 8 bars so auto never fires in between
+  let seed = 7; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+  const presses = []; for (let t = 3.3, i = 0; i < 20; i++) { presses.push(t); t += 1.5 + 3 * rnd(); }
+  const tev = simulate({ hold: 8, bpm, bpb, fps, seconds: (presses[19] + 4) * 60 / bpm, triggers: presses }).filter(e => e.cause === 'trigger');
+  const triggerOk = tev.length === presses.length && tev.every((e, i) => e.beat === Math.floor(presses[i] + 1e-6) + 1 && e.at - e.beat <= fb);
+  // order: 32 changes, no preset twice in a row, no two curves next to each other, dimension changes every step
+  const ord = autoOrder(33);
+  const orderOk = ord.slice(1).every((x, i) => { const y = ord[i]; return x[0] !== y[0] && !(x[0] === 'curve' && y[0] === 'curve') && hodge(x[0], x[1]).n !== hodge(y[0], y[1]).n; });
+  return { holdOk, gridOk, morphOk, triggerOk, orderOk, rows, triggers: tev.map((e, i) => ({ pressed: presses[i], beat: e.beat, at: e.at })) };
+}
+
+// live: the morph log (truths 6–9 on the real clock) and the change itself
+const morphs = [];
+function setPreset([name, g], ev, now) {
+  const d = hodge(name, g); d.name = name; d.genus = g;
+  if (!st.cur) { st.cur = d; settledSeen.add(`${name}:${g}`); return; }
+  if (st.cur.name === name && st.cur.genus === g) return;
+  st.prev = st.cur; st.cur = d; st.morphStart = ev.beat; st.morphBeats = ev.morphBeats; st.popEnv = 1;
+  st.rec = { beat: ev.beat, at: ev.at, cause: ev.cause, hold: ev.hold, morphBeats: ev.morphBeats, to: name, genus: g, from: st.prev.name, end: null, perf: now };
+  morphs.push(st.rec); if (morphs.length > 128) morphs.shift();
+  logAt('morph', ev.beat / params.bpb, { to: name, genus: g, from: st.prev.name, cause: ev.cause, hold: ev.hold, morphBeats: ev.morphBeats }, now);
+}
+function morphSync() {   // truth 7: |drawn − heard| of each morph event, ms
+  const ms = events.filter(e => e.type === 'morph').map(e => Math.abs(e.perfDrawn - e.perfHeard));
+  return { n: ms.length, maxMs: ms.length ? Math.max(...ms) : null };
+}
+function liveTruths() {   // the same truths on the real clock: holds between auto changes, lateness and morph length in frames
+  const bpf = params.bpm / 60 / Math.max(30, fps || 60), auto = morphs.filter(r => r.cause === 'auto');
+  const gaps = [];
+  for (let i = 1; i < auto.length; i++) {
+    const a = auto[i - 1], b = auto[i];
+    if (a.hold === b.hold && !morphs.some(x => x.cause === 'trigger' && x.beat > a.beat && x.beat <= b.beat)) gaps.push(b.beat - a.beat - b.hold);
+  }
+  const late = morphs.reduce((m, r) => Math.max(m, (r.at - r.beat) / bpf), 0);
+  const lens = morphs.filter(r => r.end !== null).map(r => Math.abs(r.end - r.beat - r.morphBeats) / bpf);
+  return { changes: morphs.length, holdErrBeats: gaps.length ? Math.max(...gaps.map(Math.abs)) : null, lateFrames: late, morphErrFrames: lens.length ? Math.max(...lens) : null };
 }
 const ease = x => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
 
@@ -441,7 +560,7 @@ function measureRowGlow(name, genus) {
 // ================================================================================================
 for (const name of ['auto', ...PRESET_NAMES]) {
   const b = document.createElement('button'); b.textContent = name;
-  b.onclick = () => { params.preset = name; st.phrase = -1; sync(); };
+  b.onclick = () => { params.preset = name; sched.pending = true; sync(); };   // lands on the next beat
   $('presets').appendChild(b);
 }
 for (let k = 0; k < 7; k++) {
@@ -450,13 +569,33 @@ for (let k = 0; k < 7; k++) {
   $('bandRows').appendChild(r);
   r.querySelector('input').addEventListener('input', e => { params.bandGains[k] = parseFloat(e.target.value); r.querySelector('output').textContent = params.bandGains[k].toFixed(2); });
 }
-const SLIDERS = { genus: 0, tileRadius: 2, spin: 2, goldBoost: 2, trail: 2, floor: 2, phrase: 0, bpm: 0 };
+const SLIDERS = { genus: 0, tileRadius: 2, spin: 2, goldBoost: 2, trail: 2, floor: 2, shapeRate: 2, bpm: 0 };
+const fmt = (name, dec) => name === 'shapeRate' ? `${holdOf(params.shapeRate)} bar${holdOf(params.shapeRate) === 1 ? '' : 's'}` : Number(params[name]).toFixed(dec);
 for (const [name, dec] of Object.entries(SLIDERS)) $(name).addEventListener('input', e => {
-  params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = params[name].toFixed(dec);
-  if (name === 'genus' || name === 'phrase') st.phrase = -1;
+  params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = fmt(name, dec);
+  if (name === 'genus' && params.preset === 'curve') sched.pending = true;
 });
+// shape rate one step slower / faster, and trigger: the keyboard stand-in for macro1 and the trigger pad
+function stepRate(d) { params.shapeRate = Math.max(0, Math.min(4, Math.round(params.shapeRate * 4) + d)) / 4; sync(); }
+function trigger() { sched.pending = true; }
+$('trigger').onclick = trigger;
+window.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target && (e.target.tagName === 'TEXTAREA' || (e.target.tagName === 'INPUT' && e.target.type === 'text'))) return;
+  if (e.key === '[') { e.preventDefault(); stepRate(-1); }
+  else if (e.key === ']') { e.preventDefault(); stepRate(1); }
+  else if (e.key === 't' || e.key === 'T' || e.key === 'z' || e.key === 'Z') { e.preventDefault(); trigger(); }   // Z: LIVE button 1
+});
+// #85 macros (soft takeover is the host's job): macro1 shape rate, macro2 spin, macro3 tiles, macro4 trails
+const MACROS = { macro1: ['shapeRate', 0, 1], macro2: ['spin', -2, 2], macro3: ['tileRadius', 0.6, 4], macro4: ['trail', 0, 0.98] };
+// setMacro(1..4 or 'macro1'..'macro4', v 0–1) → the param's new value (the #85 knob QA hook)
+function setMacro(m, v) {
+  const key = typeof m === 'number' ? `macro${m}` : m; if (!MACROS[key]) return null;
+  const [name, lo, hi] = MACROS[key]; params[name] = lo + (hi - lo) * Math.max(0, Math.min(1, v)); sync(); return params[name];
+}
+const macroValue = key => { const [name, lo, hi] = MACROS[key]; return (params[name] - lo) / (hi - lo); };
 function sync() {
-  for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
+  for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = fmt(name, dec); }
   for (let k = 0; k < 7; k++) { $('band' + k).value = params.bandGains[k]; $('band' + k + 'Out').textContent = params.bandGains[k].toFixed(2); }
   $('mute').classList.toggle('on', params.muted); $('labels').classList.toggle('on', params.labels); $('flat').classList.toggle('on', params.bands === 'flat');
   for (const b of $('presets').children) b.classList.toggle('on', b.textContent === params.preset);
@@ -469,21 +608,27 @@ $('labels').onclick = () => { params.labels = !params.labels; sync(); };
 $('flat').onclick = () => { params.bands = params.bands === 'flat' ? 'audio' : 'flat'; sync(); };
 $('copy').onclick = async e => {
   const q = new URLSearchParams({ preset: params.preset, genus: params.genus, tileRadius: params.tileRadius, spin: params.spin, goldBoost: params.goldBoost,
-    trail: params.trail, floor: params.floor, phrase: params.phrase, bpm: params.bpm, bands: params.bands, bandGains: params.bandGains.join(',') });
+    trail: params.trail, floor: params.floor, shapeRate: params.shapeRate, bpm: params.bpm, bands: params.bands, bandGains: params.bandGains.join(',') });
   const text = `16b · Hodge Kaleidoscope · ${params.preset}\n${location.origin + location.pathname}?${q}`;
   let ok = false;
   try { await navigator.clipboard.writeText(text); ok = true; } catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }
   if (!ok) { prompt('Copy this:', text); return; }
   e.target.textContent = 'Copied ✓'; setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
 };
-window.__modules = { 'hodge-kaleidoscope': { inputs: [
-  { name: 'preset', type: 'long', values: ['auto', ...PRESET_NAMES], default: 'auto' },
-  { name: 'genus', type: 'long', default: 2, min: 0, max: 6 },
-  { name: 'bandGains', type: 'float[7]', default: [1, 1, 1, 1, 1, 1, 1], min: 0, max: 2 },
-  { name: 'tileRadius', type: 'float', default: 1.6, min: 0.6, max: 4 },
-  { name: 'spin', type: 'float', default: 1, min: -2, max: 2 },
-  { name: 'goldBoost', type: 'float', default: 1, min: 0, max: 2 },
-] } };
+window.__modules = { 'hodge-kaleidoscope': {
+  macros: { macro1: 'shapeRate', macro2: 'spin', macro3: 'tileRadius', macro4: 'trail' },
+  actions: { trigger: 'next shape on the next beat' },
+  inputs: [
+    { name: 'shapeRate', type: 'float', default: 0.5, min: 0, max: 1, snap: HOLDS.map((h, i) => ({ value: i / 4, holdBars: h })) },
+    { name: 'spin', type: 'float', default: 1, min: -2, max: 2 },
+    { name: 'tileRadius', type: 'float', default: 1.6, min: 0.6, max: 4 },
+    { name: 'trail', type: 'float', default: 0.96, min: 0, max: 0.98 },
+    // detail panel
+    { name: 'variant', type: 'long', values: ['auto', ...PRESET_NAMES], default: 'auto' },
+    { name: 'genus', type: 'long', default: 2, min: 0, max: 6 },
+    { name: 'goldBoost', type: 'float', default: 1, min: 0, max: 2 },
+    { name: 'bandGains', type: 'float[7]', default: [1, 1, 1, 1, 1, 1, 1], min: 0, max: 2 },
+  ] } };
 
 // ================================================================================================
 // main loop
@@ -526,21 +671,28 @@ function draw(now) {
     const inBar = step % (params.bpb * 4);
     for (const lane of LANES) if (params[lane][inBar % 16] === 'x') {
       logAt(lane, step / (params.bpb * 4), {}, now);
-      if (lane === 'kick') st.kickEnv = 1; if (lane === 'snare') st.snareEnv = 1;
+      if (lane === 'kick') { st.kickEnv = 1; st.kicks++; if (params.autoTrigger > 0 && st.kicks % params.autoTrigger === 0) trigger(); }
+      if (lane === 'snare') st.snareEnv = 1;
     }
   }
-  st.kickEnv *= Math.exp(-dt / 0.15); st.snareEnv *= Math.exp(-dt / 0.14);
+  st.kickEnv *= Math.exp(-dt / 0.15); st.snareEnv *= Math.exp(-dt / 0.14); st.popEnv *= Math.exp(-dt / 0.14);
 
-  // presets change on phrase boundaries; morph over 1 bar
-  const k = Math.floor(bars / params.phrase);
-  if (k !== st.phrase) { st.phrase = k; setPreset(presetFor(k), bars, now); }
-  const m = st.prev ? ease((bars - st.morphStart) / 1) : 1;
-  if (m >= 1) st.prev = null;
+  // shapes: held shapeRate's hold on the beat grid, morph min(1 bar, hold/2) from the beat, +6 % pop
+  if (!st.cur) setPreset(presetFor(st.idx), null, now);
+  const ev = schedStep(sched, beats, holdOf(params.shapeRate) * params.bpb, params.bpb);
+  if (ev) { if (params.preset === 'auto') st.idx++; setPreset(presetFor(st.idx), ev, now); }
+  if (st.prev && beats < st.morphStart - 1e-6 && !ev) st.prev = null;   // the clock jumped back mid-morph: finish it
+  const m = st.prev ? ease((beats - st.morphStart) / st.morphBeats) : 1;
+  if (st.prev && m >= 1) {
+    if (st.rec) st.rec.end = beats;
+    settledSeen.add(`${st.cur.name}:${st.cur.genus}`); st.prev = null;
+  }
   st.morph = m;
+  const pop = 1 + 0.06 * st.popEnv;
   const flat = params.bands === 'flat';
   const levels = Array.from(bandLevel);
-  const A = cellArrays(st.cur, m * (1 + 0.03 * st.kickEnv), levels, flat);
-  const B = cellArrays(st.prev, (1 - m) * (1 + 0.03 * st.kickEnv), levels, flat);
+  const A = cellArrays(st.cur, m * (1 + 0.03 * st.kickEnv) * pop, levels, flat);
+  const B = cellArrays(st.prev, (1 - m) * (1 + 0.03 * st.kickEnv) * pop, levels, flat);
   const ang = params.spin * 2 * Math.PI * bars / 32, breath = 1 + 0.02 * Math.sin(2 * Math.PI * bars);
   const zoom = params.tileRadius;
 
@@ -573,13 +725,14 @@ function draw(now) {
   overlay(zoom, ang, breath, m);
   const rowGlow = rowSums(st.cur).map((b, kk) => b * (flat ? 1 : params.bandGains[kk] * (params.floor + (1 - params.floor) * levels[kk])));
   Object.assign(window.__qa, { preset: st.cur.name, genus: st.cur.genus, n: st.cur.n, morph: m, from: st.prev ? st.prev.name : null,
-    bands: levels, flat, rowGlow, betti: rowSums(st.cur), bars, floatOk });
+    bands: levels, flat, rowGlow, betti: rowSums(st.cur), bars, beats, floatOk, hold: holdOf(params.shapeRate), shapeRate: params.shapeRate,
+    morphBeats: st.morphBeats, pop: st.popEnv, idx: st.idx });
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
   if (now - lastHud > 200) {
     lastHud = now;
     const s = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
-    hud.textContent = `Hodge Kaleidoscope · ${TITLE[st.cur.name](st.cur.genus)} · ${params.bpm} bpm · ${s}\n${W}×${H} · ${fps} fps${floatOk ? '' : ' · no float buffers'}`;
+    hud.textContent = `Hodge Kaleidoscope · ${TITLE[st.cur.name](st.cur.genus)} · ${params.bpm} bpm · hold ${holdOf(params.shapeRate)} bar · ${s}\n${W}×${H} · ${fps} fps${floatOk ? '' : ' · no float buffers'}`;
   }
 }
 // numbers engraved on the fundamental cell, the corner label and the mirror labels
@@ -623,9 +776,19 @@ function overlay(zoom, ang, breath, m) {
   }
 }
 
-window.__qa = { errors, events, presets: PRESET_NAMES, hodge, table: TABLE, betti: BETTI, euler: EULER, check, measureRowGlow, rowSums };
+window.__qa = { errors, events, presets: PRESET_NAMES, hodge, table: TABLE, betti: BETTI, euler: EULER, check, measureRowGlow, rowSums,
+  holds: HOLDS, auto: AUTO, autoOrder, trigger, setShapeRate: v => { params.shapeRate = Math.max(0, Math.min(1, v)); sync(); return holdOf(params.shapeRate); },
+  setMacro, setKnob: setMacro,
+  get macros() { return Object.fromEntries(Object.entries(MACROS).map(([m, [name, lo, hi]]) => [m, { name, min: lo, max: hi, value: macroValue(m), param: params[name] }])); },
+  get knobs() { return this.macros; },
+  press: b => { if (b === 1 || b === 'button1' || b === 'trigger') { trigger(); return true; } return false; },
+  simulate, rateTruths, morphs, morphSync, liveTruths };
 const q = k => query.get(k);
-if (q('preset') && (q('preset') === 'auto' || PRESET_NAMES.includes(q('preset')))) params.preset = q('preset');
+const pick = q('variant') || q('preset');
+if (pick && (pick === 'auto' || PRESET_NAMES.includes(pick))) params.preset = pick;
+if (HOLDS.includes(parseFloat(q('hold')))) params.shapeRate = HOLDS.indexOf(parseFloat(q('hold'))) / 4;
+if (parseInt(q('autoTrigger'), 10) > 0) params.autoTrigger = parseInt(q('autoTrigger'), 10);
+for (const key of Object.keys(MACROS)) { const v = parseFloat(q(key)); if (Number.isFinite(v)) { const [name, lo, hi] = MACROS[key]; params[name] = lo + (hi - lo) * Math.max(0, Math.min(1, v)); } }   // ?macro1=0..1
 for (const key of Object.keys(SLIDERS)) { const v = parseFloat(q(key)); if (Number.isFinite(v)) params[key] = v; }
 params.genus = Math.max(0, Math.min(6, Math.round(params.genus)));
 if (q('bands') === 'flat') params.bands = 'flat';
@@ -635,5 +798,6 @@ params.muted = q('muted') === '1';
 sync();
 requestAnimationFrame(frame);
 </script>
+<script src="panic.js"></script>
 </body>
 </html>
