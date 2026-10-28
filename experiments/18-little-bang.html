@@ -636,6 +636,16 @@ const neonBuf = dynBuffer([{ loc: 0, size: 3 }, { loc: 1, size: 3 }, { loc: 2, s
 })();
 const PALETTES = [[190, 280, 320, 160], [20, 330, 260, 50], [140, 200, 290, 0], [300, 180, 60, 240]];   // degrees
 let bassEnv = 0, wiresQA = null;
+// ?qa=wires (QA box): beamline draws only the neon wires and ring magnets, no detector, tracks, sprites, flash or text,
+// so their hue and brightness can be measured on wire pixels alone
+const QA_WIRES = new URLSearchParams(location.search).get('qa') === 'wires';
+// the palette colour of bar n, gliding from the last bar's over the first 1/16 bar (a hard hue cut is a brightness jump)
+function wireHue(n, u) {
+  const at = m => { const P = PALETTES[(((Math.floor(m / params.bars)) % 4) + 4) % 4]; return P[((m % 4) + 4) % 4]; };
+  const a = at(n - 1), b = at(n), x = Math.min(1, u * 16), k = x * x * (3 - 2 * x);
+  const d = ((b - a) % 360 + 540) % 360 - 180;   // the short way round
+  return ((a + d * k) % 360 + 360) % 360;
+}
 // kick light rings: launched from the camera at kick step i of the bar (u_k = i/16), at the IP (s = C) on the next downbeat
 function pulsesAt(u) {
   const out = [];
@@ -991,15 +1001,18 @@ function draw(now) {
 
   gl.useProgram(lineProg.p); gl.uniformMatrix4fv(lineProg.u.uVP, false, vp);
   gl.uniform4f(lineProg.u.uColor, 0.25, 0.45, 0.9, 0.12 * fg * (1 + 0.5 * L.hat));
-  gl.bindVertexArray(detBuf.vao); gl.drawArrays(gl.LINES, 0, detBuf.count - (beam ? 2 : 0));   // no beam line through the camera
+  if (!(QA_WIRES && beam)) { gl.bindVertexArray(detBuf.vao); gl.drawArrays(gl.LINES, 0, detBuf.count - (beam ? 2 : 0)); }   // no beam line through the camera
+  if (QA_WIRES && beam && hud.style.display !== 'none') hud.style.display = 'none';
   if (beam) {
     const lines = (name, r, g, b, a) => { gl.uniform4f(lineProg.u.uColor, r, g, b, a * fg); gl.drawArrays(gl.LINES, beamGeo[name][0], beamGeo[name][1]); };
     gl.bindVertexArray(beamBuf.vao);
-    lines('quads', 1.0, 0.3, 0.2, 0.35 + 1.6 * L.kick);   // focusing magnets pulse on the kick
-    lines('cal', 0.9, 0.6, 0.25, 0.18);
+    if (!QA_WIRES) {
+      lines('quads', 1.0, 0.3, 0.2, 0.35 + 1.6 * L.kick);   // focusing magnets pulse on the kick
+      lines('cal', 0.9, 0.6, 0.25, 0.18);
+    }
     // neon pipe wires and ring magnets
-    const u = bars - n, sIdx = Math.floor(n / params.bars), P = PALETTES[((sIdx % 4) + 4) % 4];
-    const baseDeg = P[((n % 4) + 4) % 4], pulses = pulsesAt(u);
+    const u = bars - n, sIdx = Math.floor(n / params.bars);
+    const baseDeg = wireHue(n, u), pulses = pulsesAt(u);
     const breath = 1 + 0.02 * bassEnv, wob = 0.03 * bassEnv, glowPx = 2.2 * (0.7 + 0.6 * bassEnv);
     const sweep = (bars * params.bpb) % 1, camNow = camS(u);
     gl.useProgram(neonProg.p); const U = neonProg.u;
@@ -1027,7 +1040,7 @@ function draw(now) {
 
   const sprites = [];
   let flash = 0, drawn = 0;
-  for (let m = n - 2; m <= n + 1; m++) {
+  for (let m = n - 2; m <= n + 1 && !(QA_WIRES && beam); m++) {
     const ev = eventFor(m);
     if (!ev) continue;
     const t = tMus - m * barSec;
@@ -1135,7 +1148,7 @@ function draw(now) {
     }
   }
   if (logged.size > 400) logged.clear();
-  stringSprites(sprites, L.kick, L.hat);
+  if (!(QA_WIRES && beam)) stringSprites(sprites, L.kick, L.hat);
   if (sprites.length) {
     for (let i = 3; i < sprites.length; i += 7) { sprites[i] *= fg * params.gain; sprites[i + 1] *= fg * params.gain; sprites[i + 2] *= fg * params.gain; }
     gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(sprites), gl.DYNAMIC_DRAW);
@@ -1165,7 +1178,8 @@ function draw(now) {
   });
 
   qaState.scene = sec.scene; qaState.bar = n; qaState.drawnTracks = drawn;
-  if (now - lastOv > 66) { lastOv = now; drawOverlay(sec, L); }
+  if (QA_WIRES && beam) { if (!ov.dataset.qaw) { ov.dataset.qaw = 1; octx.clearRect(0, 0, ov.width, ov.height); } }
+  else if (now - lastOv > 66) { lastOv = now; delete ov.dataset.qaw; drawOverlay(sec, L); }
   Object.assign(window.__qa, { scene: sec.scene, bars, drop: sec.drop, energy: sec.energy, drawnTracks: drawn, render: [W, H], screen: [CW, CH],
     lastEvent: qaState.lastEvent && summary(qaState.lastEvent), lastJet: qaState.lastJet, strings: stringsQA(), latency: metronome.latency(),
     camera: qaState.camera, wakes: wakesQA.slice(), dijets: dijetsQA.slice(), wires: wiresQA });

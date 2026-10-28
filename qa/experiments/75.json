@@ -7,6 +7,7 @@
   "seconds": 16,
   "variants": [
     { "name": "beamline", "params": { "scene": "beamline" } },
+    { "name": "beamline-wires", "params": { "scene": "beamline", "qa": "wires" } },
     { "name": "quench", "params": { "scene": "quench" } },
     { "name": "collide", "params": { "scene": "collide" } }
   ],
