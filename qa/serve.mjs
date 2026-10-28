@@ -217,7 +217,7 @@ function compareRoute(req, res, exp, stamp, dir, action) {
 }
 
 // ---- builds: one row per open PR (latest round), tap for that PR's rounds (qa/builds.json, written by qa/builds.mjs) ----
-const CHIP = { queued: ['#5b6478', 'queued'], running: ['#2b5cff', 'running'], failed: ['#d6455d', 'failed'], ready: ['#2bd96b', 'ready to merge'], merged: ['#3a4560', 'merged'] };
+const CHIP = { queued: ['#5b6478', 'queued'], running: ['#2b5cff', 'running'], failed: ['#d6455d', 'failed'], ready: ['#2bd96b', 'ready to merge'], merged: ['#3a4560', 'merged'], closed: ['#3a4560', 'closed'] };
 const chip = st => { const [c, t] = CHIP[st] || ['#5b6478', st]; return `<span style="background:${c};color:#fff;border-radius:8px;padding:2px 8px;font-size:12px;white-space:nowrap">${esc(t)}</span>`; };
 const ago = iso => { if (!iso) return ''; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min` : m < 2880 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; };
 const gatesCell = b => (b.gates || []).length ? `${b.gates.filter(g => g.ok).length}/${b.gates.length}` : '–';
@@ -225,15 +225,16 @@ const waitTxt = { dev: 'VIZ dev', 'qa-box': 'QA box', user: 'you' };
 function buildsPage() {
   const all = loadBuilds(), last = new Map();
   for (const b of all) { const k = `${b.kind}/${b.pr}`, cur = last.get(k); if (!cur || b.round > cur.round) last.set(k, b); }
-  const rows = [...last.values()].sort((a, b) => (a.status === 'merged') - (b.status === 'merged') || Date.parse(b.at) - Date.parse(a.at));
-  const open = rows.filter(b => b.status !== 'merged'), merged = rows.filter(b => b.status === 'merged');
+  const gone = b => b.status === 'merged' || b.status === 'closed';   // closed unmerged PRs leave the live list too
+  const rows = [...last.values()].sort((a, b) => gone(a) - gone(b) || Date.parse(b.at) - Date.parse(a.at));
+  const open = rows.filter(b => !gone(b)), merged = rows.filter(gone);
   const tr = b => `<tr onclick="location='/builds/${esc(b.kind)}/${b.pr}'" style="cursor:pointer"><td><b>${esc(b.page)}</b><br><span class="m">#${b.pr} · ${esc(b.commit)} · round ${b.round}</span></td>
     <td>${chip(b.status)}</td><td>${gatesCell(b)}</td><td>${b.waitingOn ? esc(waitTxt[b.waitingOn] || b.waitingOn) : ''}</td><td class="m">${ago(b.at)}</td>
     <td>${b.report ? `<a href="/report/${esc(b.report)}" onclick="event.stopPropagation()">report</a>` : ''}${b.swipe ? ` · <a href="${esc(b.swipe)}" onclick="event.stopPropagation()">swipe</a>` : ''}</td></tr>`;
   const table = list => `<table style="width:100%;border-collapse:collapse;font-size:14px"><tr class="m"><th align=left>page</th><th align=left>status</th><th align=left>gates</th><th align=left>waiting on</th><th align=left>last</th><th></th></tr>${list.map(tr).join('')}</table>`;
   return page('Builds', `<p class="m">One build = one check round of one commit. Latest round per PR; tap a row for its history.</p>
     <div class="card">${open.length ? table(open) : 'Nothing open.'}</div>
-    ${merged.length ? `<details><summary class="m">Merged (${merged.length})</summary><div class="card">${table(merged)}</div></details>` : ''}`);
+    ${merged.length ? `<details><summary class="m">Merged or closed (${merged.length})</summary><div class="card">${table(merged)}</div></details>` : ''}`);
 }
 function buildPage(kind, pr) {
   const list = loadBuilds().filter(b => b.kind === kind && String(b.pr) === String(pr)).sort((a, b) => b.round - a.round);
