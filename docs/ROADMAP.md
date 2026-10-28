@@ -13,6 +13,10 @@ The user is in charge ("for now I want to be in charge"): during step 1 the user
 3. **Controller.** Once the Novation Launch Control XL 3 arrives (the user is waiting for it), build controller support for the visualisations: Web MIDI in Chromium, mapped to each module's ISF-style controls.
 4. **Blending.** With the controller, work further on blending scenes together. The Lenia blends (08, #27–#35) are the proof of concept; fade and screen won round 1.
 5. **Fine-tune from reviews.** Once that's solid, adjust each visualisation (add or remove things) based on the user's grades of how it looks.
+   - **Knob tags become scene macros.** A grading comment can carry `knob: <what>`. VIZ research turns each tag into a knob spec: mapping, range, default and a `macro1`–`macro4` slot (#85).
+   - VIZ dev builds it as that macro, with an on-screen slider until the controller arrives, and exposes it in `__qa`.
+   - QA box sweeps the knob, and the scene's picture metric must change across the sweep.
+   - Existing pages get a knob pass later, before the rehearsal; the user accepts redoing them.
 
 How it fits together: one control contract for every scene, an input bus (sliders and keyboard now, the controller later, sensors in step 2) and a host page that blends scene modules in one WebGL context (design #85). A panic key works in every scene: B blackout, ` calm fallback (#86).
 
