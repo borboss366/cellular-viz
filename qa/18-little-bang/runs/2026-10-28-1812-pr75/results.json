@@ -1,0 +1,580 @@
+{
+ "id": "18-little-bang",
+ "page": "18-little-bang",
+ "pr": 75,
+ "sha": "b0cfb63c4eaee4e3f769c399740d73a8cc0b31c8",
+ "vs": "9311bdb",
+ "at": "2026-10-28T18:27:39.884Z",
+ "host": "3adc2b2ec197",
+ "hasGpu": true,
+ "runs": [
+  {
+   "label": "beamline@1080p",
+   "variant": "beamline",
+   "base": "beamline",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "scene": "beamline"
+   },
+   "url": "18-little-bang.html?scene=beamline",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 969,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 138,
+    "lum.mean": 8.38,
+    "lum.min": 0.25,
+    "lum.max": 40.09,
+    "errors": 0
+   },
+   "values": {
+    "camS": 0.1907432237774458,
+    "wakes": 0,
+    "dijets": 36,
+    "wireClearance": 0.9958645291426406
+   },
+   "stills": [
+    "stills/beamline@1080p-1.png",
+    "stills/beamline@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "beamline@4k",
+   "variant": "beamline",
+   "base": "beamline",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "scene": "beamline"
+   },
+   "url": "18-little-bang.html?scene=beamline",
+   "metrics": {
+    "gpuBusy": 1,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 966,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 113,
+    "lum.mean": 6.75,
+    "lum.min": 0.25,
+    "lum.max": 32.34,
+    "errors": 0
+   },
+   "values": {
+    "camS": -0.487378708399433,
+    "wakes": 0,
+    "dijets": 36,
+    "wireClearance": 0.9949509445147025
+   },
+   "stills": [
+    "stills/beamline@4k-1.png",
+    "stills/beamline@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "beamline-wires@1080p",
+   "variant": "beamline-wires",
+   "base": "beamline-wires",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "scene": "beamline",
+    "qa": "wires"
+   },
+   "url": "18-little-bang.html?scene=beamline&qa=wires",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 966,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 138,
+    "lum.mean": 0.47,
+    "lum.min": 0.19,
+    "lum.max": 0.85,
+    "errors": 0
+   },
+   "values": {
+    "camS": -0.8601117130464502,
+    "wakes": 0,
+    "dijets": 0,
+    "wireClearance": 0.9929515961059859
+   },
+   "stills": [
+    "stills/beamline-wires@1080p-1.png",
+    "stills/beamline-wires@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "beamline-wires@4k",
+   "variant": "beamline-wires",
+   "base": "beamline-wires",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "scene": "beamline",
+    "qa": "wires"
+   },
+   "url": "18-little-bang.html?scene=beamline&qa=wires",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 965,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 120,
+    "lum.mean": 0.39,
+    "lum.min": 0.15,
+    "lum.max": 0.71,
+    "errors": 0
+   },
+   "values": {
+    "camS": -0.5755183053277619,
+    "wakes": 0,
+    "dijets": 0,
+    "wireClearance": 0.9946021474789873
+   },
+   "stills": [
+    "stills/beamline-wires@4k-1.png",
+    "stills/beamline-wires@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "quench@1080p",
+   "variant": "quench",
+   "base": "quench",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "scene": "quench"
+   },
+   "url": "18-little-bang.html?scene=quench",
+   "metrics": {
+    "gpuBusy": 1,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 962,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 138,
+    "lum.mean": 12.23,
+    "lum.min": 3.83,
+    "lum.max": 30.76,
+    "errors": 0
+   },
+   "values": {
+    "camS": null,
+    "wakes": 36,
+    "dijets": 36,
+    "wireClearance": null
+   },
+   "stills": [
+    "stills/quench@1080p-1.png",
+    "stills/quench@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "quench@4k",
+   "variant": "quench",
+   "base": "quench",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "scene": "quench"
+   },
+   "url": "18-little-bang.html?scene=quench",
+   "metrics": {
+    "gpuBusy": 1,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 972,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 108,
+    "lum.mean": 10.39,
+    "lum.min": 3.55,
+    "lum.max": 27.72,
+    "errors": 0
+   },
+   "values": {
+    "camS": null,
+    "wakes": 36,
+    "dijets": 36,
+    "wireClearance": null
+   },
+   "stills": [
+    "stills/quench@4k-1.png",
+    "stills/quench@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "collide@1080p",
+   "variant": "collide",
+   "base": "collide",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "scene": "collide"
+   },
+   "url": "18-little-bang.html?scene=collide",
+   "metrics": {
+    "gpuBusy": 3,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 960,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 138,
+    "lum.mean": 12.1,
+    "lum.min": 3.66,
+    "lum.max": 21.71,
+    "errors": 0
+   },
+   "values": {
+    "camS": null,
+    "wakes": 0,
+    "dijets": 36,
+    "wireClearance": null
+   },
+   "stills": [
+    "stills/collide@1080p-1.png",
+    "stills/collide@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "collide@4k",
+   "variant": "collide",
+   "base": "collide",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "scene": "collide"
+   },
+   "url": "18-little-bang.html?scene=collide",
+   "metrics": {
+    "gpuBusy": 1,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 970,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 108,
+    "lum.mean": 10.22,
+    "lum.min": 3.16,
+    "lum.max": 20.97,
+    "errors": 0
+   },
+   "values": {
+    "camS": null,
+    "wakes": 0,
+    "dijets": 36,
+    "wireClearance": null
+   },
+   "stills": [
+    "stills/collide@4k-1.png",
+    "stills/collide@4k-2.png"
+   ],
+   "errors": []
+  }
+ ],
+ "checks": [
+  {
+   "script": "check-18",
+   "code": 0,
+   "dir": "checks/check-18",
+   "gates": [
+    {
+     "name": "check-18: tracks curl with r = pT/(0.3 B), B = 0.5 T",
+     "ok": true,
+     "value": "200 charged tracks, worst 1.3e-13% (3-point circle fit)"
+    },
+    {
+     "name": "check-18: with dE/dx: local radius = r0 − k·s",
+     "ok": true,
+     "value": "200 tracks, worst 0.000%"
+    },
+    {
+     "name": "check-18: elliptic flow ⟨cos 2φ⟩ = v2 > 0",
+     "ok": true,
+     "value": "v2 0.0942, measured 0.0952 over 200k tracks (b 6.60 fm, ε 0.471)"
+    },
+    {
+     "name": "check-18: fireball: short axis grows faster; hadronizes at T_c",
+     "ok": true,
+     "value": "in 3.70→5.56 fm, out 6.17→7.48 fm; T 346→155.8 MeV (T_c 156)"
+    },
+    {
+     "name": "check-18: strings: quarks = 2 + 2·breaks, white groups, energy kept",
+     "ok": true,
+     "value": "42 cascades, 203 breaks, worst drift 0"
+    },
+    {
+     "name": "check-18: jets: A_J = q/(2 − q)",
+     "ok": true,
+     "value": "q 0: 0.0000, q 0.6: 0.4286, q 0.75: 0.6000"
+    },
+    {
+     "name": "check-18: sync from __qa.events (≤ 40 ms after the sound)",
+     "ok": true,
+     "value": "collision 9.3 ms (n 15) · jet 8.6 ms (n 29) · pulse 17.7 ms (n 28) · crossing 18.6 ms (n 7) · pulse-arrive 18.6 ms (n 7)"
+    },
+    {
+     "name": "check-18: page keeps animating",
+     "ok": true,
+     "value": ""
+    },
+    {
+     "name": "check-18: collide: < 2 % of pixels clipped in every frame of 16 s (#58)",
+     "ok": true,
+     "value": "worst frame 0.00 % clipped (any channel ≥ 254) of 138 frames · brightest frame (mean lum 29.4 %): clipped 0.00 %, white 0.00 % · 1920×1080"
+    },
+    {
+     "name": "check-18: beamline: camera on the beam axis (< 0.35 off, every frame)",
+     "ok": true,
+     "value": "worst 7.11e-15 over 961 frames · my circle fit to the camera path: R 24.000 (spec 24)"
+    },
+    {
+     "name": "check-18: beamline: bunches cross on the downbeat, camera halted just short of the IP",
+     "ok": true,
+     "value": "9 crossings, bar-to-bar error ≤ 0.00 ms, lag ≤ 9.4 ms · at downbeats: 0.89–0.91 from the IP, speed ≤ 0.94 (lap mean 75.4)"
+    },
+    {
+     "name": "check-18: quench: Mach cone half-angle = asin(c_s/v) ± 3° (my fit to the drawn wake)",
+     "ok": true,
+     "value": "0.4: 35.26° (widens to 36.76°, 15/82 frames fit) · 0.12: 35.98° (widens to 36.77°, 10/60 frames fit) · 1.4: 36° (widens to 36.76°, 10/60 frames fit) · 1.12: 35.98° (widens to 36.77°, 10/60 frames fit) · 2.4: 35.99° (widens to 36.76°, 10/60 frames fit) · 2.12: 35.98° (widens to 36.77°, 10/60 frames fit) · 3.4: 35.99° (widens to 36.76°, 10/60 frames fit) · 3.12: 35.98° (widens to 36.77°, 10/60 frames fit) · 4.4: 35.99° (widens to 36.78°, 10/60 frames fit) · 4.12: 35.98° (widens to 36.77°, 10/60 frames fit) · 5.4: 35.99° (widens to 36.78°, 10/60 frames fit) · 5.12: 35.98° (widens to 36.76°, 10/60 frames fit) · 6.4: 35.99° (widens to 36.78°, 10/60 frames fit) · 6.12: 36° (widens to 36.76°, 10/60 frames fit) · 7.4: 35.99° (widens to 36.84°, 11/61 frames fit) · 7.12: –° (widens to –°, 0/24 frames fit) · want 35.26°"
+    },
+    {
+     "name": "check-18: jets: each pair on a snare, ≤ 40 ms; escaping side narrow",
+     "ok": true,
+     "value": "16 pairs on steps 4/12 · lag ≤ 17.3 ms · φ spread 2.66° escaping vs 7.66° quenched (shader formula, q 0.75)"
+    },
+    {
+     "name": "check-18: neon: wire brightness peaks ≤ 40 ms after each kick; its light ring arrives on the downbeat",
+     "ok": true,
+     "value": "35 kicks: frame-brightness peak median 12 ms (max 147) after the sound · pulse launch lag ≤ 10.1 ms · arrival vs crossing ≤ 0.00 ms"
+    },
+    {
+     "name": "check-18: neon: mean hue changes ≥ 15° bar to bar on ≥ 90 % of bars",
+     "ok": true,
+     "value": "9 bars, steps 78.8, 49.2, 164, 32.4, 85.2, 169.4, 87.2, 151.5° (100 % ≥ 15°; wire pixels only (?qa=wires))"
+    },
+    {
+     "name": "check-18: neon: no frame-to-frame brightness jump > 25 % outside drops",
+     "ok": false,
+     "value": "worst 54.3 % at bar 2.24 · 41 frames over 25 % (both frames floored at 0.5/255; wire pixels only) · whole picture worst 34.3 % (reported only)"
+    },
+    {
+     "name": "check-18: neon: wires ≥ 0.2 tube radius from the camera",
+     "ok": true,
+     "value": "camera ≤ 7.1e-15 off the axis (my measure) · nearest wire 0.991 tube radii (page's breath − wobble)"
+    },
+    {
+     "name": "check-18: 1440p: p95 ≤ 16.8 ms, ≤ 3 frames > 20 ms",
+     "ok": true,
+     "value": ""
+    },
+    {
+     "name": "check-18: errors",
+     "ok": true,
+     "value": "none"
+    }
+   ]
+  }
+ ],
+ "swipe": {
+  "dir": "18-little-bang/runs/2026-10-28-1812-pr75-swipe",
+  "url": "/run/18-little-bang/2026-10-28-1812-pr75-swipe/compare",
+  "old": "9311bdb",
+  "new": "b0cfb63c4eaee4e3f769c399740d73a8cc0b31c8"
+ },
+ "gates": [
+  {
+   "name": "fps.p05 ≥ 55 @1080p",
+   "ok": true,
+   "value": "beamline@1080p 59.88 · beamline-wires@1080p 59.88 · quench@1080p 59.88 · collide@1080p 59.88"
+  },
+  {
+   "name": "longFrames ≤ 0.5",
+   "ok": true,
+   "value": "beamline@1080p 0 · beamline@4k 0 · beamline-wires@1080p 0 · beamline-wires@4k 0 · quench@1080p 0 · quench@4k 0 · collide@1080p 0 · collide@4k 0"
+  },
+  {
+   "name": "errors ≤ 0",
+   "ok": true,
+   "value": "beamline@1080p 0 · beamline@4k 0 · beamline-wires@1080p 0 · beamline-wires@4k 0 · quench@1080p 0 · quench@4k 0 · collide@1080p 0 · collide@4k 0"
+  },
+  {
+   "name": "gpuBusy ≤ 10",
+   "ok": true,
+   "value": "beamline@1080p 0 · beamline@4k 1 · beamline-wires@1080p 2 · beamline-wires@4k 0 · quench@1080p 1 · quench@4k 1 · collide@1080p 3 · collide@4k 1"
+  },
+  {
+   "name": "clip ≤ 2 (collide, quench, beamline)",
+   "ok": true,
+   "value": "beamline@1080p 0 · beamline@4k 0 · quench@1080p 0 · quench@4k 0 · collide@1080p 0 · collide@4k 0"
+  },
+  {
+   "name": "brightness, reported",
+   "ok": true,
+   "value": "beamline@1080p 8.38 · beamline@4k 6.75 · beamline-wires@1080p 0.47 · beamline-wires@4k 0.39 · quench@1080p 12.23 · quench@4k 10.39 · collide@1080p 12.1 · collide@4k 10.22"
+  },
+  {
+   "name": "check-18: tracks curl with r = pT/(0.3 B), B = 0.5 T",
+   "ok": true,
+   "value": "200 charged tracks, worst 1.3e-13% (3-point circle fit)"
+  },
+  {
+   "name": "check-18: with dE/dx: local radius = r0 − k·s",
+   "ok": true,
+   "value": "200 tracks, worst 0.000%"
+  },
+  {
+   "name": "check-18: elliptic flow ⟨cos 2φ⟩ = v2 > 0",
+   "ok": true,
+   "value": "v2 0.0942, measured 0.0952 over 200k tracks (b 6.60 fm, ε 0.471)"
+  },
+  {
+   "name": "check-18: fireball: short axis grows faster; hadronizes at T_c",
+   "ok": true,
+   "value": "in 3.70→5.56 fm, out 6.17→7.48 fm; T 346→155.8 MeV (T_c 156)"
+  },
+  {
+   "name": "check-18: strings: quarks = 2 + 2·breaks, white groups, energy kept",
+   "ok": true,
+   "value": "42 cascades, 203 breaks, worst drift 0"
+  },
+  {
+   "name": "check-18: jets: A_J = q/(2 − q)",
+   "ok": true,
+   "value": "q 0: 0.0000, q 0.6: 0.4286, q 0.75: 0.6000"
+  },
+  {
+   "name": "check-18: sync from __qa.events (≤ 40 ms after the sound)",
+   "ok": true,
+   "value": "collision 9.3 ms (n 15) · jet 8.6 ms (n 29) · pulse 17.7 ms (n 28) · crossing 18.6 ms (n 7) · pulse-arrive 18.6 ms (n 7)"
+  },
+  {
+   "name": "check-18: page keeps animating",
+   "ok": true,
+   "value": ""
+  },
+  {
+   "name": "check-18: collide: < 2 % of pixels clipped in every frame of 16 s (#58)",
+   "ok": true,
+   "value": "worst frame 0.00 % clipped (any channel ≥ 254) of 138 frames · brightest frame (mean lum 29.4 %): clipped 0.00 %, white 0.00 % · 1920×1080"
+  },
+  {
+   "name": "check-18: beamline: camera on the beam axis (< 0.35 off, every frame)",
+   "ok": true,
+   "value": "worst 7.11e-15 over 961 frames · my circle fit to the camera path: R 24.000 (spec 24)"
+  },
+  {
+   "name": "check-18: beamline: bunches cross on the downbeat, camera halted just short of the IP",
+   "ok": true,
+   "value": "9 crossings, bar-to-bar error ≤ 0.00 ms, lag ≤ 9.4 ms · at downbeats: 0.89–0.91 from the IP, speed ≤ 0.94 (lap mean 75.4)"
+  },
+  {
+   "name": "check-18: quench: Mach cone half-angle = asin(c_s/v) ± 3° (my fit to the drawn wake)",
+   "ok": true,
+   "value": "0.4: 35.26° (widens to 36.76°, 15/82 frames fit) · 0.12: 35.98° (widens to 36.77°, 10/60 frames fit) · 1.4: 36° (widens to 36.76°, 10/60 frames fit) · 1.12: 35.98° (widens to 36.77°, 10/60 frames fit) · 2.4: 35.99° (widens to 36.76°, 10/60 frames fit) · 2.12: 35.98° (widens to 36.77°, 10/60 frames fit) · 3.4: 35.99° (widens to 36.76°, 10/60 frames fit) · 3.12: 35.98° (widens to 36.77°, 10/60 frames fit) · 4.4: 35.99° (widens to 36.78°, 10/60 frames fit) · 4.12: 35.98° (widens to 36.77°, 10/60 frames fit) · 5.4: 35.99° (widens to 36.78°, 10/60 frames fit) · 5.12: 35.98° (widens to 36.76°, 10/60 frames fit) · 6.4: 35.99° (widens to 36.78°, 10/60 frames fit) · 6.12: 36° (widens to 36.76°, 10/60 frames fit) · 7.4: 35.99° (widens to 36.84°, 11/61 frames fit) · 7.12: –° (widens to –°, 0/24 frames fit) · want 35.26°"
+  },
+  {
+   "name": "check-18: jets: each pair on a snare, ≤ 40 ms; escaping side narrow",
+   "ok": true,
+   "value": "16 pairs on steps 4/12 · lag ≤ 17.3 ms · φ spread 2.66° escaping vs 7.66° quenched (shader formula, q 0.75)"
+  },
+  {
+   "name": "check-18: neon: wire brightness peaks ≤ 40 ms after each kick; its light ring arrives on the downbeat",
+   "ok": true,
+   "value": "35 kicks: frame-brightness peak median 12 ms (max 147) after the sound · pulse launch lag ≤ 10.1 ms · arrival vs crossing ≤ 0.00 ms"
+  },
+  {
+   "name": "check-18: neon: mean hue changes ≥ 15° bar to bar on ≥ 90 % of bars",
+   "ok": true,
+   "value": "9 bars, steps 78.8, 49.2, 164, 32.4, 85.2, 169.4, 87.2, 151.5° (100 % ≥ 15°; wire pixels only (?qa=wires))"
+  },
+  {
+   "name": "check-18: neon: no frame-to-frame brightness jump > 25 % outside drops",
+   "ok": false,
+   "value": "worst 54.3 % at bar 2.24 · 41 frames over 25 % (both frames floored at 0.5/255; wire pixels only) · whole picture worst 34.3 % (reported only)"
+  },
+  {
+   "name": "check-18: neon: wires ≥ 0.2 tube radius from the camera",
+   "ok": true,
+   "value": "camera ≤ 7.1e-15 off the axis (my measure) · nearest wire 0.991 tube radii (page's breath − wobble)"
+  },
+  {
+   "name": "check-18: 1440p: p95 ≤ 16.8 ms, ≤ 3 frames > 20 ms",
+   "ok": true,
+   "value": ""
+  },
+  {
+   "name": "check-18: errors",
+   "ok": true,
+   "value": "none"
+  }
+ ],
+ "notes": []
+}
