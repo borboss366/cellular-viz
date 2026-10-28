@@ -12,7 +12,7 @@
 QA sweep · 13-flow-lab · 2026-10-27T19:44
 | variant | score | cover | motion | pulse | colour | fps | verdict |
 |---|---|---|---|---|---|---|---|
-| old-rocks | 6.3 | 5% | 0.0079 | ±0.0011 | 0.007 | 60.2 |  |
+| old-rocks | 6.3 | 5% | 0.0079 | ±0.0011 | 0.007 | 60.2 | dull |
 
 queries:
 - old-rocks: http://127.0.0.1:36001/experiments/13-flow-lab.html?preset=rocks
@@ -31,9 +31,25 @@ Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
 QA sweep · 13-flow-lab · 2026-10-27T19:45
 | variant | score | cover | motion | pulse | colour | fps | verdict |
 |---|---|---|---|---|---|---|---|
-| new-rocks | 6.2 | 4% | 0.0058 | ±0.0012 | 0.005 | 60.2 |  |
+| new-rocks | 6.2 | 4% | 0.0058 | ±0.0012 | 0.005 | 60.2 | maybe — Need more fluid coming |
 
 queries:
 - new-rocks: http://127.0.0.1:42251/experiments/13-flow-lab.html?preset=rocks
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+3 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | new-rocks | 3.224 | 3 | 0 | 0 |
+| 2 | old-rocks | 0.31 | 0 | 3 | 0 |
+
+## User notes
+
+**On each look**
+
+- **new-rocks** (maybe): Need more fluid coming
+

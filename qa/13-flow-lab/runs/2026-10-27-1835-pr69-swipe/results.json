@@ -2474,7 +2474,8 @@
     ]
    ],
    "hud": "Flow Lab · curl · 120 bpm · tap ▶ Play\ngrid 455×256 · dye 455×256 · 428×241 · 60 fps · 0 SOR iters · GPU 0.4 ms",
-   "video": "videos/01-new-curl.webm"
+   "video": "videos/01-new-curl.webm",
+   "note": "Better"
   },
   {
    "label": "new-plume",

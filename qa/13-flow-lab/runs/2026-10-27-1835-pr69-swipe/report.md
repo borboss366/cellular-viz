@@ -33,7 +33,7 @@ Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
 QA sweep · 13-flow-lab · 2026-10-27T18:59
 | variant | score | cover | motion | pulse | colour | fps | verdict |
 |---|---|---|---|---|---|---|---|
-| new-curl | 6.3 | 7% | 0.0058 | ±0.0007 | 0.004 | 60.1 |  |
+| new-curl | 6.3 | 7% | 0.0058 | ±0.0007 | 0.004 | 60.1 |  — Better |
 | new-plume | 6.9 | 6% | 0.0192 | ±0.0023 | 0.025 | 60.2 |  |
 
 queries:
@@ -41,3 +41,21 @@ queries:
 - new-plume: http://127.0.0.1:38535/experiments/13-flow-lab.html?preset=plume
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+6 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | new-plume | 4.083 | 2 | 0 | 0 |
+| 2 | new-curl | 0.962 | 1 | 1 | 1 |
+| 3 | old-plume | 0.575 | 0 | 1 | 3 |
+| 4 | old-curl | 0.443 | 0 | 1 | 2 |
+
+## User notes
+
+**On each look**
+
+- **new-curl**: Better
+

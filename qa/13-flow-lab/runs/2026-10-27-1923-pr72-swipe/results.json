@@ -39,7 +39,7 @@
     }
    },
    "videoSize": 2818014,
-   "verdict": "",
+   "verdict": "dull",
    "series": [
     [
      0.01,
@@ -828,7 +828,8 @@
     ]
    ],
    "hud": "Flow Lab · rocks · 120 bpm · tap ▶ Play\ngrid 455×256 · dye 455×256 · 428×241 · 60 fps · 64 SOR iters · GPU 10.6 ms",
-   "video": "videos/01-old-rocks.webm"
+   "video": "videos/01-old-rocks.webm",
+   "note": ""
   },
   {
    "label": "new-rocks",
@@ -852,7 +853,7 @@
     }
    },
    "videoSize": 2892317,
-   "verdict": "",
+   "verdict": "maybe",
    "series": [
     [
      0.01,
@@ -1641,7 +1642,8 @@
     ]
    ],
    "hud": "Flow Lab · rocks · 120 bpm · tap ▶ Play\ngrid 455×256 · dye 455×256 · 428×241 · 60 fps · 64 SOR iters · GPU 11.0 ms",
-   "video": "videos/01-new-rocks.webm"
+   "video": "videos/01-new-rocks.webm",
+   "note": "Need more fluid coming"
   }
  ]
 }
