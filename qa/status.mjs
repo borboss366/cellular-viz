@@ -51,7 +51,10 @@ else {
     out.push(`  now: ${s.running ? `${job(s.running)}${s.running.id ? ` (${s.running.id})` : ''}, started ${ago(s.running.started)}` : 'idle'}`);
     const q = s.queue || [];
     out.push(`  queue (${q.length}): ${q.length ? q.slice(0, 6).map(job).join(', ') + (q.length > 6 ? ', …' : '') : '-'}`);
-    for (const r of (s.recent || []).slice(0, 3)) out.push(`  done ${ago(r.finished)}: ${job(r)}: ${short(r.result, 90)}`);
+    for (const r of (s.recent || []).slice(0, 3)) {
+      out.push(`  done ${ago(r.finished)}: ${job(r)}${r.id ? ` (${r.id})` : ''}: ${short(r.result, 90)}`);
+      if (r.report) out.push(`    report: ${r.report}`);   // relative to QA_HOME; builds from before this runner have none
+    }
     if (s.gpu) out.push(`  last GPU gate: ${short(JSON.stringify(s.gpu), 100)}`);
   }
 }
