@@ -654,7 +654,7 @@ function pulsesAt(u) {
     const uk = i / 16;
     if (u < uk) continue;
     const w = Math.sqrt((u - uk) / (1 - uk));
-    out.push({ step: i, ahead: (RING_C - camS(u)) * w, a: Math.min(1, (u - uk) * 40) });
+    out.push({ step: i, ahead: (RING_C - camS(u)) * w, a: Math.min(1, (u - uk) * 160) });   // full within ~12 ms of the kick
   }
   return out;
 }
@@ -975,6 +975,7 @@ function draw(now) {
   // camera: orbit between a side view (to see the nuclei come in) and a view down the beam;
   // in beamline it rides the beam axis round the ring and halts CAM_STOP before the IP on each downbeat
   const beam = sec.scene === 'beamline';
+  let neonDraw = null;
   let eye, vp;
   if (beam) {
     const u = bars - n, s = camS(u), here = ringPoint(s), ahead = ringPoint(s + 2.5);
@@ -1019,14 +1020,18 @@ function draw(now) {
     gl.uniformMatrix4fv(U.uVP, false, vp);
     gl.uniform1f(U.uT, tMus); gl.uniform1f(U.uBase, baseDeg / 360); gl.uniform1f(U.uBreath, breath); gl.uniform1f(U.uWob, wob);
     gl.uniform1f(U.uHat, L.hat); gl.uniform1f(U.uKick, L.kick); gl.uniform1f(U.uSnare, L.snare); gl.uniform1f(U.uDrop, sec.drop ? 1 : 0);
-    gl.uniform1f(U.uSweep, sweep); gl.uniform1f(U.uCamS, camNow); gl.uniform1f(U.uC, RING_C); gl.uniform1f(U.uFg, fg);
+    gl.uniform1f(U.uSweep, sweep); gl.uniform1f(U.uCamS, camNow); gl.uniform1f(U.uC, RING_C); gl.uniform1f(U.uFg, 1);
     const pv = [0, 0, 0, 0], pa = [0, 0, 0, 0];
     pulses.forEach((p, i) => { pv[i] = p.ahead % RING_C; pa[i] = p.a; });
     gl.uniform4fv(U.uPulse, pv); gl.uniform4fv(U.uPulseA, pa);
-    gl.bindVertexArray(neonBuf.vao);
-    gl.uniform1f(U.uGlow, 1);
-    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { gl.uniform2f(U.uOff, ox * glowPx * 2 / W, oy * glowPx * 2 / H); gl.drawArrays(gl.LINES, 0, neonBuf.count); }
-    gl.uniform1f(U.uGlow, 0); gl.uniform2f(U.uOff, 0, 0); gl.drawArrays(gl.LINES, 0, neonBuf.count);
+    // The wires skip the motion-trail buffer: added at full weight just before the bloom and taken out again after the
+    // tone map, so they show this frame's light only. Through the trails (τ 0.08 s) a kick (τ 0.15 s) peaked ~110 ms late.
+    neonDraw = () => {
+      gl.useProgram(neonProg.p); gl.bindVertexArray(neonBuf.vao);
+      gl.uniform1f(U.uGlow, 1);
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { gl.uniform2f(U.uOff, ox * glowPx * 2 / W, oy * glowPx * 2 / H); gl.drawArrays(gl.LINES, 0, neonBuf.count); }
+      gl.uniform1f(U.uGlow, 0); gl.uniform2f(U.uOff, 0, 0); gl.drawArrays(gl.LINES, 0, neonBuf.count);
+    };
     gl.useProgram(lineProg.p);
     wiresQA = { baseHue: baseDeg, palette: ((sIdx % 4) + 4) % 4, pulses: pulses.map(p => ({ step: p.step, ahead: p.ahead, a: p.a })), pulsePhase: pulses.length ? pulses[pulses.length - 1].ahead / Math.max(1e-6, RING_C - camNow) : null,
       wobbleAmp: wob, breath, glowPx, bass: bassEnv, clearance: breath - wob, drop: sec.drop };
@@ -1155,6 +1160,7 @@ function draw(now) {
     gl.useProgram(spriteProg.p); gl.uniformMatrix4fv(spriteProg.u.uVP, false, vp); gl.uniform1f(spriteProg.u.uScale, H / 160);
     gl.bindVertexArray(spriteBuf.vao); gl.drawArrays(gl.POINTS, 0, sprites.length / 7);
   }
+  if (neonDraw) neonDraw();
   gl.disable(gl.BLEND);
 
   // bloom and tone map
@@ -1176,6 +1182,12 @@ function draw(now) {
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, rt.b1.t); gl.uniform1i(p.u.uBloom, 1);
     gl.uniform1f(p.u.uFlash, flash * params.gain);
   });
+  if (neonDraw) {   // take this frame's wires back out of the trail buffer
+    gl.bindFramebuffer(gl.FRAMEBUFFER, rt.acc.fbo); gl.viewport(0, 0, W, H);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
+    neonDraw();
+    gl.blendEquation(gl.FUNC_ADD); gl.disable(gl.BLEND);
+  }
 
   qaState.scene = sec.scene; qaState.bar = n; qaState.drawnTracks = drawn;
   if (QA_WIRES && beam) { if (!ov.dataset.qaw) { ov.dataset.qaw = 1; octx.clearRect(0, 0, ov.width, ov.height); } }
