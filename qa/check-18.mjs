@@ -157,10 +157,7 @@ for (const [label, q] of runs) {
 {
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
   page.on('pageerror', e => errors.push(e.message));
-  await page.goto(`${base}?scene=beamline`); await page.addStyleTag({ content: FULL }); await page.waitForTimeout(800);
-  await page.click('#play').catch(() => {});
-  await page.waitForTimeout(1500);
-  res.beam = await page.evaluate(async () => {
+  const beamCapture = async () => {
     const S = [], seen = new Map(), pul = new Map(), L = [], t0 = performance.now();
     const gl = [...document.querySelectorAll('canvas')].sort((a, b) => b.width * b.height - a.width * a.height)[0];
     const c2 = document.createElement('canvas'); c2.width = 64; c2.height = 36; const x = c2.getContext('2d', { willReadFrequently: true });
@@ -176,7 +173,16 @@ for (const [label, q] of runs) {
       if (performance.now() - t0 < 16000) requestAnimationFrame(f); else done(); }; requestAnimationFrame(f); });
     return { S, L, crossings: [...seen.values()].map(e => ({ bar: e.bar, tBeat: e.tBeat, lag: e.perfDrawn - e.perfHeard })),
       pulses: [...pul.values()].map(e => ({ bar: e.bar, step: e.step, tBeat: e.tBeat, tArrive: e.tArrive, heard: e.perfHeard, lag: e.perfDrawn - e.perfHeard })), hasWires: !!__qa.wires || L.some(l => l.clear !== null), bpm: __qa.bpm || 120 };
-  });
+  };
+  await page.goto(`${base}?scene=beamline`); await page.addStyleTag({ content: FULL }); await page.waitForTimeout(800);
+  await page.click('#play').catch(() => {});
+  await page.waitForTimeout(1500);
+  res.beam = await page.evaluate(beamCapture);
+  // the neon gates are measured on the wires alone (?qa=wires draws only the neon wires and ring magnets)
+  const pw = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 }); pw.on('pageerror', e => errors.push(e.message));
+  await pw.goto(`${base}?scene=beamline&qa=wires`); await pw.addStyleTag({ content: FULL }); await pw.waitForTimeout(800);
+  await pw.click('#play').catch(() => {}); await pw.waitForTimeout(1500);
+  res.wires = await pw.evaluate(beamCapture); await pw.close();
   await page.close();
 }
 {
@@ -237,21 +243,24 @@ for (const [label, q] of runs) {
   const atDown = sp.filter(x => { const f = x.bars - Math.round(x.bars); return Math.abs(f) <= 0.02; });
   const cr = B.crossings.sort((x, y) => x.tBeat - y.tBeat), gaps = cr.slice(1).map((x, i) => x.tBeat - cr[i].tBeat);
   // 13–16 neon wires
-  const Lf = B.L || [], heard = (B.pulses || []).filter(p => Number.isFinite(p.heard));
+  const Wr = (res.wires && res.wires.L && res.wires.L.length) ? res.wires : B;   // wire pixels only, when the page has ?qa=wires
+  const Lf = Wr.L || [], heard = (Wr.pulses || []).filter(p => Number.isFinite(p.heard));
   const peaks = heard.map(p => { const win = Lf.filter(l => l.t >= p.heard - 50 && l.t <= p.heard + 250); if (!win.length) return null; const m = win.reduce((a, l) => l.lum > a.lum ? l : a); return m.t - p.heard; }).filter(x => x !== null).sort((a, b) => a - b);
-  const crossT = (B.crossings || []).map(c => c.tBeat);
+  const crossT = ((Wr.crossings && Wr.crossings.length) ? Wr.crossings : (B.crossings || [])).map(c => c.tBeat);
   const lastCross = crossT.length ? Math.max(...crossT) : -Infinity, firstCross = crossT.length ? Math.min(...crossT) : Infinity;
-  const arriveErr = (B.pulses || []).filter(p => Number.isFinite(p.tArrive) && p.tArrive <= lastCross + 0.01 && p.tArrive >= firstCross - 0.01).map(p => Math.min(...crossT.map(t => Math.abs(t - p.tArrive))) * 1000).filter(Number.isFinite);
+  const arriveErr = (Wr.pulses || []).filter(p => Number.isFinite(p.tArrive) && p.tArrive <= lastCross + 0.01 && p.tArrive >= firstCross - 0.01).map(p => Math.min(...crossT.map(t => Math.abs(t - p.tArrive))) * 1000).filter(Number.isFinite);
   const byBar = {}; for (const l of Lf) { const k = Math.floor(l.bars); (byBar[k] ??= { hx: 0, hy: 0, hw: 0 }); byBar[k].hx += l.hx; byBar[k].hy += l.hy; byBar[k].hw += l.hw; }
   const hues = Object.entries(byBar).sort((a, b) => a[0] - b[0]).filter(([, v]) => v.hw > 0).map(([k, v]) => ({ bar: +k, hue: ((Math.atan2(v.hy, v.hx) * 180 / Math.PI) + 360) % 360 }));
   const hueSteps = hues.slice(1).map((h, i) => { const dd = Math.abs(h.hue - hues[i].hue) % 360; return Math.min(dd, 360 - dd); });
-  const jumps = []; for (let i = 1; i < Lf.length; i++) { if (Lf[i].drop || Lf[i - 1].drop) continue; const a0 = Lf[i - 1].lum, b0 = Lf[i].lum; jumps.push({ rel: Math.abs(Math.max(b0, 5) - Math.max(a0, 5)) / Math.max(a0, b0, 5), bars: Lf[i].bars }); }
+  const FL = Wr !== B ? 0.5 : 5;   // floor: 5/255 for a full picture, 0.5/255 for thin wires on black (their mean is ~1/255)
+  const jumps = []; for (let i = 1; i < Lf.length; i++) { if (Lf[i].drop || Lf[i - 1].drop) continue; const a0 = Lf[i - 1].lum, b0 = Lf[i].lum; jumps.push({ rel: Math.abs(Math.max(b0, FL) - Math.max(a0, FL)) / Math.max(a0, b0, FL), bars: Lf[i].bars }); }
+  const Bf = B.L || []; let fullWorst = 0; for (let i = 1; i < Bf.length; i++) { if (Bf[i].drop || Bf[i - 1].drop) continue; const r = Math.abs(Math.max(Bf[i].lum, 5) - Math.max(Bf[i - 1].lum, 5)) / Math.max(Bf[i].lum, Bf[i - 1].lum, 5); if (r > fullWorst) fullWorst = r; }
   const worstJump = jumps.reduce((a, j) => j.rel > a.rel ? j : a, { rel: 0, bars: null });
   const clears = Lf.map(l => l.clear).filter(Number.isFinite);
   res.neon = { has: !!B.hasWires, kicks: heard.length, peakMedMs: peaks.length ? peaks[Math.floor(peaks.length / 2)] : null, peakMaxMs: peaks.length ? peaks[peaks.length - 1] : null,
-    pulseLagMax: (B.pulses || []).length ? Math.max(...B.pulses.map(p => p.lag)) : null, arriveErrMs: arriveErr.length ? Math.max(...arriveErr) : null,
+    pulseLagMax: (Wr.pulses || []).length ? Math.max(...Wr.pulses.map(p => p.lag)) : null, wiresOnly: Wr !== B, arriveErrMs: arriveErr.length ? Math.max(...arriveErr) : null,
     bars: hues.length, hueSteps: hueSteps.map(x => +x.toFixed(1)), hueOkShare: hueSteps.length ? hueSteps.filter(x => x >= 15).length / hueSteps.length : 0,
-    worstJump: +(worstJump.rel * 100).toFixed(1), worstJumpBar: worstJump.bars, over25: jumps.filter(j => j.rel > 0.25).length, minClear: clears.length ? Math.min(...clears) : null };
+    worstJump: +(worstJump.rel * 100).toFixed(1), worstJumpBar: worstJump.bars, over25: jumps.filter(j => j.rel > 0.25).length, floor: FL, fullWorst: +(fullWorst * 100).toFixed(1), minClear: clears.length ? Math.min(...clears) : null };
   res.beamSum = { frames: N, maxOff: Math.max(...off), fitR, fitCentre: [cx, cz], vMean, downFrames: atDown.length,
     downMaxV: atDown.length ? Math.max(...atDown.map(x => x.v)) : null, downDIP: atDown.length ? [Math.min(...atDown.map(x => x.dIP)), Math.max(...atDown.map(x => x.dIP))] : null,
     crossings: cr.length, gapErrMs: gaps.length ? Math.max(...gaps.map(g => Math.abs(g - barSec) * 1000)) : null, crossLagMax: cr.length ? Math.max(...cr.map(x => x.lag)) : null };
@@ -300,8 +309,8 @@ fs.writeFileSync(path.join(dir, 'check.md'), `# 18 Little Bang check · ${stamp}
   `| quench: Mach cone half-angle = asin(c_s/v) ± 3° (my fit to the drawn wake) | ${ok(pass.machCone)} | ${res.wake.wakes.map(w => `${w.wake}: ${w.narrowest ?? '–'}° (widens to ${w.widest ?? '–'}°, ${w.fitted}/${w.frames} frames fit)`).join(' · ')} · want ${res.wake.wakes[0]?.want ?? '–'}° |\n` +
   `| jets: each pair on a snare, ≤ 40 ms; escaping side narrow | ${ok(pass.dijets)} | ${res.wake.dijets.length} pairs on steps ${[...new Set(res.wake.dijets.map(j => j.step))].join('/')} · lag ≤ ${res.wake.jetLags.length ? Math.max(...res.wake.jetLags).toFixed(1) : '–'} ms · φ spread ${res.wake.escRms}° escaping vs ${res.wake.quRms}° quenched (shader formula, q ${res.wake.q}) |\n` +
   `| neon: wire brightness peaks ≤ 40 ms after each kick; its light ring arrives on the downbeat | ${ok(pass.neonKick)} | ${res.neon.has ? `${res.neon.kicks} kicks: frame-brightness peak median ${res.neon.peakMedMs?.toFixed(0)} ms (max ${res.neon.peakMedMs === null ? '–' : res.neon.peakMaxMs.toFixed(0)}) after the sound · pulse launch lag ≤ ${res.neon.pulseLagMax?.toFixed(1)} ms · arrival vs crossing ≤ ${res.neon.arriveErrMs?.toFixed(2)} ms` : 'no neon wires on this page'} |\n` +
-  `| neon: mean hue changes ≥ 15° bar to bar on ≥ 90 % of bars | ${ok(pass.neonHue)} | ${res.neon.has ? `${res.neon.bars} bars, steps ${res.neon.hueSteps.join(', ')}° (${(res.neon.hueOkShare * 100).toFixed(0)} % ≥ 15°; whole-frame hue of saturated lit pixels)` : '–'} |\n` +
-  `| neon: no frame-to-frame brightness jump > 25 % outside drops | ${ok(pass.neonJump)} | ${res.neon.has ? `worst ${res.neon.worstJump} % at bar ${res.neon.worstJumpBar?.toFixed(2)} · ${res.neon.over25} frames over 25 % (both frames floored at 5/255)` : '–'} |\n` +
+  `| neon: mean hue changes ≥ 15° bar to bar on ≥ 90 % of bars | ${ok(pass.neonHue)} | ${res.neon.has ? `${res.neon.bars} bars, steps ${res.neon.hueSteps.join(', ')}° (${(res.neon.hueOkShare * 100).toFixed(0)} % ≥ 15°; ${res.neon.wiresOnly ? 'wire pixels only (?qa=wires)' : 'whole-frame hue'})` : '–'} |\n` +
+  `| neon: no frame-to-frame brightness jump > 25 % outside drops | ${ok(pass.neonJump)} | ${res.neon.has ? `worst ${res.neon.worstJump} % at bar ${res.neon.worstJumpBar?.toFixed(2)} · ${res.neon.over25} frames over 25 % (both frames floored at ${res.neon.floor}/255${res.neon.wiresOnly ? '; wire pixels only' : ''}) · whole picture worst ${res.neon.fullWorst} % (reported only)` : '–'} |\n` +
   `| neon: wires ≥ 0.2 tube radius from the camera | ${ok(pass.neonClear)} | ${res.neon.has ? `camera ≤ ${res.beamSum.maxOff.toExponential(1)} off the axis (my measure) · nearest wire ${res.neon.minClear?.toFixed(3)} tube radii (page's breath − wobble)` : '–'} |\n` +
   `| 1440p: p95 ≤ 16.8 ms, ≤ 3 frames > 20 ms | ${ok(pass.fps1440)} | |\n` +
   `| errors | ${ok(pass.noErrors)} | ${errors.slice(0, 2).join('; ') || 'none'} |\n\n` +
