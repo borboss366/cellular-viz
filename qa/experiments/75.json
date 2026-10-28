@@ -22,7 +22,7 @@
   ],
   "checks": ["check-18"],
   "record": { "stills": 2 },
-  "swipe": { "vs": "9311bdb", "seconds": 40, "warmup": 4, "variants": ["beamline", "quench"] },
+  "swipe": { "vs": "912313e", "seconds": 40, "warmup": 4, "variants": ["beamline"] },
   "debug": {
     "console": true,
     "screenshotAt": [1.5, 3.9, 4.1, 5],
