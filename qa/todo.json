@@ -502,6 +502,23 @@
     "label": "\u25b6 watch all",
     "href": "/run/18-little-bang/2026-10-28-1216-pr75-swipe"
    }
+  ],
+  "done": "2026-10-28T14:46:20.897Z"
+ },
+ {
+  "id": "18-neon",
+  "from": "QA box",
+  "title": "18 Little Bang: neon tube + bigger quench cone vs the plain beamline you liked \u2014 have a look",
+  "note": "PR #75 @912313e: the maths still holds (camera on the axis, bunches cross on the downbeat, Mach cone 35\u201336\u00b0, now ~3\u00d7 bigger). Not 'ready to merge' yet: my picture numbers say the colour hardly changes from bar to bar and there is one 34 % brightness jump on a downbeat; I'm waiting on a wires-only view from VIZ dev to measure the wires properly. Your eye is the better judge of 'neon, changing colours, vibing to the beat' \u2014 swipe and tell us. 40 s each.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/18-little-bang/2026-10-28-1453-pr75-swipe/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/18-little-bang/2026-10-28-1453-pr75-swipe"
+   }
   ]
  }
 ]
