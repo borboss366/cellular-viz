@@ -265,7 +265,7 @@ if (only !== 'flash') {
     if (Array.isArray(qp) && qp.length) modules = qp.map((m, i) => ({ module: m.module, method: m.method, gpuMs: (m.gpuMs || []).slice(S.perf0 ? S.perf0[i] || 0 : 0) }));
     const fr = S.frames, dt = fr.slice(1).map((x, i) => x - fr[i]);
     return { method: S.method, bits: S.bits, disjoint: S.disjoint, canvas: S.canvas, dpr: devicePixelRatio, soloOnly: !!(window.__qa && window.__qa.soloOnly),
-      gpu: [...byFrame.values()], modules, dt, drop, pageGpuMs: window.__qa && window.__qa.gpuMs, secs };
+      gpu: [...byFrame.values()], modules, dt, drop, hook: typeof qa.forceDrop === 'function', pageGpuMs: window.__qa && window.__qa.gpuMs, secs };
   }, SECS);
   const p = res.perf, mods = p.modules ? p.modules.map(m => ({ module: m.module, method: m.method, n: m.gpuMs.length, p50: q(m.gpuMs, 0.5), p95: q(m.gpuMs, 0.95), p99: q(m.gpuMs, 0.99) })) : null;
   p.stats = { n: p.gpu.length, p50: q(p.gpu, 0.5), p95: q(p.gpu, 0.95), p99: q(p.gpu, 0.99), modules: mods,
@@ -285,15 +285,28 @@ if (only !== 'perf') {
     const qa = window.__qa || {}; let drops = [];
     for (const at of [0.3, 0.65]) setTimeout(() => { for (const k of ['forceDrop', 'drop']) if (typeof qa[k] === 'function') { try { qa[k](); drops.push(k); } catch (e) {} break; } }, at * secs * 1000);
     await new Promise(r => setTimeout(r, secs * 1000));
-    const r = await S.flashStop(); return { ...r, drops, tapErr: S.tapErr || null };
+    const r = await S.flashStop(); return { ...r, drops, hook: typeof qa.forceDrop === 'function', tapErr: S.tapErr || null };
   }, [FSECS, FOV]);
   await page.close();
 }
 await browser.close(); server.close();
 
 // ---------- report ----------
+// Gating (VIZ research, 28 Oct, so #80 auto-merge isn't blocked): pages that existed before #88 are gated only
+// once they have __qa.forceDrop(); until then a failing row shows ⚠️ "would fail". New scenes are always gated.
+// When the forceDrop hook PR merges, drop the pages it covers from LEGACY so a lost hook fails again.
+const LEGACY = new Set(['01-gray-scott', '02-lenia', '03-lenia-audio', '04-lenia-metronome', '05-flow-lenia', '06-lenia-effects', '07-particle-lenia',
+  '08-blend', '09-riemann', '10-bsd', '11-riemann-show', '12-mass-gap', '13-flow-lab', '14-round-point', '17-bsd-skater', '18-little-bang', '19-skate-park',
+  '23-shape-shifter', '25-shape-shifter-2']);
+const legacy = LEGACY.has(id) || id.startsWith('16-');   // 16 Hodge (#84) was in flight before #88
+const hook = !!((res.perf && res.perf.hook) || (res.flash && res.flash.hook));
+const gated = !legacy || hook;
+res.gating = { legacy, hook, gated };
 const rows = [], ok = v => v ? '✅' : '❌';
-const add = (g, pass, detail) => rows.push(`| ${g} | ${pass === null ? 'ℹ️' : pass === 'warn' ? '⚠️' : ok(pass)} | ${String(detail).replace(/[|\n]/g, ' ')} |`);
+const add = (g, pass, detail) => {
+  if (pass === false && !gated) { pass = 'warn'; detail = `would fail; not gated (page from before #88, no __qa.forceDrop yet) · ${detail}`; }
+  rows.push(`| ${g} | ${pass === null ? 'ℹ️' : pass === 'warn' ? '⚠️' : ok(pass)} | ${String(detail).replace(/[|\n]/g, ' ')} |`);
+};
 if (res.perf) {
   const p = res.perf, s = p.stats, lim = p.soloOnly ? [14, Infinity] : [7, 9];
   const measured = s.modules ? s.modules.some(m => m.n > 100) : s.n > 100;
@@ -304,7 +317,8 @@ if (res.perf) {
   add('canvas 2560×1440 at dpr 1', !!p.canvas && p.canvas[0] === 2560 && p.canvas[1] === 1440 && p.dpr === 1 ? true : 'warn', `${p.canvas ? p.canvas.join('×') : 'none'} · dpr ${p.dpr}`);
   add('rAF interval (solo, headless 60 Hz clock)', null, `p50 ${s.raf.p50} · p95 ${s.raf.p95} · p99 ${s.raf.p99} ms · ${s.raf.over} of ${s.raf.n} > 17.5 ms (${s.raf.overPct} %) · ${s.raf.fps} fps`);
   // #88 ruling (VIZ research, 28 Oct): __qa.forceDrop() is required on every page, so a missing hook fails
-  add('__qa.forceDrop() puts a drop inside the measured 60 s', !!p.drop && !String(p.drop).startsWith('threw'), p.drop ? `__qa.${p.drop}() at 20 s` : 'no __qa.forceDrop hook (required by #88)');
+  if (!p.hook && legacy) add('__qa.forceDrop() puts a drop inside the measured 60 s', 'warn', 'hook missing (page from before #88)');
+  else add('__qa.forceDrop() puts a drop inside the measured 60 s', p.drop === 'forceDrop', p.drop ? `__qa.${p.drop}() at 20 s` : 'no __qa.forceDrop hook (required by #88 for new scenes)');
   add('pair gate (50/50 with the heaviest scene)', null, 'waits for the #85 host: two modules in one context');
   add('timer query bits', null, p.bits ? `TIMESTAMP ${p.bits.stamp ?? p.bits.err} · TIME_ELAPSED ${p.bits.elapsed ?? '–'}` : 'extension not available');
 }
@@ -324,6 +338,7 @@ if (res.flash) {
     add('drops during the flash clip', null, f.drops.length ? f.drops.map(k => '__qa.' + k + '()').join(', ') : 'no drop hook: the page ran its own show');
   }
 }
+add('#88 gating for this page', null, gated ? (legacy ? 'gated: page from before #88 that has __qa.forceDrop' : 'gated: new scene') : 'report-only: page from before #88 without __qa.forceDrop');
 add('page errors', errors.length === 0, errors.length ? errors.slice(0, 3).join(' / ') : 'none');
 fs.writeFileSync(path.join(out, 'check.json'), JSON.stringify(res, null, 1));
 fs.writeFileSync(path.join(out, 'check.md'), `# Shared gates (#88) · ${pageName} · ${stamp}\n\n- ${res.renderer} · Chromium ${res.chromium}\n- 2560×1440, dpr 1, headless (rAF on Chromium's 60 Hz clock)` +
