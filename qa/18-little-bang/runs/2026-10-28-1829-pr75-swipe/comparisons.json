@@ -1,0 +1,14 @@
+[
+ {
+  "a": "new-beamline",
+  "b": "old-beamline",
+  "winner": "new-beamline",
+  "at": "2026-10-28T19:09:29.200Z"
+ },
+ {
+  "a": "new-beamline",
+  "b": "old-beamline",
+  "winner": "new-beamline",
+  "at": "2026-10-28T19:09:31.881Z"
+ }
+]
