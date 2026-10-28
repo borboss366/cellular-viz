@@ -154,19 +154,27 @@ async function poll() {
     state.seen[n] = key;
     save();
   }
-  for (const k of Object.keys(state.seen)) {   // a PR left the open list: if it was merged, mark its builds merged
+  for (const k of Object.keys(state.seen)) {   // a PR left the open list: mark its builds merged, or closed if it was closed unmerged
     const n = +k;
     if (open.has(n)) continue;
-    try {
-      const pr = await gh(`pulls/${n}`);
-      if (pr.data.merged) {
-        const marked = latestBuilds().filter(b => b.pr === n && b.status !== 'merged');
-        for (const b of marked) { b.status = 'merged'; b.waitingOn = null; appendBuild(b); log(`#${n} merged: ${b.id}`); }
-        if (marked.length) await afterMerge(n, marked);
-      }
-    } catch (e) { log(`#${n} closed, merge state unknown: ${e.message}`); }
+    await settleLeft(n);
     delete state.seen[n]; if (state.expDone) delete state.expDone[n]; state.queue = state.queue.filter(j => j.pr !== n); save();
   }
+  // builds of PRs that left before the runner saw them go (closed by hand, or closed while it was down):
+  // a few a poll, so the builds page shows only live work
+  const stale = [...new Set(latestBuilds().filter(b => b.pr && !DONE.has(b.status) && !open.has(b.pr)).map(b => b.pr))];
+  for (const n of stale.slice(0, 5)) await settleLeft(n);
+}
+const DONE = new Set(['merged', 'closed']);
+async function settleLeft(n) {
+  try {
+    const pr = await gh(`pulls/${n}`);
+    if (pr.data.state !== 'closed') return;
+    const status = pr.data.merged ? 'merged' : 'closed';
+    const marked = latestBuilds().filter(b => b.pr === n && !DONE.has(b.status));
+    for (const b of marked) { b.status = status; b.waitingOn = null; appendBuild(b); log(`#${n} ${status}: ${b.id}`); }
+    if (marked.length) await afterMerge(n, marked, status);
+  } catch (e) { log(`#${n} left the open list, state unknown: ${e.message}`); }
 }
 
 // ---------- one build ----------
@@ -372,10 +380,10 @@ async function afterBuild(rec, gate, tr) {
   }
   await moveCards();
 }
-async function afterMerge(n, marked) {
+async function afterMerge(n, marked, status = 'merged') {
   if (CFG.commit) {
-    const r = await commitPaths(CFG.qaHome, ['qa/builds.json'], `qa: #${n} merged (${marked.map(b => b.id).join(', ')})\n\nMade-by: QA runner\n`);
-    log(r.ok ? `builds log for merged #${n} committed as ${r.sha}` : `builds log for merged #${n} not committed: ${r.why}`);
+    const r = await commitPaths(CFG.qaHome, ['qa/builds.json'], `qa: #${n} ${status} (${marked.map(b => b.id).join(', ')})\n\nMade-by: QA runner\n`);
+    log(r.ok ? `builds log for ${status} #${n} committed as ${r.sha}` : `builds log for ${status} #${n} not committed: ${r.why}`);
   }
   await moveCards();
 }
