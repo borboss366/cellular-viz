@@ -1,10 +1,13 @@
-# systemd user unit for the QA viewer at :8787 (QA box's qa/serve.mjs). Install on the box itself (the host), once:
-#   cp qa/runner/cellular-viz-viewer.service ~/.config/systemd/user/
+# systemd user unit for the QA viewer at :8787. Install on the box itself (the host), once, as the normal user (no sudo):
+#   cp /home/puggie/pi-durable-worker/data/cellular-viz-runner/qa/runner/cellular-viz-viewer.service ~/.config/systemd/user/
 #   systemctl --user daemon-reload && systemctl --user enable --now cellular-viz-viewer
-# It uses the runner's env file (VIEWER_PORT, VIEWER_SOCKET, QA_HOME, RUNNER_HOME, RUNNER_STATE, CONTAINER).
-# On start, viewer.sh stops a viewer started by hand (the nohup one) and a stale socket, so no step before it.
-# The host's :8787 forward (systemd-socket-proxyd to VIEWER_SOCKET, qa/README.md "Host side") stays as it is.
-# qa/update-runner.sh restarts the viewer too (kill -TERM; systemd starts it again 5 s later).
+# The unit holds no logic: it only starts and stops the fixed script qa/runner/viewer.sh from RUNNER_HOME (main's clone)
+# inside Puggie's container, so every change arrives with qa/update-runner.sh and this file never changes.
+# viewer.sh runs main's qa/serve.mjs on QA box's data (QA_HOME). update-runner.sh restarts it (kill -TERM; back in 5 s).
+# It uses the runner's env file (CONTAINER, RUNNER_HOME, RUNNER_STATE, QA_HOME, RUNNER_SOCKET).
+# No port is opened here: the viewer listens on a Unix socket in the bind-mounted data folder, and the host's existing
+# systemd-socket-proxyd units forward :8787 to it. No systemd sandboxing: the process is a podman exec into the already
+# confined rootless container, and NoNewPrivileges/namespacing can break rootless podman's setuid helpers.
 [Unit]
 Description=cellular-viz QA viewer (:8787 builds, runs, swipe grading)
 Wants=network-online.target
@@ -15,8 +18,7 @@ StartLimitIntervalSec=0
 Type=simple
 EnvironmentFile=%h/.config/cellular-viz-runner.env
 ExecStart=/usr/bin/podman exec --env-file %h/.config/cellular-viz-runner.env ${CONTAINER} sh ${RUNNER_HOME}/qa/runner/viewer.sh
-# Stop the viewer inside the container and wait until it is gone (podman exec alone leaves it running).
-ExecStop=/usr/bin/podman exec ${CONTAINER} sh -c 'p="$$(cat ${RUNNER_STATE}/viewer.pid)"; kill -TERM "$$p" 2>/dev/null; i=0; while kill -0 "$$p" 2>/dev/null && [ $$i -lt 50 ]; do sleep 0.2; i=$$((i+1)); done; true'
+ExecStop=/usr/bin/podman exec --env-file %h/.config/cellular-viz-runner.env ${CONTAINER} sh ${RUNNER_HOME}/qa/runner/viewer.sh stop
 SuccessExitStatus=1 143 SIGTERM
 TimeoutStopSec=20
 Restart=always

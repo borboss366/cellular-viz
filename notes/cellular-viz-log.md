@@ -86,6 +86,7 @@ _None yet. No screenshot verdicts posted._
 - 2026-10-28 · QA box viz-72-2 (stones): 15/15, vs old circles motion +17 %, lit area equal, colour −79 %. Cause: vermilion and cyan are complementary and swapped every bar, so the streams blended to grey. Now fixed per stream (no swap) and azure instead of cyan; red + azure blend to magenta.
 - 2026-10-28 · User on the polygon rocks: "maybe", "Need more fluid coming"; viz-72-4 (stones, 890c798) still only +10 % motion and −71 % colour vs the old circles. rocks now pour ten wider streams (r 0.011 → 0.016) at rate 3.3 instead of six at 2.2.
 - 2026-10-28 · #68 (14 pulse + fades, 2c3fefe) and #69 (13 brighter curl/plume, f904656) merged on the user's "Merge" after grading; #69's log line came in with #72.
+- 2026-10-28 · Viewer service, final shape before the user's one host install: the unit only starts/stops qa/runner/viewer.sh from RUNNER_HOME (main), which runs main's qa/serve.mjs on QA box's data (QA_HOME, now read by serve.mjs and builds.mjs), so the viewer runs only merged code and updates with update-runner.sh.
 
 ## Open
 - Step 3 Particle Lenia: queued.
