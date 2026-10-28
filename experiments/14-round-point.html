@@ -22,10 +22,15 @@
             pieces that shrink to points by the section end. The whole history is computed once
             at load and played back, so the pinch time is exact.
   The eight-geometries fly-through (laptop extra) is not built.
+  Polish (#58): every kick a breath (scale 1 → 1.06 → 1 over ¼ beat) and a glow flash, drawing only;
+  no hard cuts: each section's first bar blends in (the curve grows out of the centre; the pinch dollies
+  in from far while a radial wipe opens from the last curve's round point, which becomes the neck), and
+  the round-point flash is local and rises and falls around the section end.
 
   window.__qa: area, length, iso = L²/(4πA), crossings, tau (sim time), kicks, scene,
   curveLog [{tau, area, length, iso, crossings}], pinch {tauPinch, tauEnd, pieces, history},
-  events (kick/snare/hat, seed, round, pinch with tBeat/tHeard/perfHeard/perfDrawn), errors.
+  events (kick/snare/hat, seed, round, pinch with tBeat/tHeard/perfHeard/perfDrawn), errors,
+  breath, glow, roundFlash, transition {from, to, progress, roundNdc}.
   ?kicks=0 turns the bumps off (the area-rate check), ?scene=curve|pinch|auto, ?bars=8.
 -->
 <html lang="en">
@@ -385,12 +390,13 @@ precision highp float;
 out vec4 o; void main() { o = vec4(0.0); }`);
 const showProg = program(FULL_VS, `#version 300 es
 precision highp float;
-uniform sampler2D uSrc; uniform float uFlash;
+uniform sampler2D uSrc; uniform float uFlash, uFlashR; uniform vec2 uFlashC;
 in vec2 vUv; out vec4 o;
 void main() {
   vec3 c = texture(uSrc, vUv).rgb;
   c += 0.35 * (texture(uSrc, vUv + vec2(0.003, 0)).rgb + texture(uSrc, vUv - vec2(0.003, 0)).rgb + texture(uSrc, vUv + vec2(0, 0.005)).rgb + texture(uSrc, vUv - vec2(0, 0.005)).rgb) * 0.25;
-  c = vec3(1.0) - exp(-c * 1.3) + uFlash * vec3(0.9, 0.85, 1.0);
+  float fd = length(gl_FragCoord.xy - uFlashC) / uFlashR;   // the round-point flash is local, not the whole screen
+  c = vec3(1.0) - exp(-c * 1.3) + uFlash * exp(-fd * fd) * vec3(0.9, 0.85, 1.0);
   float vig = smoothstep(1.25, 0.35, length(vUv - 0.5) * 1.4);
   o = vec4(c * (0.7 + 0.3 * vig), 1.0);
 }`);
@@ -402,7 +408,7 @@ uniform mat4 uVP;
 out vec3 vP; out vec3 vN; out float vH;
 void main() { vP = aPos; vN = aNor; vH = aH; gl_Position = uVP * vec4(aPos, 1.0); }`, `#version 300 es
 precision highp float;
-uniform vec3 uEye; uniform float uKick, uHat, uBeat, uPinch;
+uniform vec3 uEye, uWipe; uniform float uKick, uHat, uBeat, uPinch;
 in vec3 vP; in vec3 vN; in float vH; out vec4 o;
 vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0, 4, 2), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
 void main() {
@@ -412,7 +418,9 @@ void main() {
   float bands = 0.5 + 0.5 * sin(vP.x * 18.0 - uBeat * 6.2831);
   vec3 c = base * diff * 0.6 + hue(0.6 + vH * 0.02) * fres * (0.6 + 0.8 * uKick) + vec3(1.0) * bands * 0.06 * (0.5 + uKick);
   c += vec3(1.0, 0.9, 0.8) * uPinch * exp(-abs(vP.x) * 6.0);
-  o = vec4(c, 1.0);
+  // radial wipe (uWipe = centre px, radius px): the surface opens out of the round point; premultiplied
+  float m = 1.0 - smoothstep(0.7 * uWipe.z, uWipe.z, length(gl_FragCoord.xy - uWipe.xy));
+  o = vec4(c * m, m);
 }`);
 const emptyVao = gl.createVertexArray();
 function dynBuf(attrs) {
@@ -440,16 +448,17 @@ function accTarget(w, h) {
   acc = { t, fbo, w, h };
 }
 // the curve as a glowing ribbon: a core and a wide soft halo, coloured by curvature
-function ribbon(P, width, kick, W, H) {
+// disp scales the drawing only (kick breath, grow-in), never the flow; glow is the kick flash, gain the fade-in
+function ribbon(P, width, kick, W, H, disp = 1, glow = 0, gain = 1) {
   const n = P.length, g = geom(P), R = Math.sqrt(Math.max(1e-6, areaOf(P)) / Math.PI), data = [], idx = [];
-  const px = 2.4 / H;   // world units per pixel (the view is 2.4 units tall)
+  const px = 2.4 / H / disp;   // world units per pixel (the view is 2.4 units tall), so widths stay in pixels
   for (const [w, alpha, core] of [[width * 5 * px, 0.18, 0], [width * px, 1.0, 1]]) {
     const base = data.length / 6;
     for (let i = 0; i <= n; i++) {
       const v = g[i % n], p = P[i % n], k = v.kap * R;   // 1 on a circle
       const warm = Math.max(0, Math.min(1, (k - 1) * 0.35 + 0.5));
       const col = core ? [0.9 + 0.1 * warm, 0.75 + 0.2 * (1 - warm), 0.6 + 0.4 * (1 - warm)] : [0.25 + 0.9 * warm, 0.35, 1.0 - 0.7 * warm];
-      const a = alpha * (1 + 0.8 * kick);
+      const a = alpha * (1 + 0.8 * kick + 1.4 * glow) * gain;
       data.push(p[0] + v.nx * w, p[1] + v.ny * w, ...col, a, p[0] - v.nx * w, p[1] - v.ny * w, ...col, a);
     }
     for (let i = 0; i < n; i++) { const q = base + i * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
@@ -457,7 +466,7 @@ function ribbon(P, width, kick, W, H) {
   gl.bindVertexArray(ribbonBuf.vao);
   gl.bindBuffer(gl.ARRAY_BUFFER, ribbonBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.DYNAMIC_DRAW);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ribbonBuf.ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(idx), gl.DYNAMIC_DRAW);
-  gl.useProgram(ribbonProg.p); gl.uniform2f(ribbonProg.u.uScale, (H / W) / 1.2, 1 / 1.2);
+  gl.useProgram(ribbonProg.p); gl.uniform2f(ribbonProg.u.uScale, disp * (H / W) / 1.2, disp / 1.2);
   gl.drawElements(gl.TRIANGLES, idx.length, gl.UNSIGNED_INT, 0);
 }
 // a profile (z, r, H) revolved around the x axis
@@ -532,7 +541,34 @@ window.__modules = { 'round-point': { inputs: [
 
 // ---------- main loop ----------
 function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-const st = { section: -1, scene: null, t0: 0, tDrop: 0, tEnd: 0, flash: 0, lastBeat: -1, roundLogged: -1, pinchLogged: -1, rand: mulberry(7) };
+const st = { section: -1, scene: null, prev: null, t0: 0, tDrop: 0, tEnd: 0, flash: 0, lastBeat: -1, roundLogged: -1, pinchLogged: -1, rand: mulberry(7), roundNdc: [0, 0] };
+// Kick pulse (#58, user: "more dynamic and pulsating"): from each kick a breath 1 → 1.06 → 1 over ¼ beat
+// and a glow flash. A pure function of the heard beat, so it is exactly on the kick. Drawing only: the
+// flow, the areas and the pinch times are untouched.
+const BREATH = 0.06, BREATH_BEATS = 0.25, GLOW_BEATS = 0.12, TR_BARS = 1;
+function kickPulse(beats) {
+  const b = Math.floor(beats), u = beats - b;
+  if (params.kick[(b * 4) % 16] !== 'x') return { breath: 1, glow: 0 };
+  return { breath: u < BREATH_BEATS ? 1 + BREATH * Math.sin(Math.PI * u / BREATH_BEATS) : 1, glow: Math.exp(-u / GLOW_BEATS) };
+}
+// the curve layer: fade the trails, add the ribbon (if any), show it with the local round-point flash
+function curveLayer(dt, drawRibbon, disp, glow, gain, kick, flash, W, H) {
+  accTarget(W, H);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, acc.fbo); gl.viewport(0, 0, W, H);
+  gl.enable(gl.BLEND);
+  const decay = params.trail > 0 ? Math.exp(-dt / params.trail) : 0;
+  gl.blendFunc(gl.ZERO, gl.CONSTANT_ALPHA); gl.blendColor(0, 0, 0, decay);
+  gl.useProgram(fadeProg.p); gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.blendFunc(gl.ONE, gl.ONE);
+  if (drawRibbon) ribbon(curve.P, 2.2 * (1 + 0.4 * kick + 0.5 * glow), kick, W, H, disp, glow, gain);
+  gl.disable(gl.BLEND);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H);
+  gl.useProgram(showProg.p); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, acc.t); gl.uniform1i(showProg.u.uSrc, 0);
+  gl.uniform1f(showProg.u.uFlash, flash * 0.6);
+  gl.uniform2f(showProg.u.uFlashC, (st.roundNdc[0] * 0.5 + 0.5) * W, (st.roundNdc[1] * 0.5 + 0.5) * H);
+  gl.uniform1f(showProg.u.uFlashR, 0.22 * H);
+  gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = Math.min(3840, Math.round(canvas.clientWidth * dpr)), h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
@@ -572,9 +608,10 @@ function draw(now) {
   }
   // a new section: a new curve or a new dumbbell
   if (k !== st.section) {
-    st.section = k; st.scene = sceneOf(k);
+    st.section = k; st.scene = sceneOf(k); st.prev = k > 0 ? sceneOf(k - 1) : null;
     st.t0 = k * params.bars * barSec; st.tDrop = (k * params.bars + build) * barSec; st.tEnd = (k + 1) * params.bars * barSec;
     if (st.scene === 'curve') {
+      if (acc && st.prev !== 'curve') { gl.bindFramebuffer(gl.FRAMEBUFFER, acc.fbo); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); gl.bindFramebuffer(gl.FRAMEBUFFER, null); }
       st.rand = mulberry(1000 + k);
       curve.P = seedCurve(st.rand); curve.tau = 0; curve.alive = true; curve.log = []; curve.bumps = 0; curve.rejected = 0;
       logAt('seed', k * params.bars, { scene: 'curve' }, now);
@@ -585,6 +622,14 @@ function draw(now) {
 
   const W = canvas.width, H = canvas.height;
   let label1 = '', label2 = '';
+  // no hard cuts (#58, user: "transition is just cut off"): the first bar of every section blends in.
+  // curve: the new curve grows out of the centre. pinch: the camera dollies in from far away while a
+  // radial wipe opens from the last curve's round point, which becomes the neck.
+  const pulse = kickPulse(beats);
+  const tr = Math.min(1, Math.max(0, (tNow - st.t0) / (barSec * TR_BARS))), ease = tr * tr * (3 - 2 * tr);
+  const sigma = 0.12 * barSec;   // the round-point flash rises and falls around the section end
+  const roundFlash = Math.max(st.scene === 'curve' ? Math.exp(-(((tNow - st.tEnd) / sigma) ** 2)) : 0,
+                              st.prev === 'curve' ? Math.exp(-(((tNow - st.t0) / sigma) ** 2)) : 0);
   if (st.scene === 'curve') {
     if (curve.alive) {
       if (kickNow && params.kicks && params.bump > 0 && tNow < st.tEnd - barSec) curveBump(st.rand, params.bump * (beat % params.bpb === 0 ? 1.3 : 1));
@@ -597,24 +642,17 @@ function draw(now) {
     curve.cross = curve.alive ? crossings(curve.P) : 0;
     curve.log.push({ tau: +curve.tau.toFixed(7), area: +curve.area.toFixed(7), length: +curve.length.toFixed(6), iso: +curve.iso.toFixed(6), crossings: curve.cross, kick: kickNow });
     if (curve.log.length > 4000) curve.log.shift();
-    if (!curve.alive && st.roundLogged !== k) { st.roundLogged = k; st.flash = 1; logAt('round', (k + 1) * params.bars, { scene: 'curve' }, now); }
+    if (!curve.alive && st.roundLogged !== k) { st.roundLogged = k; logAt('round', (k + 1) * params.bars, { scene: 'curve' }, now); }
     label1 = 'curve-shortening flow · dA/dt = −2π';
     label2 = curve.alive ? `A ${curve.area.toFixed(3)} · L²/4πA ${curve.iso.toFixed(3)} · crossings ${curve.cross}` : 'round point';
 
-    // draw: fade the trails, add the ribbon
-    accTarget(W, H);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, acc.fbo); gl.viewport(0, 0, W, H);
-    gl.enable(gl.BLEND);
-    const decay = params.trail > 0 ? Math.exp(-dt / params.trail) : 0;
-    gl.blendFunc(gl.ZERO, gl.CONSTANT_ALPHA); gl.blendColor(0, 0, 0, decay);
-    gl.useProgram(fadeProg.p); gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.blendFunc(gl.ONE, gl.ONE);
-    if (curve.alive) ribbon(curve.P, 2.2 * (1 + 0.4 * L.kick), L.kick, W, H);
-    gl.disable(gl.BLEND);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H);
-    gl.useProgram(showProg.p); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, acc.t); gl.uniform1i(showProg.u.uSrc, 0);
-    gl.uniform1f(showProg.u.uFlash, st.flash * 0.6);
-    gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    // draw: the grow-in scale and the kick breath, then the layer
+    const disp = (0.08 + 0.92 * ease) * pulse.breath, gain = 0.25 + 0.75 * ease;
+    if (curve.alive) {
+      let cx = 0, cy = 0; for (const p of curve.P) { cx += p[0]; cy += p[1]; }
+      st.roundNdc = [cx / curve.P.length * disp * (H / W) / 1.2, cy / curve.P.length * disp / 1.2];
+    }
+    curveLayer(dt, curve.alive, disp, pulse.glow, gain, L.kick, roundFlash, W, H);
   } else {
     const S = pinch.sim;
     let tau = 0, framesK = null;
@@ -638,17 +676,31 @@ function draw(now) {
     }
     label1 = 'mean-curvature flow · the neck pinch';
     label2 = S ? (pinch.pieces >= 2 ? 'surgery: two round pieces' : pinch.pieces === 1 ? `neck thinning · pinch on the drop` : 'round points') : 'computing…';
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H);
-    gl.clearColor(0.01, 0.01, 0.03, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    const fromCurve = st.prev === 'curve' && tr < 1;
+    if (fromCurve) curveLayer(dt, false, 1, 0, 1, 0, roundFlash, W, H);   // the curve's afterglow and flash underneath
+    else {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H);
+      // the navy background fades in over the first bar and out over the last ½ bar, so it meets the curve
+      // scene's black on both sides (check-14 gate 6 caught a 3.4 → 0.25/255 step at pinch → curve)
+      const bg = ease * Math.min(1, Math.max(0, (st.tEnd - tNow) / (0.5 * barSec)));
+      gl.clearColor(0.01 * bg, 0.01 * bg, 0.03 * bg, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+    gl.clear(gl.DEPTH_BUFFER_BIT);
     if (framesK && framesK.length) {
       surfaceMesh(framesK);
-      const ang = bars * 0.25, eye = [0.9 * Math.sin(ang), 1.1 + 0.35 * Math.sin(bars * 0.17), 3.5 + 0.4 * Math.cos(ang)];   // always in front
-      const vp = mul4(perspective(0.8, W / H, 0.05, 50), lookAt(eye, [0, 0, 0], [0, 1, 0]));
-      gl.enable(gl.DEPTH_TEST);
+      const dolly = 4.5 + (1 - 4.5) * ease;   // far away (a point) → the usual distance over the first bar
+      const ang = bars * 0.25, eye = [0.9 * Math.sin(ang) * dolly, (1.1 + 0.35 * Math.sin(bars * 0.17)) * dolly, (3.5 + 0.4 * Math.cos(ang)) * dolly];   // always in front
+      const off = st.prev === 'curve' ? [st.roundNdc[0] * (1 - ease), st.roundNdc[1] * (1 - ease)] : [0, 0];
+      const shift = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, off[0], off[1], 0, 1]);   // clip xy += off·w
+      const b = pulse.breath, breathe = new Float32Array([b, 0, 0, 0, 0, b, 0, 0, 0, 0, b, 0, 0, 0, 0, 1]);
+      const vp = mul4(mul4(shift, mul4(perspective(0.8, W / H, 0.05, 80), lookAt(eye, [0, 0, 0], [0, 1, 0]))), breathe);
+      const wipeR = tr < 1 ? 0.02 * H + ease * 0.75 * Math.hypot(W, H) : 1e7;
+      gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       gl.useProgram(surfProg.p); gl.uniformMatrix4fv(surfProg.u.uVP, false, vp); gl.uniform3fv(surfProg.u.uEye, eye);
-      gl.uniform1f(surfProg.u.uKick, L.kick); gl.uniform1f(surfProg.u.uHat, L.hat); gl.uniform1f(surfProg.u.uBeat, beats); gl.uniform1f(surfProg.u.uPinch, st.flash);
+      gl.uniform3f(surfProg.u.uWipe, (off[0] * 0.5 + 0.5) * W, (off[1] * 0.5 + 0.5) * H, wipeR);
+      gl.uniform1f(surfProg.u.uKick, Math.max(L.kick, pulse.glow)); gl.uniform1f(surfProg.u.uHat, L.hat); gl.uniform1f(surfProg.u.uBeat, beats); gl.uniform1f(surfProg.u.uPinch, st.flash);
       gl.bindVertexArray(surfBuf.vao); gl.drawElements(gl.TRIANGLES, surfBuf.count, gl.UNSIGNED_INT, 0);
-      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
     }
   }
   st.flash = Math.max(0, st.flash - dt * 2.5);
@@ -661,6 +713,8 @@ function draw(now) {
 
   Object.assign(window.__qa, {
     scene: st.scene, section: k, drop, bars, kicks: params.kicks,
+    breath: pulse.breath, glow: pulse.glow, roundFlash,
+    transition: { from: st.prev, to: st.scene, progress: tr, roundNdc: st.roundNdc.slice() },
     area: curve.area, length: curve.length, iso: curve.iso, crossings: curve.cross, tau: curve.tau, alive: curve.alive,
     bumps: curve.bumps, bumpsRejected: curve.rejected,
     pinch: { tauPinch: pinch.sim && pinch.sim.tauPinch, tauEnd: pinch.sim && pinch.sim.tauEnd, neck: pinch.sim && pinch.sim.neck, pieces: pinch.pieces, dropBar: k * params.bars + build },
