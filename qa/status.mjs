@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { gpuHolders, orphans, fmtAge } from './runner/procs.mjs';
 
 const DATA = '/home/puggie/pi-durable-worker/data';
 const env = (k, d) => process.env[k] || d;
@@ -69,5 +70,13 @@ out.push(`viewer (${VIEWER_SOCK}): ${codes.join(', ')}`);
 // GPU
 try { out.push(`gpu_busy_percent: ${fs.readFileSync(GPU_FILE, 'utf8').trim()}`); }
 catch (e) { out.push(`gpu_busy_percent: ${e.code || e.message} (${GPU_FILE})`); }
+// who has the GPU open (pid, age, command); none here while it is busy means a process outside the container
+try {
+  const h = gpuHolders();
+  if (!h.length) out.push('GPU holders (/dev/dri): none in the container');
+  else { out.push(`GPU holders (/dev/dri): ${h.length}`); for (const x of h.slice(0, 8)) out.push(`  ${x.pid} ${fmtAge(x.ageS)} ${x.dev.replace('/dev/dri/', '')} ${x.cmd}`); }
+  const o = orphans();
+  out.push(`leftover browsers/checks (parent gone): ${o.length ? o.map(p => `${p.pid} ${(p.cmd || p.comm).slice(0, 50)}`).slice(0, 5).join('; ') : 'none'}`);
+} catch (e) { out.push(`GPU holders: ${e.message}`); }
 
 console.log(out.join('\n'));

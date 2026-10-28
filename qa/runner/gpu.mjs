@@ -7,6 +7,7 @@
 //   GPU_WAIT_MIN    give up after this many minutes; the build fails as "GPU busy", nothing is measured (default 30)
 //   GPU_LOCK        lock file shared by every runner on the box (default /tmp/cellular-viz-gpu.lock)
 import fs from 'node:fs';
+import { gpuHolders, fmtHolders } from './procs.mjs';
 
 const num = (k, d) => (Number.isFinite(+process.env[k]) && process.env[k] !== '' && process.env[k] !== undefined ? +process.env[k] : d);
 export const GPU = {
@@ -41,7 +42,7 @@ export const lockHolder = () => { try { return fs.readFileSync(GPU.lock, 'utf8')
 
 /** Take the lock and wait for an idle GPU. → {ok, why?, waitedS, readings: [last 30], idleMax, file, at}
  *  On ok the caller holds the lock and must call unlock() when its build ends. shouldStop() ends the wait early. */
-export async function gpuGate({ what = '', log = () => {}, shouldStop = () => false } = {}) {
+export async function gpuGate({ what = '', log = () => {}, shouldStop = () => false, sweep = () => {} } = {}) {
   const t0 = Date.now(), deadline = t0 + GPU.waitMin * 60e3, readings = [];
   const out = extra => ({ waitedS: Math.round((Date.now() - t0) / 1000), readings: readings.slice(-30), idleMax: GPU.idleMax, idleSecs: GPU.idleSecs, file: GPU.file, at: new Date().toISOString(), ...extra });
   let said = 0;
@@ -52,8 +53,9 @@ export async function gpuGate({ what = '', log = () => {}, shouldStop = () => fa
     await sleep(2000);
   }
   if (readGpuBusy() === null) return out({ ok: true, note: `no reading from ${GPU.file}; ran without the idle check` });
-  let calm = 0;
+  let calm = 0, named = false;
   said = 0;
+  const busySince = Date.now();
   for (;;) {
     const b = readGpuBusy();
     readings.push(b);
@@ -61,7 +63,15 @@ export async function gpuGate({ what = '', log = () => {}, shouldStop = () => fa
     if (calm >= GPU.idleSecs) return out({ ok: true });
     if (shouldStop()) { unlock(); return out({ ok: false, why: 'stopping' }); }
     if (Date.now() > deadline) { unlock(); return out({ ok: false, why: `GPU busy (${readings.slice(-5).join(', ')} %) for ${GPU.waitMin} min; nothing measured` }); }
-    if (Date.now() - said > 60e3) { log(`GPU busy ${b} % (> ${GPU.idleMax}); waiting before measuring`); said = Date.now(); }
+    if (Date.now() - said > 60e3) {
+      log(`GPU busy ${b} % (> ${GPU.idleMax}); waiting before measuring`); said = Date.now();
+      try { sweep(); } catch {}   // the runner kills leftover browsers here (their parent is gone)
+    }
+    if (!named && Date.now() - busySince > 10 * 60e3) {   // after 10 min, say who holds it
+      named = true;
+      let h = 'unknown'; try { h = fmtHolders(gpuHolders()); } catch {}
+      log(`GPU busy for 10 min; /dev/dri holders: ${h}`);
+    }
     await sleep(1000);
   }
 }

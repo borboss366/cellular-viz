@@ -29,6 +29,7 @@ import { loadFile } from './experiment.mjs';
 import { historyEntry, commitPaths, reportFiles, buildDirs, messageFor } from './post.mjs';
 import { sync as boardSync } from './board.mjs';
 import { runShared } from './shared.mjs';
+import { killOrphans } from './procs.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -93,7 +94,14 @@ function run(cmd, args, { cwd, timeoutMs = 10 * 60e3, quiet = false } = {}) {
     p.stderr.on('data', d => { err = cap(err, d); });
     const timer = setTimeout(() => { log(`timeout after ${timeoutMs / 60e3} min: ${cmd} ${args[0] || ''}`); try { process.kill(-p.pid, 'SIGKILL'); } catch {} }, timeoutMs);
     p.on('error', e => { err += String(e); });
-    p.on('close', code => { clearTimeout(timer); if (child === p) child = null; resolve({ code, out, err }); });
+    p.on('close', code => {
+      clearTimeout(timer); if (child === p) child = null;
+      // a step can exit and leave children behind in its process group (a browser it never closed): kill them now
+      let left = false;
+      try { process.kill(-p.pid, 0); left = true; } catch {}
+      if (left) { try { process.kill(-p.pid, 'SIGKILL'); } catch {} log(`killed leftover processes in the group of ${cmd} ${path.basename(args[0] || '')}`); }
+      resolve({ code, out, err });
+    });
   });
 }
 async function must(cmd, args, opts) {
@@ -161,7 +169,6 @@ async function poll() {
       state.seen[n] = key;
       dropPageJobsOfLabelled();
       if ((state.expDone || {})[n] !== sha) enqueue({ pr: n, sha, kind: 'experiment', page: 'experiment', title: pr.title, at: new Date().toISOString() });
-      state.seen[n] = key;
       save();
       continue;
     }
@@ -423,14 +430,15 @@ async function work() {
       const job = state.queue[0];
       if (job.after && Date.now() < job.after) break;   // waiting to retry after a network failure
       // one GPU check at a time on the box, and only on an idle GPU; if it stays busy the job stays queued for the next poll
-      const gate = await gpuGate({ what: `runner #${job.pr} ${job.page}`, log, shouldStop: () => stopping });
+      // while it waits, leftovers of earlier builds (parent gone) are killed once a minute: they are the usual holder
+      const gate = await gpuGate({ what: `runner #${job.pr} ${job.page}`, log, shouldStop: () => stopping, sweep: () => killOrphans(log) });
       status.gpu = gate;
       if (!gate.ok) { log(`not starting #${job.pr} ${job.page}: ${gate.why}`); break; }
       trace = [];
       const before = (state.recent || [])[0];
       try { await (job.kind === 'experiment' ? runExperiment(job, gate) : runBuild(job, gate)); }
       catch (e) { log(`build for #${job.pr} ${job.page} could not start: ${e.message}`); status.running = null; }
-      finally { gpuUnlock(); }
+      finally { killOrphans(log); gpuUnlock(); }   // a browser that outlived its check would hold the GPU for the next build
       const tr = trace; trace = null;
       if (job.retry) {   // a network failure: keep the job, try again in 2, 4, 8 … up to 10 minutes
         job.tries = (job.tries || 0) + 1; job.lastError = job.retry; delete job.retry;
@@ -515,4 +523,5 @@ if (!CFG.once) {
 if (!fs.existsSync(BUILDS_CLI)) log(`warning: ${BUILDS_CLI} not found; set QA_HOME to QA box's working copy`);
 log(`runner up: ${CFG.repo}, checks from ${CFG.checksRef}, authors ${CFG.authors.join(',')}, label ${CFG.label}, every ${CFG.poll} s, state ${CFG.state}, GPU idle ≤ ${GPU.idleMax} % (${GPU.file})`);
 if (state.queue.length) log(`resuming ${state.queue.length} queued build(s)`);
+killOrphans(log);   // leftovers of a runner that was stopped mid-build
 tick();
