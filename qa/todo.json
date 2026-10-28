@@ -521,5 +521,21 @@
    }
   ],
   "done": "2026-10-28T18:18:35.116Z"
+ },
+ {
+  "id": "18-neon-thick",
+  "from": "QA box",
+  "title": "18 Little Bang: thicker neon tubes + softer explosion vs the neon you graded — swipe",
+  "note": "PR #75 @7e0a43c, your three notes: explosion about a third as bright and swelling in (the whole picture's worst brightness jump is now 19 %, was 34 %), thicker 3-layer neon tubes with a beat-swinging gradient glow. The wires now flash within 12 ms of each kick and change colour every bar. 40 s each.",
+  "links": [
+   {
+    "label": "⇄ compare",
+    "href": "/run/18-little-bang/2026-10-28-1829-pr75-swipe/compare"
+   },
+   {
+    "label": "▶ watch all",
+    "href": "/run/18-little-bang/2026-10-28-1829-pr75-swipe"
+   }
+  ]
  }
 ]
