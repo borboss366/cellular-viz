@@ -283,7 +283,7 @@ void main() {
   vec3 e = 0.5 * (v * v + gx * gx + gy * gy + uM2 * c * c);   // energy density per colour
   vec3 col = 1.0 - exp(-e * uGain * (1.0 + 0.6 * uKick));
   col += 0.06 * abs(c);
-  o = vec4(col, 1.0);
+  o = vec4(min(col, vec3(1.0)) * 0.8, 1.0);   // ceiling 0.8: the #88 window-mean and L ≥ 0.9 rows hold even if the field saturates
 }`);
 const field = { mass: params.gap, coupling: 0, auto: true, simTime: 0, pending: [] };
 const COLOURS = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
@@ -318,6 +318,11 @@ function kgClear() {
   field.pending = [];
 }
 function splat(x, y, c, a, r = 6) { field.pending.push({ x, y, c, a, r }); }
+// The music's impulses carry no net momentum: a kick of amount a at radius r plus −a/4 at radius 2r. A plain
+// Gaussian kick has a k = 0 part, and at m = 0 that part makes φ grow linearly and pile up mid-field
+// (the edges only drain it slowly); at the drop the mass turned that pile into m²φ² and lit the middle
+// white and flickering (#94: 12 failed the #88 flash and comfort gates). QA's own splat() stays a plain Gaussian.
+function musicSplat(x, y, c, a, r = 6) { splat(x, y, c, a, r); splat(x, y, c, -a / 4, 2 * r); }
 const probeBuf = new Float32Array(4);
 function probe(x, y) {   // φ at one cell (QA)
   gl.bindFramebuffer(gl.FRAMEBUFFER, kg[kgCur].fbo);
@@ -390,13 +395,14 @@ const MODULES = {
     ],
     render(slot, S) {
       const drop = S.drop;
-      field.mass = Number.isFinite(PIN.m) ? PIN.m : (drop ? params.gap : 0);
-      field.coupling = Number.isFinite(PIN.k) ? PIN.k : (drop ? 0.06 : 0);
+      const ramp = drop ? Math.min(1, S.dropPhase * (params.bars - Math.max(1, params.bars - 2)) * params.bpb) : 0;   // gap fades in over 1 beat, not a step (#88 rise gate)
+      field.mass = Number.isFinite(PIN.m) ? PIN.m : params.gap * ramp;
+      field.coupling = Number.isFinite(PIN.k) ? PIN.k : 0.06 * ramp;
       if (field.auto && S.beatEdge) {   // one coloured impulse per beat, bigger on the downbeat
         const c = COLOURS[Math.floor(Math.random() * 3)];
-        splat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), c, S.downbeat ? 1.6 : 1.0, S.downbeat ? 9 : 6);
+        musicSplat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), c, S.downbeat ? 1.6 : 1.0, S.downbeat ? 9 : 6);
       }
-      if (field.auto && S.snareEdge) splat(80 + Math.random() * (N - 160), 80 + Math.random() * (N - 160), COLOURS[Math.floor(Math.random() * 3)], 0.6, 4);
+      if (field.auto && S.snareEdge) musicSplat(80 + Math.random() * (N - 160), 80 + Math.random() * (N - 160), COLOURS[Math.floor(Math.random() * 3)], 0.6, 4);
       kgRun(field.mass, field.coupling);
       gl.bindFramebuffer(gl.FRAMEBUFFER, slot.fbo);
       gl.viewport(0, 0, S.W, S.H);
@@ -644,7 +650,7 @@ function draw(now) {
               buildPhase: Math.min(1, sectionBars / buildBars), dropPhase: drop ? (sectionBars - buildBars) / (params.bars - buildBars) : 0,
               pad: 0.5 - 0.5 * Math.cos(bars / 4 * Math.PI * 2) };
   // the field keeps running underneath even when another scene shows, so it's alive when it fades in
-  if (cur !== 'field' && prev !== 'field') { field.mass = 0; field.coupling = 0; if (field.auto && beatEdge) splat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), COLOURS[beat % 3], 1.0); kgRun(0, 0); }
+  if (cur !== 'field' && prev !== 'field') { field.mass = 0; field.coupling = 0; if (field.auto && beatEdge) musicSplat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), COLOURS[beat % 3], 1.0); kgRun(0, 0); }
   const hasB = renderSlot(1, cur, S);
   const hasA = prev ? renderSlot(0, prev, { ...S, beatEdge: false, snareEdge: false }) : false;
 
