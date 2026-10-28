@@ -42,6 +42,18 @@ How it fits together: one control contract for every scene, an input bus (slider
 
 Rule for every MVP: art first, maths true underneath, a QA truth check, 60 fps at 1440p on the box, and drums drawn ≤ 40 ms after the sound.
 
+## Separate track: real beats (beat sync, #95)
+
+The user calls this **super important**, but it runs on its own track: every scene keeps working on the metronome meanwhile, so nothing in step 1 waits for it. The shared clock gets its beats from a **beat source** instead of the free metronome, and the scenes don't change.
+
+- **Pro DJ Link** (Pioneer CDJs/DJM on Ethernet, protocol reverse-engineered by Deep Symmetry): beat packets announce the next beats and bars ahead of time, with BPM, pitch and beat-in-bar for the downbeat. A small Node bridge (prolink-connect) forwards them to the browser over a local WebSocket.
+- **Ableton Link** for DJ software that speaks it, through Carabiner on the same bridge.
+- **Audio analysis** for local testing and as the fallback: line-in from the mixer, a causal beat/downbeat tracker (BeatNet streaming, aubio as the light option).
+- **Flywheel:** if a source drops, the clock keeps time; sources switch without a visible jump. The metronome stays the last fallback.
+- **Test rig:** annotated test tracks, a recorded CDJ packet capture replayed on the box, and a synthetic beat source.
+
+**Done when:** visual beats land within ±20 ms of the real beat (p95), downbeats are right on ≥ 95% of bars, and a tempo change or track change re-locks within 2 beats.
+
 ## Step 2: audience interaction
 
 Add input from the party: dancers and crowd, through a depth camera with skeleton tracking (Orbbec Femto Bolt, or a used Kinect v2 for a cheap test), a 2D lidar "laser curtain", camera optical flow, or wrist sensors. The research is done (VIZ evangelist reports, 28 Oct); the build comes after step 1.
