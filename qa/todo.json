@@ -468,6 +468,23 @@
     "label": "\u25b6 watch all",
     "href": "/run/13-flow-lab/2026-10-28-0921-pr72-swipe"
    }
+  ],
+  "done": "2026-10-28T10:34:49.832Z"
+ },
+ {
+  "id": "13-rocks-more-fluid",
+  "from": "QA box",
+  "title": "13 Flow Lab: stone rocks with more fluid vs old circles \u2014 swipe, then merge #72",
+  "note": "PR #72 @7877b19 passes all 15 checks (physics unchanged, 60 fps to 4K, sync 9 ms, 0.1 % clipped). 10 wider dye streams at 1.5\u00d7 rate, for your 'Need more fluid coming'. Vs the old circles: lit area 45 % (was 5 %), motion 4.7\u00d7, colour 2.1\u00d7, contrast +29 %. Big jump: check it isn't too busy now. 40 s each.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/13-flow-lab/2026-10-28-1034-pr72-swipe/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/13-flow-lab/2026-10-28-1034-pr72-swipe"
+   }
   ]
  }
 ]
