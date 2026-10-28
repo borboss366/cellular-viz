@@ -9,15 +9,45 @@ The goal (from the user): a visualisation platform for live DJ sets on a powerfu
 The user is in charge ("for now I want to be in charge"): during step 1 the user runs the set live by hand with the controller, choosing, blending and switching scenes. Nothing automatic picks scenes.
 
 1. **Finish the MVPs for all seven Millennium problems.** Remaining: 15 P vs NP and 16 Hodge.
-2. **Controller.** Once the Novation Launch Control XL 3 arrives (the user is waiting for it), build controller support for the visualisations: Web MIDI in Chromium, mapped to each module's ISF-style controls.
-3. **Blending.** With the controller, work further on blending scenes together. The Lenia blends (08, #27–#35) are the proof of concept; fade and screen won round 1.
-4. **Fine-tune from reviews.** Once that's solid, adjust each visualisation (add or remove things) based on the user's grades of how it looks.
+2. **Clock** (see the Clock section below): one shared clock that follows the music, not a per-page metronome.
+3. **Controller.** Once the Novation Launch Control XL 3 arrives (the user is waiting for it), build controller support for the visualisations: Web MIDI in Chromium, mapped to each module's ISF-style controls.
+4. **Blending.** With the controller, work further on blending scenes together. The Lenia blends (08, #27–#35) are the proof of concept; fade and screen won round 1.
+5. **Fine-tune from reviews.** Once that's solid, adjust each visualisation (add or remove things) based on the user's grades of how it looks.
 
 How it fits together: one control contract for every scene, an input bus (sliders and keyboard now, the controller later, sensors in step 2) and a host page that blends scene modules in one WebGL context (design #85). A panic key works in every scene: B blackout, ` calm fallback (#86).
 
 **First set list:** 10–12 scenes, the user picks.
 
-**Step 1 is done when** a recorded 60-minute rehearsal set plays end to end with no crash, at 60 fps with two scenes blended, with every scene reachable from the controller, on the real projector with real mixer audio.
+**Step 1 is done when:**
+- A recorded 60-minute rehearsal set plays end to end on the shared clock, driven by the file beat grids, with:
+  - no crash
+  - 60 fps with two scenes blended
+  - every scene reachable from the controller
+  - the real projector
+- One live-audio test at the mixer: line-in steers the clock, and the beats land on the kick by ear.
+
+### Clock
+
+The brief is `docs/CELLULAR_VIZ_BRIEF_CLOCK.md`; the user decided this order on 28 Oct.
+
+There is **one shared clock module**. The #85 host owns it, and standalone pages use it the same way. Its heart is a metronome that always runs. Every source (a file grid, line-in, Pro DJ Link) only steers its tempo and phase, like a flywheel or PLL. The clock never stops and never jumps. Scenes fire on the **predicted** next beat, so they are never late.
+
+`read()` gains **bars and downbeats** next to beats and phase, because several things fire on the bar: TAKE (#85), the skater tricks (17/19) and 25's phrases.
+
+1. **Files first** (in step 1). Tracks and recorded DJ sets get an offline beat grid, ported from processing-llm's gridder (brief task 3).
+   - The grid **follows tempo changes**. A recorded DJ set changes tempo at every mix, so the brief's single global tempo isn't enough.
+   - The rehearsal set runs on these grids.
+2. **The shared clock module** (`experiments/clock.js`).
+   - `?clock=metronome` is the default, so every existing check stays unchanged: brief task 1, plus task 4's metronome parity (byte-for-byte the same events).
+   - Pages move over one at a time.
+3. **Live audio** (research).
+   - Line-in steers the metronome through processing-llm's PLL (brief task 2).
+   - Hand fixes on the controller: tap, ×2 / ÷2, downbeat ("this is the one") and nudge.
+   - Sync is measured against the waveform, not the schedule (brief task 4). On the box, a fake audio capture feeds known wavs.
+4. **Pro DJ Link** (research).
+   - The user's friend has Pioneer gear to test with; the models aren't known yet.
+   - A Node bridge as in #95.
+   - Record a pcap plus the audio once from his setup, so the box can replay it headless.
 
 ### Millennium Prize problems
 
