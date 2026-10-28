@@ -15,8 +15,10 @@ import { fileURLToPath } from 'node:url';
 import { loadComparisons, nextPair, ranking, savePick, undoPick, setups, comparePage, writeRankingToReport } from './compare.mjs';
 import { loadBuilds } from './builds.mjs';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const repo = path.resolve(here, '..');
+// The data (runs, grades, builds, todo) lives in QA box's working copy, QA_HOME; the code may run from another clone
+// (the viewer service runs main's copy from RUNNER_HOME). Without QA_HOME both are this clone, as before.
+const repo = path.resolve(process.env.QA_HOME || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
+const here = path.join(repo, 'qa');
 const portArg = process.argv.indexOf('--port');
 const port = portArg > 0 ? +process.argv[portArg + 1] : 8787;
 // The Puggie worker container publishes no ports, so the viewer also listens on a Unix

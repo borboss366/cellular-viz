@@ -45,16 +45,18 @@ Unlabelled PRs keep the page checks below.
 
 ## Viewer at :8787 (a service too)
 
-`cellular-viz-viewer.service` runs QA box's `qa/serve.mjs` from QA_HOME through `viewer.sh`, inside the container like
-the runner, with `Restart=always`. `viewer.sh` first stops a viewer started some other way (the old `nohup` one) and
-removes a stale socket, then writes `RUNNER_STATE/viewer.pid`. The socket is `VIEWER_SOCKET`, by default
-`qa-viewer.sock` next to `RUNNER_SOCKET`, so the host's existing :8787 forward keeps working. `update-runner.sh`
-restarts the viewer as well, so a change QA box pushes to `serve.mjs` is live after one update.
+`cellular-viz-viewer.service` only starts and stops the fixed script `qa/runner/viewer.sh` from RUNNER_HOME (main's
+clone) inside the container, with `Restart=always`; the unit holds no logic, so it never changes. `viewer.sh` runs
+main's `qa/serve.mjs` on QA box's data in QA_HOME (`QA_HOME` tells serve.mjs and builds.mjs where the runs, grades and
+builds are), so the viewer only runs merged code. It first stops a viewer started some other way (the old `nohup` one)
+and a stale socket, then writes `RUNNER_STATE/viewer.pid`. The socket is `VIEWER_SOCKET`, by default `qa-viewer.sock`
+next to `RUNNER_SOCKET`, so the host's existing :8787 forward keeps working. `update-runner.sh` restarts the viewer
+as well, so a merged change to `serve.mjs` is live after one update.
 
-Install once on the host (the user), like the runner unit:
+Install once on the host (the user, no sudo), like the runner unit:
 
 ```
-cp qa/runner/cellular-viz-viewer.service ~/.config/systemd/user/
+cp /home/puggie/pi-durable-worker/data/cellular-viz-runner/qa/runner/cellular-viz-viewer.service ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user enable --now cellular-viz-viewer
 ```
 

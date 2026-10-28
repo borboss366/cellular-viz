@@ -15,7 +15,8 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
+// the builds log lives in QA box's working copy (QA_HOME), also when this code runs from another clone (the viewer service)
+const here = path.join(path.resolve(process.env.QA_HOME || path.join(path.dirname(fileURLToPath(import.meta.url)), '..')), 'qa');
 export const FILE = path.join(here, 'builds.json');
 
 export function loadBuilds() {
