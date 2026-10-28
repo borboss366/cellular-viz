@@ -434,7 +434,8 @@
     "label": "\u25b6 watch all",
     "href": "/run/13-flow-lab/2026-10-27-1835-pr69-swipe"
    }
-  ]
+  ],
+  "done": "2026-10-28T08:12:08.380Z"
  },
  {
   "id": "13-rocks",
@@ -449,6 +450,23 @@
    {
     "label": "\u25b6 watch all",
     "href": "/run/13-flow-lab/2026-10-27-1923-pr72-swipe"
+   }
+  ],
+  "done": "2026-10-28T09:37:27.951Z"
+ },
+ {
+  "id": "13-stone-rocks",
+  "from": "QA box",
+  "title": "13 Flow Lab: stone rocks vs old circles \u2014 swipe, then merge #72",
+  "note": "PR #72 @890c798 passes all 15 checks (physics unchanged, 60 fps to 4K, sync 9 ms, 0.25 % clipped). Chipped granite stones with one dye colour per stream. My picture numbers vs the old circles: motion +10 %, lit area about the same, brightness up, but colour still \u221271 % (the grey stones fill space the coloured dye used to). Judge by eye. 40 s each.",
+  "links": [
+   {
+    "label": "\u21c4 compare",
+    "href": "/run/13-flow-lab/2026-10-28-0921-pr72-swipe/compare"
+   },
+   {
+    "label": "\u25b6 watch all",
+    "href": "/run/13-flow-lab/2026-10-28-0921-pr72-swipe"
    }
   ]
  }
