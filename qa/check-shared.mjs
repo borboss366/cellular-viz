@@ -197,9 +197,10 @@ onmessage = e => {
         else if (B[i] - L >= 0.1 && L < 0.8) { D[i] = -1; A[i] = L; tr(i, t, tc, ring, ri); }
       } else if (D[i] > 0) { if (L > A[i]) A[i] = L; else if (A[i] - L >= 0.1 && L < 0.8) { D[i] = -1; A[i] = L; tr(i, t, tc, ring, ri); } }
       else { if (L < A[i]) A[i] = L; else if (L - A[i] >= 0.1 && A[i] < 0.8) { D[i] = 1; A[i] = L; tr(i, t, tc, ring, ri); } }
-      // red transitions (chromaticity undefined on black: those frames keep the anchor)
-      if (L > 0.002) {
-        const u = px[k + 1] / 255 * 0.7, v = px[k + 2] / 255 * 0.7, red = px[k + 3] / 255 >= 0.8 ? 1 : 0;
+      // red transitions; black has no chromaticity, so L < 0.002 counts as the D65 white point (u' .1978, v' .4683):
+      // then a red/black strobe is a red flash (red u'v' is ~0.26 away), as it is to the eye
+      {
+        const dark = L < 0.002, u = dark ? 0.1978 : px[k + 1] / 255 * 0.7, v = dark ? 0.4683 : px[k + 2] / 255 * 0.7, red = !dark && px[k + 3] / 255 >= 0.8 ? 1 : 0;
         if (!rOk[i]) { rOk[i] = 1; rU[i] = u; rV[i] = v; rR[i] = red; }
         else if ((red || rR[i]) && (u - rU[i]) * (u - rU[i]) + (v - rV[i]) * (v - rV[i]) > 0.04) { rU[i] = u; rV[i] = v; rR[i] = red; tr(i, t, rtc, rring, rri); }
       }
