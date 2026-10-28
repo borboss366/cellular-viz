@@ -401,6 +401,7 @@ async function afterBuild(rec, gate, tr) {
   // a ready build with a swipe waits on the user: put it on the grading page (qa/todo.json)
   try {
     const t = addTodo({ qaHome: CFG.qaHome, b, title: rec.title || '' });
+    if (t.error) log(`todo for ${b.id} not added: ${t.error}`);
     if (t.changed) { paths.push('qa/todo.json'); log(`todo ${t.id} added for the user${t.superseded.length ? `; superseded ${t.superseded.join(', ')}` : ''}`); }
   } catch (e) { log(`todo for ${b.id}: ${e.message}`); }
   if (CFG.commit) {

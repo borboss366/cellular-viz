@@ -55,6 +55,24 @@ test('addTodo appends once, counts clips, and leaves hand-made entries alone', (
   assert.equal(read(q).length, 2);
 });
 
+test('a todo.json that does not parse or is not a list is left alone', () => {
+  for (const bad of ['[{"id": "half-writ', '{"id": "x"}']) {
+    const q = home(2), f = path.join(q, 'qa', 'todo.json');
+    fs.writeFileSync(f, bad);
+    const r = addTodo({ qaHome: q, b: build() });
+    assert.equal(r.changed, false);
+    assert.match(r.error, /todo.json unreadable/);
+    assert.equal(fs.readFileSync(f, 'utf8'), bad);   // unchanged
+  }
+});
+
+test('a missing todo.json starts a new list', () => {
+  const q = home(2);
+  fs.rmSync(path.join(q, 'qa', 'todo.json'));
+  assert.equal(addTodo({ qaHome: q, b: build() }).changed, true);
+  assert.equal(read(q).length, 1);
+});
+
 test('a newer build of the same PR supersedes the runner\'s older open entry', () => {
   const q = home(2);
   addTodo({ qaHome: q, b: build() });

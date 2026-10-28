@@ -2,6 +2,10 @@
 // "ready" with a swipe run is waiting on the user, so the runner adds its entry itself (QA box, 28 Oct: #84 16b passed
 // 10/10 and recorded its swipe, but nobody added the entry, so the user never saw it). Older open entries the runner
 // made for the same PR are closed as superseded. Entries added by hand are never touched.
+// The file only starts empty when it doesn't exist: one that doesn't parse (half-written, a merge conflict) or isn't a
+// list is left as it is and nothing is added, so the user's list is never wiped. The viewer also writes this file
+// (marking done); the write here is atomic (tmp + rename), but a done tick that lands between this read and write is
+// lost. That is rare and accepted.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -45,8 +49,9 @@ export function addTodo({ qaHome, b, title = '', at = new Date() }) {
   if (!e) return { changed: false, superseded: [] };
   const file = todoFile(qaHome);
   let list = [];
-  try { list = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
-  if (!Array.isArray(list)) list = [];
+  try { list = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (err) { if (err.code !== 'ENOENT') return { changed: false, superseded: [], error: `todo.json unreadable: ${err.message}` }; }
+  if (!Array.isArray(list)) return { changed: false, superseded: [], error: 'todo.json unreadable: not a list' };
   if (list.some(t => t.id === e.id)) return { changed: false, id: e.id, superseded: [] };
   const superseded = [];
   for (const t of list) {
