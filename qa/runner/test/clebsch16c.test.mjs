@@ -124,19 +124,28 @@ test('truth 6: build-up through Klein\'s six points: 3 / 7 / 15 / 27 real lines,
 });
 
 test('truth 6b: general position of the six points along the schedule\'s paths (complex arithmetic; reported)', () => {
+  // Besides the wall u_k = 0 (the pair collides), each path passes two more degenerate configurations at
+  // |u_k| = φ⁻⁶ ≈ 0.056: three of the six points on a line (u1·u2·u3 = φ⁻⁶) and all six on a conic
+  // (u1·u2·u3 = −φ⁻⁶). Both are nodal cubics right next to the wall, so the wall is the band |u| ≤ φ⁻⁶;
+  // "away from the walls" is |u| ≥ 0.1, and every deep minimum must sit at u = 0 or |u| = φ⁻⁶.
+  const PHI6 = K.PHI ** -6, AWAY = 0.1;
   const report = [];
   for (const k of [0, 1, 2]) {
     let prev = null, prev2 = null, minAway = Infinity;
     for (let i = 0; i <= 4000; i++) {
       const x = -1 + i / 2000, u = [0, 1, 2].map(j => (j < k ? 1 : j === k ? x : -1)), g = K.generalPosition(u), v = Math.min(g.minTriple, g.conic);
-      if (Math.abs(x) >= 0.05) minAway = Math.min(minAway, v);
+      if (Math.abs(x) >= AWAY) minAway = Math.min(minAway, v);
       if (prev && prev2 && prev.v < prev2.v && prev.v <= v && prev.v < 1e-2) report.push({ pair: k + 1, u: prev.x.toFixed(4), minDet: prev.v.toExponential(1), what: prev.g.minTriple < prev.g.conic ? `points ${prev.g.worstTriple} collinear` : 'on a conic' });
       prev2 = prev; prev = { x, v, g };
     }
-    report.push({ pair: k + 1, u: '|u| ≥ 0.05', minDet: minAway.toExponential(1), what: 'smallest |det| away from the wall' });
+    report.push({ pair: k + 1, u: '|u| ≥ 0.1', minDet: minAway.toExponential(1), what: 'smallest |det| away from the walls' });
   }
   console.table(report);
-  for (const r of report.filter(r => r.u === '|u| ≥ 0.05')) assert.ok(+r.minDet > 1e-3, `general position away from the walls (pair ${r.pair}): ${r.minDet}`);
+  for (const r of report.filter(r => r.u === '|u| ≥ 0.1')) assert.ok(+r.minDet > 1e-3, `general position away from the walls (pair ${r.pair}): ${r.minDet}`);
+  for (const r of report.filter(r => r.u !== '|u| ≥ 0.1')) {
+    const a = Math.abs(+r.u);
+    assert.ok(Math.min(a, Math.abs(a - PHI6)) < 2e-3, `degenerate point off the walls (pair ${r.pair}, u = ${r.u}, ${r.what})`);
+  }
 });
 
 test('scheduler: walls at bars 8, 16, 24 (the drop), back down over bar 31; shape holds as 16b', () => {

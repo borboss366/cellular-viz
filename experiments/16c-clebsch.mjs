@@ -166,7 +166,10 @@ for (let i = 0; i < 5; i++) for (let j = i + 1; j < 5; j++) { const e = [0, 0, 0
 export function lineBasis(L) { const e1 = unit(L.P), q = subv(L.Q, scalev(e1, dot(L.Q, e1))); return [e1, unit(q)]; }
 export function distToLine(X, B) { const x = unit(X), r = subv(subv(x, scalev(B[0], dot(x, B[0]))), scalev(B[1], dot(x, B[1]))); return norm(r); }
 export function canon(X) { const x = unit(X); let k = 0; for (let i = 1; i < x.length; i++) if (Math.abs(x[i]) > Math.abs(x[k])) k = i; return x[k] < 0 ? x.map(v => -v) : x; }
-export const samePoint = (X, Y, tol = 1e-6) => norm(subv(canon(X), canon(Y))) < tol;
+// projective equality: X ~ ±Y after normalising. Not via canon(): when two coordinates tie in size with opposite
+// signs, rounding picks a different one for each copy, and the same point came out as both X and −X (the Klein
+// image then counted 12 Eckardt points instead of 10).
+export const samePoint = (X, Y, tol = 1e-6) => { const x = unit(X), y = unit(Y); return Math.min(norm(subv(x, y)), norm(addv(x, y))) < tol; };
 export const transformLine = (H, L) => ({ ...L, P: matVec(H, L.P), Q: matVec(H, L.Q) });
 export function onLine(L, X, tol = 1e-7) { return distToLine(X, lineBasis(L)) < tol; }
 export function sameLine(L1, L2, tol = 1e-7) { const B = lineBasis(L2); return distToLine(L1.P, B) < tol && distToLine(L1.Q, B) < tol; }
