@@ -477,6 +477,9 @@ void main() {
     col = mix(film, curv, uCurv * 0.5) * (0.15 + 0.85 * diff * sh) * ao + spec * sh * 0.8 + film * fres * 0.6;
   }
   col += curv * uKick * 0.12 + vec3(1.0, 0.95, 0.9) * uFlash * 0.3;
+  // near-camera contrast fade: a surface within ~0.5 of the eye fills the frame and sweeps past fast in the
+  // fly-throughs, so its shading detail crossed a 10° window ≥ 4 times a second (flash gate, #104); ease it to a mid tone
+  col = mix(col, vec3(0.24, 0.23, 0.22), 0.7 * (1.0 - smoothstep(0.1, 0.5, length(p - ro))));
   col = vec3(1.0) - exp(-col * 1.4);
   o = vec4(pow(col, vec3(0.92)), 1.0);
 }`);
@@ -500,6 +503,15 @@ function holePoint(st) {   // the middle of the handle's open hole (the point wi
     if (!best || d > best.d) best = { x, d };
   }
   return { pos: [best.x, P.hy, 0], clearance: best.d };
+}
+const PITCH_MAX = Math.sin(72 * Math.PI / 180);
+function capPitch(f, hint) {   // the aim with its pitch clamped to ±72°, heading kept (hint's heading if f is vertical)
+  const fy = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, f[1]));
+  if (fy === f[1]) return f;
+  let hx = f[0], hz = f[2], h = Math.hypot(hx, hz);
+  if (h < 1e-6) { hx = hint[0]; hz = hint[2]; h = Math.hypot(hx, hz) || 1; }
+  const k = Math.sqrt(1 - fy * fy) / h;
+  return [hx * k, fy, hz * k];
 }
 function cameraAt(st) {
   const S = st.S, bars = st.bars, sb = st.sb, center = st.center;
@@ -643,12 +655,13 @@ function draw(now) {
   const cam = cameraAt(st);
   if (cam.mode === 'fly' && prev.mode !== 'fly') logAt('fly', base + st.S - 3, { genus: st.genus }, now);
   prev.genus = st.genus; prev.from = st.from; prev.mode = cam.mode;
-  // genus-change glow: 0.3 s smoothstep attack, 0.6 s linear release (#104: the instant +0.5 white tripped the 0.25-in-100-ms rise gate)
-  { const a = prev.flashAge += dt, x = a / 0.3; prev.flash = a < 0.3 ? x * x * (3 - 2 * x) : Math.max(0, 1 - (a - 0.3) / 0.6); }
+  // genus-change glow: 0.45 s smoothstep attack, 0.6 s linear release (#104: the instant +0.5 white tripped the 0.25-in-100-ms rise gate)
+  { const a = prev.flashAge += dt, x = a / 0.45; prev.flash = a < 0.45 ? x * x * (3 - 2 * x) : Math.max(0, 1 - (a - 0.45) / 0.6); }
   const beat = Math.floor(beats), kickLevel = params.kick[(beat * 4) % 16] === 'x' ? Math.exp(-(beats - beat) * 60 / params.bpm / 0.15) : 0;
 
   const W = canvas.width, H = canvas.height;
-  const fwd = norm3(sub3(cam.at, cam.eye)), right = norm3(cross3(fwd, [0, 1, 0])), up = cross3(right, fwd);
+  // pitch cap ±72°: near vertical, cross(fwd, worldUp) has no stable direction and the roll flips (#104)
+  const fwd = capPitch(norm3(sub3(cam.at, cam.eye)), norm3(sub3(st.center, cam.eye))), right = norm3(cross3(fwd, [0, 1, 0])), up = cross3(right, fwd);
   const P = st.P, w = st.wave;
   const L = w.A * (2 * 0.9 / 0.12 + 0.12 * w.hat * 40 + 0.35 * w.snare * 9);   // a bound on |∇(A·waves)|
   const k = renderK(), useRT = k < 1, RW = useRT ? Math.max(1, Math.round(W * k)) : W, RH = useRT ? Math.max(1, Math.round(H * k)) : H;

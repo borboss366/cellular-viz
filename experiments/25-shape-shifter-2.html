@@ -726,6 +726,9 @@ void main() {
     col = mix(film, curv, uCurv * 0.5) * (0.15 + 0.85 * diff * sh) * ao + spec * sh * 0.8 + film * fres * 0.6;
   }
   col += curv * uKick * 0.12 + vec3(1.0, 0.95, 0.9) * uFlash * 0.3;
+  // near-camera contrast fade: a surface within ~0.5 of the eye fills the frame and sweeps past fast in the
+  // fly-throughs, so its shading detail crossed a 10° window ≥ 4 times a second (flash gate, #104); ease it to a mid tone
+  col = mix(col, vec3(0.24, 0.23, 0.22), 0.7 * (1.0 - smoothstep(0.1, 0.5, length(p - ro))));
   col = vec3(1.0) - exp(-col * 1.4);
   o = vec4(pow(col, vec3(0.92)), 1.0);
 }`);
@@ -926,11 +929,22 @@ function lookAt(bars) {   // the Hann-weighted mean of the raw aims within ±LOO
   }
   return { dir: norm3(s), roll: wsum > 0 ? roll / wsum : 0 };
 }
+// pitch cap ±72°: with the aim near vertical, cross(fwd, worldUp) has no stable direction and the roll flipped
+// (up turned 7805°/s at bars 11.3, 59.4, 91.4, #104). A pure function of the aim, so __qa camera rebuilds stay exact.
+const PITCH_MAX = Math.sin(72 * Math.PI / 180);
+function capPitch(f, hint) {
+  const fy = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, f[1]));
+  if (fy === f[1]) return f;
+  let hx = f[0], hz = f[2], h = Math.hypot(hx, hz);
+  if (h < 1e-6) { hx = hint[0]; hz = hint[2]; h = Math.hypot(hx, hz) || 1; }
+  const k = Math.sqrt(1 - fy * fy) / h;
+  return [hx * k, fy, hz * k];
+}
 function cameraAt(bars) {
   const st = stateAt(bars), { eye, d, pushes, win, plan } = eyeAt(bars, st);
   const ws = skimWeight(bars), look = lookAt(bars), toC = norm3(sub3(st.center, eye));
-  // the filtered aim, kept within the cone (+8°) round the centre as seen from here
-  const fwd = slerpDir(toC, look.dir, 1, lookCone(eye, st, threadWeight(bars, win, plan)) + 8 * DEG), at = add3(eye, fwd);
+  // the filtered aim, kept within the cone (+8°) round the centre as seen from here, pitch capped at ±72°
+  const fwd = capPitch(slerpDir(toC, look.dir, 1, lookCone(eye, st, threadWeight(bars, win, plan)) + 8 * DEG), toC), at = add3(eye, fwd);
   let right = norm3(cross3(fwd, [0, 1, 0])), up = cross3(right, fwd);
   const roll = look.roll * DEG, cr = Math.cos(roll), sr = Math.sin(roll);
   [right, up] = [add3(mul3(right, cr), mul3(up, sr)), sub3(mul3(up, cr), mul3(right, sr))];
@@ -1085,18 +1099,20 @@ function passKey(now) {   // which sweep step this frame is in (null while settl
   if (fixedScale !== k) setRenderScale(k);
   return String(k);
 }
-function passBegin(name) { if (!passes.on) return null; const qy = gl.createQuery(); gl.beginQuery(passes.ext.TIME_ELAPSED_EXT, qy); return [name, qy, passes.key]; }
+function passBegin(name, tag) { if (!passes.on) return null; const qy = gl.createQuery(); gl.beginQuery(passes.ext.TIME_ELAPSED_EXT, qy); return [name, qy, passes.key, tag]; }
 function passEnd(t) { if (!t) return; gl.endQuery(passes.ext.TIME_ELAPSED_EXT); passes.pending.push(t); }
-function passBucket(key) { return passes.by[key] || (passes.by[key] = { vp: null, cpu: [], march: [], blit: [] }); }
+function passBucket(key) { return passes.by[key] || (passes.by[key] = { vp: null, cpu: [], march: [], blit: [], worst: [] }); }
 function passPoll() {
   while (passes.pending.length) {
-    const [name, qy, key] = passes.pending[0];
+    const [name, qy, key, tag] = passes.pending[0];
     if (!gl.getQueryParameter(qy, gl.QUERY_RESULT_AVAILABLE)) break;
     const disjoint = gl.getParameter(passes.ext.GPU_DISJOINT_EXT), ns = gl.getQueryParameter(qy, gl.QUERY_RESULT);
     gl.deleteQuery(qy); passes.pending.shift();
     if (!disjoint) {
       passes[name].push(ns / 1e6); if (passes[name].length > 3600) passes[name].shift();
       if (key) passBucket(key)[name].push(ns / 1e6);
+      // the 3 slowest marches per scale with the bar and camera mode (o/s/t), to see where 25's p95-p99 tail lives
+      if (key && tag && name === 'march') { const w = passBucket(key).worst; w.push([ns / 1e6, tag]); w.sort((a, b) => b[0] - a[0]); w.length = Math.min(w.length, 3); }
     }
   }
 }
@@ -1128,8 +1144,8 @@ function draw(now) {
   const song = st.song;
   if (prev.song !== null && song === 'drop' && prev.song !== 'drop') { const db = 32 * Math.floor(bars / 32) + DROP_BAR; logAt('drop', db, {}, now); if (params.cutOnDrop) logAt('cut', db, {}, now); }
   prev.genus = st.genus; prev.step = st.step.i; prev.win = plan ? win.ph : null; prev.song = song;
-  // genus-change glow: 0.3 s smoothstep attack, 0.6 s linear release (#104: the instant +0.5 white tripped the 0.25-in-100-ms rise gate)
-  { const a = prev.flashAge += dt, x = a / 0.3; prev.flash = a < 0.3 ? x * x * (3 - 2 * x) : Math.max(0, 1 - (a - 0.3) / 0.6); }
+  // genus-change glow: 0.45 s smoothstep attack, 0.6 s linear release (#104: the instant +0.5 white tripped the 0.25-in-100-ms rise gate)
+  { const a = prev.flashAge += dt, x = a / 0.45; prev.flash = a < 0.45 ? x * x * (3 - 2 * x) : Math.max(0, 1 - (a - 0.45) / 0.6); }
   if (prev.fwd && dt > 0) { const ang = Math.acos(Math.max(-1, Math.min(1, dot3(prev.fwd, cam.fwd)))) * 180 / Math.PI / dt; window.__qa.angSpeed = ang; angHistory.push(ang); if (angHistory.length > 3600) angHistory.shift(); }
   prev.fwd = cam.fwd;
   const beat = Math.floor(beats), kickLevel = params.kick[(beat * 4) % 16] === 'x' ? Math.exp(-(beats - beat) * 60 / params.bpm / 0.15) : 0;
@@ -1164,7 +1180,7 @@ function draw(now) {
   const pal = params.palette === 'auto' ? Math.floor(st.ph / 2) % 3 : PALETTES.indexOf(params.palette);
   gl.uniform1i(u.uPal, pal);
   gl.uniform3fv(u.uEye, cam.eye); gl.uniform3fv(u.uFwd, cam.fwd); gl.uniform3fv(u.uRight, cam.right); gl.uniform3fv(u.uUp, cam.up); gl.uniform3fv(u.uCenter, st.center);
-  const tMarch = passBegin('march');
+  const tMarch = passBegin('march', `${bars.toFixed(2)}${cam.mode[0]}`);
   gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
   passEnd(tMarch);
   if (useRT) {   // stretch the rendered corner to the canvas
@@ -1224,7 +1240,7 @@ else if (q('res') || q('scale')) setRenderScale(null);   // ?res=native or a num
 if (q('march') === 'plain') params.march = 'plain';   // A/B: the old plain sphere tracing (no over-relaxation)
 if (q('passes') === '1') { passes.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2'); passes.on = !!passes.ext; }
 Object.defineProperty(window.__qa, 'passes', { enumerable: true, get: () => ({   // the sweep first: check-25's row keeps 600 chars
-  sweep: Object.fromEntries(Object.entries(passes.by).map(([k, b]) => [k, { vp: b.vp, cpu: passStr(b.cpu), march: passStr(b.march), blit: passStr(b.blit) }])),
+  sweep: Object.fromEntries(Object.entries(passes.by).map(([k, b]) => [k, { vp: b.vp, cpu: passStr(b.cpu), march: passStr(b.march), blit: passStr(b.blit), worst: b.worst.map(([ms, t]) => `${ms.toFixed(1)}@${t}`).join(' ') }])),
   on: passes.on, render: passes.render, canvas: passes.canvas,
   cpuMs: passStats(passes.cpu), marchMs: passStats(passes.march), blitMs: passStats(passes.blit) }) });
 Object.assign(window.__qa, { setRenderScale, scales: PERF });   // check-shared reads __qa.scales (#88)
