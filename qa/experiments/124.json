@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "id": "16c-neon-lines",
+  "id": "16-neon-lines",
   "note": "16c 27 Neon Lines (#37 comment 6444942841, 16c): Clebsch cubic ray-cubic film, 27 lasers, 10 Eckardt diamonds, A5 glides (5-cycle on the drop), build-up 3/7/15/27 on 32-bar sections (walls at bars 8, 16, 24 = the drop). Truths 1-6 also run under node (qa/runner/test/clebsch16c.test.mjs). 120 BPM; startBar puts each window on its event.",
   "resolutions": ["1080p", "4k"],
   "warmup": 4,

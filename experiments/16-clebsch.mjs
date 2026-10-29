@@ -1,4 +1,4 @@
-// 16c · 27 Neon Lines: the maths, in float64, shared by the scene (16c-neon-lines.mjs) and node
+// 16c · 27 Neon Lines: the maths, in float64, shared by the scene (16-neon-lines.mjs) and node
 // (qa/runner/test/clebsch16c.test.mjs). Spec: VIZ research, #37 comment 6444942841, section 16c.
 //
 // The Clebsch diagonal cubic in the ℝ³ chart (Wikipedia):

@@ -10,7 +10,7 @@
   is only a 1-beat mirror wipe of the colours. Build-up 3 → 7 → 15 → 27 (auto): Klein's six points in pairs
   c_k ± √u_k·d_k; pair 1 crosses u = 0 at bar 8, pair 2 at bar 16, pair 3 at the drop (bar 24 of 32); each wall is a
   nodal surface where new lines are born as twins (a soft gold flash). Back to 3 over bar 31.
-  The scene is a #85 module (16c-neon-lines.mjs); this page runs it standalone with a metronome. Clock: beats and
+  The scene is a #85 module (16-neon-lines.mjs); this page runs it standalone with a metronome. Clock: beats and
   beats per bar only.
 
   Controls (#85): macro1 shape rate (glide every 8 · 4 · 2 · 1 · ½ bars, as 16b), macro2 laser glow, macro3 lines
@@ -100,7 +100,7 @@
 </script>
 <script src="panic.js"></script>
 <script type="module">
-import scene, { MACROS, TRIGGERS, holdOf, LEVELS, levelOf } from './16c-neon-lines.mjs';
+import scene, { MACROS, TRIGGERS, holdOf, LEVELS, levelOf } from './16-neon-lines.mjs';
 const $ = id => document.getElementById(id);
 const query = new URLSearchParams(location.search);
 const params = { bpm: 120, bpb: 4, muted: false, seed: 1, variant: 'auto', u: null, chart: 'affine', startBar: 0, glides: true, labels: true,
@@ -208,7 +208,7 @@ const controls = () => ({
   colourSpeed: 1, variant: params.variant, u: params.u, chart: params.chart, film: params.film, thickness: params.filmThickness,
   clipRadius: params.clipRadius, diamondSize: params.diamondSize, tails: params.tails, glides: params.glides,
 });
-window.__modules = { '16c-neon-lines': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
+window.__modules = { '16-neon-lines': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
 
 // ---------- canvas, scene ----------
 const canvas = $('c'), ov = $('ov'), hud = $('hud');

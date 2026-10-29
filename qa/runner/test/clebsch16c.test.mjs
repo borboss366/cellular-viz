@@ -1,10 +1,10 @@
 // 16c · 27 Neon Lines: the QA truths of VIZ research's spec (#37 comment 6444942841, 16c), in float64, on the
-// page's own maths (experiments/16c-clebsch.mjs) and scheduler (experiments/16c-neon-lines.mjs). No browser:
+// page's own maths (experiments/16-clebsch.mjs) and scheduler (experiments/16-neon-lines.mjs). No browser:
 // node --test qa/runner/test/*.test.mjs (qa/test-pr.sh runs it). Numbers the spec only asks to report are logged.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as K from '../../../experiments/16c-clebsch.mjs';
-import { autoU, schedStep, holdOf, levelOf, LEVELS } from '../../../experiments/16c-neon-lines.mjs';
+import * as K from '../../../experiments/16-clebsch.mjs';
+import { autoU, schedStep, holdOf, levelOf, LEVELS } from '../../../experiments/16-neon-lines.mjs';
 
 const maxAbs = a => a.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
 

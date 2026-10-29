@@ -1,5 +1,5 @@
 // 16c · 27 Neon Lines: the scene as a #85 module (init / resize / frame / trigger / dispose).
-// Spec: VIZ research, #37 comment 6444942841, section 16c. Maths: 16c-clebsch.mjs (float64, also run by node).
+// Spec: VIZ research, #37 comment 6444942841, section 16c. Maths: 16-clebsch.mjs (float64, also run by node).
 //
 // The Clebsch diagonal cubic is an iridescent soap film, ray-traced exactly: along a ray F is a cubic in t, so the
 // shader fits it from 4 samples inside the clip ball, splits [t0, t1] at the closed-form critical points and refines
@@ -13,7 +13,7 @@
 // crossing u_k = 0 passes a nodal surface and new lines are born as twins (a soft gold flash per wall).
 // The scene reads only beats and beats-per-bar from the clock (bpm is used for the trigger log only).
 
-import * as K from './16c-clebsch.mjs';
+import * as K from './16-clebsch.mjs';
 
 export const HOLDS = [8, 4, 2, 1, 0.5];                       // bars per glide; shapeRate 0 → 8 bars … 1 → ½ bar (as 16b)
 export const holdOf = r => HOLDS[Math.max(0, Math.min(4, Math.round(r * 4)))];
@@ -606,7 +606,7 @@ export function createScene() {
   }
 
   return {
-    id: '16c-neon-lines', title: '16c · 27 Neon Lines',
+    id: '16-neon-lines', title: '16c · 27 Neon Lines',
     init, resize, frame, dispose, press,
     trigger(name) { const i = ['next', 'drop', 'mirror', 'flare'].indexOf(name); return i >= 0 ? press(i + 1) : false; },
     qa: { truths, get view() { return st.view; }, get live() { return st.live; }, get metrics() { return st.metrics; }, get glides() { return st.glides; },
