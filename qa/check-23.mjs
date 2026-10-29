@@ -83,10 +83,12 @@ for (const b of times) {
   const occ = Uint8Array.from(g.occ, ch => ch === '1' ? 1 : 0), t = topo(occ, N);
   res.genus.push({ bars: b, expected: expected(b), ...t, pageGenus: g.pageGenus, h: +g.h.toFixed(4), featureMin: g.featureMin && +g.featureMin.toFixed(4), shape: `${g.from}→${g.to}`, touchesBox: g.touchesBox });
 }
-// Gauss–Bonnet, my own integral at n = 160, a few moments of each family
+// Gauss–Bonnet, my own integral at n = 160, a few moments of each family. Judged with ?bumpAmp=0 (ruling on #56,
+// 26 Oct: the beat bumps add fine curvature that n = 160 can't resolve; the theorem holds on the bare surface).
 res.gb = [];
+const gbPage = await open('bumpAmp=0', [1920, 1080], false);
 for (const b of [3, 9, 18, 24]) {
-  res.gb.push(await page.evaluate(([b, n]) => {
+  res.gb.push(await gbPage.evaluate(([b, n]) => {
     const s = __qa.state(b), c = s.center, L = 1.6, h = 2 * L / n, eps = 2 * h, f = new Float32Array((n + 2) ** 3), m = n + 2;
     for (let i = 0; i < m; i++) for (let j = 0; j < m; j++) for (let k = 0; k < m; k++) f[(i * m + j) * m + k] = __qa.sdf(c[0] - L + (i - 0.5) * h, c[1] - L + (j - 0.5) * h, c[2] - L + (k - 0.5) * h, b);
     const F = (i, j, k) => f[(i * m + j) * m + k];
@@ -108,6 +110,7 @@ for (const b of [3, 9, 18, 24]) {
     return { bars: b, genus: s.genus, mine: sum, minePer4pi: sum / (4 * Math.PI), want: 1 - s.genus, page: pg.totalK / (4 * Math.PI) };
   }, [b, 160]));
 }
+await gbPage.close();
 // camera over the cycle
 res.cam = await page.evaluate(() => { let min = Infinity, at = null, fly = 0, pushed = 0, n = 0;
   for (let b = 0; b < 32; b += 1 / 64) { const c = __qa.camera(b), d = __qa.sdf(...c.eye, b); n++; if (c.mode === 'fly') fly++; if (c.pushes) pushed++; if (d < min) { min = d; at = { bars: +b.toFixed(3), mode: c.mode }; } }
@@ -159,7 +162,7 @@ fs.writeFileSync(path.join(dir, 'check.json'), JSON.stringify({ res, errors, pas
 const ok = v => v ? '✅' : '❌', fmin = Math.min(...G.filter(x => x.featureMin).map(x => x.featureMin));
 fs.writeFileSync(path.join(dir, 'check.md'), `# 23 Shape Shifter check · ${stamp}\n\nEverything below is rebuilt from \`__qa.sdf\` with my own grid code.\n\n| gate | result | detail |\n|---|---|---|\n` +
   `| 1 genus constant except at the drop (my b0 + b2 − χ, n = ${N}, h = ${G[0].h}) | ${ok(pass.genus)} | ${G.length} moments; ${wrong.length} wrong away from the drops${wrong.length ? ' (e.g. bar ' + wrong.slice(0, 4).map(w => `${w.bars}: g ${w.g} want ${w.expected}, ${w.shape}`).join('; ') + ')' : ''} · switches: ${switches.map(s => `${s.from}→${s.to} between bars ${s.between.join(' and ')}`).join(', ')} · thinnest feature ${fmin.toFixed(3)} vs h ${G[0].h} |\n` +
-  `| 2 Gauss–Bonnet ∫K dA = 4π(1 − g), n = 160 (mine, ±5 %) | ${ok(pass.gaussBonnet)} | ${res.gb.map(x => `bar ${x.bars} (g ${x.genus}): mine ${x.minePer4pi.toFixed(3)}·4π, page ${x.page.toFixed(3)}·4π, want ${x.want}`).join(' · ')} |\n` +
+  `| 2 Gauss–Bonnet ∫K dA = 4π(1 − g), n = 160 (mine, ±5 %, bumpAmp=0) | ${ok(pass.gaussBonnet)} | ${res.gb.map(x => `bar ${x.bars} (g ${x.genus}): mine ${x.minePer4pi.toFixed(3)}·4π, page ${x.page.toFixed(3)}·4π, want ${x.want}`).join(' · ')} |\n` +
   `| 3 camera never inside (sdf at the eye, every 1/64 bar) | ${ok(pass.camera)} | min sdf ${res.cam.minSdf.toFixed(3)} at bar ${res.cam.at.bars} (${res.cam.at.mode}) · ${res.cam.flyFrames} fly samples, ${res.cam.pushedFrames} pushed out |\n` +
   `| 4 surgery event on the drop | ${ok(pass.events)} | ${res.sync.special.map(e => `${e.type} bar ${e.bar}`).join(', ')} |\n` +
   `| 5 sync from __qa.events (≤ 40 ms) | ${ok(pass.sync)} | ${Object.entries(res.sync.by).map(([k, v]) => `${k} ${v.median} ms (n ${v.n})`).join(' · ')} |\n` +
