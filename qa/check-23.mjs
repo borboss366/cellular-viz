@@ -108,19 +108,19 @@ for (const b of [3, 9, 18, 24]) {
       sum += K * w; sumAbs += Math.abs(K) * w;
     }
     const pg = __qa.totalK(160, b);
-    const mf = typeof __qa.minFeature === 'function' ? __qa.minFeature(b) : null;
+    const hook = typeof __qa.minFeature === 'function', mf = hook ? __qa.minFeature(b) : null;   // null from the hook = no thin feature at this bar
     return { bars: b, genus: s.genus, mine: sum, minePer4pi: sum / (4 * Math.PI), absPer4pi: sumAbs / (4 * Math.PI), want: 1 - s.genus, page: pg.totalK / (4 * Math.PI),
-      h, minFeature: Number.isFinite(mf) ? mf : null };
+      h, hook, minFeature: Number.isFinite(mf) ? mf : null };
   }, [b, 160]));
 }
 await gbPage.close();
 // verdicts, ruling on #56 (VIZ research, 29 Oct, comment 6493806554):
 //  wrong genus (any frame): |∫K/4π − (1−g)| ≥ 0.5 → ❌
-//  resolved frame (__qa.minFeature(b) ≥ 2h; without the hook only genus 0 counts as resolved):
+//  resolved frame (__qa.minFeature(b) ≥ 2h, or null = no thin feature; without the hook only genus 0 counts as resolved):
 //    |∫K − 4π(1−g)| ≤ 0.05·∫|K| dA → ✅ else ❌ · unresolved → ⚠️ · every genus in the run needs ≥ 1 resolved frame, else ⚠️
 for (const x of res.gb) {
   const err = Math.abs(x.minePer4pi - x.want);
-  x.resolved = x.minFeature != null ? x.minFeature >= 2 * x.h : x.genus === 0;
+  x.resolved = !x.hook ? x.genus === 0 : x.minFeature == null ? true : x.minFeature >= 2 * x.h;
   x.verdict = err >= 0.5 ? 'wrong genus' : !x.resolved ? 'unresolved' : err <= 0.05 * x.absPer4pi ? 'ok' : 'off';
 }
 const gbGenera = [...new Set(res.gb.map(x => x.genus))], gbUncovered = gbGenera.filter(g => !res.gb.some(x => x.genus === g && x.resolved));
@@ -175,7 +175,7 @@ fs.writeFileSync(path.join(dir, 'check.json'), JSON.stringify({ res, errors, pas
 const ok = v => v === 'warn' ? '⚠️' : v ? '✅' : '❌', fmin = Math.min(...G.filter(x => x.featureMin).map(x => x.featureMin));
 fs.writeFileSync(path.join(dir, 'check.md'), `# 23 Shape Shifter check · ${stamp}\n\nEverything below is rebuilt from \`__qa.sdf\` with my own grid code.\n\n| gate | result | detail |\n|---|---|---|\n` +
   `| 1 genus constant except at the drop (my b0 + b2 − χ, n = ${N}, h = ${G[0].h}) | ${ok(pass.genus)} | ${G.length} moments; ${wrong.length} wrong away from the drops${wrong.length ? ' (e.g. bar ' + wrong.slice(0, 4).map(w => `${w.bars}: g ${w.g} want ${w.expected}, ${w.shape}`).join('; ') + ')' : ''} · switches: ${switches.map(s => `${s.from}→${s.to} between bars ${s.between.join(' and ')}`).join(', ')} · thinnest feature ${fmin.toFixed(3)} vs h ${G[0].h} |\n` +
-  `| 2 Gauss–Bonnet ∣∫K − 4π(1 − g)∣ ≤ 0.05·∫∣K∣ on resolved frames (minFeature ≥ 2h), never the wrong genus; n = 160, bumpAmp=0 | ${ok(pass.gaussBonnet)} | ${res.gb.map(x => `bar ${x.bars} (g ${x.genus}): mine ${x.minePer4pi.toFixed(3)}·4π, page ${x.page.toFixed(3)}·4π, ∫∣K∣ ${x.absPer4pi.toFixed(2)}·4π, want ${x.want}, minFeature/h ${x.minFeature != null ? (x.minFeature / x.h).toFixed(2) : 'no hook'} → ${x.verdict}`).join(' · ')}${gbUncovered.length ? ` · no resolved sample for g ${gbUncovered.join(', ')}` : ''} |\n` +
+  `| 2 Gauss–Bonnet ∣∫K − 4π(1 − g)∣ ≤ 0.05·∫∣K∣ on resolved frames (minFeature ≥ 2h), never the wrong genus; n = 160, bumpAmp=0 | ${ok(pass.gaussBonnet)} | ${res.gb.map(x => `bar ${x.bars} (g ${x.genus}): mine ${x.minePer4pi.toFixed(3)}·4π, page ${x.page.toFixed(3)}·4π, ∫∣K∣ ${x.absPer4pi.toFixed(2)}·4π, want ${x.want}, minFeature/h ${!x.hook ? 'no hook' : x.minFeature != null ? (x.minFeature / x.h).toFixed(2) : 'none thin'} → ${x.verdict}`).join(' · ')}${gbUncovered.length ? ` · no resolved sample for g ${gbUncovered.join(', ')}` : ''} |\n` +
   `| 3 camera never inside (sdf at the eye, every 1/64 bar) | ${ok(pass.camera)} | min sdf ${res.cam.minSdf.toFixed(3)} at bar ${res.cam.at.bars} (${res.cam.at.mode}) · ${res.cam.flyFrames} fly samples, ${res.cam.pushedFrames} pushed out |\n` +
   `| 4 surgery event on the drop | ${ok(pass.events)} | ${res.sync.special.map(e => `${e.type} bar ${e.bar}`).join(', ')} |\n` +
   `| 5 sync from __qa.events (≤ 40 ms) | ${ok(pass.sync)} | ${Object.entries(res.sync.by).map(([k, v]) => `${k} ${v.median} ms (n ${v.n})`).join(' · ')} |\n` +

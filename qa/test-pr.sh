@@ -1,6 +1,7 @@
 #!/bin/sh
 # Test a runner PR before it is merged, in a scratch clone at /tmp/test-pr: the runner's unit tests
-# (node --test qa/runner/test/*.test.mjs) and a syntax check (node --check) of every qa/runner/*.mjs file, then a
+# (node --test qa/runner/test/*.test.mjs) and a syntax check (node --check) of every qa/runner/*.mjs and qa/*.mjs file
+# (the check scripts too: check-shared runs after every page build), then a
 # one-line summary. Writes nothing to the QA tree, the runner clone or GitHub. No arguments; the PR is
 #   1. the number in ~/.cache/cellular-viz-runner/test-pr (or $TEST_PR_FILE), written by QA box's file tool, else
 #   2. the newest open PR labelled runner-test (gh, the box's login).
@@ -68,9 +69,9 @@ echo "at $(git -C "$DIR" log -1 --format='%h %s')"
 cd "$DIR" || exit 2
 
 FAIL=0
-echo "== node --check qa/runner/*.mjs"
+echo "== node --check qa/runner/*.mjs qa/*.mjs"
 CHECKED=0
-for f in qa/runner/*.mjs; do
+for f in qa/runner/*.mjs qa/*.mjs; do
   [ -f "$f" ] || continue
   CHECKED=$((CHECKED + 1))
   node --check "$f" || { echo "syntax error: $f"; FAIL=1; }
