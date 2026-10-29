@@ -596,8 +596,9 @@ function draw(now) {
   resize();
   const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
   const L = metronome.read();
-  const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * params.bpm / 60);
+  const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * params.bpm / 60) + (window.__qaShift || 0) * params.bpb;   // __qaShift (bars): forceDrop moves the clock (QA, #88)
   const bars = beats / params.bpb, barSec = 60 / params.bpm * params.bpb;
+  window.__qaNowBars = bars;
   const k = Math.floor(bars / params.bars), sb = bars - k * params.bars, build = Math.max(1, params.bars - 2), drop = sb >= build;
   const tNow = bars * barSec;   // musical seconds
 
@@ -729,6 +730,8 @@ function draw(now) {
   }
 }
 
+// QA (#88): the drop is the last 2 bars of each section; __qa.forceDrop() (panic.js) jumps the clock to the next one
+window.__qaNextDrop = b => window.__qaSectionDrop(b, params.bars, Math.max(1, params.bars - 2));
 window.__qa = {
   errors, events, get curveLog() { return curve.log.slice(); }, get pinchHistory() { return pinch.history.slice(); },
   areaOf, lengthOf, crossings, get polygon() { return curve.P ? curve.P.map(p => p.slice()) : null; },

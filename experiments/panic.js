@@ -63,3 +63,27 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
+
+// QA drop hook (#88): the shared GPU and flash checks call __qa.forceDrop() so their windows include a drop.
+// A page with a musical drop sets window.__qaNextDrop(bars) → the bar its next drop starts at, adds
+// window.__qaShift (bars) to its clock and writes window.__qaNowBars each frame; forceDrop() then moves the
+// clock to that bar and returns it (false on a page without a drop hook). Visual clock only: the metronome's
+// sound is not moved, so this is for checks, not for a set.
+(() => {
+  window.__qaShift = window.__qaShift || 0;
+  // next drop in sections of S bars whose drop starts at bar d of the section (the next section's if already in it)
+  window.__qaSectionDrop = (b, S, d) => { const k = Math.floor(b / S); return b - k * S < d ? k * S + d : (k + 1) * S + d; };
+  const attach = () => {
+    if (typeof window.__qaNextDrop !== 'function') return;
+    const qa = window.__qa || (window.__qa = {});
+    if (qa.forceDrop) return;
+    qa.forceDrop = () => {
+      const b = window.__qaNowBars, t = Number.isFinite(b) ? window.__qaNextDrop(b) : NaN;
+      if (!Number.isFinite(t) || t < b) return false;
+      window.__qaShift += t - b;
+      return t;
+    };
+  };
+  attach();
+  requestAnimationFrame(attach);   // a page that builds window.__qa later still gets it
+})();

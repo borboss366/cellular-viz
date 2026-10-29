@@ -985,6 +985,9 @@ function draw(now) {
 }
 
 window.__qa = {
+  // #88: the adaptive solver aims at 10–13 ms of GPU time, over the 7 ms blend budget by design, so 13 runs
+  // solo-only (gated at p95 ≤ 14 ms) until it gets a gpuTargetMs setting and __qa.perf
+  soloOnly: true,
   errors, events, divergenceRMS, dyeMass, probe, sheddingHz, St: ST,
   get wake() { return st.wake.slice(); }, get massLog() { return st.massLog.slice(); },
   set(p) { for (const [k, v] of Object.entries(p)) { if (k in BASE) { st.cur.params[k] = v; if (st.next) st.next.params[k] = v; } else if (k in settings) settings[k] = v; } sync(); },

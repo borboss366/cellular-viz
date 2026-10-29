@@ -241,6 +241,14 @@ const kg = [0, 1].map(() => {   // ping-pong: φ and φ_t in one framebuffer (tw
   return { phi, vel, fbo };
 });
 let kgCur = 0;
+const tone = [0, 1].map(() => {   // ping-pong for the time-smoothed field colour (fieldTone)
+  const tex = floatTex(N, N), fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 1]);
+  return { tex, fbo };
+});
+let toneCur = 0, toneLast = 0;
 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 const kgStep = program(`#version 300 es
 precision highp float;
@@ -267,23 +275,36 @@ void main() {
   vec3 nc = (c + uDt * v) * mix(0.92, 1.0, edge);         // symplectic Euler: velocity first
   oPhi = vec4(nc, 1.0); oVel = vec4(v, 1.0);
 }`);
+// The field's colour is low-passed over time (τ = 170 ms) on the N×N grid before it is drawn. With the gap on, φ
+// rings at ω ≈ m, about 0.7 rad per frame, so the gradient part of the energy and the edges of each colour blob
+// flickered at ~13 Hz; a red blob against the dark failed the #88 red-flash row (#94, 29 Oct, 27 % of a window).
+// The beat still shows: the kick envelope (150 ms) and the 2 Hz splats pass the filter.
+const fieldTone = program(`#version 300 es
+precision highp float;
+uniform sampler2D uPhi, uVel, uPrev;
+uniform float uM2, uKick, uGain, uA;
+in vec2 vUv;
+out vec4 o;
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy), s = textureSize(uPhi, 0) - 1;
+  vec3 c = texelFetch(uPhi, p, 0).rgb, v = texelFetch(uVel, p, 0).rgb;
+  vec3 gx = (texelFetch(uPhi, min(p + ivec2(1, 0), s), 0).rgb - texelFetch(uPhi, max(p - ivec2(1, 0), ivec2(0)), 0).rgb) * 0.5;
+  vec3 gy = (texelFetch(uPhi, min(p + ivec2(0, 1), s), 0).rgb - texelFetch(uPhi, max(p - ivec2(0, 1), ivec2(0)), 0).rgb) * 0.5;
+  vec3 e = 0.5 * (v * v + gx * gx + gy * gy + uM2 * c * c);   // energy density per colour
+  vec3 col = 1.0 - exp(-e * uGain * (1.0 + 0.6 * uKick));
+  col = min(col + 0.06 * abs(c), vec3(1.0));
+  o = vec4(mix(texelFetch(uPrev, p, 0).rgb, col, uA), 1.0);   // exponential moving average
+}`);
 const fieldDraw = program(`#version 300 es
 precision highp float;
-uniform sampler2D uPhi, uVel;
-uniform float uM2, uKick, uAspect, uGain;
+uniform sampler2D uTone;
+uniform float uAspect;
 in vec2 vUv;
 out vec4 o;
 void main() {
   vec2 uv = vec2((vUv.x - 0.5) * uAspect + 0.5, vUv.y);   // square field, centred
   if (uv.x < 0.0 || uv.x > 1.0) { o = vec4(0.0, 0.0, 0.0, 1.0); return; }
-  vec2 tx = 1.0 / vec2(textureSize(uPhi, 0));
-  vec3 c = texture(uPhi, uv).rgb, v = texture(uVel, uv).rgb;
-  vec3 gx = (texture(uPhi, uv + vec2(tx.x, 0.0)).rgb - texture(uPhi, uv - vec2(tx.x, 0.0)).rgb) * 0.5;
-  vec3 gy = (texture(uPhi, uv + vec2(0.0, tx.y)).rgb - texture(uPhi, uv - vec2(0.0, tx.y)).rgb) * 0.5;
-  vec3 e = 0.5 * (v * v + gx * gx + gy * gy + uM2 * c * c);   // energy density per colour
-  vec3 col = 1.0 - exp(-e * uGain * (1.0 + 0.6 * uKick));
-  col += 0.06 * abs(c);
-  o = vec4(col, 1.0);
+  o = vec4(texture(uTone, uv).rgb * 0.8, 1.0);   // ceiling 0.8: the #88 window-mean and L ≥ 0.9 rows hold even if the field saturates
 }`);
 const field = { mass: params.gap, coupling: 0, auto: true, simTime: 0, pending: [] };
 const COLOURS = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
@@ -318,6 +339,11 @@ function kgClear() {
   field.pending = [];
 }
 function splat(x, y, c, a, r = 6) { field.pending.push({ x, y, c, a, r }); }
+// The music's impulses carry no net momentum: a kick of amount a at radius r plus −a/4 at radius 2r. A plain
+// Gaussian kick has a k = 0 part, and at m = 0 that part makes φ grow linearly and pile up mid-field
+// (the edges only drain it slowly); at the drop the mass turned that pile into m²φ² and lit the middle
+// white and flickering (#94: 12 failed the #88 flash and comfort gates). QA's own splat() stays a plain Gaussian.
+function musicSplat(x, y, c, a, r = 6) { splat(x, y, c, a, r); splat(x, y, c, -a / 4, 2 * r); }
 const probeBuf = new Float32Array(4);
 function probe(x, y) {   // φ at one cell (QA)
   gl.bindFramebuffer(gl.FRAMEBUFFER, kg[kgCur].fbo);
@@ -390,24 +416,36 @@ const MODULES = {
     ],
     render(slot, S) {
       const drop = S.drop;
-      field.mass = Number.isFinite(PIN.m) ? PIN.m : (drop ? params.gap : 0);
-      field.coupling = Number.isFinite(PIN.k) ? PIN.k : (drop ? 0.06 : 0);
+      const ramp = drop ? Math.min(1, S.dropPhase * (params.bars - Math.max(1, params.bars - 2)) * params.bpb) : 0;   // gap fades in over 1 beat, not a step (#88 rise gate)
+      field.mass = Number.isFinite(PIN.m) ? PIN.m : params.gap * ramp;
+      field.coupling = Number.isFinite(PIN.k) ? PIN.k : 0.06 * ramp;
       if (field.auto && S.beatEdge) {   // one coloured impulse per beat, bigger on the downbeat
         const c = COLOURS[Math.floor(Math.random() * 3)];
-        splat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), c, S.downbeat ? 1.6 : 1.0, S.downbeat ? 9 : 6);
+        musicSplat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), c, S.downbeat ? 1.6 : 1.0, S.downbeat ? 9 : 6);
       }
-      if (field.auto && S.snareEdge) splat(80 + Math.random() * (N - 160), 80 + Math.random() * (N - 160), COLOURS[Math.floor(Math.random() * 3)], 0.6, 4);
+      if (field.auto && S.snareEdge) musicSplat(80 + Math.random() * (N - 160), 80 + Math.random() * (N - 160), COLOURS[Math.floor(Math.random() * 3)], 0.6, 4);
       kgRun(field.mass, field.coupling);
+      // colour on the grid, smoothed over 170 ms (frame-rate independent; a long gap starts fresh)
+      const tdt = toneLast ? Math.max(0, S.now - toneLast) : 1e9; toneLast = S.now;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, tone[1 - toneCur].fbo);
+      gl.viewport(0, 0, N, N);
+      gl.useProgram(fieldTone.p);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, kg[kgCur].phi);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, kg[kgCur].vel);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, tone[toneCur].tex);
+      gl.uniform1i(fieldTone.u.uPhi, 0); gl.uniform1i(fieldTone.u.uVel, 1); gl.uniform1i(fieldTone.u.uPrev, 2);
+      gl.uniform1f(fieldTone.u.uM2, field.mass * field.mass);
+      gl.uniform1f(fieldTone.u.uKick, S.L.kick);
+      gl.uniform1f(fieldTone.u.uGain, 60);
+      gl.uniform1f(fieldTone.u.uA, tdt > 500 ? 1 : 1 - Math.exp(-tdt / 170));
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      toneCur = 1 - toneCur;
       gl.bindFramebuffer(gl.FRAMEBUFFER, slot.fbo);
       gl.viewport(0, 0, S.W, S.H);
       gl.useProgram(fieldDraw.p);
-      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, kg[kgCur].phi);
-      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, kg[kgCur].vel);
-      gl.uniform1i(fieldDraw.u.uPhi, 0); gl.uniform1i(fieldDraw.u.uVel, 1);
-      gl.uniform1f(fieldDraw.u.uM2, field.mass * field.mass);
-      gl.uniform1f(fieldDraw.u.uKick, S.L.kick);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tone[toneCur].tex);
+      gl.uniform1i(fieldDraw.u.uTone, 0);
       gl.uniform1f(fieldDraw.u.uAspect, S.W / S.H);
-      gl.uniform1f(fieldDraw.u.uGain, 60);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       const c = slot.ctx; c.clearRect(0, 0, S.W, S.H);
       c.font = font(S.H / 26, 700); c.textAlign = 'left';
@@ -625,7 +663,8 @@ function frame(now) {
 function draw(now) {
   resize();
   const L = metronome.read();
-  const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb);
+  const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb) + (window.__qaShift || 0);   // __qaShift: forceDrop moves the clock (QA, #88)
+  window.__qaNowBars = bars;
   const beat = Math.floor(bars * params.bpb);
   const beatEdge = beat !== lastBeat, downbeat = beatEdge && beat % params.bpb === 0;
   lastBeat = beat;
@@ -643,7 +682,7 @@ function draw(now) {
               buildPhase: Math.min(1, sectionBars / buildBars), dropPhase: drop ? (sectionBars - buildBars) / (params.bars - buildBars) : 0,
               pad: 0.5 - 0.5 * Math.cos(bars / 4 * Math.PI * 2) };
   // the field keeps running underneath even when another scene shows, so it's alive when it fades in
-  if (cur !== 'field' && prev !== 'field') { field.mass = 0; field.coupling = 0; if (field.auto && beatEdge) splat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), COLOURS[beat % 3], 1.0); kgRun(0, 0); }
+  if (cur !== 'field' && prev !== 'field') { field.mass = 0; field.coupling = 0; if (field.auto && beatEdge) musicSplat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), COLOURS[beat % 3], 1.0); kgRun(0, 0); }
   const hasB = renderSlot(1, cur, S);
   const hasA = prev ? renderSlot(0, prev, { ...S, beatEdge: false, snareEdge: false }) : false;
 
@@ -669,6 +708,8 @@ function draw(now) {
   }
 }
 
+// QA (#88): the drop is the last 2 bars of each section; __qa.forceDrop() (panic.js) jumps the clock to the next one
+window.__qaNextDrop = b => window.__qaSectionDrop(b, params.bars, Math.max(1, params.bars - 2));
 window.__qa = {
   N, DT, SUBSTEPS, probe, splat, clear: kgClear, errors,
   setAuto(on) { field.auto = !!on; }, setMass(m) { PIN.m = m; }, setCoupling(k) { PIN.k = k; },
