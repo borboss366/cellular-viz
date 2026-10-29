@@ -281,6 +281,11 @@ res.chromium = browser.version();
 if (only !== 'flash') {
   const page = await open('');
   await page.waitForTimeout(WARM * 1000);
+  // GPU shader clock during the measured windows (amdgpu pp_dpm_sclk, the line marked *), every 250 ms: the timer reads
+  // time at whatever clock power management picked (power_dpm_force_performance_level), not time at full clock
+  const SCLK = '/sys/class/drm/card0/device/pp_dpm_sclk', clk = [];
+  const sclk = () => { try { const l = fs.readFileSync(SCLK, 'utf8').split('\n').find(s => s.includes('*')); const m = l && l.match(/(\d+)\s*Mhz/i); if (m) clk.push(+m[1]); } catch {} };
+  const clkTimer = setInterval(sclk, 250);
   res.perf = await page.evaluate(async secs => {
     const S = window.__qaShared; S.start();
     const qa = window.__qa || {}; let drop = null;
@@ -316,6 +321,9 @@ if (only !== 'flash') {
     return { method: S.method, bits: S.bits, disjoint: S.disjoint, canvas: S.canvas, dpr: devicePixelRatio, soloOnly: !!(window.__qa && window.__qa.soloOnly),
       gpu: [...byFrame.values()], modules, dt, drop, hook: typeof qa.forceDrop === 'function', pageGpuMs: window.__qa && window.__qa.gpuMs, secs, scales, setScale, blend };
   }, SECS);
+  clearInterval(clkTimer);
+  try { res.perf.dpmLevel = fs.readFileSync('/sys/class/drm/card0/device/power_dpm_force_performance_level', 'utf8').trim(); } catch { res.perf.dpmLevel = null; }
+  res.perf.sclk = clk.length ? Object.entries(clk.reduce((a, v) => (a[v] = (a[v] || 0) + 1, a), {})).sort((a, b) => +a[0] - +b[0]).map(([mhz, n]) => [+mhz, +(100 * n / clk.length).toFixed(1)]) : null;
   const p = res.perf, mods = p.modules ? p.modules.map(m => ({ module: m.module, method: m.method, n: m.gpuMs.length, p50: q(m.gpuMs, 0.5), p95: q(m.gpuMs, 0.95), p99: q(m.gpuMs, 0.99) })) : null;
   p.stats = { n: p.gpu.length, p50: q(p.gpu, 0.5), p95: q(p.gpu, 0.95), p99: q(p.gpu, 0.99), modules: mods,
     raf: { n: p.dt.length, p50: q(p.dt, 0.5), p95: q(p.dt, 0.95), p99: q(p.dt, 0.99), over20: p.dt.filter(x => x > 20).length, over: p.dt.filter(x => x > 17.5).length, overPct: +(100 * p.dt.filter(x => x > 17.5).length / Math.max(1, p.dt.length)).toFixed(2), fps: +(1000 * p.dt.length / Math.max(1, p.dt.reduce((a, b) => a + b, 0))).toFixed(1) },
@@ -394,6 +402,7 @@ if (res.perf) {
   if (!p.hook && legacy) add('__qa.forceDrop() puts a drop inside the measured 60 s', 'warn', 'hook missing (page from before #88)');
   else add('__qa.forceDrop() puts a drop inside the measured 60 s', p.drop === 'forceDrop', p.drop ? `__qa.${p.drop}() at 20 s` : 'no __qa.forceDrop hook (required by #88 for new scenes)');
   add('pair gate (50/50 with the heaviest scene)', null, 'waits for the #85 host: two modules in one context');
+  add('GPU clock during the measured windows (report-only)', null, p.sclk ? `${p.sclk.map(([m, pc]) => `${m} MHz ${pc} %`).join(' · ')} · power_dpm_force_performance_level ${p.dpmLevel ?? '–'}` : 'pp_dpm_sclk not readable');
   add('timer query bits', null, p.bits ? `TIMESTAMP ${p.bits.stamp ?? p.bits.err} · TIME_ELAPSED ${p.bits.elapsed ?? '–'}` : 'extension not available');
 }
 if (res.flash) {
