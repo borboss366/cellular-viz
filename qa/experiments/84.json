@@ -1,12 +1,13 @@
 {
   "version": 1,
   "id": "16-hodge-kaleidoscope",
-  "note": "16b Hodge Kaleidoscope round 2 (#84 comment 6481396559, the user's grade: change shapes faster, speed on the controller). shapeRate holds 8/4/2/1/½ bars (default 2), morph min(1 bar, hold/2) from the beat with a +6 % pop, trigger() on the next beat, auto walks a 15-step dimension-alternating cycle. Truths 1-5 as round 1; 6, 8, 9, 10 on the scheduler at every step (frame-exact simulation of the page's own code) plus the live log; 7 morph sync; 11 truths 1-5 on every settled preset; 12 flash via the shared gates.",
+  "note": "16b Hodge Kaleidoscope round 2 (#84 comment 6481396559, the user's grade: change shapes faster, speed on the controller). shapeRate holds 8/4/2/1/½ bars (default ½ bar since the round-2 grades), morph min(1 bar, hold/2) from the beat with a +6 % pop, trigger() on the next beat, auto walks a 15-step dimension-alternating cycle. Truths 1-5 as round 1; 6, 8, 9, 10 on the scheduler at every step (frame-exact simulation of the page's own code) plus the live log; 7 morph sync; 11 truths 1-5 on every settled preset; 12 flash via the shared gates.",
   "resolutions": ["1080p", "4k"],
   "warmup": 4,
   "seconds": 12,
   "variants": [
     { "name": "auto", "params": {} },
+    { "name": "hold2", "params": { "hold": 2 } },
     { "name": "fastest", "params": { "hold": 0.5, "bpm": 140 } },
     { "name": "trigger-kick", "params": { "autoTrigger": 3 } },
     { "name": "k3-flat", "params": { "preset": "k3", "bands": "flat" } },
@@ -59,7 +60,6 @@
     { "metric": "clip", "max": 1, "name": "no white blobs: ≤ 1 % pixels clipped" }
   ],
   "record": { "stills": 2 },
-  "swipe": { "vs": "2fcb554", "seconds": 40, "warmup": 4, "variants": ["auto", "fastest", "trigger-kick"] },
   "debug": {
     "console": true,
     "screenshotAt": [2, 8],

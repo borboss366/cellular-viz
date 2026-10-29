@@ -19,7 +19,7 @@
   Motion: the tiling turns once per 32 bars, breathes (1 ± 0.02 per bar) and leaves oil trails
   (previous frame × 0.96, zoom 1.002, turn 0.1°).
   Shape rate (round 2, #84 comment 6481396559): each shape is held 8 · 4 · 2 · 1 · ½ bars (shapeRate 0–1
-  snaps to these; default 2 bars), counted in clock beats. The morph is min(1 bar, hold/2), starts on a beat
+  snaps to these; default ½ bar, the user's pick in the round-2 grades: "I like the fastest one"), counted in clock beats. The morph is min(1 bar, hold/2), starts on a beat
   (a downbeat when the hold is ≥ 1 bar), old gems shrink as the new ones grow, the numbers crossfade, and
   the gems pop +6 % on the beat with a 140 ms tail. trigger() jumps to the next shape on the next beat.
   auto walks a 15-step cycle that changes dimension every step (no repeats, no two curves in a row).
@@ -121,7 +121,7 @@ const AUTO = [['curve', 1], ['k3', 0], ['curve', 4], ['quintic', 0], ['abelian',
   ['k3', 0], ['curve', 0], ['quintic', 0], ['curve', 3], ['abelian', 0], ['curve', 5], ['mirror', 0]];
 const HOLDS = [8, 4, 2, 1, 0.5];   // bars per shape; shapeRate 0 → 8 bars … 1 → ½ bar
 const holdOf = rate => HOLDS[Math.max(0, Math.min(4, Math.round(rate * 4)))];
-const params = { preset: 'auto', genus: 2, bpm: 120, bpb: 4, shapeRate: 0.5, autoTrigger: 0, spin: 1, tileRadius: 1.6, goldBoost: 1,
+const params = { preset: 'auto', genus: 2, bpm: 120, bpb: 4, shapeRate: 1, autoTrigger: 0, spin: 1, tileRadius: 1.6, goldBoost: 1,
   trail: 0.96, floor: 0.3, bands: 'audio', labels: true, muted: false, bandGains: [1, 1, 1, 1, 1, 1, 1],
   kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 
@@ -620,7 +620,7 @@ window.__modules = { 'hodge-kaleidoscope': {
   macros: { macro1: 'shapeRate', macro2: 'spin', macro3: 'tileRadius', macro4: 'trail' },
   actions: { trigger: 'next shape on the next beat' },
   inputs: [
-    { name: 'shapeRate', type: 'float', default: 0.5, min: 0, max: 1, snap: HOLDS.map((h, i) => ({ value: i / 4, holdBars: h })) },
+    { name: 'shapeRate', type: 'float', default: 1, min: 0, max: 1, snap: HOLDS.map((h, i) => ({ value: i / 4, holdBars: h })) },
     { name: 'spin', type: 'float', default: 1, min: -2, max: 2 },
     { name: 'tileRadius', type: 'float', default: 1.6, min: 0.6, max: 4 },
     { name: 'trail', type: 'float', default: 0.96, min: 0, max: 0.98 },
@@ -638,7 +638,9 @@ function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = Math.min(3840, Math.round(canvas.clientWidth * dpr)), h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-  const ow = Math.round(canvas.clientWidth * Math.min(dpr, 1.5)), oh = Math.round(canvas.clientHeight * Math.min(dpr, 1.5));
+  // the numbers overlay is redrawn every frame: at most 1920 px wide (CSS scales it), a 4K 2D canvas cost slow frames
+  const os = Math.min(Math.min(dpr, 1.5), 1920 / Math.max(1, canvas.clientWidth));
+  const ow = Math.round(canvas.clientWidth * os), oh = Math.round(canvas.clientHeight * os);
   if (ov.width !== ow || ov.height !== oh) { ov.width = ow; ov.height = oh; }
 }
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastNow = 0;
@@ -680,9 +682,12 @@ function draw(now) {
 
   // shapes: held shapeRate's hold on the beat grid, morph min(1 bar, hold/2) from the beat, +6 % pop
   if (!st.cur) setPreset(presetFor(st.idx), null, now);
-  const ev = schedStep(sched, beats, holdOf(params.shapeRate) * params.bpb, params.bpb);
+  // read the shape clock half a frame ahead, so a change is drawn within ±½ frame of its beat instead of 0–1 frame
+  // late (a 4K frame is ~17–20 ms; QA box measured 41 ms against the 40 ms limit)
+  const ahead = beats + 0.5 * Math.min(dt || 1 / 60, 1 / 30) * params.bpm / 60;
+  const ev = schedStep(sched, ahead, holdOf(params.shapeRate) * params.bpb, params.bpb);
   if (ev) { if (params.preset === 'auto') st.idx++; setPreset(presetFor(st.idx), ev, now); }
-  if (st.prev && beats < st.morphStart - 1e-6 && !ev) st.prev = null;   // the clock jumped back mid-morph: finish it
+  if (st.prev && beats < st.morphStart - 0.5 && !ev) st.prev = null;   // the clock jumped back mid-morph: finish it (not the ½-frame look-ahead)
   const m = st.prev ? ease((beats - st.morphStart) / st.morphBeats) : 1;
   if (st.prev && m >= 1) {
     if (st.rec) st.rec.end = beats;
