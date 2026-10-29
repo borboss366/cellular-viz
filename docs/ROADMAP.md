@@ -47,7 +47,7 @@ How it fits together: one control contract for every scene, an input bus (slider
   - every scene reachable from the controller
   - the real projector
 - One live-audio test at the mixer: line-in steers the clock, and the beats land on the kick by ear.
-- The visual offset is calibrated in the venue.
+- The visual offset is calibrated in the venue (profile saved from the dance floor, loaded on start).
 
 ### Clock
 
@@ -65,6 +65,7 @@ There is **one shared clock module**. The #85 host owns it, and standalone pages
    - Pages move over one at a time; 13 Flow Lab goes first.
    - **Projector-latency compensation:** a signed `visualOffsetMs`. Scenes fire at the predicted beat − (`latency()` + `visualOffsetMs`).
      - It is calibrated once per venue by ear and eye: a click and a flash on the beat, adjusted until they sit together.
+     - The calibration page is `experiments/calibrate.html`. Profiles go to localStorage with JSON export and import, and the last-used one loads on start. Changes slew at ≤ 5 ms per beat.
      - It is saved per venue and projector, and can be adjusted live from one master-column encoder (#85).
      - Details and the QA truth are on #95.
 3. **Live audio** (research).
