@@ -229,7 +229,7 @@ function stateAt(bars) {
     for (let s2 = step; s2 > step - 16 && s2 >= 0; s2--) if (params[lane][s2 % 16] === 'x') return Math.exp(-((beats * 4 - s2) * spb / 4) / tau);
     return 0;
   };
-  const wave = { A: params.bumpAmp * 0.16, bass: 0.5 + 0.5 * Math.sin(2 * Math.PI * beats / 8), hat: env('hat', 0.06), snare: env('snare', 0.15) };
+  const wave = { A: params.bumpAmp * 0.16, bass: 0.5 + 0.5 * Math.sin(2 * Math.PI * beats / 8), hat: env('hat', 1.0), snare: env('snare', 0.15) };
   const center = shapeCenter(P);
   for (const rg of rings) { rg[0] += center[0]; rg[1] += center[1]; rg[2] += center[2]; }
   const thin = [];
@@ -285,7 +285,7 @@ function wavesJS(st, x, y, z) {
   let w = 0;
   for (const r of st.rings) { const d = Math.hypot(x - r[0], y - r[1], z - r[2]) - 0.9 * r[3]; w += Math.exp(-(d * d) / 0.0144) * Math.exp(-r[3] / 0.8); }
   w += 0.5 * st.wave.bass;
-  w += 0.25 * st.wave.hat * Math.sin(23 * x + 17 * y + 29 * z + st.beats * 12);
+  w += 0.12 * st.wave.hat * Math.sin(23 * x + 17 * y + 29 * z + st.beats * 1.5);
   w += 0.35 * st.wave.snare * Math.sin(y * 9 - st.beats * 6.2832);
   return Math.max(-1, Math.min(1, w));
 }
@@ -412,7 +412,7 @@ float sdf(vec3 p) {
   A = A + (min(A, 0.4 * kR) - A) * (1.0 - smoothstep(kR + 0.03, kR + 0.15, knD));
   float w = 0.0;
   for (int i = 0; i < 4; i++) { vec4 r = uRing[i]; if (r.w < 0.0) continue; float d = length(p - r.xyz) - 0.9 * r.w; w += exp(-(d * d) / 0.0144) * exp(-r.w / 0.8); }
-  w += 0.5 * uWave.y + 0.25 * uWave.z * sin(23.0 * p.x + 17.0 * p.y + 29.0 * p.z + uBeats * 12.0) + 0.35 * uWave.w * sin(p.y * 9.0 - uBeats * 6.2832);
+  w += 0.5 * uWave.y + 0.12 * uWave.z * sin(23.0 * p.x + 17.0 * p.y + 29.0 * p.z + uBeats * 1.5) + 0.35 * uWave.w * sin(p.y * 9.0 - uBeats * 6.2832);
   return base - A * clamp(w, -1.0, 1.0);
 }
 vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
@@ -476,7 +476,7 @@ void main() {
     vec3 film = hue(0.55 + 1.2 * (1.0 - dot(n, v)) + kt * 0.25);
     col = mix(film, curv, uCurv * 0.5) * (0.15 + 0.85 * diff * sh) * ao + spec * sh * 0.8 + film * fres * 0.6;
   }
-  col += curv * uKick * 0.12 + vec3(1.0, 0.95, 0.9) * uFlash * 0.5;
+  col += curv * uKick * 0.12 + vec3(1.0, 0.95, 0.9) * uFlash * 0.3;
   col = vec3(1.0) - exp(-col * 1.4);
   o = vec4(pow(col, vec3(0.92)), 1.0);
 }`);
@@ -606,7 +606,7 @@ function ensureRT(w, h) {   // allocated once per canvas size, never on a scale 
 }
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastNow = 0;
 const errors = [], events = [], logged = new Set();
-const prev = { genus: null, from: null, mode: null, beat: -1, flash: 0 };
+const prev = { genus: null, from: null, mode: null, beat: -1, flash: 0, flashAge: Infinity };
 function logEvent(e, now) {
   if (!metronome.playing) { e.tBeat = null; e.perfDrawn = now; events.push(e); if (events.length > 256) events.shift(); return; }
   e.tHeard = e.tBeat + metronome.latency();
@@ -637,19 +637,20 @@ function draw(now) {
   const base = st.k * st.S;
   if (prev.genus !== null && st.genus !== prev.genus) {
     const type = st.genus < prev.genus ? 'surgery' : 'attach';
-    logAt(type, base + st.S - 2, { from: prev.genus, to: st.genus }, now); prev.flash = 1;
+    logAt(type, base + st.S - 2, { from: prev.genus, to: st.genus }, now); prev.flashAge = 0;
   }
   if (prev.from !== null && st.from !== prev.from) logAt('morph', Math.round(bars), { shape: st.from }, now);
   const cam = cameraAt(st);
   if (cam.mode === 'fly' && prev.mode !== 'fly') logAt('fly', base + st.S - 3, { genus: st.genus }, now);
   prev.genus = st.genus; prev.from = st.from; prev.mode = cam.mode;
-  prev.flash = Math.max(0, prev.flash - dt * 2);
+  // genus-change glow: 0.3 s smoothstep attack, 0.6 s linear release (#104: the instant +0.5 white tripped the 0.25-in-100-ms rise gate)
+  { const a = prev.flashAge += dt, x = a / 0.3; prev.flash = a < 0.3 ? x * x * (3 - 2 * x) : Math.max(0, 1 - (a - 0.3) / 0.6); }
   const beat = Math.floor(beats), kickLevel = params.kick[(beat * 4) % 16] === 'x' ? Math.exp(-(beats - beat) * 60 / params.bpm / 0.15) : 0;
 
   const W = canvas.width, H = canvas.height;
   const fwd = norm3(sub3(cam.at, cam.eye)), right = norm3(cross3(fwd, [0, 1, 0])), up = cross3(right, fwd);
   const P = st.P, w = st.wave;
-  const L = w.A * (2 * 0.9 / 0.12 + 0.25 * w.hat * 40 + 0.35 * w.snare * 9);   // a bound on |∇(A·waves)|
+  const L = w.A * (2 * 0.9 / 0.12 + 0.12 * w.hat * 40 + 0.35 * w.snare * 9);   // a bound on |∇(A·waves)|
   const k = renderK(), useRT = k < 1, RW = useRT ? Math.max(1, Math.round(W * k)) : W, RH = useRT ? Math.max(1, Math.round(H * k)) : H;
   if (useRT) ensureRT(W, H);
   gl.bindFramebuffer(gl.FRAMEBUFFER, useRT ? rt.fbo : null);
