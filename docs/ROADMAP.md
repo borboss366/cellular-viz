@@ -60,10 +60,11 @@ There is **one shared clock module**. The #85 host owns it, and standalone pages
 |---|---|---|
 | Riemann | 09 phase portrait, **11 Riemann show** (ribbon, march, scope, primes, canyon, map) | ✅ MVP on main. User's ranking: ribbon > scope > canyon > march > map > primes. Auto-mix deferred |
 | Birch–Swinnerton-Dyer | 10 first version, 17 Skater, **19 Skate Park** (torus, morph, free) | ✅ MVP on main (#50). 19 won the final grade. Later: in one clip the line seems to end right in front of the skater (effects) |
+| Birch–Swinnerton-Dyer extras | 20 Modular Discs (the "fractal discs"), 21 Prime Spectrum (Sato–Tate) | ⏳ not built. MVP specs on #37 (comment 6401224167, 25 Oct); the user picked both |
 | Yang–Mills | 12 Mass Gap, **18 Little Bang** (collide, strings, quench) | ✅ MVP on main (#43, #49). User's grade: collide ≈ auto > quench. Beamline scene and quench Mach-cone wake on #75 (in QA) |
 | Navier–Stokes | 13 Flow Lab (stable fluids + curl noise, presets) | ✅ MVP on main (#53): 60 fps to 4K, raw dye drift ≤ 0.7 %/10 s, swirls on the beat. Brighter curl/plume (#69) and stone rocks with more fluid (#72) merged. Next: living obstacles (#54); 3-D smoke and multigrid later |
-| Poincaré | 14 Round Point, **23 Shape Shifter**, 25 Shape Shifter II | ✅ on main: 14 (#55, kick pulse + fades #68), 23 (#56), 25 (#57, user: "Very good") |
-| P vs NP | 15 Hard Problems (2-opt salesman, 3-SAT cliff at 4.26, Rule 110) | ⏳ spec on #37 |
+| Poincaré | 14 Round Point, **23 Shape Shifter**, 25 Shape Shifter II | ✅ on main: 14 (#55, kick pulse + fades #68), 23 (#56), 25 (#57, user: "Very good"). 14's eight-geometries fly-through (laptop extra) is not built |
+| P vs NP | 15 Hard Problems (2-opt salesman, 3-SAT cliff at 4.26, Rule 110) | ⏳ not built. Spec on #37; scenes 15a–15f specced in comment 6493121591 |
 | Hodge | 16 Calabi–Yau (Fermat n=5 slice, Hodge diamond), **16b Hodge Kaleidoscope** | ⏳ 16b on #84 (QA 10/10, waits on the user's grade). Then 16a Liquid Light, 16c 27 Neon Lines, 16d Diamond Sky, one at a time (#37 comment 6444942841). Check the 16 formula against Hanson 1994 before building |
 
 ### Cellular automata and physics
@@ -73,6 +74,7 @@ There is **one shared clock module**. The #85 host owns it, and standalone pages
 | Lenia family 01–08 (Gray-Scott, Lenia, Flow Lenia, effects, Particle Lenia, blends) | ✅ |
 | 26 FHP lattice gas (CA → Navier–Stokes): F1 particle rain, F2 zoom to fluid, F3 vortex street, F4 collision synth, F5 two inks, F6 sound rings | ⏳ build spec on #71. Mock-ups in `docs/proposals/fhp` (#51); all six rated 'workable' by the user |
 | 24 Paint Pour | ⏳ v1 spec on #87 (closed-form marbling) |
+| 22 Endless Labyrinth (first-person maze: Eller's algorithm + CA walls + raycast; not a Millennium page) | ⏳ not built. MVP spec on #37 (comment 6401505993, 25 Oct) |
 | Runners-up from the evangelist report: sandpile avalanches, Chladni plates, Turing reaction–diffusion | 💡 ideas |
 
 Rule for every MVP: art first, maths true underneath, a QA truth check, 60 fps at 1440p on the box, and drums drawn ≤ 40 ms after the sound.
