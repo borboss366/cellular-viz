@@ -92,7 +92,7 @@ for (const b of [3, 9, 18, 24]) {
     const s = __qa.state(b), c = s.center, L = 1.6, h = 2 * L / n, eps = 2 * h, f = new Float32Array((n + 2) ** 3), m = n + 2;
     for (let i = 0; i < m; i++) for (let j = 0; j < m; j++) for (let k = 0; k < m; k++) f[(i * m + j) * m + k] = __qa.sdf(c[0] - L + (i - 0.5) * h, c[1] - L + (j - 0.5) * h, c[2] - L + (k - 0.5) * h, b);
     const F = (i, j, k) => f[(i * m + j) * m + k];
-    let sum = 0;
+    let sum = 0, sumAbs = 0;
     for (let i = 1; i < m - 1; i++) for (let j = 1; j < m - 1; j++) for (let k = 1; k < m - 1; k++) {
       const f0 = F(i, j, k); if (Math.abs(f0) >= eps) continue;
       const gx = (F(i + 1, j, k) - F(i - 1, j, k)) / (2 * h), gy = (F(i, j + 1, k) - F(i, j - 1, k)) / (2 * h), gz = (F(i, j, k + 1) - F(i, j, k - 1)) / (2 * h);
@@ -104,13 +104,26 @@ for (const b of [3, 9, 18, 24]) {
       const a11 = fyy * fzz - fyz * fyz, a22 = fxx * fzz - fxz * fxz, a33 = fxx * fyy - fxy * fxy, a12 = fxz * fyz - fxy * fzz, a13 = fxy * fyz - fxz * fyy, a23 = fxy * fxz - fxx * fyz;
       const g2 = gx * gx + gy * gy + gz * gz; if (g2 < 1e-8) continue;
       const K = (gx * gx * a11 + gy * gy * a22 + gz * gz * a33 + 2 * (gx * gy * a12 + gx * gz * a13 + gy * gz * a23)) / (g2 * g2);
-      sum += K * Math.sqrt(g2) * (1 - Math.abs(f0) / eps) / eps * h * h * h;   // hat kernel δ_ε
+      const w = Math.sqrt(g2) * (1 - Math.abs(f0) / eps) / eps * h * h * h;   // hat kernel δ_ε
+      sum += K * w; sumAbs += Math.abs(K) * w;
     }
     const pg = __qa.totalK(160, b);
-    return { bars: b, genus: s.genus, mine: sum, minePer4pi: sum / (4 * Math.PI), want: 1 - s.genus, page: pg.totalK / (4 * Math.PI) };
+    const mf = typeof __qa.minFeature === 'function' ? __qa.minFeature(b) : null;
+    return { bars: b, genus: s.genus, mine: sum, minePer4pi: sum / (4 * Math.PI), absPer4pi: sumAbs / (4 * Math.PI), want: 1 - s.genus, page: pg.totalK / (4 * Math.PI),
+      h, minFeature: Number.isFinite(mf) ? mf : null };
   }, [b, 160]));
 }
 await gbPage.close();
+// verdicts, ruling on #56 (VIZ research, 29 Oct, comment 6493806554):
+//  wrong genus (any frame): |∫K/4π − (1−g)| ≥ 0.5 → ❌
+//  resolved frame (__qa.minFeature(b) ≥ 2h; without the hook only genus 0 counts as resolved):
+//    |∫K − 4π(1−g)| ≤ 0.05·∫|K| dA → ✅ else ❌ · unresolved → ⚠️ · every genus in the run needs ≥ 1 resolved frame, else ⚠️
+for (const x of res.gb) {
+  const err = Math.abs(x.minePer4pi - x.want);
+  x.resolved = x.minFeature != null ? x.minFeature >= 2 * x.h : x.genus === 0;
+  x.verdict = err >= 0.5 ? 'wrong genus' : !x.resolved ? 'unresolved' : err <= 0.05 * x.absPer4pi ? 'ok' : 'off';
+}
+const gbGenera = [...new Set(res.gb.map(x => x.genus))], gbUncovered = gbGenera.filter(g => !res.gb.some(x => x.genus === g && x.resolved));
 // camera over the cycle
 res.cam = await page.evaluate(() => { let min = Infinity, at = null, fly = 0, pushed = 0, n = 0;
   for (let b = 0; b < 32; b += 1 / 64) { const c = __qa.camera(b), d = __qa.sdf(...c.eye, b); n++; if (c.mode === 'fly') fly++; if (c.pushes) pushed++; if (d < min) { min = d; at = { bars: +b.toFixed(3), mode: c.mode }; } }
@@ -147,7 +160,7 @@ const wrong = G.filter(x => x.g !== x.expected && !nearDrop(x.bars));
 const switches = []; for (let i = 1; i < G.length; i++) if (G[i].g !== G[i - 1].g) switches.push({ from: G[i - 1].g, to: G[i].g, between: [G[i - 1].bars, G[i].bars] });
 const pass = {
   genus: wrong.length === 0 && switches.every(s => nearDrop(s.between[0]) || nearDrop(s.between[1])) && switches.length === 2 && G.every(x => x.b2 === 0 && x.touchesBox === 0),
-  gaussBonnet: res.gb.every(x => Math.abs(x.minePer4pi - x.want) <= 0.05),   // in units of 4π
+  gaussBonnet: res.gb.some(x => x.verdict === 'wrong genus' || x.verdict === 'off') ? false : (res.gb.some(x => x.verdict === 'unresolved') || gbUncovered.length) ? 'warn' : true,
   camera: res.cam.minSdf > 0.02,
   events: res.sync.special.some(e => e.type === 'surgery' && e.bar === 14),
   sync: Object.values(res.sync.by).every(v => v.median <= 40),
@@ -159,10 +172,10 @@ const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':
 const dir = path.join(here, '23-shape-shifter', 'checks', stamp);
 fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(path.join(dir, 'check.json'), JSON.stringify({ res, errors, pass, wrong, switches }, null, 1));
-const ok = v => v ? '✅' : '❌', fmin = Math.min(...G.filter(x => x.featureMin).map(x => x.featureMin));
+const ok = v => v === 'warn' ? '⚠️' : v ? '✅' : '❌', fmin = Math.min(...G.filter(x => x.featureMin).map(x => x.featureMin));
 fs.writeFileSync(path.join(dir, 'check.md'), `# 23 Shape Shifter check · ${stamp}\n\nEverything below is rebuilt from \`__qa.sdf\` with my own grid code.\n\n| gate | result | detail |\n|---|---|---|\n` +
   `| 1 genus constant except at the drop (my b0 + b2 − χ, n = ${N}, h = ${G[0].h}) | ${ok(pass.genus)} | ${G.length} moments; ${wrong.length} wrong away from the drops${wrong.length ? ' (e.g. bar ' + wrong.slice(0, 4).map(w => `${w.bars}: g ${w.g} want ${w.expected}, ${w.shape}`).join('; ') + ')' : ''} · switches: ${switches.map(s => `${s.from}→${s.to} between bars ${s.between.join(' and ')}`).join(', ')} · thinnest feature ${fmin.toFixed(3)} vs h ${G[0].h} |\n` +
-  `| 2 Gauss–Bonnet ∫K dA = 4π(1 − g), n = 160 (mine, ±5 %, bumpAmp=0) | ${ok(pass.gaussBonnet)} | ${res.gb.map(x => `bar ${x.bars} (g ${x.genus}): mine ${x.minePer4pi.toFixed(3)}·4π, page ${x.page.toFixed(3)}·4π, want ${x.want}`).join(' · ')} |\n` +
+  `| 2 Gauss–Bonnet ∣∫K − 4π(1 − g)∣ ≤ 0.05·∫∣K∣ on resolved frames (minFeature ≥ 2h), never the wrong genus; n = 160, bumpAmp=0 | ${ok(pass.gaussBonnet)} | ${res.gb.map(x => `bar ${x.bars} (g ${x.genus}): mine ${x.minePer4pi.toFixed(3)}·4π, page ${x.page.toFixed(3)}·4π, ∫∣K∣ ${x.absPer4pi.toFixed(2)}·4π, want ${x.want}, minFeature/h ${x.minFeature != null ? (x.minFeature / x.h).toFixed(2) : 'no hook'} → ${x.verdict}`).join(' · ')}${gbUncovered.length ? ` · no resolved sample for g ${gbUncovered.join(', ')}` : ''} |\n` +
   `| 3 camera never inside (sdf at the eye, every 1/64 bar) | ${ok(pass.camera)} | min sdf ${res.cam.minSdf.toFixed(3)} at bar ${res.cam.at.bars} (${res.cam.at.mode}) · ${res.cam.flyFrames} fly samples, ${res.cam.pushedFrames} pushed out |\n` +
   `| 4 surgery event on the drop | ${ok(pass.events)} | ${res.sync.special.map(e => `${e.type} bar ${e.bar}`).join(', ')} |\n` +
   `| 5 sync from __qa.events (≤ 40 ms) | ${ok(pass.sync)} | ${Object.entries(res.sync.by).map(([k, v]) => `${k} ${v.median} ms (n ${v.n})`).join(' · ')} |\n` +
