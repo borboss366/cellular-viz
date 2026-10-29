@@ -1072,23 +1072,40 @@ const nice = s => s.trim();
 // ?passes=1 (debug, #104): each GPU pass in its own TIME_ELAPSED query, plus the CPU time draw() spends before the
 // march is issued, to find what in 25's frame does not scale with the render size. Read __qa.passes. With it on,
 // the page uses the timer extension itself, so check-shared's own GPU timing is off for that load.
-const passes = { on: false, ext: null, pending: [], cpu: [], march: [], blit: [], render: null, canvas: null };
-function passBegin(name) { if (!passes.on) return null; const qy = gl.createQuery(); gl.beginQuery(passes.ext.TIME_ELAPSED_EXT, qy); return [name, qy]; }
+// It also sweeps the render scale by itself: 10 s settle, then 0.75, 0.5 and 0.25 for 20 s each (any ?scale= is
+// overridden), keeping each scale's samples apart, with the GL viewport read back once per scale. After the sweep it
+// stays at 0.25. __qa.passes.sweep: per scale {vp, cpu, march, blit} as p50/p95/p99 strings (compact for check-25's row).
+const passes = { on: false, ext: null, pending: [], cpu: [], march: [], blit: [], render: null, canvas: null, t0: 0, key: null, by: {} };
+const SWEEP = [0.75, 0.5, 0.25];
+function passKey(now) {   // which sweep step this frame is in (null while settling); sets the scale on a step change
+  if (!passes.t0) passes.t0 = now;
+  const s = (now - passes.t0) / 1000 - 10;
+  if (s < 0) return null;
+  const k = SWEEP[Math.min(SWEEP.length - 1, Math.floor(s / 20))];
+  if (fixedScale !== k) setRenderScale(k);
+  return String(k);
+}
+function passBegin(name) { if (!passes.on) return null; const qy = gl.createQuery(); gl.beginQuery(passes.ext.TIME_ELAPSED_EXT, qy); return [name, qy, passes.key]; }
 function passEnd(t) { if (!t) return; gl.endQuery(passes.ext.TIME_ELAPSED_EXT); passes.pending.push(t); }
+function passBucket(key) { return passes.by[key] || (passes.by[key] = { vp: null, cpu: [], march: [], blit: [] }); }
 function passPoll() {
   while (passes.pending.length) {
-    const [name, qy] = passes.pending[0];
+    const [name, qy, key] = passes.pending[0];
     if (!gl.getQueryParameter(qy, gl.QUERY_RESULT_AVAILABLE)) break;
     const disjoint = gl.getParameter(passes.ext.GPU_DISJOINT_EXT), ns = gl.getQueryParameter(qy, gl.QUERY_RESULT);
     gl.deleteQuery(qy); passes.pending.shift();
-    if (!disjoint) { passes[name].push(ns / 1e6); if (passes[name].length > 3600) passes[name].shift(); }
+    if (!disjoint) {
+      passes[name].push(ns / 1e6); if (passes[name].length > 3600) passes[name].shift();
+      if (key) passBucket(key)[name].push(ns / 1e6);
+    }
   }
 }
 const pctl = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return +s[Math.min(s.length - 1, Math.floor(p * s.length))].toFixed(2); };
 const passStats = a => ({ n: a.length, p50: pctl(a, 0.5), p95: pctl(a, 0.95), p99: pctl(a, 0.99) });
+const passStr = a => a.length ? `${pctl(a, 0.5)}/${pctl(a, 0.95)}/${pctl(a, 0.99)} n${a.length}` : '-';
 function draw(now) {
   const tCpu0 = performance.now();
-  if (passes.on) passPoll();
+  if (passes.on) { passPoll(); passes.key = passKey(now); }
   resize();
   const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
   dynRes(dt, now);
@@ -1123,7 +1140,11 @@ function draw(now) {
   const useRT = rtOn && dyn.scale < 1, RW = useRT ? Math.max(1, Math.round(W * dyn.scale)) : W, RH = useRT ? Math.max(1, Math.round(H * dyn.scale)) : H;
   gl.bindFramebuffer(gl.FRAMEBUFFER, useRT ? rt.fbo : null);
   gl.viewport(0, 0, RW, RH);
-  if (passes.on) { passes.cpu.push(performance.now() - tCpu0); if (passes.cpu.length > 3600) passes.cpu.shift(); passes.render = [RW, RH]; passes.canvas = [W, H]; }
+  if (passes.on) {
+    const c = performance.now() - tCpu0;
+    passes.cpu.push(c); if (passes.cpu.length > 3600) passes.cpu.shift(); passes.render = [RW, RH]; passes.canvas = [W, H];
+    if (passes.key) { const bk = passBucket(passes.key); bk.cpu.push(c); if (!bk.vp) bk.vp = Array.from(gl.getParameter(gl.VIEWPORT)).join(','); }
+  }
   gl.useProgram(marchProg.p);
   const u = marchProg.u;
   gl.uniform1fv(u.uB, [...BODY_KEYS.map(k => P[k]), P.lift]);
@@ -1201,7 +1222,9 @@ if (q('scale') === 'solo' || q('scale') === 'blend') setRenderScale(q('scale'));
 else if (q('res') || q('scale')) setRenderScale(null);   // ?res=native or a numeric ?scale=: the old cap + dynamic resolution
 if (q('march') === 'plain') params.march = 'plain';   // A/B: the old plain sphere tracing (no over-relaxation)
 if (q('passes') === '1') { passes.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2'); passes.on = !!passes.ext; }
-Object.defineProperty(window.__qa, 'passes', { enumerable: true, get: () => ({ on: passes.on, render: passes.render, canvas: passes.canvas,
+Object.defineProperty(window.__qa, 'passes', { enumerable: true, get: () => ({   // the sweep first: check-25's row keeps 600 chars
+  sweep: Object.fromEntries(Object.entries(passes.by).map(([k, b]) => [k, { vp: b.vp, cpu: passStr(b.cpu), march: passStr(b.march), blit: passStr(b.blit) }])),
+  on: passes.on, render: passes.render, canvas: passes.canvas,
   cpuMs: passStats(passes.cpu), marchMs: passStats(passes.march), blitMs: passStats(passes.blit) }) });
 Object.assign(window.__qa, { setRenderScale, scales: PERF });   // check-shared reads __qa.scales (#88)
 Object.defineProperties(window.__qa, {   // live values (Object.assign would copy them once)
