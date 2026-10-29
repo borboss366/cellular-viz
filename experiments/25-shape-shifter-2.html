@@ -133,7 +133,11 @@ const PALETTES = ['ceramic', 'chrome', 'iridescent'];
 // #88 GPU gate for ray-march scenes (comment 6491353229): declared render scales, fractions of the full
 // device-pixel canvas per axis. Solo plays at soloScale; in a crossfade the host drops it to blendScale.
 const PERF = { soloScale: 0.75, blendScale: 0.5 };
-let fixedScale = null;   // null: the old cap (≤ 1920×1080) + dynamic resolution; else exactly this fraction a side
+// The scales are fractions of 2560×1440 a side: the canvas always matches the window (device pixels) and the march
+// renders soloScale·2560 × soloScale·1440 worth of pixels (1920×1080 at 0.75) into a corner of the render target,
+// stretched to the canvas. So 1440p and 4K cost the same; a smaller window renders at most its own pixels.
+// null (setRenderScale(null), ?res=… or a numeric ?scale=): the old cap (≤ 1920×1080) + dynamic resolution.
+let fixedScale = PERF.soloScale;
 function setRenderScale(s) {   // 'solo' | 'blend' | a number 0.25–1 | null (back to cap + dynres); returns the scale in force
   const v = s === 'solo' ? PERF.soloScale : s === 'blend' ? PERF.blendScale : s === null ? NaN : parseFloat(s);
   fixedScale = Number.isFinite(v) ? Math.max(0.25, Math.min(1, v)) : null;
@@ -1012,13 +1016,11 @@ window.__modules = { 'shape-shifter-2': { inputs: [
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
-  let cap = (params.res === 'native' ? 1 : Math.min(1, Math.sqrt(1920 * 1080 / (w * h)))) * params.scale;   // dyn.scale is applied inside the frame, not to the canvas
-  // a fixed scale (#88) keeps the canvas at the bigger of it and soloScale, and renders a corner of the render
-  // target, so going solo ↔ blend reallocates nothing (the corner blit counts inside the frame)
-  if (fixedScale !== null) cap = Math.max(fixedScale, PERF.soloScale);
+  // a declared scale (#88): canvas = the window, render corner = fixedScale of 2560×1440 (going solo ↔ blend reallocates nothing)
+  const cap = fixedScale !== null ? 1 : (params.res === 'native' ? 1 : Math.min(1, Math.sqrt(1920 * 1080 / (w * h)))) * params.scale;   // dyn.scale is applied inside the frame, not to the canvas
   w = Math.max(1, Math.round(w * cap)); h = Math.max(1, Math.round(h * cap));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; dynStart(w, h); }
-  if (fixedScale !== null) dyn.scale = Math.min(1, fixedScale / cap);
+  if (fixedScale !== null) dyn.scale = Math.min(1, fixedScale * Math.sqrt(2560 * 1440 / (w * h)));
 }
 // A very large canvas starts at a predicted scale (about 4.2 MP rendered), so the first steps don't land in the
 // measured window (QA #57 round 6: 7 frames over 20 ms at native 4K were the early steps down).
@@ -1172,6 +1174,7 @@ for (const k of ['maxGenus', ...Object.keys(SLIDERS)]) { const v = parseFloat(q(
 if (q('res') === 'native') params.res = 'native';
 params.scale = Math.max(0.25, Math.min(1, parseFloat(q('scale')) || 1));
 if (q('scale') === 'solo' || q('scale') === 'blend') setRenderScale(q('scale'));   // #88: the declared scales, for the GPU gate
+else if (q('res') || q('scale')) setRenderScale(null);   // ?res=native or a numeric ?scale=: the old cap + dynamic resolution
 if (q('march') === 'plain') params.march = 'plain';   // A/B: the old plain sphere tracing (no over-relaxation)
 Object.assign(window.__qa, { setRenderScale, scales: PERF });   // check-shared reads __qa.scales (#88)
 Object.defineProperties(window.__qa, {   // live values (Object.assign would copy them once)

@@ -556,7 +556,11 @@ window.__modules = { 'shape-shifter': { inputs: [
 ], perf: PERF } };
 
 // ---------- main loop ----------
-let fixedScale = null;   // null: the old cap (≤ 1920×1080 pixels); else exactly this fraction a side
+// The scales are fractions of 2560×1440 a side (#88): the canvas always matches the window (device pixels) and the
+// march renders fixedScale·2560 × fixedScale·1440 worth of pixels (1920×1080 at 0.75) into a corner of a render
+// target, stretched to the canvas, so solo ↔ blend reallocates nothing. A smaller window renders at most its own pixels.
+// null (setRenderScale(null), ?res=… or a numeric ?scale=): the old cap (≤ 1920×1080 pixels) on the canvas itself.
+let fixedScale = PERF.soloScale;
 function setRenderScale(s) {   // 'solo' | 'blend' | a number 0.25–1 | null (back to the cap); returns the scale in force
   const v = s === 'solo' ? PERF.soloScale : s === 'blend' ? PERF.blendScale : s === null ? NaN : parseFloat(s);
   fixedScale = Number.isFinite(v) ? Math.max(0.25, Math.min(1, v)) : null;
@@ -565,9 +569,31 @@ function setRenderScale(s) {   // 'solo' | 'blend' | a number 0.25–1 | null (b
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
-  const cap = fixedScale !== null ? fixedScale : (params.res === 'native' ? 1 : Math.min(1, Math.sqrt(1920 * 1080 / (w * h)))) * params.scale;
+  const cap = fixedScale !== null ? 1 : (params.res === 'native' ? 1 : Math.min(1, Math.sqrt(1920 * 1080 / (w * h)))) * params.scale;
   w = Math.max(1, Math.round(w * cap)); h = Math.max(1, Math.round(h * cap));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+const renderK = () => fixedScale === null ? 1 : Math.min(1, fixedScale * Math.sqrt(2560 * 1440 / (canvas.width * canvas.height)));
+const blitProg = program(FULL_VS, `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 o;
+uniform sampler2D uTex;
+uniform vec2 uScale, uMax;
+void main() { o = texture(uTex, min(vUv * uScale, uMax)); }`);
+const rt = { tex: null, fbo: null, w: 0, h: 0 };
+function ensureRT(w, h) {   // allocated once per canvas size, never on a scale change
+  if (rt.w === w && rt.h === h) return;
+  if (!rt.tex) { rt.tex = gl.createTexture(); rt.fbo = gl.createFramebuffer(); }
+  gl.bindTexture(gl.TEXTURE_2D, rt.tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, rt.fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rt.tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  rt.w = w; rt.h = h;
 }
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastNow = 0;
 const errors = [], events = [], logged = new Set();
@@ -615,7 +641,10 @@ function draw(now) {
   const fwd = norm3(sub3(cam.at, cam.eye)), right = norm3(cross3(fwd, [0, 1, 0])), up = cross3(right, fwd);
   const P = st.P, w = st.wave;
   const L = w.A * (2 * 0.9 / 0.12 + 0.25 * w.hat * 40 + 0.35 * w.snare * 9);   // a bound on |∇(A·waves)|
-  gl.viewport(0, 0, W, H);
+  const k = renderK(), useRT = k < 1, RW = useRT ? Math.max(1, Math.round(W * k)) : W, RH = useRT ? Math.max(1, Math.round(H * k)) : H;
+  if (useRT) ensureRT(W, H);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, useRT ? rt.fbo : null);
+  gl.viewport(0, 0, RW, RH);
   gl.useProgram(marchProg.p);
   const u = marchProg.u;
   gl.uniform1fv(u.uP, [P.ra, P.rb, P.h, P.taper, P.dimple, P.cav, P.spout, P.knob, P.hx, P.hy, P.Rh, P.rh, P.a, P.p, P.w, liftOf(P)]);
@@ -630,6 +659,15 @@ function draw(now) {
   gl.uniform1i(u.uPal, pal);
   gl.uniform3fv(u.uEye, cam.eye); gl.uniform3fv(u.uFwd, fwd); gl.uniform3fv(u.uRight, right); gl.uniform3fv(u.uUp, up); gl.uniform3fv(u.uCenter, st.center);
   gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  if (useRT) {   // stretch the rendered corner to the canvas
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, W, H);
+    gl.useProgram(blitProg.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, rt.tex); gl.uniform1i(blitProg.u.uTex, 0);
+    gl.uniform2f(blitProg.u.uScale, RW / W, RH / H);
+    gl.uniform2f(blitProg.u.uMax, (RW - 0.5) / W, (RH - 0.5) / H);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
 
   Object.assign(window.__qa, {
     bars, beats, section: st.k, family: st.fam, genusExpected: st.genus, featureMin: st.featureMin,
@@ -665,11 +703,13 @@ for (const k of Object.keys(SLIDERS)) { const v = parseFloat(q(k)); if (Number.i
 if (q('res') === 'native') params.res = 'native';
 params.scale = Math.max(0.25, Math.min(1, parseFloat(q('scale')) || 1));   // ?scale=0.75 renders fewer pixels
 if (q('scale') === 'solo' || q('scale') === 'blend') setRenderScale(q('scale'));   // #88: the declared scales, for the GPU gate
-// setRenderScale resizes the canvas (a one-off reallocation), so the runner should prefer ?scale= on load
-Object.assign(window.__qa, { setRenderScale, scales: PERF });   // check-shared reads __qa.scales (#88)
+else if (q('res') || q('scale')) setRenderScale(null);   // ?res=native or a numeric ?scale=: the old cap on the canvas
+Object.assign(window.__qa, { setRenderScale, scales: PERF,   // check-shared reads __qa.scales (#88)
+  minFeature: b => stateAt(b ?? window.__qa.bars).featureMin });   // thinnest feature at bar b (check-23 gate 2 resolves frames by it, #56)
 Object.defineProperties(window.__qa, {   // live values (Object.assign would copy them once)
   scaleNow: { get: () => fixedScale, enumerable: true },
-  renderPx: { get: () => [canvas.width, canvas.height], enumerable: true } });
+  canvasPx: { get: () => [canvas.width, canvas.height], enumerable: true },
+  renderPx: { get: () => { const k = renderK(); return [Math.round(canvas.width * k), Math.round(canvas.height * k)]; }, enumerable: true } });
 params.muted = q('muted') === '1';
 sync();
 requestAnimationFrame(frame);
