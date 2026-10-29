@@ -1,0 +1,62 @@
+[
+ {
+  "a": "new-auto",
+  "b": "new-trigger-kick",
+  "winner": "tie",
+  "at": "2026-10-29T09:18:36.159Z"
+ },
+ {
+  "a": "old-auto",
+  "b": "new-fastest",
+  "winner": "new-fastest",
+  "at": "2026-10-29T09:18:56.417Z"
+ },
+ {
+  "a": "old-fastest",
+  "b": "old-trigger-kick",
+  "winner": "tie",
+  "at": "2026-10-29T09:19:02.544Z"
+ },
+ {
+  "a": "new-trigger-kick",
+  "b": "old-fastest",
+  "winner": "new-trigger-kick",
+  "at": "2026-10-29T09:19:08.150Z"
+ },
+ {
+  "a": "new-fastest",
+  "b": "new-auto",
+  "winner": "new-fastest",
+  "at": "2026-10-29T09:19:11.600Z"
+ },
+ {
+  "a": "old-trigger-kick",
+  "b": "old-auto",
+  "winner": "tie",
+  "at": "2026-10-29T09:19:15.749Z"
+ },
+ {
+  "a": "old-auto",
+  "b": "old-fastest",
+  "winner": "tie",
+  "at": "2026-10-29T09:19:17.311Z"
+ },
+ {
+  "a": "old-trigger-kick",
+  "b": "new-auto",
+  "winner": "new-auto",
+  "at": "2026-10-29T09:19:19.466Z"
+ },
+ {
+  "a": "new-fastest",
+  "b": "new-trigger-kick",
+  "winner": "new-fastest",
+  "at": "2026-10-29T09:19:27.504Z"
+ },
+ {
+  "a": "old-auto",
+  "b": "new-auto",
+  "winner": "new-auto",
+  "at": "2026-10-29T09:19:30.027Z"
+ }
+]

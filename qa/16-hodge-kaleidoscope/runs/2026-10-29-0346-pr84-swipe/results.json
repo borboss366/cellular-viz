@@ -3307,7 +3307,8 @@
     ]
    ],
    "hud": "Hodge Kaleidoscope · mirror quintic · 120 bpm · hold 2 bar · tap ▶ Play\n428×241 · 60 fps",
-   "video": "videos/01-new-auto.webm"
+   "video": "videos/01-new-auto.webm",
+   "note": "Good"
   },
   {
    "label": "new-fastest",
@@ -4130,7 +4131,8 @@
     ]
    ],
    "hud": "Hodge Kaleidoscope · genus-5 curve · 140 bpm · hold 0.5 bar · tap ▶ Play\n428×241 · 60 fps",
-   "video": "videos/02-new-fastest.webm"
+   "video": "videos/02-new-fastest.webm",
+   "note": "This one is better . I like the fastest one."
   },
   {
    "label": "new-trigger-kick",
@@ -4953,7 +4955,8 @@
     ]
    ],
    "hud": "Hodge Kaleidoscope · mirror quintic · 120 bpm · hold 2 bar · tap ▶ Play\n428×241 · 60 fps",
-   "video": "videos/03-new-trigger-kick.webm"
+   "video": "videos/03-new-trigger-kick.webm",
+   "note": "Good"
   }
  ]
 }

@@ -35,9 +35,9 @@ Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
 QA sweep · 16-hodge-kaleidoscope · 2026-10-29T04:01
 | variant | score | cover | motion | pulse | colour | fps | verdict |
 |---|---|---|---|---|---|---|---|
-| new-auto | 6.8 | 100% | 0.0270 | ±0.0052 | 0.122 | 60.1 |  |
-| new-fastest | 7.1 | 100% | 0.0377 | ±0.0073 | 0.120 | 60.1 |  |
-| new-trigger-kick | 6.8 | 100% | 0.0270 | ±0.0052 | 0.122 | 60.1 |  |
+| new-auto | 6.8 | 100% | 0.0270 | ±0.0052 | 0.122 | 60.1 |  — Good |
+| new-fastest | 7.1 | 100% | 0.0377 | ±0.0073 | 0.120 | 60.1 |  — This one is better . I like the fastest one. |
+| new-trigger-kick | 6.8 | 100% | 0.0270 | ±0.0052 | 0.122 | 60.1 |  — Good |
 
 queries:
 - new-auto: http://127.0.0.1:33135/experiments/16-hodge-kaleidoscope.html
@@ -45,3 +45,25 @@ queries:
 - new-trigger-kick: http://127.0.0.1:33135/experiments/16-hodge-kaleidoscope.html?autoTrigger=3
 
 Stills: `stills/` · videos stay on the box (`videos/`, git-ignored).
+
+## Pairwise ranking (user picks)
+
+10 picks, Bradley–Terry strength (1 = average).
+
+| # | variant | strength | won | lost | tie |
+|---|---|---|---|---|---|
+| 1 | new-fastest | 7.293 | 3 | 0 | 0 |
+| 2 | new-auto | 1.681 | 2 | 1 | 1 |
+| 3 | new-trigger-kick | 1.411 | 1 | 1 | 1 |
+| 4 | old-trigger-kick | 0.396 | 0 | 1 | 2 |
+| 5 | old-fastest | 0.386 | 0 | 1 | 2 |
+| 6 | old-auto | 0.379 | 0 | 2 | 2 |
+
+## User notes
+
+**On each look**
+
+- **new-auto**: Good
+- **new-fastest**: This one is better . I like the fastest one.
+- **new-trigger-kick**: Good
+
