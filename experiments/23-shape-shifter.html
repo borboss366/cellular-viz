@@ -108,7 +108,7 @@ const query = new URLSearchParams(location.search);
 // (morphs to a sphere, attach on its drop); '1' / '0' hold one family without events.
 // res: 'cap' renders at most 1920×1080 pixels and lets the browser scale up; 'native' renders all.
 const params = { family: 'auto', palette: 'auto', fly: true, bumpAmp: 0.5, curvColor: 0.7,
-                 morphBars: 8, orbitBars: 16, steps: 128, bpm: 120, bpb: 4, muted: false, res: 'cap',
+                 morphBars: 8, orbitBars: 16, steps: 96, march: 'sor', bpm: 120, bpb: 4, muted: false, res: 'cap',
                  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 const PALETTES = ['ceramic', 'chrome', 'iridescent'];
 // #88 GPU gate for ray-march scenes (comment 6491353229): declared render scales, fractions of the full
@@ -375,7 +375,7 @@ in vec2 vUv; out vec4 o;
 uniform float uP[16];      // ra rb h taper dimple cav spout knob hx hy Rh rh a p w lift
 uniform vec4 uRing[4];     // centre, age in beats (< 0 = off)
 uniform vec4 uWave;        // A, bass, hat, snare
-uniform float uBeats, uAspect, uStepK, uCurv, uKick, uFlash;
+uniform float uBeats, uAspect, uStepK, uCurv, uKick, uFlash, uRelax;
 uniform int uSteps, uPal;
 uniform vec3 uEye, uFwd, uRight, uUp, uCenter;
 const float THICK = ${THICK.toFixed(2)}, SPR = ${SPR.toFixed(2)};
@@ -425,14 +425,22 @@ void main() {
   vec3 oc = ro - uCenter; float b = dot(oc, rd), cc = dot(oc, oc) - 1.7 * 1.7, disc = b * b - cc;
   if (disc < 0.0) { o = vec4(bg, 1.0); return; }
   float t = max(0.0, -b - sqrt(disc)), tEnd = -b + sqrt(disc);
-  bool hit = false; vec3 p;
+  // #88 blend p99 (as 25, #104): over-relaxed sphere tracing (Keinert et al. 2014) near the surface. A relaxed step of
+  // uRelax·r is kept while the safe spheres overlap, else step back to the plain step and stay plain for this ray.
+  // Step cap uSteps (96); a ray that runs out of steps close to the surface is a hit (distance fallback), not a hole.
+  bool hit = false, gone = false; vec3 p = ro;
+  float om = uRelax, tPrev = t, rPrev = 0.0, dLast = 1e9; bool relaxed = false;
   for (int i = 0; i < 160; i++) {
     if (i >= uSteps) break;
-    p = ro + rd * t; float d = sdf(p);
+    p = ro + rd * t; float d = sdf(p), r = d * uStepK;
+    if (relaxed && r + rPrev < t - tPrev) { t = tPrev + rPrev; om = 1.0; relaxed = false; continue; }
     if (d < 0.0006 * t + 0.0004) { hit = true; break; }
-    t += d > 0.3 ? d - 2.0 * uWave.x : d * uStepK;   // far: |A·w| ≤ A bounds the gap; near: Lipschitz step
-    if (t > tEnd) break;
+    dLast = d; tPrev = t; rPrev = r;
+    relaxed = d <= 0.3 && om > 1.0;
+    t += d > 0.3 ? d - 2.0 * uWave.x : r * om;   // far: |A·w| ≤ A bounds the gap; near: Lipschitz step, relaxed
+    if (t > tEnd) { gone = true; break; }
   }
+  if (!hit && !gone && dLast < 0.004 + 0.004 * t) { hit = true; p = ro + rd * tPrev; }
   if (!hit) { o = vec4(bg, 1.0); return; }
   // gradient and Hessian by central differences (19 samples), Gaussian curvature by the adjugate
   float e = 0.006, f0 = sdf(p);
@@ -451,7 +459,8 @@ void main() {
   vec3 curv = kt > 0.0 ? mix(vec3(0.9, 0.85, 0.8), vec3(1.0, 0.45, 0.15), kt) : mix(vec3(0.9, 0.85, 0.8), vec3(0.15, 0.45, 1.0), -kt);
   // soft shadow and ambient occlusion
   float sh = 1.0, st = 0.02;
-  for (int i = 0; i < 16; i++) { float h = sdf(p + n * 0.002 + l * st); sh = min(sh, 10.0 * h / st); st += clamp(h, 0.02, 0.2); if (sh < 0.02 || st > 2.0) break; }
+  if (dot(n, l) <= 0.0) sh = 0.0;   // facing away from the light: no shadow march (diffuse and specular are 0 there)
+  else for (int i = 0; i < 16; i++) { float h = sdf(p + n * 0.002 + l * st); sh = min(sh, 10.0 * h / st); st += clamp(h, 0.02, 0.2); if (sh < 0.02 || st > 2.0) break; }
   sh = clamp(sh, 0.0, 1.0);
   float ao = 0.0; for (int i = 1; i <= 4; i++) { float hh = 0.03 * float(i); ao += (hh - sdf(p + n * hh)) / hh; }
   ao = clamp(1.0 - 0.25 * ao, 0.2, 1.0);
@@ -552,7 +561,7 @@ window.__modules = { 'shape-shifter': { inputs: [
   { name: 'fly', type: 'bool', default: true },
   { name: 'bumpAmp', type: 'float', default: 0.5, min: 0, max: 1 }, { name: 'curvColor', type: 'float', default: 0.7, min: 0, max: 1 },
   { name: 'morphBars', type: 'long', default: 8, min: 4, max: 16 }, { name: 'orbitBars', type: 'long', default: 16, min: 4, max: 64 },
-  { name: 'steps', type: 'long', default: 128, min: 48, max: 160 },
+  { name: 'steps', type: 'long', default: 96, min: 48, max: 160 },
 ], perf: PERF } };
 
 // ---------- main loop ----------
@@ -654,7 +663,7 @@ function draw(now) {
   gl.uniform4f(u.uWave, w.A, w.bass, w.hat, w.snare);
   gl.uniform1f(u.uBeats, beats); gl.uniform1f(u.uAspect, W / H); gl.uniform1f(u.uStepK, 1 / (1 + L));
   gl.uniform1f(u.uCurv, params.curvColor); gl.uniform1f(u.uKick, kickLevel); gl.uniform1f(u.uFlash, prev.flash);
-  gl.uniform1i(u.uSteps, Math.round(params.steps));
+  gl.uniform1i(u.uSteps, Math.round(params.steps)); gl.uniform1f(u.uRelax, params.march === 'plain' ? 1 : 1.5);
   const pal = params.palette === 'auto' ? Math.floor(st.k / 2) % 3 : PALETTES.indexOf(params.palette);
   gl.uniform1i(u.uPal, pal);
   gl.uniform3fv(u.uEye, cam.eye); gl.uniform3fv(u.uFwd, fwd); gl.uniform3fv(u.uRight, right); gl.uniform3fv(u.uUp, up); gl.uniform3fv(u.uCenter, st.center);
@@ -702,6 +711,7 @@ if (q('fly') !== null) params.fly = q('fly') !== '0';
 for (const k of Object.keys(SLIDERS)) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
 if (q('res') === 'native') params.res = 'native';
 params.scale = Math.max(0.25, Math.min(1, parseFloat(q('scale')) || 1));   // ?scale=0.75 renders fewer pixels
+if (q('march') === 'plain') params.march = 'plain';   // A/B: the old plain sphere tracing (no over-relaxation)
 if (q('scale') === 'solo' || q('scale') === 'blend') setRenderScale(q('scale'));   // #88: the declared scales, for the GPU gate
 else if (q('res') || q('scale')) setRenderScale(null);   // ?res=native or a numeric ?scale=: the old cap on the canvas
 Object.assign(window.__qa, { setRenderScale, scales: PERF,   // check-shared reads __qa.scales (#88)
