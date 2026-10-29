@@ -28,6 +28,7 @@ The user is in charge ("for now I want to be in charge"): during step 1 the user
 
    The user picks the order within this group later.
 4. **Controller.** Once the Novation Launch Control XL 3 arrives (the user is waiting for it), build controller support for the visualisations: Web MIDI in Chromium, mapped to each module's ISF-style controls.
+   - **Runs as pure web in Chrome** (the user, 29 Oct): `live/host.html` served from localhost, a projector window fullscreen via the Window Management API, plus a laptop window with the controls and the NEXT preview. Web MIDI with sysex drives the OLED and LEDs. A local UDP helper or an Electron wrapper comes only if needed (#85 comment 6499305862).
 5. **Blending.** With the controller, work further on blending scenes together. The Lenia blends (08, #27–#35) are the proof of concept; fade and screen won round 1.
 6. **Fine-tune from reviews.** Once that's solid, adjust each visualisation (add or remove things) based on the user's grades of how it looks.
    - **Knob tags become scene macros.** A grading comment can carry `knob: <what>`. VIZ research turns each tag into a knob spec: mapping, range, default and a `macro1`–`macro4` slot (#85).
