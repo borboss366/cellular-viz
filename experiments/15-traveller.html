@@ -1,0 +1,512 @@
+<!doctype html>
+<!--
+  15a · The traveller, "Pulsing salesman"   (Millennium track #37, P vs NP; spec: #37 comment 6493121591, 15a)
+
+  Hard to find, easy to check. Cities are glowing nodes that pulse on the kick; the current tour is a neon loop
+  with a slow colour flow in tour order. On every beat the best improving 2-opt move (or `moves` of them) is
+  applied: the two removed edges dim, the two new ones draw in over ¼ beat, the reversed stretch ripples, and the
+  length readout pops its hue (≤ 3 a second, never white). Two timers: search (time and tries so far) and check
+  (the live cost of verifying the shown tour: Hamiltonian + length, linear time).
+  Song: 16-bar sections. Build-up: cities appear one per beat up to `cities`, and the route count (n−1)!/2 rolls
+  like an odometer (exact while n ≤ 25, then 10^x). Drop (bar 8): the tour snaps to the space-filling-curve tour
+  (Hilbert order, the 15b heuristic) and 2-opt fast-forwards to a local optimum, which is crossing-free.
+  Ant mode (`ants`): Dorigo's ant colony, one iteration per beat; pheromone is a glowing edge layer, ants are
+  sparks; every edge evaporates by (1 − ρ), ρ = 0.1, the best ant deposits ∝ 1/length; the ant-best tour is
+  polished by 2-opt and taken when it is shorter. `heat`: annealing, uphill 2-opt moves accepted by Metropolis.
+  Verify: for n ≤ 13 a Held–Karp exact solve (n²·2ⁿ) runs in a worker; ✔ optimal glows when it matches.
+  The maths lives in 15-tsp-core.js (also run by node in qa/runner/test/tsp15a.test.mjs).
+
+  Controls (#85): macro1 cities 12→200 (bar), macro2 moves 1→16 per beat (beat), macro3 ants 0→1, macro4 heat.
+  Triggers: 1 new map (bar), 2 explode (now), 3 snap (beat), 4 verify (now); keys Z X C V.
+  window.__qa: state, lenLog, truth1(), crossings(), hamiltonian(), routeCount(n), ants, heldKarp, metrics,
+  check(), setMacro(i,v), macros, pressTrigger(i,holdMs), triggers, triggerLog, triggerEnv, bpm, events, errors.
+  ?macro1..4=0..1, ?seed=, ?build=0 (start with all cities, settled), ?bpm, ?muted=1.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>15a · The traveller</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #05070c; color: #e8eef5;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 16 / 9;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #9fb0c3; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #9fb0c3; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #2a3647; border-radius: 8px;
+    background: #121a26; color: inherit; font: inherit; }
+  button.on { background: #24496b; border-color: #4f86b8; }
+  a { color: #7fb4e6; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(62vw, calc(100vh * 16 / 9)); margin: 0; position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Macros</h3>
+  <div class="row"><label for="m1">1 cities</label><input id="m1" type="range" min="0" max="1" step="0.01"><output id="m1Out"></output></div>
+  <div class="row"><label for="m2">2 moves</label><input id="m2" type="range" min="0" max="1" step="0.01"><output id="m2Out"></output></div>
+  <div class="row"><label for="m3">3 ants</label><input id="m3" type="range" min="0" max="1" step="0.01"><output id="m3Out"></output></div>
+  <div class="row"><label for="m4">4 heat</label><input id="m4" type="range" min="0" max="1" step="0.01"><output id="m4Out"></output></div>
+  <h3>Triggers</h3>
+  <div class="buttons">
+    <button id="t1">Z new map</button><button id="t2">X explode</button><button id="t3">C snap</button><button id="t4">V verify</button>
+  </div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <a href="../index.html">← all experiments</a>
+</div>
+<script src="15-tsp-core.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const T = window.TSP15;
+const query = new URLSearchParams(location.search);
+const params = { bpm: 120, bpb: 4, muted: false, seed: 1, build: true, macro: [0.4, 0.2, 0, 0],
+  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+const S_BARS = 16, DROP_BAR = 8;   // 16-bar sections, the drop at bar 8
+// macro mappings (spec table): cities 12→200 exp, moves 1→16 exp, ants 0→1, heat 0→hot
+const citiesOf = v => Math.round(12 * Math.pow(200 / 12, v));
+const movesOf = v => Math.max(1, Math.round(Math.pow(16, v)));
+const heatOf = v => 0.02 * v * v;   // Metropolis temperature in unit-square length
+
+// ---------- metronome (as 23) ----------
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [],
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume(); this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+    this.playing = true; this.timer = setInterval(() => this.schedule(), 25); this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  schedule() {
+    while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / params.bpm / 4; this.step++; }
+    const old = this.ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, time) {
+    const inBar = step % (params.bpb * 4); this.steps.push({ time, step });
+    for (const lane of LANES) { if (params[lane][inBar % 16] !== 'x') continue; const vel = inBar === 0 ? 1 : 0.7; this.hits.push({ lane, time, vel }); this.click(lane, time, vel); }
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain(); g.connect(this.master);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') { src = ctx.createOscillator(); src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08); src.connect(g); }
+    else { src = ctx.createBufferSource(); src.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = lane === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = lane === 'snare' ? 1800 : 8000; src.connect(f); f.connect(g); }
+    const end = t + TAU[lane] * 4; g.gain.exponentialRampToValueAtTime(0.001, end); src.start(t); src.stop(end + 0.01);
+  },
+  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
+  beats() {
+    if (!this.ctx) return -1;
+    const now = this.ctx.currentTime - this.latency();
+    let last = null; for (const s of this.steps) if (s.time <= now) last = s;
+    return last ? (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / 4 : -1;
+  },
+};
+
+// ---------- the tour engine: changes only happen on beats (or frame-paced inside a snap) ----------
+const st = {
+  seed: 1, mapId: 0, all: [], vis: 0, n: 0, tour: [], nTarget: 12, len: 0,
+  lastBeat: -1, lastBar: -1, phase: 'build', snapUntil: -1, snapMoves: 0,
+  moves: 0, tries: 0, searchT0: performance.now(), checkMs: 0,
+  fresh: [], gone: [], ripple: null, kickBeat: -1e9, popT: -1e9, explodeT: -1e9, verifyT: -1e9,
+  ac: null, acN: 0, pheroTop: [], antTours: [], uphill: { proposed: 0, accepted: 0 },
+  hk: null, hkPending: false, odo: { text: '', prev: '', t: -1e9 }, fade: null, pendingMap: false, pendingSnap: false,
+  barMoves: [], decay: { iters: 0, unused: 0, bad: 0 },
+};
+const lenLog = [];
+function logLen(cause, beat) {
+  st.len = T.tourLength(st.pts(), st.tour);
+  lenLog.push({ cause, beat: +beat.toFixed(4), n: st.n, mapId: st.mapId, len: st.len, heat: heatOf(params.macro[3]) });
+  if (lenLog.length > 4000) lenLog.shift();
+}
+st.pts = () => st.all.slice(0, st.n);
+function newMap(seed, beat) {
+  st.seed = seed; st.mapId++; st.all = T.makeCities(200, seed);
+  const start = params.build ? Math.min(4, st.nTarget) : st.nTarget;
+  st.n = start; st.tour = params.build ? [...Array(start).keys()] : T.twoOptConverge(st.pts(), T.sfcTour(st.pts()));
+  st.ac = null; st.hk = null; st.moves = 0; st.tries = 0; st.searchT0 = performance.now(); st.fresh = []; st.gone = [];
+  logLen('newmap', beat);
+}
+const edgeKey = (a, b) => a < b ? a * 1000 + b : b * 1000 + a;
+function markMove(r, beat) {
+  for (const [a, b] of r.removed) st.gone.push({ a, b, beat });
+  for (const [a, b] of r.added) st.fresh.push({ key: edgeKey(a, b), beat });
+}
+function apply2optMove(m, beat, cause) {
+  const r = T.apply2opt(st.tour, m.i, m.j);
+  markMove(r, beat); st.ripple = { i: m.i + 1, j: m.j, beat }; st.moves++;
+  logLen(cause, beat); st.barMoves.push(beat);
+}
+function addCity(beat) {   // build-up: the next city joins at its cheapest place in the tour
+  T.cheapestInsert(st.all, st.tour, st.n); st.n++;
+  st.fresh.push({ key: -1, city: st.n - 1, beat }); st.ac = null; st.hk = null;
+  logLen('insert', beat);
+}
+function removeCity(beat) {
+  const c = st.n - 1; st.tour = st.tour.filter(x => x !== c); st.n--; st.ac = null; st.hk = null;
+  logLen('remove', beat);
+}
+function onBeat(beat, bars) {
+  const nb = Math.floor(bars);
+  if (nb !== st.lastBar) {   // bar-quantised: the city target (macro 1) and a pending new map
+    st.lastBar = nb; st.nTarget = citiesOf(params.macro[0]);
+    if (st.pendingMap) { st.pendingMap = false; st.fade = { pts: st.pts().slice(), tour: st.tour.slice(), beat }; newMap(st.seed + 1, beat); return; }
+    const inSec = ((nb % S_BARS) + S_BARS) % S_BARS;
+    if (inSec === DROP_BAR) { st.tour = T.sfcTour(st.pts()); logLen('snap', beat); st.snapUntil = beat + params.bpb; st.phase = 'drop'; logEvent({ type: 'drop', bar: nb, tBeat: stepTime(Math.round(beat * 4)) }, performance.now()); }
+  }
+  if (st.pendingSnap) { st.pendingSnap = false; st.snapUntil = beat + params.bpb / 2; st.phase = 'snap'; st.snapPerf = performance.now(); }
+  if (st.n < st.nTarget) { addCity(beat); return; }
+  if (st.n > st.nTarget) { removeCity(beat); return; }
+  if (st.phase === 'drop' || st.phase === 'snap') return;   // the snap is frame-paced
+  const pts = st.pts();
+  // ants: one ACS iteration per beat; the polished ant-best is taken when it is shorter
+  if (params.macro[2] > 0.01 && st.n >= 5) {
+    if (!st.ac || st.acN !== st.n) { st.ac = T.antColony(pts, { seed: st.seed * 31 + st.n }); st.acN = st.n; }
+    const before = Float64Array.from(st.ac.tau);
+    st.ac.step();
+    let unused = 0, bad = 0;
+    for (let e = 0; e < before.length; e++) if (!st.ac.lastUsed[e]) { unused++; if (st.ac.tau[e] !== before[e] * (1 - st.ac.rho)) bad++; }
+    st.decay.iters++; st.decay.unused += unused; st.decay.bad += bad;
+    st.antTours = st.ac.lastAnts.slice(0, 8); st.tries += st.ac.lastAnts.length;
+    const n = st.n, list = [];
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) list.push([st.ac.tau[i * n + j], i, j]);
+    list.sort((a, b) => b[0] - a[0]); st.pheroTop = list.slice(0, Math.min(400, list.length));
+    const pol = T.twoOptConverge(pts, st.ac.best, 60), pl = T.tourLength(pts, pol);
+    if (pl < st.len - 1e-12) { const old = st.tour; st.tour = pol; for (let k = 0; k < n; k++) st.fresh.push({ key: edgeKey(pol[k], pol[(k + 1) % n]), beat }); logLen('adopt', beat); st.gone.push(...old.map((a, k) => ({ a, b: old[(k + 1) % n], beat }))); }
+  }
+  // 2-opt on the beat: `moves` best improving moves
+  for (let k = 0, m = movesOf(params.macro[1]); k < m; k++) {
+    const mv = T.best2opt(pts, st.tour); st.tries++;
+    if (!mv) break;
+    apply2optMove(mv, beat, 'move'); popReadout();
+  }
+  // heat: Metropolis on random 2-opt moves, uphill allowed
+  const temp = heatOf(params.macro[3]);
+  if (temp > 0 && st.n >= 5) {
+    for (let k = 0; k < 4; k++) {
+      let i = Math.floor(rand() * (st.n - 2)), j = i + 2 + Math.floor(rand() * (st.n - i - 2));
+      if (i === 0 && j === st.n - 1) continue;
+      const dl = T.twoOptDelta(pts, st.tour, i, j);
+      if (dl <= 0) continue;
+      st.uphill.proposed++;
+      if (rand() < Math.exp(-dl / temp)) { st.uphill.accepted++; apply2optMove({ i, j }, beat, 'anneal'); }
+    }
+  }
+  // verify stamp: Held–Karp for n ≤ 13 once the tour has settled
+  if (st.n <= 13 && !st.hk && !st.hkPending && !T.best2opt(pts, st.tour)) runHeldKarp();
+}
+const rand = T.rng(12345);
+function snapFrame(beat) {   // fast-forward: up to 3 best-improving moves a frame until the local optimum
+  const pts = st.pts();
+  for (let k = 0; k < 3; k++) {
+    const mv = T.best2opt(pts, st.tour); st.tries++;
+    if (!mv) { st.phase = 'play'; logEvent({ type: 'settled', crossings: T.countCrossings(pts, st.tour), tBeat: null }, performance.now()); popReadout(); return; }
+    apply2optMove(mv, beat, 'move');
+  }
+}
+function popReadout() { const t = performance.now(); if (t - st.popT > 340) st.popT = t; }   // ≤ 3 a second
+
+// Held–Karp in a worker (n ≤ 13)
+let hkWorker = null, hkId = 0;
+function runHeldKarp() {
+  if (st.n > 13 || st.n < 4) return;
+  try {
+    if (!hkWorker) hkWorker = new Worker('15-tsp-core.js');
+    st.hkPending = true; const id = ++hkId, pts = st.pts(), n = st.n, mapId = st.mapId, t0 = performance.now();
+    hkWorker.onmessage = e => {
+      st.hkPending = false;
+      if (e.data.id !== hkId || mapId !== st.mapId || n !== st.n) return;
+      const len = T.tourLength(pts, st.tour);
+      st.hk = { n, opt: e.data.length, len, gap: len / e.data.length - 1, ms: performance.now() - t0, ops: e.data.ops, optimal: Math.abs(len - e.data.length) < 1e-9 };
+      st.verifyT = performance.now();
+    };
+    hkWorker.postMessage({ id, pts });
+  } catch (e) { st.hkPending = false; errors.push('held-karp worker: ' + e.message); }
+}
+
+// ---------- controls (#85 contract) ----------
+const MACRO_NAMES = ['cities', 'moves', 'ants', 'heat'];
+const macroText = i => i === 0 ? `${citiesOf(params.macro[0])}` : i === 1 ? `${movesOf(params.macro[1])}/beat` : params.macro[i].toFixed(2);
+function setMacro(i, v) { if (!(i >= 1 && i <= 4)) return null; params.macro[i - 1] = Math.max(0, Math.min(1, +v)); sync(); return params.macro[i - 1]; }
+for (let i = 1; i <= 4; i++) $('m' + i).addEventListener('input', e => setMacro(i, parseFloat(e.target.value)));
+const TRIGGERS = [
+  { slot: 1, name: 'new map', key: 'Z', mode: 'tap', timing: 'bar', repeats: 'ignore while fading', attackMs: 0, decayMs: 2000 },
+  { slot: 2, name: 'explode', key: 'X', mode: 'tap', timing: 'now', repeats: 'restart', attackMs: 0, decayMs: 600 },
+  { slot: 3, name: 'snap', key: 'C', mode: 'tap', timing: 'beat', repeats: 'ignore', attackMs: 0, decayMs: 1000 },
+  { slot: 4, name: 'verify', key: 'V', mode: 'tap', timing: 'now', repeats: 'restart', attackMs: 0, decayMs: 900 },
+];
+const triggerLog = [], triggerEnv = [0, 0, 0, 0];
+function pressTrigger(i, holdMs = 0) {
+  const now = performance.now();
+  let fired = false;
+  if (i === 1 && !st.pendingMap && !(st.fade && now - st.fade.perf < 2000)) { st.pendingMap = true; fired = true; }
+  else if (i === 2) { st.explodeT = now; fired = true; }
+  else if (i === 3 && !st.pendingSnap && st.phase === 'play') { st.pendingSnap = true; fired = true; }
+  else if (i === 4) { st.verifyT = now; fired = true; if (st.n <= 13) { st.hk = null; runHeldKarp(); } else st.verifyCross = T.countCrossings(st.pts(), st.tour); }
+  triggerLog.push({ slot: i, perf: now, fired, holdMs }); if (triggerLog.length > 256) triggerLog.shift();
+  return fired;
+}
+for (let i = 1; i <= 4; i++) $('t' + i).onclick = () => pressTrigger(i);
+window.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = 'zxcv'.indexOf(e.key.toLowerCase()); if (k >= 0) { e.preventDefault(); pressTrigger(k + 1); }
+});
+$('bpm').addEventListener('input', e => { params.bpm = parseFloat(e.target.value); sync(); });
+function sync() {
+  for (let i = 1; i <= 4; i++) { $('m' + i).value = params.macro[i - 1]; $('m' + i + 'Out').textContent = macroText(i - 1); }
+  $('bpm').value = params.bpm; $('bpmOut').textContent = params.bpm;
+  $('mute').classList.toggle('on', params.muted);
+}
+$('play').onclick = () => { if (metronome.playing) { metronome.stop(); $('play').textContent = '▶ Play'; } else { metronome.start(); clockStart = performance.now(); $('play').textContent = '■ Stop'; } };
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen()).catch(() => {}); };
+window.__modules = { 'traveller': {
+  macros: { macro1: 'cities', macro2: 'moves', macro3: 'ants', macro4: 'heat' },
+  triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })),
+  inputs: [
+    { name: 'cities', type: 'float', default: 0.4, min: 0, max: 1, quantise: 'bar' },
+    { name: 'moves', type: 'float', default: 0.2, min: 0, max: 1, quantise: 'beat' },
+    { name: 'ants', type: 'float', default: 0, min: 0, max: 1 },
+    { name: 'heat', type: 'float', default: 0, min: 0, max: 1 },
+  ] } };
+
+// ---------- drawing (Canvas 2D, additive neon on near-black) ----------
+const canvas = $('c'), hud = $('hud'), ctx = canvas.getContext('2d');
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastNow = 0;
+const errors = [], events = [];
+function logEvent(e, now) {
+  if (!metronome.playing || e.tBeat == null) { e.perfDrawn = now; events.push(e); if (events.length > 512) events.shift(); return; }
+  e.tHeard = e.tBeat + metronome.latency();
+  e.perfHeard = performance.now() + (e.tHeard - metronome.ctx.currentTime) * 1000;
+  e.perfDrawn = now;
+  events.push(e); if (events.length > 512) events.shift();
+}
+const stepTime = step => { const s = metronome.playing && metronome.steps.find(x => x.step === step); return s ? s.time : null; };
+function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; if (window.__panicError) window.__panicError(); }
+}
+const ease = x => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+let lastStep = -1;
+function draw(now) {
+  resize();
+  const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
+  const mb = metronome.beats();
+  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60) + (window.__qaShift || 0) * params.bpb;
+  const bars = beats / params.bpb; window.__qaNowBars = bars;
+  const spb = 60 / params.bpm;
+  // drum events (logged when heard) and the kick pulse
+  const step = Math.floor(beats * 4);
+  if (step !== lastStep) {
+    lastStep = step;
+    const inBar = step % 16;
+    for (const lane of LANES) if (params[lane][inBar] === 'x') { if (lane === 'kick') st.kickBeat = step / 4; if (metronome.playing) logEvent({ type: lane, tBeat: stepTime(step) }, now); }
+  }
+  // the tour engine: on each new beat, then frame-paced while snapping
+  const beat = Math.floor(beats);
+  if (beat !== st.lastBeat) { st.lastBeat = beat; onBeat(beat, bars); }
+  if ((st.phase === 'drop' || st.phase === 'snap')) snapFrame(beats);
+  // the live check: verify the shown tour (Hamiltonian + length), timed
+  { const t0 = performance.now(); const ok = T.isHamiltonian(st.tour, st.n); T.tourLength(st.pts(), st.tour); st.checkMs = performance.now() - t0; st.ham = ok; }
+  for (let k = 0; k < 4; k++) triggerEnv[k] = Math.exp(-(now - [st.fade ? st.fade.perf || 0 : -1e9, st.explodeT, st.snapPerf || -1e9, st.verifyT][k]) / TRIGGERS[k].decayMs * 3);
+  if (st.fade && !st.fade.perf) st.fade.perf = now;
+
+  const W = canvas.width, H = canvas.height, c = ctx;
+  c.globalCompositeOperation = 'source-over';
+  c.fillStyle = '#04050b'; c.fillRect(0, 0, W, H);
+  const side = Math.min(H * 0.9, W * 0.6), ox = W * 0.04, oy = (H - side) / 2, sc = H / 1080;
+  const P = p => [ox + p[0] * side, oy + p[1] * side];
+  const pts = st.pts(), n = st.n, flow = beats * 0.04, hue0 = 190 + 40 * Math.sin(bars * 0.2);
+  const kick = Math.exp(-Math.max(0, beats - st.kickBeat) / 0.125), ex = Math.exp(-(now - st.explodeT) / 300);
+  c.globalCompositeOperation = 'lighter'; c.lineCap = 'round';
+  // the old map fades out over 1 beat after a new map
+  if (st.fade) {
+    const a = 1 - (beats - st.fade.beat); if (a <= 0) st.fade = null;
+    else { c.strokeStyle = `rgba(120,160,255,${0.5 * a})`; c.lineWidth = 2 * sc; c.beginPath(); const fp = st.fade.pts; st.fade.tour.forEach((ci, k) => { const q = P(fp[ci]); k ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); }); c.closePath(); c.stroke(); }
+  }
+  // pheromone layer + ant sparks
+  const antMix = params.macro[2];
+  let pheroLum = 0, tourLum = 0;
+  if (antMix > 0.01 && st.pheroTop.length && st.acN === n) {
+    const tmax = st.pheroTop[0][0];
+    for (const [tau, i, j] of st.pheroTop) {
+      const a = antMix * 0.55 * tau / tmax; if (a < 0.01) break;
+      const p = P(pts[i]), q = P(pts[j]);
+      c.strokeStyle = `hsla(${hue0 + 120},90%,55%,${a})`; c.lineWidth = 1.5 * sc; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(q[0], q[1]); c.stroke();
+      pheroLum += a * Math.hypot(q[0] - p[0], q[1] - p[1]) * 1.5 * sc;
+    }
+    const f = beats - Math.floor(beats);
+    for (const t of st.antTours) {
+      const kf = f * t.length, k = Math.floor(kf), u = kf - k, a = P(pts[t[k % t.length]]), b = P(pts[t[(k + 1) % t.length]]);
+      c.fillStyle = `hsla(${hue0 + 60},100%,70%,${0.8 * antMix})`; c.beginPath(); c.arc(a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, 2.5 * sc, 0, 6.283); c.fill();
+    }
+  }
+  // dimming removed edges (¼ beat)
+  st.gone = st.gone.filter(g => beats - g.beat < 0.25);
+  for (const g of st.gone) {
+    if (g.a >= n || g.b >= n) continue;
+    const a = 0.6 * (1 - (beats - g.beat) / 0.25), p = P(pts[g.a]), q = P(pts[g.b]);
+    c.strokeStyle = `rgba(90,110,200,${a})`; c.lineWidth = 1.5 * sc; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(q[0], q[1]); c.stroke();
+  }
+  // the tour: glow + core, colour flowing in tour order; new edges draw in over ¼ beat; the reversed stretch ripples
+  st.fresh = st.fresh.filter(f => beats - f.beat < 0.25);
+  const freshKeys = new Map(st.fresh.filter(f => f.key >= 0).map(f => [f.key, ease((beats - f.beat) / 0.25)]));
+  const rip = st.ripple && beats - st.ripple.beat < 0.5 ? st.ripple : null;
+  for (let k = 0; k < n && n > 1; k++) {
+    const i = st.tour[k], j = st.tour[(k + 1) % n], grow = freshKeys.has(edgeKey(i, j)) ? freshKeys.get(edgeKey(i, j)) : 1;
+    const p = P(pts[i]), q0 = P(pts[j]), q = [p[0] + (q0[0] - p[0]) * grow, p[1] + (q0[1] - p[1]) * grow];
+    let boost = 0;
+    if (rip && k >= rip.i && k < rip.j) { const ph = (k - rip.i) / Math.max(1, rip.j - rip.i), age = (beats - rip.beat) / 0.5; boost = 0.35 * Math.max(0, 1 - Math.abs(ph - age) * 4) * (1 - age); }
+    const h = (hue0 + 160 * (((k / n) + flow) % 1)) % 360;
+    c.strokeStyle = `hsla(${h},95%,52%,${0.16 + boost * 0.4})`; c.lineWidth = 7 * sc; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(q[0], q[1]); c.stroke();
+    c.strokeStyle = `hsla(${h},100%,${60 + 10 * boost}%,0.85)`; c.lineWidth = 2 * sc; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(q[0], q[1]); c.stroke();
+    tourLum += Math.hypot(q[0] - p[0], q[1] - p[1]) * (7 * 0.16 + 2 * 0.85) * sc;
+  }
+  // cities: pulse +30 % on the kick, ripple on explode; new cities fade in over a beat
+  const newCity = new Map(st.fresh.filter(f => f.key < 0).map(f => [f.city, (beats - f.beat) / 0.25]));
+  for (let i = 0; i < n; i++) {
+    const p = P(pts[i]), fin = newCity.has(i) ? ease(newCity.get(i)) : 1, d = Math.hypot(pts[i][0] - 0.5, pts[i][1] - 0.5);
+    const rp = ex * Math.max(0, 1 - Math.abs(d - (1 - ex) * 0.8) * 8);
+    const r = 3.4 * sc * (1 + 0.3 * kick + 0.8 * rp) * fin;
+    c.fillStyle = `hsla(${hue0 + 30},90%,${55 + 10 * kick}%,${0.25 * fin})`; c.beginPath(); c.arc(p[0], p[1], r * 2.4, 0, 6.283); c.fill();
+    c.fillStyle = `hsla(${hue0 + 30},80%,72%,${0.9 * fin})`; c.beginPath(); c.arc(p[0], p[1], r, 0, 6.283); c.fill();
+  }
+  // readout (right): route count odometer, length, timers, verify stamp
+  c.globalCompositeOperation = 'source-over';
+  const rx = ox + side + W * 0.04, pop = Math.exp(-(now - st.popT) / 250);
+  const rc = T.routeCount(n), rcText = rc.exact && rc.exact.length <= 22 ? rc.exact.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : `10^${rc.log10.toFixed(1)}`;
+  if (rcText !== st.odo.text) { st.odo.prev = st.odo.text; st.odo.text = rcText; st.odo.t = now; }
+  const roll = ease((now - st.odo.t) / 180), fs = Math.round(H / 26);
+  c.font = `500 ${Math.round(H / 48)}px ui-monospace, Menlo, monospace`; c.fillStyle = 'rgba(160,180,210,0.75)';
+  c.fillText(`routes (n−1)!/2   n = ${n}`, rx, H * 0.2);
+  c.save(); c.beginPath(); c.rect(rx, H * 0.2 + fs * 0.3, W - rx, fs * 1.3); c.clip();
+  c.font = `700 ${Math.round(fs * (1 + 0.15 * ex))}px ui-monospace, Menlo, monospace`;
+  const base = H * 0.2 + fs * 1.3;   // odometer: the new count rolls up from below, the old one rolls out above
+  c.fillStyle = `hsla(${hue0 + 60},90%,70%,${1 - 0.6 * (1 - roll)})`; c.fillText(st.odo.text, rx, base + (1 - roll) * fs);
+  if (roll < 1) { c.fillStyle = `hsla(${hue0 + 60},90%,70%,${1 - roll})`; c.fillText(st.odo.prev, rx, base - roll * fs); }
+  c.restore();
+  c.font = `800 ${Math.round(H / 12)}px ui-monospace, Menlo, monospace`;
+  c.fillStyle = `hsl(${(hue0 + 40 + 90 * pop) % 360},${70 + 25 * pop}%,${62 + 6 * pop}%)`;
+  c.fillText(st.len.toFixed(4), rx, H * 0.42);
+  c.font = `500 ${Math.round(H / 44)}px ui-monospace, Menlo, monospace`; c.fillStyle = 'rgba(190,205,230,0.8)';
+  const searchS = (now - st.searchT0) / 1000;
+  c.fillText(`search  ${searchS.toFixed(1)} s · ${st.tries} tries · ${st.moves} moves`, rx, H * 0.52);
+  c.fillText(`check   ${st.checkMs.toFixed(3)} ms ${st.ham ? '✔' : '✗'}`, rx, H * 0.57);
+  if (st.hk || st.hkPending) {
+    const v = Math.exp(-(now - st.verifyT) / 900);
+    c.fillText(`Held–Karp n²·2ⁿ = ${(n * n * Math.pow(2, n)).toExponential(2)}${st.hk ? ` · ${st.hk.ms.toFixed(0)} ms` : ' …'}`, rx, H * 0.63);
+    if (st.hk) {
+      c.font = `700 ${Math.round(H / 26)}px ui-monospace, Menlo, monospace`;
+      c.fillStyle = st.hk.optimal ? `hsla(${hue0 + 100},85%,${60 + 10 * v}%,0.95)` : 'rgba(255,170,90,0.9)';
+      c.fillText(st.hk.optimal ? '✔ optimal' : `gap +${(st.hk.gap * 100).toFixed(2)} %`, rx, H * 0.7);
+    }
+  } else if (now - st.verifyT < 1500 && st.verifyCross !== undefined) {
+    c.font = `700 ${Math.round(H / 26)}px ui-monospace, Menlo, monospace`;
+    c.fillStyle = `hsla(${hue0 + 100},85%,62%,${Math.exp(-(now - st.verifyT) / 900)})`;
+    c.fillText(st.verifyCross === 0 ? '✔ no crossings' : `✗ ${st.verifyCross} crossings`, rx, H * 0.7);
+  }
+  c.fillStyle = 'rgba(255,200,61,0.9)'; c.font = `600 ${Math.round(H / 30)}px ui-monospace, Menlo, monospace`;
+  c.fillText('15a · the traveller', W * 0.03, H * 0.07);
+
+  // QA state
+  const barNow = Math.floor(bars);
+  st.barMoves = st.barMoves.filter(b => b >= (barNow - 1) * params.bpb);
+  Object.assign(window.__qa, {
+    bars, beats, bpm: params.bpm, triggerEnv,
+    state: { n, nTarget: st.nTarget, len: st.len, mapId: st.mapId, seed: st.seed, phase: st.phase, moves: st.moves, tries: st.tries, settled: st.phase === 'play' && !T.best2opt(pts, st.tour) },
+    metrics: { nodes: n, improvementsLastBar: st.barMoves.filter(b => b >= (barNow - 1) * params.bpb && b < barNow * params.bpb).length,
+      pheromoneShare: pheroLum / Math.max(1e-9, pheroLum + tourLum), uphillAccepted: st.uphill.accepted / Math.max(1, st.uphill.proposed) },
+    ants: { iter: st.ac ? st.ac.iter : 0, rho: 0.1, ...st.decay }, heldKarp: st.hk,
+  });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const s = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    hud.textContent = `15a traveller · n ${n}/${st.nTarget} · ${st.phase} · bar ${(((bars % S_BARS) + S_BARS) % S_BARS).toFixed(1)}/${S_BARS} · ${params.bpm} bpm · ${s}\n${W}×${H} · ${fps} fps`;
+  }
+}
+
+// ---------- QA ----------
+function truth1() {   // with heat 0: every applied move strictly lowers the length (snaps, map and city changes excluded)
+  let moves = 0, bad = 0, worst = 0;
+  for (let k = 1; k < lenLog.length; k++) {
+    const e = lenLog[k], p = lenLog[k - 1];
+    if (e.cause !== 'move' && e.cause !== 'adopt') continue;
+    if (e.heat > 0 || p.mapId !== e.mapId || p.n !== e.n) continue;
+    moves++; if (!(e.len < p.len)) { bad++; worst = Math.max(worst, e.len - p.len); }
+  }
+  return { ok: moves > 0 && bad === 0, moves, bad, worst };
+}
+window.__qa = { errors, events, lenLog, truth1, triggerLog, triggerEnv, triggers: TRIGGERS,
+  crossings: () => T.countCrossings(st.pts(), st.tour), hamiltonian: () => T.isHamiltonian(st.tour, st.n),
+  routeCount: n => T.routeCount(n ?? st.n),
+  check: () => {
+    const rc10 = T.routeCount(10).exact === '181440', rc20 = T.routeCount(20).exact === '60822550204416000';
+    let hkOk = true;
+    for (let s = 1; s <= 5; s++) { const p = T.makeCities(4 + s, 500 + s); if (Math.abs(T.heldKarp(p).length - T.bruteForce(p)) > 1e-9) hkOk = false; }
+    return { hamiltonian: T.isHamiltonian(st.tour, st.n), crossings: T.countCrossings(st.pts(), st.tour), settled: st.phase === 'play' && !T.best2opt(st.pts(), st.tour),
+      routeCountOk: rc10 && rc20, heldKarpOk: hkOk, truth1: truth1(), antDecayOk: st.decay.bad === 0, antIters: st.decay.iters };
+  },
+  setMacro, pressTrigger,
+  get macros() { return Object.fromEntries(MACRO_NAMES.map((name, i) => [`macro${i + 1}`, { name, value: params.macro[i], shown: macroText(i) }])); },
+};
+// drop hook (#88): the drop is bar 8 of each 16-bar section; __qa.forceDrop() (panic.js) jumps the clock there
+window.__qaNextDrop = b => window.__qaSectionDrop(b, S_BARS, DROP_BAR);
+const q = k => query.get(k);
+for (let i = 1; i <= 4; i++) { const v = parseFloat(q('macro' + i)); if (Number.isFinite(v)) params.macro[i - 1] = Math.max(0, Math.min(1, v)); }
+if (Number.isFinite(parseFloat(q('bpm')))) params.bpm = Math.max(60, Math.min(180, parseFloat(q('bpm'))));
+if (parseInt(q('seed'), 10) > 0) params.seed = parseInt(q('seed'), 10);
+if (q('build') === '0') params.build = false;
+params.muted = q('muted') === '1';
+st.nTarget = citiesOf(params.macro[0]);
+newMap(params.seed, 0);
+if (!params.build) st.phase = 'play';
+sync();
+requestAnimationFrame(frame);
+</script>
+<script src="panic.js"></script>
+</body>
+</html>
