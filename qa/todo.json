@@ -551,5 +551,21 @@
    }
   ],
   "done": "2026-10-28T21:40:16.592Z"
+ },
+ {
+  "id": "16b-round-2",
+  "from": "QA box",
+  "title": "16b Hodge Kaleidoscope round 2: faster shape changes (speed on knob 1) — swipe",
+  "note": "PR #84 @8589927, your note 'change shapes faster or control speed on the controller'. 17 of 19 checks pass; the 2 misses are 4K-only timing (a morph lands 41 ms after its beat where 40 is the limit, and 2 slow frames at the fastest speed), which VIZ dev is fixing. Judge the look: is the pace right now?",
+  "links": [
+   {
+    "label": "⇄ compare",
+    "href": "/run/16-hodge-kaleidoscope/2026-10-29-0346-pr84-swipe/compare"
+   },
+   {
+    "label": "▶ watch all",
+    "href": "/run/16-hodge-kaleidoscope/2026-10-29-0346-pr84-swipe"
+   }
+  ]
  }
 ]
