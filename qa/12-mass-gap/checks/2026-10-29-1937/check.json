@@ -1,0 +1,204 @@
+{
+ "results": {
+  "gap_m0.35": {
+   "m": 0.35,
+   "omega": 0.3505,
+   "err": 0.13,
+   "crossings": 44,
+   "stillRinging": 0.0232,
+   "greenBlueMax": 0,
+   "frameStep": 2
+  },
+  "gap_m0.6": {
+   "m": 0.6,
+   "omega": 0.6024,
+   "err": 0.41,
+   "crossings": 76,
+   "stillRinging": 0.0233,
+   "greenBlueMax": 0,
+   "frameStep": 2
+  },
+  "noGap": {
+   "arrive": [
+    26,
+    56,
+    86,
+    116,
+    146
+   ],
+   "speed": 1
+  },
+  "tube": {
+   "samples": 338,
+   "rMin": 0.38,
+   "rMax": 2.02,
+   "sigmaMin": 0.9,
+   "sigmaMax": 0.9,
+   "dropR": 0.18,
+   "grows": true
+  },
+  "glueballs": {
+   "page": [
+    {
+     "name": "0++",
+     "mev": 1730
+    },
+    {
+     "name": "2++",
+     "mev": 2400
+    },
+    {
+     "name": "0−+",
+     "mev": 2590
+    }
+   ],
+   "gapTop": 1730,
+   "matches": true,
+   "noneLighter": true
+  },
+  "colourNeutral": {
+   "satBuild": null,
+   "satDrop": 0.04,
+   "samples": [
+    0,
+    108
+   ]
+  }
+ },
+ "speed": {
+  "field": {
+   "fps": 60,
+   "worst": 16.8,
+   "p99": 16.8,
+   "alive": true,
+   "caught": 0,
+   "canvas": [
+    1920,
+    1080
+   ]
+  },
+  "tube": {
+   "fps": 60,
+   "worst": 16.8,
+   "p99": 16.8,
+   "alive": true,
+   "caught": 0,
+   "canvas": [
+    1920,
+    1080
+   ]
+  },
+  "glueball": {
+   "fps": 60,
+   "worst": 16.8,
+   "p99": 16.8,
+   "alive": true,
+   "caught": 0,
+   "canvas": [
+    1920,
+    1080
+   ]
+  },
+  "lava": {
+   "fps": 60,
+   "worst": 16.8,
+   "p99": 16.8,
+   "alive": true,
+   "caught": 0,
+   "canvas": [
+    1920,
+    1080
+   ]
+  },
+  "auto": {
+   "fps": 60,
+   "worst": 16.8,
+   "p99": 16.8,
+   "alive": true,
+   "caught": 0,
+   "canvas": [
+    1920,
+    1080
+   ]
+  }
+ },
+ "modules": {
+  "field": {
+   "inputs": [
+    {
+     "name": "gap",
+     "type": "float",
+     "default": 0.35,
+     "min": 0.05,
+     "max": 1
+    },
+    {
+     "name": "coupling",
+     "type": "float",
+     "default": 0.06,
+     "min": 0,
+     "max": 0.3
+    },
+    {
+     "name": "impulse",
+     "type": "float",
+     "default": 1.2,
+     "min": 0,
+     "max": 3
+    }
+   ]
+  },
+  "tube": {
+   "inputs": [
+    {
+     "name": "width",
+     "type": "float",
+     "default": 0.035,
+     "min": 0.01,
+     "max": 0.1
+    },
+    {
+     "name": "stretch",
+     "type": "float",
+     "default": 1.1,
+     "min": 0.2,
+     "max": 1.6
+    }
+   ]
+  },
+  "glueball": {
+   "inputs": [
+    {
+     "name": "glow",
+     "type": "float",
+     "default": 1,
+     "min": 0,
+     "max": 2
+    }
+   ]
+  },
+  "lava": {
+   "inputs": [
+    {
+     "name": "speed",
+     "type": "float",
+     "default": 0.08,
+     "min": 0.01,
+     "max": 0.3
+    }
+   ]
+  }
+ },
+ "errors": [],
+ "pass": {
+  "gapOmega": true,
+  "colourSeparate": true,
+  "noGapSpeed1": true,
+  "tube": true,
+  "glueballs": true,
+  "whiterAtDrop": false,
+  "pageLoopAlive": true,
+  "fps60": true,
+  "noErrors": true
+ }
+}
