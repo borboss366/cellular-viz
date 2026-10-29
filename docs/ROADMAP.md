@@ -29,6 +29,7 @@ The user is in charge ("for now I want to be in charge"): during step 1 the user
    The user picks the order within this group later.
 4. **Controller.** Once the Novation Launch Control XL 3 arrives (the user is waiting for it), build controller support for the visualisations: Web MIDI in Chromium, mapped to each module's ISF-style controls.
    - **Runs as pure web in Chrome** (the user, 29 Oct): `live/host.html` served from localhost, a projector window fullscreen via the Window Management API, plus a laptop window with the controls and the NEXT preview. Web MIDI with sysex drives the OLED and LEDs. A local UDP helper or an Electron wrapper comes only if needed (#85 comment 6499305862).
+   - **Live hand fixes on the controller:** tap, ×2 / ÷2, downbeat ("this is the one") and nudge, with keyboard stand-ins until the controller arrives. They apply immediately, per the #95 authority table (comment 6499054911). They are what keep the mixer test safe when the tracker is mediocre.
 5. **Blending.** With the controller, work further on blending scenes together. The Lenia blends (08, #27–#35) are the proof of concept; fade and screen won round 1.
 6. **Fine-tune from reviews.** Once that's solid, adjust each visualisation (add or remove things) based on the user's grades of how it looks.
    - **Knob tags become scene macros.** A grading comment can carry `knob: <what>`. VIZ research turns each tag into a knob spec: mapping, range, default and a `macro1`–`macro4` slot (#85).
@@ -73,7 +74,7 @@ There is **one shared clock module**. The #85 host owns it, and standalone pages
      - Details and the QA truth are on #95.
 3. **Live audio** (research).
    - Line-in steers the metronome through processing-llm's PLL (brief task 2).
-   - Hand fixes on the controller: tap, ×2 / ÷2, downbeat ("this is the one") and nudge.
+   - Hand fixes: see Controller (step 4).
    - Sync is measured against the waveform, not the schedule (brief task 4). On the box, a fake audio capture feeds known wavs.
 4. **Pro DJ Link** (research).
    - The user's friend has Pioneer gear to test with; the models aren't known yet.
@@ -103,7 +104,7 @@ There is **one shared clock module**. The #85 host owns it, and standalone pages
 | 22 Endless Labyrinth (first-person maze: Eller's algorithm + CA walls + raycast; not a Millennium page) | ⏳ not built. MVP spec on #37 (comment 6401505993, 25 Oct) |
 | Runners-up from the evangelist report: sandpile avalanches, Chladni plates, Turing reaction–diffusion | 💡 ideas |
 
-Rule for every MVP: art first, maths true underneath, a QA truth check, 60 fps at 1440p on the box, and drums drawn ≤ 40 ms after the sound.
+Rule for every MVP: art first, maths true underneath, a QA truth check, 60 fps at 1440p on the box, and drums drawn ≤ 40 ms after the sound. Until a page is on the shared clock with a passing `file:` run on the clock brief's truth (b) (real tracks with gridder sidecars; 13 Flow Lab first), the 40 ms is measured against the metronome's scheduled beat. After that it is measured against the onset in the audio waveform.
 
 ## Step 2: audience interaction
 
