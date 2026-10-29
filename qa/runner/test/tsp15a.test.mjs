@@ -31,6 +31,17 @@ test('truth 2: a settled 2-opt tour has no crossings (20 seeds, n = 50 and 120)'
   }
 });
 
+test('ruling on #123: a snap settles within 4 bars (n = 200, 3 moves a frame, 60 fps, 180 bpm worst case)', () => {
+  const budget = 3 * 60 * (4 * 4 * 60 / 180);   // 3 moves/frame × frames in 4 bars at 180 bpm = 960 moves
+  for (let seed = 1; seed <= 10; seed++) {
+    const pts = T.makeCities(200, 300 + seed), t = T.sfcTour(pts);
+    let moves = 0;
+    for (let m; (m = T.best2opt(pts, t)); moves++) T.apply2opt(t, m.i, m.j);
+    assert.ok(moves <= budget, `seed ${seed}: ${moves} moves > ${budget}`);
+    assert.equal(T.countCrossings(pts, t), 0);
+  }
+});
+
 test('the crossing test finds a crossing when there is one', () => {
   const pts = [[0, 0], [1, 0], [1, 1], [0, 1]];
   assert.equal(T.countCrossings(pts, [0, 1, 2, 3]), 0);

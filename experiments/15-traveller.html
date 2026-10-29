@@ -16,11 +16,12 @@
   Verify: for n ≤ 13 a Held–Karp exact solve (n²·2ⁿ) runs in a worker; ✔ optimal glows when it matches.
   The maths lives in 15-tsp-core.js (also run by node in qa/runner/test/tsp15a.test.mjs).
 
-  Controls (#85): macro1 cities 12→200 (bar), macro2 moves 1→16 per beat (beat), macro3 ants 0→1, macro4 heat.
+  Controls (#85): macro1 cities 8→13 over 0–0.2, then 14→200 log (bar), macro2 moves 1→16 per beat (beat), macro3 ants 0→1, macro4 heat.
   Triggers: 1 new map (bar), 2 explode (now), 3 snap (beat), 4 verify (now); keys Z X C V.
   window.__qa: state, lenLog, truth1(), crossings(), hamiltonian(), routeCount(n), ants, heldKarp, metrics,
   check(), setMacro(i,v), macros, pressTrigger(i,holdMs), triggers, triggerLog, triggerEnv, bpm, events, errors.
-  ?macro1..4=0..1, ?seed=, ?build=0 (start with all cities, settled), ?bpm, ?muted=1.
+  ?macro1..4=0..1, ?seed=, ?build=0 (start with all cities, settled), ?firstDrop=bar (an extra drop, for QA), ?bpm, ?muted=1.
+  snapTruth(): every snap is crossing-free within 4 bars (ruling on #123). Heat is exactly 0 at macro4 = 0.
 -->
 <html lang="en">
 <head>
@@ -87,11 +88,13 @@
 const $ = id => document.getElementById(id);
 const T = window.TSP15;
 const query = new URLSearchParams(location.search);
-const params = { bpm: 120, bpb: 4, muted: false, seed: 1, build: true, macro: [0.4, 0.2, 0, 0],
+const params = { bpm: 120, bpb: 4, muted: false, seed: 1, build: true, firstDrop: null, macro: [0.58, 0.2, 0, 0],
   kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 const S_BARS = 16, DROP_BAR = 8;   // 16-bar sections, the drop at bar 8
 // macro mappings (spec table): cities 12→200 exp, moves 1→16 exp, ants 0→1, heat 0→hot
-const citiesOf = v => Math.round(12 * Math.pow(200 / 12, v));
+// cities (VIZ research's ruling on #123): 0–0.2 → 8…13 in steps, so the Held–Karp ✔ stamp (n ≤ 13) is reachable live;
+// 0.2–1 → 14…200 on a log scale. Default 0.58 ≈ 50 cities.
+const citiesOf = v => v <= 0.2 ? 8 + Math.round(5 * Math.max(0, v) / 0.2) : Math.round(14 * Math.pow(200 / 14, (Math.min(1, v) - 0.2) / 0.8));
 const movesOf = v => Math.max(1, Math.round(Math.pow(16, v)));
 const heatOf = v => 0.02 * v * v;   // Metropolis temperature in unit-square length
 
@@ -150,7 +153,7 @@ const st = {
   hk: null, hkPending: false, odo: { text: '', prev: '', t: -1e9 }, fade: null, pendingMap: false, pendingSnap: false,
   barMoves: [], decay: { iters: 0, unused: 0, bad: 0 },
 };
-const lenLog = [];
+const lenLog = [], snapLog = [];   // snapLog: each drop or snap, its start beat, the beat it settled and the crossings then
 function logLen(cause, beat) {
   st.len = T.tourLength(st.pts(), st.tour);
   lenLog.push({ cause, beat: +beat.toFixed(4), n: st.n, mapId: st.mapId, len: st.len, heat: heatOf(params.macro[3]) });
@@ -189,9 +192,9 @@ function onBeat(beat, bars) {
     st.lastBar = nb; st.nTarget = citiesOf(params.macro[0]);
     if (st.pendingMap) { st.pendingMap = false; st.fade = { pts: st.pts().slice(), tour: st.tour.slice(), beat }; newMap(st.seed + 1, beat); return; }
     const inSec = ((nb % S_BARS) + S_BARS) % S_BARS;
-    if (inSec === DROP_BAR) { st.tour = T.sfcTour(st.pts()); logLen('snap', beat); st.snapUntil = beat + params.bpb; st.phase = 'drop'; logEvent({ type: 'drop', bar: nb, tBeat: stepTime(Math.round(beat * 4)) }, performance.now()); }
+    if (inSec === DROP_BAR || nb === params.firstDrop) { st.tour = T.sfcTour(st.pts()); logLen('snap', beat); st.snapUntil = beat + params.bpb; st.phase = 'drop'; snapLog.push({ kind: 'drop', start: beat, end: null, crossings: null }); logEvent({ type: 'drop', bar: nb, tBeat: stepTime(Math.round(beat * 4)) }, performance.now()); }
   }
-  if (st.pendingSnap) { st.pendingSnap = false; st.snapUntil = beat + params.bpb / 2; st.phase = 'snap'; st.snapPerf = performance.now(); }
+  if (st.pendingSnap) { st.pendingSnap = false; st.snapUntil = beat + params.bpb / 2; st.phase = 'snap'; st.snapPerf = performance.now(); snapLog.push({ kind: 'snap', start: beat, end: null, crossings: null }); }
   if (st.n < st.nTarget) { addCity(beat); return; }
   if (st.n > st.nTarget) { removeCity(beat); return; }
   if (st.phase === 'drop' || st.phase === 'snap') return;   // the snap is frame-paced
@@ -237,7 +240,10 @@ function snapFrame(beat) {   // fast-forward: up to 3 best-improving moves a fra
   const pts = st.pts();
   for (let k = 0; k < 3; k++) {
     const mv = T.best2opt(pts, st.tour); st.tries++;
-    if (!mv) { st.phase = 'play'; logEvent({ type: 'settled', crossings: T.countCrossings(pts, st.tour), tBeat: null }, performance.now()); popReadout(); return; }
+    if (!mv) {
+      st.phase = 'play';
+      const open = snapLog[snapLog.length - 1]; if (open && open.end === null) { open.end = beat; open.crossings = T.countCrossings(pts, st.tour); }
+      logEvent({ type: 'settled', crossings: T.countCrossings(pts, st.tour), tBeat: null }, performance.now()); popReadout(); return; }
     apply2optMove(mv, beat, 'move');
   }
 }
@@ -301,7 +307,7 @@ window.__modules = { 'traveller': {
   macros: { macro1: 'cities', macro2: 'moves', macro3: 'ants', macro4: 'heat' },
   triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })),
   inputs: [
-    { name: 'cities', type: 'float', default: 0.4, min: 0, max: 1, quantise: 'bar' },
+    { name: 'cities', type: 'float', default: 0.58, min: 0, max: 1, quantise: 'bar' },
     { name: 'moves', type: 'float', default: 0.2, min: 0, max: 1, quantise: 'beat' },
     { name: 'ants', type: 'float', default: 0, min: 0, max: 1 },
     { name: 'heat', type: 'float', default: 0, min: 0, max: 1 },
@@ -330,12 +336,18 @@ function frame(now) {
 }
 const ease = x => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
 let lastStep = -1;
+// the clock as this page uses it: beats (heard) and beats per bar. Until clock.js lands, the page's own
+// metronome (or wall time before Play); __qaShift is #88's forceDrop.
+function clockRead(now) {
+  const mb = metronome.beats();
+  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60) + (window.__qaShift || 0) * params.bpb;
+  return { beats, bpb: params.bpb };
+}
 function draw(now) {
   resize();
   const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
-  const mb = metronome.beats();
-  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60) + (window.__qaShift || 0) * params.bpb;
-  const bars = beats / params.bpb; window.__qaNowBars = bars;
+  const { beats, bpb } = clockRead(now);   // the page reads only beats and beats-per-bar, so clock.js can drop in
+  const bars = beats / bpb; window.__qaNowBars = bars;
   const spb = 60 / params.bpm;
   // drum events (logged when heard) and the kick pulse
   const step = Math.floor(beats * 4);
@@ -480,7 +492,17 @@ function truth1() {   // with heat 0: every applied move strictly lowers the len
   }
   return { ok: moves > 0 && bad === 0, moves, bad, worst };
 }
-window.__qa = { errors, events, lenLog, truth1, triggerLog, triggerEnv, triggers: TRIGGERS,
+// ruling on #123: after each snap (drop or trigger) the tour is crossing-free within 4 bars
+function snapTruth(nowBeats = window.__qa.beats) {
+  const limit = 4 * params.bpb;
+  let late = 0, crossed = 0, done = 0;
+  for (const s of snapLog) {
+    if (s.end === null) { if (nowBeats - s.start > limit) late++; continue; }
+    done++; if (s.end - s.start > limit) late++; if (s.crossings !== 0) crossed++;
+  }
+  return { ok: done > 0 && late === 0 && crossed === 0, snaps: snapLog.length, done, late, crossed, worstBeats: Math.max(0, ...snapLog.filter(s => s.end !== null).map(s => s.end - s.start)) };
+}
+window.__qa = { errors, events, lenLog, snapLog, truth1, snapTruth, triggerLog, triggerEnv, triggers: TRIGGERS,
   crossings: () => T.countCrossings(st.pts(), st.tour), hamiltonian: () => T.isHamiltonian(st.tour, st.n),
   routeCount: n => T.routeCount(n ?? st.n),
   check: () => {
@@ -500,6 +522,7 @@ for (let i = 1; i <= 4; i++) { const v = parseFloat(q('macro' + i)); if (Number.
 if (Number.isFinite(parseFloat(q('bpm')))) params.bpm = Math.max(60, Math.min(180, parseFloat(q('bpm'))));
 if (parseInt(q('seed'), 10) > 0) params.seed = parseInt(q('seed'), 10);
 if (q('build') === '0') params.build = false;
+if (Number.isFinite(parseInt(q('firstDrop'), 10))) params.firstDrop = parseInt(q('firstDrop'), 10);   // QA: an extra drop at this bar
 params.muted = q('muted') === '1';
 st.nTarget = citiesOf(params.macro[0]);
 newMap(params.seed, 0);
