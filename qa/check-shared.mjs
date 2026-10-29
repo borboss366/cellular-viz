@@ -323,7 +323,11 @@ if (only !== 'flash') {
   }, SECS);
   clearInterval(clkTimer);
   try { res.perf.dpmLevel = fs.readFileSync('/sys/class/drm/card0/device/power_dpm_force_performance_level', 'utf8').trim(); } catch { res.perf.dpmLevel = null; }
-  res.perf.sclk = clk.length ? Object.entries(clk.reduce((a, v) => (a[v] = (a[v] || 0) + 1, a), {})).sort((a, b) => +a[0] - +b[0]).map(([mhz, n]) => [+mhz, +(100 * n / clk.length).toFixed(1)]) : null;
+  // grouped in bands; mean and the card's top level (last line of pp_dpm_sclk) for the validity gate under a pinned level
+  let top = null; try { const ls = fs.readFileSync(SCLK, 'utf8').match(/(\d+)\s*Mhz/gi) || []; top = Math.max(...ls.map(s => parseInt(s, 10))); } catch {}
+  const bands = [[0, 1000, '<1000'], [1000, 1500, '1000–1499'], [1500, 2000, '1500–1999'], [2000, 2500, '2000–2499'], [2500, 1e9, '≥2500']];
+  res.perf.sclk = clk.length ? { n: clk.length, mean: Math.round(clk.reduce((a, b) => a + b, 0) / clk.length), top,
+    bands: bands.map(([lo, hi, name]) => [name, +(100 * clk.filter(v => v >= lo && v < hi).length / clk.length).toFixed(1)]).filter(b => b[1] > 0) } : null;
   const p = res.perf, mods = p.modules ? p.modules.map(m => ({ module: m.module, method: m.method, n: m.gpuMs.length, p50: q(m.gpuMs, 0.5), p95: q(m.gpuMs, 0.95), p99: q(m.gpuMs, 0.99) })) : null;
   p.stats = { n: p.gpu.length, p50: q(p.gpu, 0.5), p95: q(p.gpu, 0.95), p99: q(p.gpu, 0.99), modules: mods,
     raf: { n: p.dt.length, p50: q(p.dt, 0.5), p95: q(p.dt, 0.95), p99: q(p.dt, 0.99), over20: p.dt.filter(x => x > 20).length, over: p.dt.filter(x => x > 17.5).length, overPct: +(100 * p.dt.filter(x => x > 17.5).length / Math.max(1, p.dt.length)).toFixed(2), fps: +(1000 * p.dt.length / Math.max(1, p.dt.reduce((a, b) => a + b, 0))).toFixed(1) },
@@ -402,7 +406,12 @@ if (res.perf) {
   if (!p.hook && legacy) add('__qa.forceDrop() puts a drop inside the measured 60 s', 'warn', 'hook missing (page from before #88)');
   else add('__qa.forceDrop() puts a drop inside the measured 60 s', p.drop === 'forceDrop', p.drop ? `__qa.${p.drop}() at 20 s` : 'no __qa.forceDrop hook (required by #88 for new scenes)');
   add('pair gate (50/50 with the heaviest scene)', null, 'waits for the #85 host: two modules in one context');
-  add('GPU clock during the measured windows (report-only)', null, p.sclk ? `${p.sclk.map(([m, pc]) => `${m} MHz ${pc} %`).join(' · ')} · power_dpm_force_performance_level ${p.dpmLevel ?? '–'}` : 'pp_dpm_sclk not readable');
+  add('GPU clock during the measured windows (report-only)', null, p.sclk ? `mean ${p.sclk.mean} MHz of ${p.sclk.top ?? '?'} · ${p.sclk.bands.map(([b, pc]) => `${b} MHz ${pc} %`).join(' · ')} · ${p.sclk.n} samples · power_dpm_force_performance_level ${p.dpmLevel ?? '–'}` : 'pp_dpm_sclk not readable');
+  // #88 clock ruling (VIZ research comment 6498837801; user said yes to pinning, 29 Oct): with the level pinned
+  // (profile_peak/high) a GPU-time result counts only if the mean clock was ≥ 90 % of the top level; under auto it is report-only
+  const pinned = /^(profile_peak|high)$/.test(p.dpmLevel || '');
+  if (p.sclk && p.sclk.top) add('GPU ms measured at a pinned clock (≥ 90 % of top)', pinned ? (p.sclk.mean >= 0.9 * p.sclk.top ? true : 'warn') : 'warn',
+    pinned ? `mean ${p.sclk.mean} of ${p.sclk.top} MHz${p.sclk.mean >= 0.9 * p.sclk.top ? '' : ' · invalid run: GPU ms rows above are not judged as real cost'}` : `level ${p.dpmLevel ?? '–'}: ms rows measure the clock governor too (host not pinned yet)`);
   add('timer query bits', null, p.bits ? `TIMESTAMP ${p.bits.stamp ?? p.bits.err} · TIME_ELAPSED ${p.bits.elapsed ?? '–'}` : 'extension not available');
 }
 if (res.flash) {
