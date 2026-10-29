@@ -111,6 +111,9 @@ const params = { family: 'auto', palette: 'auto', fly: true, bumpAmp: 0.5, curvC
                  morphBars: 8, orbitBars: 16, steps: 128, bpm: 120, bpb: 4, muted: false, res: 'cap',
                  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 const PALETTES = ['ceramic', 'chrome', 'iridescent'];
+// #88 GPU gate for ray-march scenes (comment 6491353229): declared render scales, fractions of the full
+// device-pixel canvas per axis. Solo plays at soloScale; in a crossfade the host drops it to blendScale.
+const PERF = { soloScale: 0.75, blendScale: 0.5 };
 const THICK = 0.12, SPR = 0.09;
 
 // ---------- keyframes (parameter sets) ----------
@@ -550,13 +553,19 @@ window.__modules = { 'shape-shifter': { inputs: [
   { name: 'bumpAmp', type: 'float', default: 0.5, min: 0, max: 1 }, { name: 'curvColor', type: 'float', default: 0.7, min: 0, max: 1 },
   { name: 'morphBars', type: 'long', default: 8, min: 4, max: 16 }, { name: 'orbitBars', type: 'long', default: 16, min: 4, max: 64 },
   { name: 'steps', type: 'long', default: 128, min: 48, max: 160 },
-] } };
+], perf: PERF } };
 
 // ---------- main loop ----------
+let fixedScale = null;   // null: the old cap (≤ 1920×1080 pixels); else exactly this fraction a side
+function setRenderScale(s) {   // 'solo' | 'blend' | a number 0.25–1 | null (back to the cap); returns the scale in force
+  const v = s === 'solo' ? PERF.soloScale : s === 'blend' ? PERF.blendScale : s === null ? NaN : parseFloat(s);
+  fixedScale = Number.isFinite(v) ? Math.max(0.25, Math.min(1, v)) : null;
+  return fixedScale;
+}
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
-  const cap = (params.res === 'native' ? 1 : Math.min(1, Math.sqrt(1920 * 1080 / (w * h)))) * params.scale;
+  const cap = fixedScale !== null ? fixedScale : (params.res === 'native' ? 1 : Math.min(1, Math.sqrt(1920 * 1080 / (w * h)))) * params.scale;
   w = Math.max(1, Math.round(w * cap)); h = Math.max(1, Math.round(h * cap));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 }
@@ -655,6 +664,12 @@ if (q('fly') !== null) params.fly = q('fly') !== '0';
 for (const k of Object.keys(SLIDERS)) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
 if (q('res') === 'native') params.res = 'native';
 params.scale = Math.max(0.25, Math.min(1, parseFloat(q('scale')) || 1));   // ?scale=0.75 renders fewer pixels
+if (q('scale') === 'solo' || q('scale') === 'blend') setRenderScale(q('scale'));   // #88: the declared scales, for the GPU gate
+// setRenderScale resizes the canvas (a one-off reallocation), so the runner should prefer ?scale= on load
+Object.assign(window.__qa, { setRenderScale, scales: PERF });   // check-shared reads __qa.scales (#88)
+Object.defineProperties(window.__qa, {   // live values (Object.assign would copy them once)
+  scaleNow: { get: () => fixedScale, enumerable: true },
+  renderPx: { get: () => [canvas.width, canvas.height], enumerable: true } });
 params.muted = q('muted') === '1';
 sync();
 requestAnimationFrame(frame);
