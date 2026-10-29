@@ -164,6 +164,15 @@ for (const q of ['', 'res=native']) {
     await p.close();
   }
 }
+// per-pass timing (report-only, asked by VIZ dev on #104 @d84df2e): ?passes=1 times the march, the blit and draw()'s CPU part
+// separately (__qa.passes); the page then uses the timer itself, so check-shared doesn't wrap it. 1440p, 20 s warm-up, 60 s read.
+res.passes = {};
+for (const sc of ['solo', 'blend']) {
+  const p = await open(`passes=1&scale=${sc}`, [2560, 1440]);
+  await p.waitForTimeout(80000);
+  res.passes[sc] = await p.evaluate(() => { try { return window.__qa && window.__qa.passes ? JSON.parse(JSON.stringify(window.__qa.passes)) : null; } catch (e) { return { err: String(e) }; } });
+  await p.close();
+}
 await browser.close(); server.close();
 
 const badKeys = res.keys.filter(k => k.mine !== k.genus || k.b2 || k.touchesBox);
@@ -205,6 +214,7 @@ fs.writeFileSync(path.join(dir, 'check.md'), `# 25 Shape Shifter II check · ${s
   `| 4c no empty picture longer than ¼ s (25-ray test) | ${ok(pass.noEmpty)} | ${res.cam.longEmpty.length} stretches${res.cam.longEmpty.length ? ', longest ' + res.cam.longEmpty.slice(0, 4).map(x => `${x.secs} s at bar ${x.from} (${x.mode})`).join(', ') : ''} |\n` +
   `| 4d framing: shape fills ≥ 25 % on average, ≥ 8 % in 90 % of frames | ${ok(pass.framing)} | mean ${(res.cam.coverMean * 100).toFixed(1)} %, 10th percentile ${(res.cam.coverP10 * 100).toFixed(0)} % |\n` +
   `| 5 sync (≤ 40 ms) | ${ok(pass.sync)} | ${Object.entries(res.sync).map(([k, v]) => `${k} ${v.median} ms (n ${v.n})`).join(' · ')} |\n` +
+  `| passes (?passes=1, report-only) | ℹ️ | ${Object.entries(res.passes).map(([k, v]) => `${k}: ${v ? JSON.stringify(v).replace(/[|\n]/g, ' ').slice(0, 600) : 'no __qa.passes'}`).join(' · ')} |\n` +
   `| 60 fps | ${ok(pass.fps)} | |\n| page alive | ${ok(pass.alive)} | |\n| errors | ${ok(pass.noErrors)} | ${errors.slice(0, 2).join('; ') || 'none'} |\n\n` +
   `| render | 1080p p95 / >20 ms | 1440p | 4K | canvas at 4K |\n|---|---|---|---|---|\n` +
   Object.entries(res.speed).map(([k, o]) => `| ${k} | ${o['1080p'] ? o['1080p'].p95 + ' / ' + o['1080p'].over20 : '–'} | ${o['1440p'] ? o['1440p'].p95 + ' / ' + o['1440p'].over20 : '–'} | ${o['4K'] ? o['4K'].p95 + ' / ' + o['4K'].over20 : '–'} | ${o['4K'] ? o['4K'].canvas.join('×') : '–'} |`).join('\n') + '\n');
