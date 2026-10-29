@@ -1,0 +1,277 @@
+{
+ "res": {
+  "curveNoKicks": {
+   "section": 1,
+   "frames": 960,
+   "live": 959,
+   "vertices": [
+    67,
+    240
+   ],
+   "A0": 1.698237744228902,
+   "Aend": 0.0003300168701877687,
+   "slopes": [
+    -0.9999
+   ],
+   "worstSlope": -0.9999,
+   "isoStart": 1.3369,
+   "isoEnd": 1.0007,
+   "isoMaxRise": 0,
+   "isoRiseAt": null,
+   "bumps": 0,
+   "myCrossings": 0,
+   "pageCrossings": 0,
+   "areaAgree": 0,
+   "roundAtBar": 16,
+   "endBar": 16,
+   "roundEarlyBars": 0,
+   "roundEvent": 16
+  },
+  "curveKicks": {
+   "section": 1,
+   "frames": 961,
+   "live": 959,
+   "vertices": [
+    73,
+    240
+   ],
+   "A0": 1.7722347646649381,
+   "Aend": 0.00134126435462731,
+   "slopes": [
+    -0.9987,
+    -0.9994,
+    -0.9998,
+    -0.9998,
+    -0.9999,
+    -0.9998,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9998,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999,
+    -0.9999
+   ],
+   "worstSlope": -0.9987,
+   "isoStart": 1.3458,
+   "isoEnd": 1.0007,
+   "isoMaxRise": 0,
+   "isoRiseAt": null,
+   "bumps": 28,
+   "myCrossings": 0,
+   "pageCrossings": 0,
+   "areaAgree": 0,
+   "roundAtBar": 15.995,
+   "endBar": 16,
+   "roundEarlyBars": 0.005,
+   "roundEvent": 16
+  },
+  "pinch": {
+   "section": 1,
+   "dropBar": 14,
+   "changes": [
+    {
+     "bars": 14.01,
+     "from": 1,
+     "to": 2
+    }
+   ],
+   "splitOffBars": 0.01,
+   "piecesAfterSplit": [
+    2
+   ],
+   "endPieces": 2,
+   "neckStart": 0.0451,
+   "neckLast": 0.0233,
+   "neckMaxRise": 0.0003,
+   "keyframes": 692,
+   "simNeck": 0.2,
+   "events": [
+    {
+     "bar": 6,
+     "lag": 17.398866022418588
+    },
+    {
+     "bar": 14,
+     "lag": 18.950112997212273
+    }
+   ]
+  },
+  "sync": {
+   "seed": {
+    "n": 2,
+    "median": 17.9,
+    "p10": -83.4,
+    "p90": 17.9
+   },
+   "kick": {
+    "n": 72,
+    "median": 8.5,
+    "p10": 6.8,
+    "p90": 17.4
+   },
+   "hat": {
+    "n": 144,
+    "median": 8.5,
+    "p10": 7,
+    "p90": 17.7
+   },
+   "snare": {
+    "n": 36,
+    "median": 8.7,
+    "p10": 7,
+    "p90": 18.1
+   },
+   "pinch": {
+    "n": 1,
+    "median": 7.5,
+    "p10": 7.5,
+    "p90": 7.5
+   }
+  },
+  "speed": {
+   "curve": {
+    "1080p": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "1440p": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    },
+    "4K": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      3840,
+      2160
+     ]
+    }
+   },
+   "pinch": {
+    "1080p": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "1440p": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    },
+    "4K": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      3840,
+      2160
+     ]
+    }
+   }
+  },
+  "lum": {
+   "frames": 2157,
+   "flips": [
+    {
+     "i": 961,
+     "t": 16986,
+     "bars": 8.009,
+     "from": "curve",
+     "to": "pinch"
+    },
+    {
+     "i": 1921,
+     "t": 32985.4,
+     "bars": 16.008,
+     "from": "pinch",
+     "to": "curve"
+    }
+   ],
+   "windowFrames": 417,
+   "worstAtChange": {
+    "i": 1981,
+    "bars": 16.509,
+    "scene": "curve",
+    "a": 7.73,
+    "b": 9.05,
+    "rel": 0.14585635359116025,
+    "win": true
+   },
+   "worstElsewhere": {
+    "i": 1081,
+    "bars": 9.009,
+    "scene": "pinch",
+    "a": 10.2,
+    "b": 15.2,
+    "rel": 0.32894736842105265,
+    "win": false
+   },
+   "over25AtChange": 0,
+   "lumRange": [
+    0.04,
+    23.1
+   ]
+  }
+ },
+ "errors": [],
+ "pass": {
+  "areaLaw": true,
+  "areaLawWithKicks": true,
+  "roundness": true,
+  "roundnessWithKicks": true,
+  "noCrossings": true,
+  "pinch": true,
+  "sync": true,
+  "alive": true,
+  "fps": true,
+  "noLumJump": true,
+  "noErrors": true
+ }
+}
