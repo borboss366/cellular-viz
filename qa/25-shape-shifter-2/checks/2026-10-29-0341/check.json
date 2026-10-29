@@ -1,0 +1,7666 @@
+{
+ "res": {
+  "keys": [
+   {
+    "name": "sphere",
+    "genus": 0,
+    "variant": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "egg",
+    "genus": 0,
+    "variant": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "bell",
+    "genus": 0,
+    "variant": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "mushroom",
+    "genus": 0,
+    "variant": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "bottle",
+    "genus": 0,
+    "variant": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "rounded cube",
+    "genus": 0,
+    "variant": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "spiky blob",
+    "genus": 0,
+    "variant": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "teapot",
+    "genus": 0,
+    "variant": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "vase",
+    "genus": 0,
+    "variant": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "bowl",
+    "genus": 0,
+    "variant": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "apple",
+    "genus": 0,
+    "variant": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "mug",
+    "genus": 1,
+    "variant": 0,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "kettle",
+    "genus": 1,
+    "variant": 0,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "bagel",
+    "genus": 1,
+    "variant": 0,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "key ring",
+    "genus": 1,
+    "variant": 0,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "handbag",
+    "genus": 1,
+    "variant": 0,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "racket",
+    "genus": 1,
+    "variant": 0,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "urn",
+    "genus": 2,
+    "variant": 0,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "double torus",
+    "genus": 2,
+    "variant": 0,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "glasses",
+    "genus": 2,
+    "variant": 0,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "amphora",
+    "genus": 2,
+    "variant": 0,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "trophy",
+    "genus": 2,
+    "variant": 0,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "urn with lid loop",
+    "genus": 3,
+    "variant": 0,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "pretzel",
+    "genus": 3,
+    "variant": 0,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "triple torus",
+    "genus": 3,
+    "variant": 0,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "ball",
+    "genus": 0,
+    "variant": 1,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "egg",
+    "genus": 0,
+    "variant": 1,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "teapot",
+    "genus": 0,
+    "variant": 1,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "trefoil",
+    "genus": 1,
+    "variant": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "trefoil on an egg",
+    "genus": 1,
+    "variant": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "big trefoil",
+    "genus": 1,
+    "variant": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "trefoil + ring",
+    "genus": 2,
+    "variant": 1,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "trefoil + ring on an egg",
+    "genus": 2,
+    "variant": 1,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "trefoil + two rings",
+    "genus": 3,
+    "variant": 1,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   },
+   {
+    "name": "trefoil + two rings on an egg",
+    "genus": 3,
+    "variant": 1,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0
+   }
+  ],
+  "live": [
+   {
+    "bars": 0,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 0.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 0.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 0.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 0.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 0.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 0.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 0.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 1,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 1.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 1.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 1.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 1.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 1.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 1.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 1.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 2,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 2.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 2.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 2.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 2.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 2.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 2.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 2.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 3,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 3.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 3.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 3.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 3.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 3.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 3.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 3.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→egg"
+   },
+   {
+    "bars": 4,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 4.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 4.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 4.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 4.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 2,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 4.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 4.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 4.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 5.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 5.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 5.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 5.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 5.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 5.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 5.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 6,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 6.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 6.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 6.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 6.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 6.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 6.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 6.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 7,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 7.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 7.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 7.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 7.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 7.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 7.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 7.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→sphere"
+   },
+   {
+    "bars": 8,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 8.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 8.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 8.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 8.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 8.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 8.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 8.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 9,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 9.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 9.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 9.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 9.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 9.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 9.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 9.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "sphere→handbag"
+   },
+   {
+    "bars": 10,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 10.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 10.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 10.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 10.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 10.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 10.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 10.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 11,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 11.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 11.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 11.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 11.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 11.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 11.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 11.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "handbag→racket"
+   },
+   {
+    "bars": 12,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 12.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 12.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 12.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 3,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 12.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 2,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 12.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 12.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 12.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 13,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 13.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 13.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 13.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 13.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 13.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 13.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 13.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "racket→kettle"
+   },
+   {
+    "bars": 14,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 14.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 14.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 14.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 14.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 14.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 14.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 14.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 15,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 15.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 15.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 15.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 15.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 15.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 15.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 15.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→mug"
+   },
+   {
+    "bars": 16,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "mug→amphora"
+   },
+   {
+    "bars": 16.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 1,
+    "touchesBox": 0,
+    "shape": "mug→amphora"
+   },
+   {
+    "bars": 16.25,
+    "want": 2,
+    "mine": 3,
+    "b0": 1,
+    "b2": 1,
+    "touchesBox": 0,
+    "shape": "mug→amphora",
+    "n192": 2,
+    "n256": 3
+   },
+   {
+    "bars": 16.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "mug→amphora"
+   },
+   {
+    "bars": 16.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "mug→amphora"
+   },
+   {
+    "bars": 16.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "mug→amphora"
+   },
+   {
+    "bars": 16.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "mug→amphora"
+   },
+   {
+    "bars": 16.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "mug→amphora"
+   },
+   {
+    "bars": 17,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "amphora→trophy"
+   },
+   {
+    "bars": 17.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "amphora→trophy"
+   },
+   {
+    "bars": 17.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "amphora→trophy"
+   },
+   {
+    "bars": 17.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "amphora→trophy"
+   },
+   {
+    "bars": 17.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "amphora→trophy"
+   },
+   {
+    "bars": 17.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "amphora→trophy"
+   },
+   {
+    "bars": 17.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "amphora→trophy"
+   },
+   {
+    "bars": 17.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "amphora→trophy"
+   },
+   {
+    "bars": 18,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 18.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 18.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 18.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 18.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 18.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 18.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 18.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 19,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 19.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 19.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 19.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 19.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 19.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 19.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 19.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 20,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 20.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 20.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 20.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 20.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 6,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 20.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 20.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 20.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 21,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 21.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 21.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 21.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 21.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 21.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 21.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 21.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→trophy"
+   },
+   {
+    "bars": 22,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→double torus"
+   },
+   {
+    "bars": 22.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→double torus"
+   },
+   {
+    "bars": 22.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→double torus"
+   },
+   {
+    "bars": 22.375,
+    "want": 2,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→double torus",
+    "n192": 2,
+    "n256": 2
+   },
+   {
+    "bars": 22.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→double torus"
+   },
+   {
+    "bars": 22.625,
+    "want": 2,
+    "mine": 6,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→double torus",
+    "n192": 4,
+    "n256": 2
+   },
+   {
+    "bars": 22.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→double torus"
+   },
+   {
+    "bars": 22.875,
+    "want": 2,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trophy→double torus",
+    "n192": 2,
+    "n256": 2
+   },
+   {
+    "bars": 23,
+    "want": 2,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn",
+    "n192": 2,
+    "n256": 2
+   },
+   {
+    "bars": 23.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 23.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 23.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 23.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 23.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 23.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 23.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 24,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→triple torus"
+   },
+   {
+    "bars": 24.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→triple torus"
+   },
+   {
+    "bars": 24.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→triple torus"
+   },
+   {
+    "bars": 24.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→triple torus"
+   },
+   {
+    "bars": 24.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→pretzel"
+   },
+   {
+    "bars": 24.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→pretzel"
+   },
+   {
+    "bars": 24.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→pretzel"
+   },
+   {
+    "bars": 24.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→pretzel"
+   },
+   {
+    "bars": 25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→triple torus"
+   },
+   {
+    "bars": 25.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→triple torus"
+   },
+   {
+    "bars": 25.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→triple torus"
+   },
+   {
+    "bars": 25.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→triple torus"
+   },
+   {
+    "bars": 25.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→pretzel"
+   },
+   {
+    "bars": 25.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→pretzel"
+   },
+   {
+    "bars": 25.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→pretzel"
+   },
+   {
+    "bars": 25.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→pretzel"
+   },
+   {
+    "bars": 26,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 26.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 26.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 26.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 26.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 26.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 26.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 26.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 27,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 27.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 27.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 27.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 27.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 27.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 27.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 27.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 28,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 28.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 28.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 28.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 28.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 28.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 28.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 28.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 29,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 29.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 29.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 29.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 29.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 29.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 29.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 29.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→pretzel"
+   },
+   {
+    "bars": 30,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→triple torus"
+   },
+   {
+    "bars": 30.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→triple torus"
+   },
+   {
+    "bars": 30.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→triple torus"
+   },
+   {
+    "bars": 30.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→triple torus"
+   },
+   {
+    "bars": 30.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→pretzel"
+   },
+   {
+    "bars": 30.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→pretzel"
+   },
+   {
+    "bars": 30.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→pretzel"
+   },
+   {
+    "bars": 30.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→pretzel"
+   },
+   {
+    "bars": 31,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→triple torus"
+   },
+   {
+    "bars": 31.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→triple torus"
+   },
+   {
+    "bars": 31.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→triple torus"
+   },
+   {
+    "bars": 31.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "pretzel→triple torus"
+   },
+   {
+    "bars": 31.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→urn with lid loop"
+   },
+   {
+    "bars": 31.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→urn with lid loop"
+   },
+   {
+    "bars": 31.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→urn with lid loop"
+   },
+   {
+    "bars": 31.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "triple torus→urn with lid loop"
+   },
+   {
+    "bars": 32,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 32.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 32.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 32.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 32.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 32.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 32.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 32.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 33,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 33.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 33.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 33.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 33.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 33.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 5,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 33.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 4,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 33.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 34,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 34.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 34.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 34.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 34.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 34.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 34.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 34.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 35,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 35.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 35.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 35.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 35.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 35.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 35.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 35.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn with lid loop→double torus"
+   },
+   {
+    "bars": 36,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 36.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 36.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 36.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 36.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 36.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 36.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 36.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 37,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 37.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 37.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 37.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 37.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 37.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 37.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 37.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 38,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 38.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 38.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 38.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 38.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 38.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 38.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 38.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 39,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 39.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 39.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 39.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 39.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 39.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 39.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 39.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "double torus→urn"
+   },
+   {
+    "bars": 40,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 40.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 40.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 40.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 40.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 40.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 40.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 40.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 41,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 41.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 41.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 41.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 41.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 41.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 2,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 41.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 4,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 41.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "urn→kettle"
+   },
+   {
+    "bars": 42,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 42.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 42.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 42.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 42.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 42.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 42.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 42.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 43,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 43.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 43.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 43.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 43.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 43.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 43.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 43.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "kettle→bagel"
+   },
+   {
+    "bars": 44,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 44.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 44.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 44.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 44.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 44.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 44.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 44.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 45,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 45.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 45.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 45.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 45.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 45.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 45.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 45.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "bagel→key ring"
+   },
+   {
+    "bars": 46,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 46.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 46.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 46.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 46.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 46.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 46.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 46.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 47,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 47.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 47.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 47.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 47.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 47.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 47.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 1,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 47.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "key ring→mug"
+   },
+   {
+    "bars": 48,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "mug→egg"
+   },
+   {
+    "bars": 48.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "mug→egg"
+   },
+   {
+    "bars": 48.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "mug→egg"
+   },
+   {
+    "bars": 48.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 1,
+    "touchesBox": 0,
+    "shape": "mug→egg"
+   },
+   {
+    "bars": 48.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "mug→egg"
+   },
+   {
+    "bars": 48.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "mug→egg"
+   },
+   {
+    "bars": 48.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "mug→egg"
+   },
+   {
+    "bars": 48.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "mug→egg"
+   },
+   {
+    "bars": 49,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 49.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 49.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 49.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 49.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 49.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 10,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 49.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 49.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 50,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 50.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 50.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 50.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 50.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 50.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 50.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 50.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 51,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 51.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 51.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 51.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 51.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 51.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 51.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 51.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 52,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 52.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 7,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 52.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 12,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 52.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 44,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 52.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 9,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 52.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 52.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 52.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 53,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 53.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 53.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 53.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 53.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 53.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 53.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 53.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→teapot"
+   },
+   {
+    "bars": 54,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 54.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 54.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 54.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 54.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 54.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 54.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 54.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "teapot→egg"
+   },
+   {
+    "bars": 55,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→ball"
+   },
+   {
+    "bars": 55.125,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→ball"
+   },
+   {
+    "bars": 55.25,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→ball"
+   },
+   {
+    "bars": 55.375,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→ball"
+   },
+   {
+    "bars": 55.5,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→ball"
+   },
+   {
+    "bars": 55.625,
+    "want": 0,
+    "mine": 0,
+    "b0": 2,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→ball"
+   },
+   {
+    "bars": 55.75,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→ball"
+   },
+   {
+    "bars": 55.875,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "egg→ball"
+   },
+   {
+    "bars": 56,
+    "want": 0,
+    "mine": 0,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "ball→big trefoil"
+   },
+   {
+    "bars": 56.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "ball→big trefoil"
+   },
+   {
+    "bars": 56.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "ball→big trefoil"
+   },
+   {
+    "bars": 56.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "ball→big trefoil"
+   },
+   {
+    "bars": 56.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 56.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 56.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 56.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 57,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 57.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 57.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 57.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 57.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 57.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 57.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 57.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 58,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 58.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 58.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 58.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 58.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 58.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 58.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 58.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 59,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 59.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 59.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 59.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 59.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 59.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 59.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 59.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 60,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 60.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 60.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 60.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 60.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 3,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 60.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 60.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 60.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 61,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 61.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 61.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 61.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 61.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 61.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 61.75,
+    "want": 1,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg",
+    "n192": 1,
+    "n256": 1
+   },
+   {
+    "bars": 61.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 62,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 62.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 62.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 62.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 62.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 62.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 62.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 62.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 63,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 63.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 63.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 63.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 63.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil"
+   },
+   {
+    "bars": 63.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil"
+   },
+   {
+    "bars": 63.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil"
+   },
+   {
+    "bars": 63.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil"
+   },
+   {
+    "bars": 64,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 64.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 64.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 64.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 64.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 64.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 64.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 64.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 65,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 65.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 65.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 65.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 65.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 65.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 65.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 65.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 66,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 66.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 66.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 66.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 66.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 66.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 66.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 66.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 67,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 67.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 67.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 67.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 67.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 67.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 67.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 67.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil→trefoil + ring on an egg"
+   },
+   {
+    "bars": 68,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 68.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 68.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 68.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 68.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 6,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 68.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 68.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 68.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 69,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 69.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 69.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 69.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 69.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 69.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 69.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 69.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 70,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 70.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 70.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 70.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 70.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 70.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 70.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 70.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 71,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 71.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 71.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 71.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 71.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 71.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 71.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 71.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 72,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 72.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 72.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 72.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 72.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 72.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 72.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 72.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 73,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 73.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 73.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 73.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 73.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 73.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 73.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 73.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 74,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 74.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 74.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 74.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 74.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 74.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 74.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 74.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 75.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 75.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 75.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 75.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 75.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 75.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 75.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 76,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 76.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 76.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 76.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 76.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 76.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 76.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 76.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 77,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 77.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 77.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 77.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 77.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 77.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 77.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 77.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings on an egg"
+   },
+   {
+    "bars": 78,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 78.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 78.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 78.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 78.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 78.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 78.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 78.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 79,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 79.125,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 79.25,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 79.375,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 79.5,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 79.625,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 79.75,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 79.875,
+    "want": 3,
+    "mine": 3,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings on an egg→trefoil + two rings"
+   },
+   {
+    "bars": 80,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings→trefoil + ring on an egg"
+   },
+   {
+    "bars": 80.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings→trefoil + ring on an egg"
+   },
+   {
+    "bars": 80.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings→trefoil + ring on an egg"
+   },
+   {
+    "bars": 80.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings→trefoil + ring on an egg"
+   },
+   {
+    "bars": 80.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings→trefoil + ring on an egg"
+   },
+   {
+    "bars": 80.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings→trefoil + ring on an egg"
+   },
+   {
+    "bars": 80.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings→trefoil + ring on an egg"
+   },
+   {
+    "bars": 80.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + two rings→trefoil + ring on an egg"
+   },
+   {
+    "bars": 81,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 81.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 81.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 81.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 81.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 81.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 81.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 81.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 82,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 82.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 82.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 82.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 82.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 82.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 82.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 82.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 83,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 83.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 83.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 83.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 83.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 83.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 83.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 83.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 84,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 84.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 84.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 84.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 84.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 84.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 84.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 84.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 85,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 85.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 85.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 85.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 85.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 85.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 85.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 85.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 86,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 86.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 86.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 86.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 86.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 86.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 86.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 86.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring on an egg"
+   },
+   {
+    "bars": 87,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 87.125,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 87.25,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 87.375,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 87.5,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 87.625,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 87.75,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 87.875,
+    "want": 2,
+    "mine": 2,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring on an egg→trefoil + ring"
+   },
+   {
+    "bars": 88,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→big trefoil"
+   },
+   {
+    "bars": 88.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→big trefoil"
+   },
+   {
+    "bars": 88.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→big trefoil"
+   },
+   {
+    "bars": 88.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil + ring→big trefoil"
+   },
+   {
+    "bars": 88.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 88.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 88.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 88.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 89,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 89.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 89.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 89.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 89.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 89.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 89.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 89.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 90,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 90.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 90.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 90.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 90.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 90.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 90.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 90.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 91,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 91.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 91.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 91.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 91.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 91.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 91.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 91.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 92,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 92.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 92.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 92.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 92.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 92.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 92.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 92.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 93,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 93.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 93.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 93.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 93.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 93.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 93.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 93.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→trefoil on an egg"
+   },
+   {
+    "bars": 94,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 94.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 94.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 94.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 94.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 94.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 94.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 94.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil on an egg"
+   },
+   {
+    "bars": 95,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 95.125,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 95.25,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 95.375,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "trefoil on an egg→big trefoil"
+   },
+   {
+    "bars": 95.5,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil"
+   },
+   {
+    "bars": 95.625,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil"
+   },
+   {
+    "bars": 95.75,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil"
+   },
+   {
+    "bars": 95.875,
+    "want": 1,
+    "mine": 1,
+    "b0": 1,
+    "b2": 0,
+    "touchesBox": 0,
+    "shape": "big trefoil→trefoil"
+   }
+  ],
+  "cam": {
+   "coverMean": 0.25760416666664254,
+   "coverP10": 0.12,
+   "longEmpty": [],
+   "frames": 11519,
+   "minSdf": 0.08005826484206557,
+   "minAt": {
+    "bars": 68.258,
+    "mode": "thread"
+   },
+   "p99": 148.15012098127457,
+   "max": 294.95990744062124,
+   "upP99": 245.22754307303668,
+   "upMax": 7805.370527783735,
+   "fwdPeaks": [
+    {
+     "bars": 43.317,
+     "mode": "thread",
+     "ph": 5,
+     "inPh": 3.32,
+     "deg": 295
+    },
+    {
+     "bars": 11.325,
+     "mode": "thread",
+     "ph": 1,
+     "inPh": 3.32,
+     "deg": 249
+    },
+    {
+     "bars": 84.308,
+     "mode": "thread",
+     "ph": 10,
+     "inPh": 4.31,
+     "deg": 247
+    },
+    {
+     "bars": 59.358,
+     "mode": "thread",
+     "ph": 7,
+     "inPh": 3.36,
+     "deg": 207
+    },
+    {
+     "bars": 91.358,
+     "mode": "thread",
+     "ph": 11,
+     "inPh": 3.36,
+     "deg": 207
+    }
+   ],
+   "upPeaks": [
+    {
+     "bars": 11.342,
+     "mode": "thread",
+     "ph": 1,
+     "inPh": 3.34,
+     "deg": 7805
+    },
+    {
+     "bars": 59.375,
+     "mode": "thread",
+     "ph": 7,
+     "inPh": 3.37,
+     "deg": 7605
+    },
+    {
+     "bars": 91.375,
+     "mode": "thread",
+     "ph": 11,
+     "inPh": 3.38,
+     "deg": 7418
+    },
+    {
+     "bars": 12.642,
+     "mode": "thread",
+     "ph": 1,
+     "inPh": 4.64,
+     "deg": 957
+    },
+    {
+     "bars": 60.717,
+     "mode": "thread",
+     "ph": 7,
+     "inPh": 4.72,
+     "deg": 602
+    }
+   ],
+   "overFrames": 209,
+   "dives": [
+    {
+     "ph": 1,
+     "holes": [
+      {
+       "slot": 0,
+       "type": "ring",
+       "knot": false,
+       "crossings": 1,
+       "signed": 1
+      }
+     ],
+     "pageLinking": [
+      1
+     ],
+     "why": null
+    },
+    {
+     "ph": 2,
+     "holes": [
+      {
+       "slot": 0,
+       "type": "ring",
+       "knot": false,
+       "crossings": 1,
+       "signed": 1
+      },
+      {
+       "slot": 1,
+       "type": "ring",
+       "knot": false,
+       "crossings": 1,
+       "signed": -1
+      }
+     ],
+     "pageLinking": [
+      1,
+      -1
+     ],
+     "why": null
+    },
+    {
+     "ph": 3,
+     "holes": [
+      {
+       "slot": 0,
+       "type": "ring",
+       "knot": false,
+       "crossings": 1,
+       "signed": 1
+      },
+      {
+       "slot": 1,
+       "type": "ring",
+       "knot": false,
+       "crossings": 0,
+       "signed": 0
+      },
+      {
+       "slot": 2,
+       "type": "ring",
+       "knot": false,
+       "crossings": 1,
+       "signed": -1
+      }
+     ],
+     "pageLinking": [
+      1,
+      -1
+     ],
+     "why": null
+    },
+    {
+     "ph": 4,
+     "holes": [
+      {
+       "slot": 0,
+       "type": "ring",
+       "knot": false,
+       "crossings": 1,
+       "signed": 1
+      },
+      {
+       "slot": 1,
+       "type": "ring",
+       "knot": false,
+       "crossings": 1,
+       "signed": -1
+      }
+     ],
+     "pageLinking": [
+      1,
+      -1
+     ],
+     "why": null
+    },
+    {
+     "ph": 5,
+     "holes": [
+      {
+       "slot": 0,
+       "type": "ring",
+       "knot": false,
+       "crossings": 1,
+       "signed": 1
+      }
+     ],
+     "pageLinking": [
+      1
+     ],
+     "why": null
+    },
+    {
+     "ph": 7,
+     "holes": [
+      {
+       "slot": 0,
+       "type": "knot",
+       "knot": true,
+       "crossings": 1,
+       "signed": 2
+      }
+     ],
+     "pageLinking": [
+      2
+     ],
+     "why": null
+    },
+    {
+     "ph": 8,
+     "holes": [
+      {
+       "slot": 0,
+       "type": "knot",
+       "knot": true,
+       "crossings": 1,
+       "signed": -2
+      },
+      {
+       "slot": 1,
+       "type": "ring",
+       "knot": false,
+       "crossings": 1,
+       "signed": 1
+      }
+     ],
+     "pageLinking": [
+      1,
+      -2
+     ],
+     "why": null
+    },
+    {
+     "ph": 9,
+     "holes": [
+      {
+       "slot": 0,
+       "type": "knot",
+       "knot": true,
+       "crossings": 1,
+       "signed": -2
+      },
+      {
+       "slot": 1,
+       "type": "ring",
+       "knot": false,
+       "crossings": 1,
+       "signed": 1
+      },
+      {
+       "slot": 2,
+       "type": "ring",
+       "knot": false,
+       "crossings": 0,
+       "signed": 0
+      }
+     ],
+     "pageLinking": [
+      1,
+      -2
+     ],
+     "why": null
+    },
+    {
+     "ph": 10,
+     "holes": [
+      {
+       "slot": 0,
+       "type": "knot",
+       "knot": true,
+       "crossings": 1,
+       "signed": -2
+      },
+      {
+       "slot": 1,
+       "type": "ring",
+       "knot": false,
+       "crossings": 1,
+       "signed": 1
+      }
+     ],
+     "pageLinking": [
+      1,
+      -2
+     ],
+     "why": null
+    },
+    {
+     "ph": 11,
+     "holes": [
+      {
+       "slot": 0,
+       "type": "knot",
+       "knot": true,
+       "crossings": 1,
+       "signed": 2
+      }
+     ],
+     "pageLinking": [
+      2
+     ],
+     "why": null
+    }
+   ],
+   "pageAngP99": 359.1435228962034
+  },
+  "sync": {
+   "kick": {
+    "n": 60,
+    "median": 8.3
+   },
+   "hat": {
+    "n": 119,
+    "median": 8.3
+   },
+   "snare": {
+    "n": 30,
+    "median": 8.1
+   },
+   "land": {
+    "n": 5,
+    "median": 8
+   },
+   "attach": {
+    "n": 1,
+    "median": 8.8
+   },
+   "thread": {
+    "n": 1,
+    "median": 7.9
+   }
+  },
+  "speed": {
+   "default": {
+    "1080p": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "1440p": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "4K": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    }
+   },
+   "res=native": {
+    "1440p": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    },
+    "4K": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      3840,
+      2160
+     ]
+    }
+   }
+  }
+ },
+ "errors": [],
+ "pass": {
+  "keyGenus": true,
+  "liveGenus": true,
+  "slalom": true,
+  "clearance": true,
+  "turnRate": true,
+  "noEmpty": true,
+  "framing": true,
+  "sync": true,
+  "alive": true,
+  "fps": true,
+  "noErrors": true
+ },
+ "badKeys": [],
+ "badLive": [],
+ "badDives": []
+}
