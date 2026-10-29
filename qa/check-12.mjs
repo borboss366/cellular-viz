@@ -108,15 +108,20 @@ const chroma = await page.evaluate(async () => {
   const g = Object.assign(document.createElement('canvas'), { width: 160, height: 90 }).getContext('2d', { willReadFrequently: true });
   const acc = { build: [], drop: [] }; const t0 = performance.now();
   while (performance.now() - t0 < 24000) {
-    g.drawImage(vid, 0, 0, 160, 90); const d = g.getImageData(0, 0, 160, 90).data; let n = 0, s = 0;
-    for (let i = 0; i < d.length; i += 4) { const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]); if (mx > 140) { n++; s += (mx - mn) / mx; } }
-    if (n > 20) acc[__qa.drop ? 'drop' : 'build'].push(s / n);
+    // relative: the brightest 2 % of pixels by max channel (#94 dimmed the field, so a fixed 140/255 cut saw no build-up frames);
+    // frames whose top 2 % average under 40/255 are near-black and skipped
+    g.drawImage(vid, 0, 0, 160, 90); const d = g.getImageData(0, 0, 160, 90).data; const px = [];
+    for (let i = 0; i < d.length; i += 4) { const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]); px.push([mx, mx ? (mx - mn) / mx : 0]); }
+    px.sort((a, b) => b[0] - a[0]); const top = px.slice(0, Math.ceil(px.length * 0.02));
+    const lv = top.reduce((x, p) => x + p[0], 0) / top.length;
+    if (lv >= 40) acc[__qa.drop ? 'drop' : 'build'].push([top.reduce((x, p) => x + p[1], 0) / top.length, lv]);
     await new Promise(r => setTimeout(r, 100));
   }
-  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
-  return { build: avg(acc.build), drop: avg(acc.drop), nb: acc.build.length, nd: acc.drop.length };
+  const avg = (a, k) => a.length ? a.reduce((x, y) => x + y[k], 0) / a.length : null;
+  return { build: avg(acc.build, 0), drop: avg(acc.drop, 0), lvBuild: avg(acc.build, 1), lvDrop: avg(acc.drop, 1), nb: acc.build.length, nd: acc.drop.length };
 });
-results.colourNeutral = { satBuild: chroma.build && +chroma.build.toFixed(3), satDrop: chroma.drop && +chroma.drop.toFixed(3), samples: [chroma.nb, chroma.nd] };
+results.colourNeutral = { satBuild: chroma.build && +chroma.build.toFixed(3), satDrop: chroma.drop && +chroma.drop.toFixed(3), samples: [chroma.nb, chroma.nd],
+  level: [chroma.lvBuild && Math.round(chroma.lvBuild), chroma.lvDrop && Math.round(chroma.lvDrop)] };
 // ---- 7. per scene ----
 const scenes = ['field', 'tube', 'glueball', 'lava', 'auto'], speed = {};
 for (const s of scenes) {
@@ -155,7 +160,7 @@ fs.writeFileSync(path.join(out, 'check.md'), `# 12 Mass Gap check · ${stamp}\n\
   `| no gap: front speed 1 cell per unit time | ${ok(pass.noGapSpeed1)} | arrivals at r 30…150: ${results.noGap.arrive.join(', ')} → speed ${results.noGap.speed} |\n` +
   `| tube: E = σ·r, r grows, snaps at the drop | ${ok(pass.tube)} | r ${results.tube.rMin}→${results.tube.rMax} fm, E/r ${results.tube.sigmaMin}…${results.tube.sigmaMax} GeV/fm, r at drop ≤ ${results.tube.dropR} |\n` +
   `| glueballs = Morningstar–Peardon (Wikipedia), none below the gap | ${ok(pass.glueballs)} | ${results.glueballs.page.map(g => g.name + ' ' + g.mev).join(', ')}; gap top ${results.glueballs.gapTop} |\n` +
-  `| colour neutral: bright pixels whiter at the drop | ${ok(pass.whiterAtDrop)} | saturation build-up ${results.colourNeutral.satBuild} → drop ${results.colourNeutral.satDrop} (samples ${results.colourNeutral.samples.join('/')}) |\n` +
+  `| colour neutral: bright pixels whiter at the drop | ${ok(pass.whiterAtDrop)} | brightest 2 % saturation build-up ${results.colourNeutral.satBuild} → drop ${results.colourNeutral.satDrop} (their level ${results.colourNeutral.level.join(' → ')} /255; samples ${results.colourNeutral.samples.join('/')}, frames under 40/255 skipped) |\n` +
   `| page keeps animating | ${ok(pass.pageLoopAlive)} | ${scenes.map(s => `${s} ${speed[s].alive ? 'yes' : '**FROZEN**'}`).join(' · ')} |\n` +
   `| fps at 1920×1080 | ${ok(pass.fps60)} | ${scenes.map(s => `${s} ${speed[s].fps} (worst ${speed[s].worst} ms)`).join(' · ')} |\n` +
   `| page errors | ${ok(pass.noErrors)} | ${errors.length ? errors.slice(0, 3).join('; ') : 'none'}; caught ${scenes.map(s => speed[s].caught).join('/')} |\n` +
