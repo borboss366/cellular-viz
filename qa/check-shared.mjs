@@ -1,6 +1,9 @@
 // Shared gates for EVERY scene (#88): A) flash limit (WCAG 2.3.1 general + red flash) and the house comfort rule,
 // B) GPU budget per scene at 1440p.   node qa/check-shared.mjs --page 18-little-bang.html [--experiments dir]
 //   [--query ''] [--warm 120] [--secs 60] [--flashWarm 10] [--flashSecs 90] [--fov 40] [--out dir] [--only flash|perf]
+//   [--press 1,2,3,4 --hz 8 --pressSecs 4]   button mash (#85): inside the flash pass, each listed trigger alone for
+//   pressSecs at hz presses/s through __qa.pressTrigger(i), then all of them together; no drops; the flash and comfort
+//   rows judge the mash, plus a row of presses sent / fires seen per slot (from __qa.triggerLog, performance.now() ms).
 //
 // Both passes: Chromium on the 780M (ANGLE gl-egl), viewport 2560×1440, dpr 1, #wrap fullscreen, Play pressed.
 // Headless has no display: rAF is paced by Chromium's own 60 Hz frame clock, so "vsync" means that clock.
@@ -21,8 +24,10 @@
 //    frames with GPU_DISJOINT_EXT dropped), or a fenceSync wall time (upper bound) without the extension.
 //    A page that uses the timer extension itself (13) is not wrapped (queries can't nest): it needs __qa.perf.
 //    2 min warm-up, then 60 s measured; __qa.forceDrop() at 20 s if the page has it.
-//    Solo gate: GPU p95 ≤ 7.0 ms and p99 ≤ 9.0 ms (soloOnly: p95 ≤ 14). rAF interval p99 and frames > 17.5 ms
-//    are reported; the pair gate waits for the #85 host (two modules in one context).
+//    Solo gate: GPU p95 ≤ 7.0 ms and p99 ≤ 9.0 ms (standard). Ray-march ruling (#88 comment 6491353229): a page with
+//    __qa.scales {soloScale ≥ 0.75, blendScale ≥ 0.5} and blendScale < soloScale is "scaled": solo 12/14 ms + 0 rAF
+//    frames > 20 ms, then (with __qa.setRenderScale) a second 60 s window at blendScale gated at 7/9. soloOnly: 14/16.
+//    rAF interval p99 and frames > 17.5 ms are reported; the pair gate waits for the #85 host (two modules in one context).
 import { chromium } from 'playwright';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -38,6 +43,11 @@ if (!pageName || !/^[\w.-]+\.html$/.test(pageName)) { console.error('usage: --pa
 const query = arg('query', '');
 const WARM = +arg('warm', 120), SECS = +arg('secs', 60), FWARM = +arg('flashWarm', 10), FSECS = +arg('flashSecs', 90), FOV = +arg('fov', 40);
 const only = arg('only', '');
+// button mash: stages = each slot alone, then all together; the flash clip covers 1 s lead-in + stages + 2 s tail
+const PRESS = arg('press', '') ? String(arg('press')).split(',').map(s => +s.trim()).filter(n => Number.isInteger(n) && n >= 1 && n <= 4) : [];
+const HZ = +arg('hz', 8), PSECS = +arg('pressSecs', 4);   // not --secs: that is the GPU pass's measured window
+const STAGES = PRESS.length ? [...PRESS.map(s => [s]), ...(PRESS.length > 1 ? [PRESS] : [])] : [];
+const FSECS_RUN = PRESS.length && !process.argv.includes('--flashSecs') ? 1 + STAGES.length * PSECS + 2 : FSECS;
 const id = pageName.replace(/\.html$/, '');
 const pad = n => String(n).padStart(2, '0'), d = new Date();
 const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
@@ -277,17 +287,40 @@ if (only !== 'flash') {
     setTimeout(() => { for (const k of ['forceDrop', 'drop']) if (typeof qa[k] === 'function') { try { qa[k](); drop = k; } catch (e) { drop = 'threw: ' + e; } break; } }, Math.min(20, secs / 3) * 1000);
     await new Promise(r => setTimeout(r, secs * 1000)); S.on = false;
     await new Promise(r => setTimeout(r, 300));
+    // ray-march ruling (#88 comment 6491353229): a scene declares { soloScale, blendScale } (fractions of 2560×1440 per axis)
+    // as __qa.scales, or as a non-array __qa.perf (the array form is the #85 host's per-module timings)
+    const decl = qa.scales && typeof qa.scales === 'object' ? qa.scales : (qa.perf && !Array.isArray(qa.perf) && typeof qa.perf === 'object' ? qa.perf : null);
+    const scales = decl && (decl.soloScale != null || decl.blendScale != null) ? { soloScale: +(decl.soloScale ?? 1), blendScale: +(decl.blendScale ?? decl.soloScale ?? 1) } : null;
+    const setScale = typeof qa.setRenderScale === 'function';
+    let blend = null;
+    if (scales && scales.blendScale < scales.soloScale && setScale) {   // second window at blendScale: the number the pair gate uses
+      const g0 = S.gpu.length, f0 = S.frames.length;
+      try { qa.setRenderScale(scales.blendScale); } catch (e) { blend = { err: String(e).slice(0, 160) }; }
+      if (!blend) {
+        await new Promise(r => setTimeout(r, 3000));
+        const g1 = S.gpu.length, f1 = S.frames.length; S.on = true;
+        setTimeout(() => { if (typeof qa.forceDrop === 'function') try { qa.forceDrop(); } catch (e) {} }, Math.min(20, secs / 3) * 1000);
+        await new Promise(r => setTimeout(r, secs * 1000)); S.on = false;
+        await new Promise(r => setTimeout(r, 300));
+        const bf = new Map(); for (const [ts, ms] of S.gpu.slice(g1)) bf.set(ts, (bf.get(ts) || 0) + ms);
+        const bfr = S.frames.slice(f1);
+        blend = { gpu: [...bf.values()], dt: bfr.slice(1).map((x, i) => x - bfr[i]), skipped: [g1 - g0, f1 - f0] };
+        try { qa.setRenderScale(scales.soloScale); } catch (e) {}
+      }
+      S.gpu.length = g0; S.frames.length = f0;   // the solo numbers below stay the first window only
+    }
     const byFrame = new Map(); for (const [ts, ms] of S.gpu) byFrame.set(ts, (byFrame.get(ts) || 0) + ms);
     let modules = null; const qp = window.__qa && window.__qa.perf;
     if (Array.isArray(qp) && qp.length) modules = qp.map((m, i) => ({ module: m.module, method: m.method, gpuMs: (m.gpuMs || []).slice(S.perf0 ? S.perf0[i] || 0 : 0) }));
     const fr = S.frames, dt = fr.slice(1).map((x, i) => x - fr[i]);
     return { method: S.method, bits: S.bits, disjoint: S.disjoint, canvas: S.canvas, dpr: devicePixelRatio, soloOnly: !!(window.__qa && window.__qa.soloOnly),
-      gpu: [...byFrame.values()], modules, dt, drop, hook: typeof qa.forceDrop === 'function', pageGpuMs: window.__qa && window.__qa.gpuMs, secs };
+      gpu: [...byFrame.values()], modules, dt, drop, hook: typeof qa.forceDrop === 'function', pageGpuMs: window.__qa && window.__qa.gpuMs, secs, scales, setScale, blend };
   }, SECS);
   const p = res.perf, mods = p.modules ? p.modules.map(m => ({ module: m.module, method: m.method, n: m.gpuMs.length, p50: q(m.gpuMs, 0.5), p95: q(m.gpuMs, 0.95), p99: q(m.gpuMs, 0.99) })) : null;
   p.stats = { n: p.gpu.length, p50: q(p.gpu, 0.5), p95: q(p.gpu, 0.95), p99: q(p.gpu, 0.99), modules: mods,
-    raf: { n: p.dt.length, p50: q(p.dt, 0.5), p95: q(p.dt, 0.95), p99: q(p.dt, 0.99), over: p.dt.filter(x => x > 17.5).length, overPct: +(100 * p.dt.filter(x => x > 17.5).length / Math.max(1, p.dt.length)).toFixed(2), fps: +(1000 * p.dt.length / Math.max(1, p.dt.reduce((a, b) => a + b, 0))).toFixed(1) },
+    raf: { n: p.dt.length, p50: q(p.dt, 0.5), p95: q(p.dt, 0.95), p99: q(p.dt, 0.99), over20: p.dt.filter(x => x > 20).length, over: p.dt.filter(x => x > 17.5).length, overPct: +(100 * p.dt.filter(x => x > 17.5).length / Math.max(1, p.dt.length)).toFixed(2), fps: +(1000 * p.dt.length / Math.max(1, p.dt.reduce((a, b) => a + b, 0))).toFixed(1) },
     hist: [8, 12, 16, 17.5, 20, 25, 33.4, 50, 1e9].map((hi, i, a) => [i ? a[i - 1] : 0, hi, p.dt.filter(x => x > (i ? a[i - 1] : 0) && x <= hi).length]) };
+  if (p.blend && p.blend.gpu) { const b = p.blend; p.blendStats = { n: b.gpu.length, p50: q(b.gpu, 0.5), p95: q(b.gpu, 0.95), p99: q(b.gpu, 0.99), rafOver20: b.dt.filter(x => x > 20).length, rafN: b.dt.length }; delete b.gpu; delete b.dt; }
   delete p.gpu; delete p.dt; if (p.modules) p.modules = p.modules.map(m => ({ module: m.module, method: m.method, n: m.gpuMs.length }));
   await page.close();
 }
@@ -297,13 +330,30 @@ if (only !== 'perf') {
   const page = await open('limiter=off');
   await page.addScriptTag({ content: `window.__qaShared.workerSrc = ${JSON.stringify(WORKER)};` + FLASH });
   await page.waitForTimeout(FWARM * 1000);
-  res.flash = await page.evaluate(async ([secs, fov]) => {
+  res.flash = await page.evaluate(async ([secs, fov, stages, hz, psecs]) => {
     const S = window.__qaShared; S.flashStart(fov); if (S.flashErr) return { err: S.flashErr };
-    const qa = window.__qa || {}; let drops = [];
-    for (const at of [0.3, 0.65]) setTimeout(() => { for (const k of ['forceDrop', 'drop']) if (typeof qa[k] === 'function') { try { qa[k](); drops.push(k); } catch (e) {} break; } }, at * secs * 1000);
+    const qa = window.__qa || {}; let drops = [], mash = null;
+    if (stages.length) {   // button mash instead of drops: presses through the page's own path (quantise, repeats, envelope)
+      const t0 = performance.now() + 1000, step = 1000 / hz, sent = {}, threw = {}, plan = [];
+      mash = { hook: typeof qa.pressTrigger === 'function', hz, psecs, stages: [], sent, threw, t0 };
+      stages.forEach((slots, si) => {
+        const s0 = t0 + si * psecs * 1000; mash.stages.push({ slots, start: s0, end: s0 + psecs * 1000 });
+        for (let k = 0; k < Math.round(psecs * hz); k++) plan.push([s0 + k * step, slots]);
+      });
+      if (mash.hook) for (const [at, slots] of plan) setTimeout(() => { for (const i of slots) { sent[i] = (sent[i] || 0) + 1; try { qa.pressTrigger(i); } catch (e) { threw[i] = String(e).slice(0, 120); } } }, Math.max(0, at - performance.now()));
+      mash.end = t0 + stages.length * psecs * 1000;
+    } else for (const at of [0.3, 0.65]) setTimeout(() => { for (const k of ['forceDrop', 'drop']) if (typeof qa[k] === 'function') { try { qa[k](); drops.push(k); } catch (e) {} break; } }, at * secs * 1000);
     await new Promise(r => setTimeout(r, secs * 1000));
-    const r = await S.flashStop(); return { ...r, drops, hook: typeof qa.forceDrop === 'function', tapErr: S.tapErr || null };
-  }, [FSECS, FOV]);
+    const r = await S.flashStop();
+    if (mash) {   // fires seen: logged presses in the mash (+2 s for quantised fires) with a finite firedAt, per slot
+      const log = Array.isArray(qa.triggerLog) ? qa.triggerLog : null;
+      mash.log = !!log; mash.fired = {}; mash.logged = {};
+      if (log) for (const e of log) { if (!e || !(e.t >= mash.t0 - 5 && e.t <= mash.end + 2000)) continue;
+        mash.logged[e.slot] = (mash.logged[e.slot] || 0) + 1; if (Number.isFinite(e.firedAt)) mash.fired[e.slot] = (mash.fired[e.slot] || 0) + 1; }
+      mash.slots = Array.isArray(qa.triggers) ? qa.triggers.map(s => ({ slot: s.slot, name: s.name, timing: s.timing, repeats: s.repeats })) : null;
+    }
+    return { ...r, drops, mash, hook: typeof qa.forceDrop === 'function', tapErr: S.tapErr || null };
+  }, [FSECS_RUN, FOV, STAGES, HZ, PSECS]);
   await page.close();
 }
 await browser.close(); server.close();
@@ -318,12 +368,26 @@ const add = (g, pass, detail) => {
   rows.push(`| ${g} | ${pass === null ? 'ℹ️' : pass === 'warn' ? '⚠️' : ok(pass)} | ${String(detail).replace(/[|\n]/g, ' ')} |`);
 };
 if (res.perf) {
-  const p = res.perf, s = p.stats, lim = p.soloOnly ? [14, Infinity] : [7, 9];
+  // classes (#88 ray-march ruling, VIZ research 29 Oct, comment 6491353229):
+  //   standard 7/9 at 1440p · scaled (blendScale < soloScale): solo at soloScale 12/14 + 0 rAF frames > 20 ms, and at blendScale 7/9
+  //   · soloOnly 14/16 (never pairs). Floors: soloScale ≥ 0.75, blendScale ≥ 0.5.
+  const p = res.perf, s = p.stats, sc = p.scales, scaled = !!sc && sc.blendScale < sc.soloScale && !p.soloOnly;
+  const cls = p.soloOnly ? 'soloOnly' : scaled ? 'scaled' : 'standard', lim = p.soloOnly ? [14, 16] : scaled ? [12, 14] : [7, 9];
   const measured = s.modules ? s.modules.some(m => m.n > 100) : s.n > 100;
   const p95 = s.modules ? Math.max(...s.modules.map(m => m.p95 ?? 0)) : s.p95, p99 = s.modules ? Math.max(...s.modules.map(m => m.p99 ?? 0)) : s.p99;
   if (!measured) add('GPU time measured', 'warn', `method: ${p.method}; ${s.n} frames timed${p.pageGpuMs != null ? ` · page's own gpuMs ${(+p.pageGpuMs).toFixed(1)} ms (EMA, not a gate)` : ''}`);
-  else add(`GPU p95 ≤ ${lim[0]} ms${p.soloOnly ? ' (soloOnly)' : ''} and p99 ≤ ${lim[1]} ms at 1440p`, p95 <= lim[0] && p99 <= lim[1],
+  else add(`GPU p95 ≤ ${lim[0]} ms and p99 ≤ ${lim[1]} ms (${cls}${scaled ? `, solo at soloScale ${sc.soloScale}` : ' at 1440p'})`, p95 <= lim[0] && p99 <= lim[1],
     `p50 ${s.p50 ?? '–'} · p95 ${p95} · p99 ${p99} ms over ${s.modules ? s.modules.map(m => `${m.module} ${m.n}`).join(', ') : s.n + ' frames'} · ${p.method}${p.disjoint ? ` · ${p.disjoint} disjoint dropped` : ''}`);
+  add('perf class (#88 ray-march ruling)', null, sc ? `soloScale ${sc.soloScale} · blendScale ${sc.blendScale} → ${cls}` : `${cls} (no __qa.scales declared)`);
+  if (sc) add('scales at or above the floors (soloScale ≥ 0.75, blendScale ≥ 0.5)', sc.soloScale >= 0.75 && sc.blendScale >= 0.5 && sc.soloScale <= 1 && sc.blendScale <= 1, `soloScale ${sc.soloScale} · blendScale ${sc.blendScale}`);
+  if (scaled) {
+    add('scaled solo: 0 rAF frames > 20 ms', s.raf.over20 === 0, `${s.raf.over20} of ${s.raf.n} frames > 20 ms`);
+    const b = p.blendStats;
+    if (!p.setScale) add(`GPU p95 ≤ 7 ms and p99 ≤ 9 ms at blendScale ${sc.blendScale} (pair number)`, 'warn', 'not measured: the page has no __qa.setRenderScale(s)');
+    else if (!b) add(`GPU p95 ≤ 7 ms and p99 ≤ 9 ms at blendScale ${sc.blendScale} (pair number)`, false, `blend run failed: ${p.blend && p.blend.err || 'no frames'}`);
+    else add(`GPU p95 ≤ 7 ms and p99 ≤ 9 ms at blendScale ${sc.blendScale} (pair number)`, b.n > 100 ? b.p95 <= 7 && b.p99 <= 9 : 'warn',
+      `p50 ${b.p50 ?? '–'} · p95 ${b.p95} · p99 ${b.p99} ms over ${b.n} frames · rAF > 20 ms: ${b.rafOver20} of ${b.rafN}`);
+  }
   add('canvas 2560×1440 at dpr 1', !!p.canvas && p.canvas[0] === 2560 && p.canvas[1] === 1440 && p.dpr === 1 ? true : 'warn', `${p.canvas ? p.canvas.join('×') : 'none'} · dpr ${p.dpr}`);
   add('rAF interval (solo, headless 60 Hz clock)', null, `p50 ${s.raf.p50} · p95 ${s.raf.p95} · p99 ${s.raf.p99} ms · ${s.raf.over} of ${s.raf.n} > 17.5 ms (${s.raf.overPct} %) · ${s.raf.fps} fps`);
   // #88 ruling (VIZ research, 28 Oct): __qa.forceDrop() is required on every page, so a missing hook fails
@@ -345,12 +409,24 @@ if (res.flash) {
     g('10° window mean L ≤ 0.80', f.winFail, `max ${w.win.v}${w.win.at ? ` at ${w.win.at} (t ${w.win.t} s)` : ''}`);
     g('window mean rises ≤ 0.25 in 100 ms', f.riseFail, `max ${w.rise.v}${w.rise.at ? ` at ${w.rise.at} (t ${w.rise.t} s)` : ''}`);
     g('L ≥ 0.9 on ≤ 5 % of the frame, or ≤ 3 frames in a row', f.whiteFail, `max ${(100 * w.white.v).toFixed(1)} % · longest run over 5 %: ${w.white.run} frames`);
-    add('drops during the flash clip', null, f.drops.length ? f.drops.map(k => '__qa.' + k + '()').join(', ') : 'no drop hook: the page ran its own show');
+    if (f.mash) {
+      const m = f.mash, slots = [...new Set(m.stages.flatMap(s => s.slots))].sort((a, b) => a - b);
+      const at = t => { if (t == null) return '–'; const ms = f.t0 + t * 1000, s = m.stages.find(x => ms >= x.start && ms < x.end); return s ? (s.slots.length > 1 ? 'all together' : 'slot ' + s.slots[0]) : 'outside the mash'; };
+      add('mash: worst flash and rise fall in', null, `general ${(100 * w.flash.v).toFixed(1)} % (${at(w.flash.t)}) · red ${(100 * w.red.v).toFixed(1)} % (${at(w.red.t)}) · rise ${w.rise.v} (${at(w.rise.t)}) · ${m.stages.length} stages of ${m.psecs} s at ${m.hz} presses/s`);
+      if (!m.hook) add('mash: __qa.pressTrigger(i) exists', false, 'no __qa.pressTrigger on the page: nothing was pressed, the flash rows show the plain show');
+      else {
+        const per = slots.map(i => { const info = (m.slots || []).find(s => s.slot === i); return { i, sent: m.sent[i] || 0, fired: m.fired[i] || 0, logged: m.logged[i] || 0, threw: m.threw[i], info }; });
+        const dead = per.filter(p => p.sent > 0 && p.fired === 0);
+        add('mash: presses sent / fires seen (quantised and repeat-limited slots fire less by design)', !m.log ? 'warn' : dead.length === 0 && !per.some(p => p.threw),
+          (m.log ? '' : 'no __qa.triggerLog: fires not counted · ') + per.map(p => `slot ${p.i}${p.info && p.info.name ? ' ' + p.info.name : ''}: ${p.sent} sent / ${p.fired} fired (${p.logged} logged${p.info ? `, ${p.info.timing ?? '–'}, repeats ${p.info.repeats ?? '–'}` : ''})${p.threw ? ' · threw ' + p.threw : ''}`).join(' · ') +
+          (dead.length ? ` · pressed but never fired: ${dead.map(p => p.i).join(', ')}` : ''));
+      }
+    } else add('drops during the flash clip', null, f.drops.length ? f.drops.map(k => '__qa.' + k + '()').join(', ') : 'no drop hook: the page ran its own show');
   }
 }
 add('#88 gating for this page', null, gated ? (legacy ? 'gated: page from before #88 that has __qa.forceDrop' : 'gated: new scene') : 'report-only: page from before #88 without __qa.forceDrop');
 add('page errors', errors.length === 0, errors.length ? errors.slice(0, 3).join(' / ') : 'none');
 fs.writeFileSync(path.join(out, 'check.json'), JSON.stringify(res, null, 1));
 fs.writeFileSync(path.join(out, 'check.md'), `# Shared gates (#88) · ${pageName} · ${stamp}\n\n- ${res.renderer} · Chromium ${res.chromium}\n- 2560×1440, dpr 1, headless (rAF on Chromium's 60 Hz clock)` +
-  `${res.perf ? ` · GPU: warm-up ${WARM} s, measured ${SECS} s` : ''}${res.flash ? ` · flash: ${FSECS} s with limiter=off` : ''}\n\n| gate | result | detail |\n|---|---|---|\n${rows.join('\n')}\n`);
+  `${res.perf ? ` · GPU: warm-up ${WARM} s, measured ${SECS} s` : ''}${res.flash ? ` · flash: ${FSECS_RUN} s with limiter=off` : ''}${STAGES.length ? ` · button mash: triggers ${PRESS.join(',')} at ${HZ}/s, ${PSECS} s each then together` : ''}\n\n| gate | result | detail |\n|---|---|---|\n${rows.join('\n')}\n`);
 console.log(path.relative(process.cwd(), out) || out);
