@@ -53,7 +53,7 @@ How it fits together: one control contract for every scene, an input bus (slider
 
 The brief is `docs/CELLULAR_VIZ_BRIEF_CLOCK.md`; the user decided this order on 28 Oct.
 
-There is **one shared clock module**. The #85 host owns it, and standalone pages use it the same way. Its heart is a metronome that always runs. Every source (a file grid, line-in, Pro DJ Link) only steers its tempo and phase, like a flywheel or PLL. The clock never stops and never jumps. Scenes fire on the **predicted** next beat, so they are never late.
+There is **one shared clock module**. The #85 host owns it, and standalone pages use it the same way. Its heart is a metronome that always runs. Every source (a file grid, line-in, Pro DJ Link) only steers its tempo and phase, like a flywheel or PLL. The clock never stops; how fast it corrects depends on the source's authority: file grids and hand fixes immediately, Pro DJ Link almost immediately, line-in slewed by its confidence (#95). A correction in one step logs a `jump` event in `Clock.events`, and easing it is each scene's own choice. Scenes fire on the **predicted** next beat, so they are never late.
 
 `read()` gains **bars and downbeats** next to beats and phase, because several things fire on the bar: TAKE (#85), the skater tricks (17/19) and 25's phrases.
 
@@ -67,7 +67,7 @@ There is **one shared clock module**. The #85 host owns it, and standalone pages
    - Pages move over one at a time; 13 Flow Lab goes first.
    - **Projector-latency compensation:** a signed `visualOffsetMs`. Scenes fire at the predicted beat − (`latency()` + `visualOffsetMs`).
      - It is calibrated once per venue by ear and eye: a click and a flash on the beat, adjusted until they sit together.
-     - The calibration page is `experiments/calibrate.html`. Profiles go to localStorage with JSON export and import, and the last-used one loads on start. Changes slew at ≤ 5 ms per beat.
+     - The calibration page is `experiments/calibrate.html`. Profiles go to localStorage with JSON export and import, and the last-used one loads on start. Changes apply immediately.
      - It is saved per venue and projector, and can be adjusted live from one master-column encoder (#85).
      - Details and the QA truth are on #95.
 3. **Live audio** (research).
