@@ -292,8 +292,9 @@ export function createScene() {
       st.prevCubic = b.cubic;
       // lines born at a wall fade in as their pair's u leaves 0; the line through a pair (real all the way) never fades
       const lines = b.lines.map(L => ({ ...L, alpha: L.kind === 'L' && (L.pts[0] ^ 1) === L.pts[1] ? 1 : Math.min(...L.pts.map(i => ease(u[i >> 1] / 0.35))) }));
-      // meetings and Eckardt points, away from the walls (twin lines next to a wall would read as false meetings)
-      const an = u.every(x => Math.abs(x) >= 0.05) ? K.analyse(lines) : null;
+      // meetings and Eckardt points, away from the walls (twin lines next to a wall would read as false meetings);
+      // each wall is the band |u| ≤ φ⁻⁶ ≈ 0.056 (nodal cubics: 3 points collinear, 6 on a conic), so 0.1
+      const an = u.every(x => Math.abs(x) >= 0.1) ? K.analyse(lines) : null;
       base = { full: false, cubic: b.cubic, lines, eck: an ? an.eckardt.map(e => e.X) : st.base ? st.base.eck : [], expected: b.expected, pairs: an ? an.pairs : null };
     }
     st.base = base; st.baseKey = key;
@@ -590,7 +591,7 @@ export function createScene() {
     const rows = states.map(uu => { const b = K.buildUp(uu), a = K.analyse(b.lines); let mf = 0; for (const L of b.lines) for (let l = -2; l <= 2; l += 0.5) mf = Math.max(mf, Math.abs(K.evalCubic(b.cubic, K.unit(K.addv(L.P, K.scalev(L.Q, l)))))); return { u: uu, lines: b.lines.length, pairs: a.pairs, eckardt: a.eckardt.length, maxF: mf }; });
     let gp = Infinity, gpConic = Infinity, gpAt = null;
     for (const k of [0, 1, 2]) for (let i = 0; i <= 40; i++) {
-      const x = -1 + i / 20; if (Math.abs(x) < 0.05) continue;
+      const x = -1 + i / 20; if (Math.abs(x) < 0.1) continue;   // the walls: u = 0 and |u| = φ⁻⁶ (see baseFor)
       const uu = [1, 1, -1].map((v, j) => (j < k ? 1 : j === k ? x : -1)), g = K.generalPosition(uu);
       if (g.minTriple < gp) { gp = g.minTriple; gpAt = { u: uu, triple: g.worstTriple }; }
       gpConic = Math.min(gpConic, g.conic);
