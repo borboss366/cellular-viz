@@ -58,8 +58,8 @@ fs.mkdirSync(out, { recursive: true });
 // once they have __qa.forceDrop(); until then a failing row shows ⚠️ "would fail". New scenes are always gated.
 // When the forceDrop hook PR merges, drop the pages it covers from LEGACY so a lost hook fails again.
 const LEGACY = new Set(['01-gray-scott', '02-lenia', '03-lenia-audio', '04-lenia-metronome', '05-flow-lenia', '06-lenia-effects', '07-particle-lenia',
-  '08-blend', '09-riemann', '10-bsd', '11-riemann-show', '12-mass-gap', '13-flow-lab', '14-round-point', '17-bsd-skater', '18-little-bang', '19-skate-park',
-  '23-shape-shifter', '25-shape-shifter-2']);
+  '08-blend', '09-riemann', '10-bsd', '11-riemann-show', '13-flow-lab', '17-bsd-skater', '19-skate-park',
+  '23-shape-shifter', '25-shape-shifter-2']);   // 12, 14, 18 left with #94 (29c3e9c, 29 Oct): they have __qa.forceDrop
 const legacy = LEGACY.has(id) || id.startsWith('16-');   // 16 Hodge (#84) was in flight before #88
 // if this check itself breaks, say so in check.md: ⚠️ on pages from before #88 (never blocks them), ❌ on new scenes
 const crash = e => {
