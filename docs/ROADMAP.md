@@ -15,7 +15,7 @@ The user is in charge ("for now I want to be in charge"): during step 1 the user
    - Build 15a Pulsing salesman (#37 comment 6493121591).
    - After that, every Millennium problem has at least one scene.
 2. **Clock** (see the Clock section below): one shared clock that follows the music, not a per-page metronome.
-   - Offline beat grids for recorded tracks and DJ sets first, with tempo-change segments.
+   - Offline beat grids for recorded tracks and DJ sets first, as beat grids along a tempo curve (blends, ramps and hand nudges; downbeats per beat).
    - Then `experiments/clock.js`, with `?clock=metronome` as the default.
    - Then 13 Flow Lab moves over as the first page.
 3. **New pages are born on the clock.** Everything else not yet built is built on the shared clock:
@@ -58,7 +58,9 @@ There is **one shared clock module**. The #85 host owns it, and standalone pages
 `read()` gains **bars and downbeats** next to beats and phase, because several things fire on the bar: TAKE (#85), the skater tricks (17/19) and 25's phrases.
 
 1. **Files first** (in step 1). Tracks and recorded DJ sets get an offline beat grid, ported from processing-llm's gridder (brief task 3).
-   - The grid **follows tempo changes**, as tempo-change segments. A recorded DJ set changes tempo at every mix, so the brief's single global tempo isn't enough.
+   - The grid **follows tempo changes**, as beat grids along a tempo curve (blends, ramps and hand nudges; downbeats per beat). A recorded DJ set changes tempo at every mix, so the brief's single global tempo isn't enough.
+   - Sidecar v2 is `beats: [{ms, pos, conf}]` plus `edits`, and v1 readers still work. On `file:`, `read()` uses a monotone-cubic warp: beats and phase = W⁻¹(t), bpm = 60/W′, and bar and beatInBar come from each beat's `pos` (#95).
+   - Grid-editor fixes are local: move a beat, set "1" here, and a ranged nudge, ×2, ÷2 or tap.
    - The rehearsal set runs on these grids.
 2. **The shared clock module** (`experiments/clock.js`).
    - `?clock=metronome` is the default, so every existing check stays unchanged: brief task 1, plus task 4's metronome parity (byte-for-byte the same events).
