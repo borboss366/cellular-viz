@@ -500,20 +500,25 @@ function setPreset([name, g], ev, now) {
   if (!st.cur) { st.cur = d; settledSeen.add(`${name}:${g}`); return; }
   if (st.cur.name === name && st.cur.genus === g) return;
   st.prev = st.cur; st.cur = d; st.morphStart = ev.beat; st.morphBeats = ev.morphBeats; st.popEnv = 1;
-  st.rec = { beat: ev.beat, at: ev.at, cause: ev.cause, hold: ev.hold, morphBeats: ev.morphBeats, to: name, genus: g, from: st.prev.name, end: null, perf: now };
+  st.rec = { beat: ev.beat, at: ev.at, cause: ev.cause, hold: ev.hold, morphBeats: ev.morphBeats, to: name, genus: g, from: st.prev.name, end: null, perf: now, epoch: liveClock.epoch };
   morphs.push(st.rec); if (morphs.length > 128) morphs.shift();
-  logAt('morph', ev.beat / params.bpb, { to: name, genus: g, from: st.prev.name, cause: ev.cause, hold: ev.hold, morphBeats: ev.morphBeats }, now);
+  logAt('morph', ev.beat / params.bpb, { to: name, genus: g, from: st.prev.name, cause: ev.cause, hold: ev.hold, morphBeats: ev.morphBeats, epoch: liveClock.epoch, settled: now - liveClock.since >= SETTLE_MS }, now);
 }
-function morphSync() {   // truth 7: |drawn − heard| of each morph event, ms
-  const ms = events.filter(e => e.type === 'morph').map(e => Math.abs(e.perfDrawn - e.perfHeard));
-  return { n: ms.length, maxMs: ms.length ? Math.max(...ms) : null };
+// A clock epoch starts on the first frame and whenever the clock jumps back (▶ Play restarts the beats at 0).
+// QA #84 round 4: a change on the free-running clock before Play and the first one after it were compared as
+// one hold (gap 0 at 140 bpm → holdErr 2 beats), so the live truths compare changes within one epoch only.
+const liveClock = { epoch: 0, since: 0 }, SETTLE_MS = 1000;
+function morphSync() {   // truth 7: |drawn − heard| of each morph event, ms (settled: 1 s after the clock (re)started)
+  const all = events.filter(e => e.type === 'morph'), ms = all.filter(e => e.settled !== false).map(e => Math.abs(e.perfDrawn - e.perfHeard));
+  const msAll = all.map(e => Math.abs(e.perfDrawn - e.perfHeard));
+  return { n: ms.length, maxMs: ms.length ? Math.max(...ms) : null, nAll: msAll.length, maxMsAll: msAll.length ? Math.max(...msAll) : null };
 }
 function liveTruths() {   // the same truths on the real clock: holds between auto changes, lateness and morph length in frames
   const bpf = params.bpm / 60 / Math.max(30, fps || 60), auto = morphs.filter(r => r.cause === 'auto');
   const gaps = [];
   for (let i = 1; i < auto.length; i++) {
     const a = auto[i - 1], b = auto[i];
-    if (a.hold === b.hold && !morphs.some(x => x.cause === 'trigger' && x.beat > a.beat && x.beat <= b.beat)) gaps.push(b.beat - a.beat - b.hold);
+    if (a.hold === b.hold && a.epoch === b.epoch && !morphs.some(x => x.cause === 'trigger' && x.beat > a.beat && x.beat <= b.beat)) gaps.push(b.beat - a.beat - b.hold);
   }
   const late = morphs.reduce((m, r) => Math.max(m, (r.at - r.beat) / bpf), 0);
   const lens = morphs.filter(r => r.end !== null).map(r => Math.abs(r.end - r.beat - r.morphBeats) / bpf);
@@ -685,6 +690,7 @@ function draw(now) {
   // read the shape clock half a frame ahead, so a change is drawn within ±½ frame of its beat instead of 0–1 frame
   // late (a 4K frame is ~17–20 ms; QA box measured 41 ms against the 40 ms limit)
   const ahead = beats + 0.5 * Math.min(dt || 1 / 60, 1 / 30) * params.bpm / 60;
+  if (sched.next === null || ahead < sched.last - 1e-6) { liveClock.epoch++; liveClock.since = now; }   // the same test schedStep resets on
   const ev = schedStep(sched, ahead, holdOf(params.shapeRate) * params.bpb, params.bpb);
   if (ev) { if (params.preset === 'auto') st.idx++; setPreset(presetFor(st.idx), ev, now); }
   if (st.prev && beats < st.morphStart - 0.5 && !ev) st.prev = null;   // the clock jumped back mid-morph: finish it (not the ½-frame look-ahead)
