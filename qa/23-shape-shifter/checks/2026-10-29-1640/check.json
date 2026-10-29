@@ -1,0 +1,1125 @@
+{
+ "res": {
+  "genus": [
+   {
+    "bars": 0.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 16128,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0216,
+    "shape": "mug→kettle",
+    "touchesBox": 0
+   },
+   {
+    "bars": 1.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 12973,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0255,
+    "shape": "mug→kettle",
+    "touchesBox": 0
+   },
+   {
+    "bars": 2.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 19306,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0324,
+    "shape": "mug→kettle",
+    "touchesBox": 0
+   },
+   {
+    "bars": 3.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 17742,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0409,
+    "shape": "mug→kettle",
+    "touchesBox": 0
+   },
+   {
+    "bars": 4.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 23434,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0501,
+    "shape": "mug→kettle",
+    "touchesBox": 0
+   },
+   {
+    "bars": 5.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 19484,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0586,
+    "shape": "mug→kettle",
+    "touchesBox": 0
+   },
+   {
+    "bars": 6.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 24055,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0655,
+    "shape": "mug→kettle",
+    "touchesBox": 0
+   },
+   {
+    "bars": 7.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 19485,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0694,
+    "shape": "mug→kettle",
+    "touchesBox": 0
+   },
+   {
+    "bars": 8.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 24034,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 9.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 19527,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 10.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 23990,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 11.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 19285,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 12.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 23839,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 13,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 21549,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0636,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 13.125,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 20845,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0595,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 13.25,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 20100,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0551,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 13.375,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 19317,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0503,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 13.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 19088,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.045,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 13.625,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 19495,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.039,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 13.75,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 19929,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0318,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 13.875,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 20747,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0225,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 14,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 21536,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 14.125,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 22285,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 14.25,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 23177,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 14.375,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 23349,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 14.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 23747,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 14.625,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 23601,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 14.75,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 22904,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 14.875,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 21844,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 15,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 21002,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 15.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 18722,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.07,
+    "shape": "kettle→kettle0",
+    "touchesBox": 0
+   },
+   {
+    "bars": 16.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 23034,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.0694,
+    "shape": "kettle0→sphere",
+    "touchesBox": 0
+   },
+   {
+    "bars": 17.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 18647,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.0655,
+    "shape": "kettle0→sphere",
+    "touchesBox": 0
+   },
+   {
+    "bars": 18.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 23204,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.0586,
+    "shape": "kettle0→sphere",
+    "touchesBox": 0
+   },
+   {
+    "bars": 19.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 18842,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.0501,
+    "shape": "kettle0→sphere",
+    "touchesBox": 0
+   },
+   {
+    "bars": 20.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 23375,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.0409,
+    "shape": "kettle0→sphere",
+    "touchesBox": 0
+   },
+   {
+    "bars": 21.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 19176,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.0324,
+    "shape": "kettle0→sphere",
+    "touchesBox": 0
+   },
+   {
+    "bars": 22.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 23818,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.0255,
+    "shape": "kettle0→sphere",
+    "touchesBox": 0
+   },
+   {
+    "bars": 23.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 19432,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0.0216,
+    "shape": "kettle0→sphere",
+    "touchesBox": 0
+   },
+   {
+    "bars": 24.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 23303,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": null,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 25.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 15438,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": null,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 26.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 13522,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": null,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 27.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 7993,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": null,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 28.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 11504,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": null,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 29,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 9718,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": null,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 29.125,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 9016,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": null,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 29.25,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 9350,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": null,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 29.375,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 8910,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": null,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 29.5,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 8837,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": null,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 29.625,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 9569,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": null,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 29.75,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 9945,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": null,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 29.875,
+    "expected": 0,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 11017,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": null,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 30,
+    "expected": 1,
+    "chi": 1,
+    "b0": 1,
+    "b2": 0,
+    "g": 0,
+    "cubes": 12014,
+    "pageGenus": 0,
+    "h": 0.0333,
+    "featureMin": 0,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 30.125,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 13589,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.0775,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 30.25,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 15444,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.1108,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 30.375,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 16432,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.1371,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 30.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 17062,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.1599,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 30.625,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 17727,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.1804,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 30.75,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 18074,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.1993,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 30.875,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 17408,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.217,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 31,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 16867,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.2336,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   },
+   {
+    "bars": 31.5,
+    "expected": 1,
+    "chi": 0,
+    "b0": 1,
+    "b2": 0,
+    "g": 1,
+    "cubes": 15582,
+    "pageGenus": 1,
+    "h": 0.0333,
+    "featureMin": 0.2383,
+    "shape": "sphere→doughnut",
+    "touchesBox": 0
+   }
+  ],
+  "gb": [
+   {
+    "bars": 3,
+    "genus": 1,
+    "mine": 6.174495095730064,
+    "minePer4pi": 0.4913507077910526,
+    "absPer4pi": 4.038644483678302,
+    "want": 0,
+    "page": 0.050352434510340945,
+    "h": 0.02,
+    "hook": true,
+    "minFeature": 0.03650390625,
+    "resolved": false,
+    "verdict": "unresolved"
+   },
+   {
+    "bars": 9,
+    "genus": 1,
+    "mine": 0.992960561189119,
+    "minePer4pi": 0.07901729080427534,
+    "absPer4pi": 4.910568715757092,
+    "want": 0,
+    "page": 0.004811560473132085,
+    "h": 0.02,
+    "hook": true,
+    "minFeature": 0.07,
+    "resolved": true,
+    "verdict": "ok"
+   },
+   {
+    "bars": 18,
+    "genus": 0,
+    "mine": 12.588827503918017,
+    "minePer4pi": 1.0017870624898795,
+    "absPer4pi": 1.9796000531712246,
+    "want": 1,
+    "page": 0.9944987459587445,
+    "h": 0.02,
+    "hook": true,
+    "minFeature": 0.06234375,
+    "resolved": true,
+    "verdict": "ok"
+   },
+   {
+    "bars": 24,
+    "genus": 0,
+    "mine": 12.558145675700704,
+    "minePer4pi": 0.9993454801779386,
+    "absPer4pi": 0.9993454801779386,
+    "want": 1,
+    "page": 0.9999181415098902,
+    "h": 0.02,
+    "hook": true,
+    "minFeature": null,
+    "resolved": true,
+    "verdict": "ok"
+   }
+  ],
+  "cam": {
+   "samples": 2048,
+   "minSdf": 0.0859684585985423,
+   "at": {
+    "bars": 13.781,
+    "mode": "fly"
+   },
+   "flyFrames": 64,
+   "pushedFrames": 5
+  },
+  "sync": {
+   "by": {
+    "kick": {
+     "n": 72,
+     "median": 18
+    },
+    "hat": {
+     "n": 144,
+     "median": 18
+    },
+    "snare": {
+     "n": 36,
+     "median": 18
+    },
+    "morph": {
+     "n": 2,
+     "median": 18.1
+    },
+    "fly": {
+     "n": 1,
+     "median": 18.7
+    },
+    "surgery": {
+     "n": 1,
+     "median": 18.2
+    }
+   },
+   "special": [
+    {
+     "type": "morph",
+     "bar": 8
+    },
+    {
+     "type": "fly",
+     "bar": 13
+    },
+    {
+     "type": "surgery",
+     "bar": 14
+    },
+    {
+     "type": "morph",
+     "bar": 16
+    }
+   ]
+  },
+  "speed": {
+   "0": {
+    "1080p": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "1440p": {
+     "fps": 60,
+     "p95": 16.8,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    },
+    "4K": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      3840,
+      2160
+     ]
+    }
+   },
+   "1": {
+    "1080p": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "1440p": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    },
+    "4K": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      3840,
+      2160
+     ]
+    }
+   },
+   "auto": {
+    "1080p": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      1920,
+      1080
+     ]
+    },
+    "1440p": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      2560,
+      1440
+     ]
+    },
+    "4K": {
+     "fps": 60,
+     "p95": 16.7,
+     "over20": 0,
+     "alive": true,
+     "caught": 0,
+     "canvas": [
+      3840,
+      2160
+     ]
+    }
+   }
+  }
+ },
+ "errors": [],
+ "pass": {
+  "genus": true,
+  "gaussBonnet": "warn",
+  "camera": true,
+  "events": true,
+  "sync": true,
+  "alive": true,
+  "fps": true,
+  "noErrors": true
+ },
+ "wrong": [],
+ "switches": [
+  {
+   "from": 1,
+   "to": 0,
+   "between": [
+    13.875,
+    14
+   ]
+  },
+  {
+   "from": 0,
+   "to": 1,
+   "between": [
+    30,
+    30.125
+   ]
+  }
+ ]
+}
