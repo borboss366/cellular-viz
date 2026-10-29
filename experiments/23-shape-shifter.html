@@ -583,9 +583,8 @@ function draw(now) {
   resize();
   const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
   const mb = metronome.beats();
-  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60) + (window.__qaShift || 0) * params.bpb;   // __qaShift (bars): forceDrop moves the clock (QA, #88)
+  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60);
   const bars = beats / params.bpb, st = stateAt(bars);
-  window.__qaNowBars = bars;
   // logged events
   if (metronome.playing) {
     const heard = metronome.ctx.currentTime - metronome.latency();
@@ -640,8 +639,6 @@ function draw(now) {
   }
 }
 
-// QA (#88): the drop is bar S − 2 of each section (S = two morphs); __qa.forceDrop() (panic.js) jumps the clock to the next one
-window.__qaNextDrop = b => window.__qaSectionDrop(b, S_BARS(), S_BARS() - 2);
 window.__qa = {
   errors, events, THICK, KF,
   state: b => stateAt(b ?? window.__qa.bars),

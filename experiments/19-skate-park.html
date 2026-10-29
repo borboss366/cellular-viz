@@ -540,9 +540,8 @@ function frame(now) {
 function draw(now) {
   resize(); frameNo++;
   const L = metronome.read();
-  const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * params.bpm / 60) + (window.__qaShift || 0) * params.bpb;   // __qaShift (bars): forceDrop moves the clock (QA, #88)
-  const bars = beats / params.bpb; window.__qaNowBars = bars;
-  const sec = sectionInfo(bars), H = Math.max(1, Math.round(params.trickLen));
+  const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * params.bpm / 60);
+  const bars = beats / params.bpb, sec = sectionInfo(bars), H = Math.max(1, Math.round(params.trickLen));
   logHits(now);
 
   // sections: a new track (or knot) each section. Tricks come from the schedule (as 17: trickOn,
@@ -722,9 +721,6 @@ function trickSchedule(bar, o) {
   return { prev, next };
 }
 
-// QA (#88): the drop is the last 4 bars of a section (2 when sections are under 8 bars); __qa.forceDrop() (panic.js) jumps
-// the clock to the next one
-window.__qaNextDrop = b => window.__qaSectionDrop(b, params.bars, params.bars - (params.bars >= 8 ? 4 : 2));
 window.__qa = {
   errors, events, torusPoint, knotChecks, discOf, morphB: (buildPhase, drop = false, dropPhase = 0) => morphB({ buildPhase, drop, dropPhase }),
   railPoint: t => st.knot ? torusPoint(st.knot.p, st.knot.q, t) : null, R: TOR_R, r: TOR_r, a: MORPH_A,
