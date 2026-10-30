@@ -48,7 +48,8 @@
     { "metric": "longFrames", "max": 0.5 },
     { "metric": "errors", "max": 0 },
     { "metric": "gpuBusy", "max": 10 },
-    { "metric": "clip", "max": 1, "name": "no white blobs: <= 1 % pixels clipped" }
+    { "metric": "clip", "max": 5, "name": "thin line (VIZ research ruling on #123): worst frame <= 5 % clipped" },
+    { "metric": "clip.mean", "max": 3, "name": "thin line (VIZ research ruling on #123): mean <= 3 % clipped" }
   ],
   "record": { "stills": 2 },
   "swipe": { "seconds": 40, "warmup": 4, "variants": ["build", "ants"] },
