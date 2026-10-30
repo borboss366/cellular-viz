@@ -726,9 +726,9 @@ void main() {
     col = mix(film, curv, uCurv * 0.5) * (0.15 + 0.85 * diff * sh) * ao + spec * sh * 0.8 + film * fres * 0.6;
   }
   col += curv * uKick * 0.12 + vec3(1.0, 0.95, 0.9) * uFlash * 0.3;
-  // near-camera contrast fade: a surface within ~0.5 of the eye fills the frame and sweeps past fast in the
+  // near-camera contrast fade: a surface within ~0.7 of the eye fills the frame and sweeps past fast in the
   // fly-throughs, so its shading detail crossed a 10° window ≥ 4 times a second (flash gate, #104); ease it to a mid tone
-  col = mix(col, vec3(0.24, 0.23, 0.22), 0.7 * (1.0 - smoothstep(0.1, 0.5, length(p - ro))));
+  col = mix(col, vec3(0.24, 0.23, 0.22), 0.85 * (1.0 - smoothstep(0.1, 0.7, length(p - ro))));
   col = vec3(1.0) - exp(-col * 1.4);
   o = vec4(pow(col, vec3(0.92)), 1.0);
 }`);
@@ -857,7 +857,12 @@ function threadPos(t, win, plan, st) {
   // radial from the body centre, so points nearer than every hole's far rim (and the rim detour) don't move
   const w = sstep(0, 0.5, t - win.ts) * sstep(0, 0.5, win.te - t), r = len3(p);
   if (w > 0 && r > 1e-6) {
-    let r2 = Math.max(r, envR(st.Pb, mul3(p, 1 / r)) + 0.05);
+    // margin over the envelope: 0.05 at a hole (the dive must pass through it), 0.17 away from the holes, so the
+    // legs between holes don't skim the surface (#104: those close-ups were the march tail, 19.9 ms at bar 10.88,
+    // and the near-camera flash)
+    let nh = 0;
+    for (const h of hs) nh = Math.max(nh, 1 - sstep(1.0, 2.0, len3(sub3(p, h.c)) / (h.R + h.Rk + 0.4)));
+    let r2 = Math.max(r, envR(st.Pb, mul3(p, 1 / r)) + 0.05 + 0.12 * (1 - nh));
     const Rc = Math.max(...hs.map(h => len3(h.c) + h.R + h.Rk + h.r + 0.8));
     if (r2 > Rc) r2 = Rc + (r2 - Rc) / (1 + (r2 - Rc) / 0.6);
     p = mul3(p, 1 + (r2 / r - 1) * w);
@@ -910,10 +915,14 @@ function rawLook(i) {   // the aim at grid point i: a direction near the shape's
   toA = len3(toA) > 0.05 ? norm3(toA) : norm3(sub3(next, behind));
   let near = 0;
   if (plan) for (const j of plan.order) { const h = st.slots[j]; near = Math.max(near, 1 - sstep(0.8, 2.0, len3(sub3(eye, h.c)) / (h.R + h.Rk + 0.4))); }
-  const dir = slerpDir(toC, toA, Math.max(0.6 * ws, wt * Math.max(0.35, near)), lookCone(eye, st, wt));
-  // bank into turns: roll against the sideways acceleration of the path (deg per unit/bar²)
-  const right = norm3(cross3(dir, [0, 1, 0])), acc = mul3(add3(sub3(next, mul3(eye, 2)), behind), 1 / (0.05 * 0.05));
-  r = { dir, roll: Math.max(-params.bank, Math.min(params.bank, -1.5 * dot3(acc, right))) };
+  // at a hole the aim turns at most 75 % of the way down the path, not all the way: looking straight down the dive
+  // showed only the hole's empty middle (#104 4c: 0.27 s with no shape on screen at bar 11.125)
+  const dir = slerpDir(toC, toA, Math.max(0.6 * ws, wt * Math.max(0.35, 0.75 * near)), lookCone(eye, st, wt));
+  // bank into turns: roll against the sideways acceleration of the path (deg per unit/bar²); faded out as the aim
+  // nears vertical, where cross(dir, worldUp) has no stable direction
+  const rx = cross3(dir, [0, 1, 0]), lh = len3(rx), right = lh > 1e-6 ? mul3(rx, 1 / lh) : [1, 0, 0];
+  const acc = mul3(add3(sub3(next, mul3(eye, 2)), behind), 1 / (0.05 * 0.05));
+  r = { dir, roll: sstep(0.1, 0.35, lh) * Math.max(-params.bank, Math.min(params.bank, -1.5 * dot3(acc, right))) };
   lookCache.set(i, r);
   if (lookCache.size > 1024) lookCache.delete(lookCache.keys().next().value);
   return r;
@@ -929,23 +938,49 @@ function lookAt(bars) {   // the Hann-weighted mean of the raw aims within ±LOO
   }
   return { dir: norm3(s), roll: wsum > 0 ? roll / wsum : 0 };
 }
-// pitch cap ±72°: with the aim near vertical, cross(fwd, worldUp) has no stable direction and the roll flipped
-// (up turned 7805°/s at bars 11.3, 59.4, 91.4, #104). A pure function of the aim, so __qa camera rebuilds stay exact.
-const PITCH_MAX = Math.sin(72 * Math.PI / 180);
-function capPitch(f, hint) {
-  const fy = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, f[1]));
-  if (fy === f[1]) return f;
-  let hx = f[0], hz = f[2], h = Math.hypot(hx, hz);
-  if (h < 1e-6) { hx = hint[0]; hz = hint[2]; h = Math.hypot(hx, hz) || 1; }
-  const k = Math.sqrt(1 - fy * fy) / h;
-  return [hx * k, fy, hz * k];
+// The camera's up through a dive. Built from world up, it flipped when the aim passed vertical (up 7805°/s at bars
+// 11.3, 59.4, 91.4); clamping the pitch moved that flip into the heading (fwd 1954°/s; #104). Instead, inside a
+// thread window the up is carried along the filtered aim (parallel transport on the LOOK_G grid, from world up at
+// the window's start), and blended back to world up over the window's ramps. Still a pure function of the bar:
+// the transported ups are computed per window from the window's start and cached.
+function aimAt(bars) {   // the filtered aim, kept within the cone (+8°) round the centre as seen from here
+  const st = stateAt(bars), { eye, win, plan } = eyeAt(bars, st), toC = norm3(sub3(st.center, eye));
+  return slerpDir(toC, lookAt(bars).dir, 1, lookCone(eye, st, threadWeight(bars, win, plan)) + 8 * DEG);
+}
+const worldUpFor = f => { const r = cross3(f, [0, 1, 0]); return len3(r) > 1e-4 ? cross3(norm3(r), f) : null; };
+const transportCache = new Map();
+function transportUps(win) {
+  let T = transportCache.get(win.ph);
+  if (T) return T;
+  const i0 = Math.floor(win.ts / LOOK_G) - 1, i1 = Math.ceil(win.te / LOOK_G) + 1, ups = [];
+  let u = null;
+  for (let i = i0; i <= i1; i++) {
+    const f = aimAt(i * LOOK_G);
+    if (!u) u = worldUpFor(f) || [0, 0, 1];
+    else { const v = sub3(u, mul3(f, dot3(u, f))); u = len3(v) > 1e-6 ? norm3(v) : u; }
+    ups.push(u);
+  }
+  T = { i0, ups };
+  transportCache.set(win.ph, T);
+  if (transportCache.size > 64) transportCache.delete(transportCache.keys().next().value);
+  return T;
+}
+function frameUp(bars, fwd, win, plan, wt) {
+  const wu = worldUpFor(fwd);
+  if (!plan || wt <= 0) return wu || [0, 0, 1];
+  const T = transportUps(win), x = bars / LOOK_G - T.i0;
+  const k = Math.max(0, Math.min(T.ups.length - 2, Math.floor(x))), f = Math.max(0, Math.min(1, x - k));
+  let tu = add3(mul3(T.ups[k], 1 - f), mul3(T.ups[k + 1], f));
+  tu = sub3(tu, mul3(fwd, dot3(tu, fwd)));
+  tu = len3(tu) > 1e-6 ? norm3(tu) : (wu || [0, 0, 1]);
+  return wu ? slerpDir(wu, tu, wt) : tu;
 }
 function cameraAt(bars) {
   const st = stateAt(bars), { eye, d, pushes, win, plan } = eyeAt(bars, st);
-  const ws = skimWeight(bars), look = lookAt(bars), toC = norm3(sub3(st.center, eye));
-  // the filtered aim, kept within the cone (+8°) round the centre as seen from here, pitch capped at ±72°
-  const fwd = capPitch(slerpDir(toC, look.dir, 1, lookCone(eye, st, threadWeight(bars, win, plan)) + 8 * DEG), toC), at = add3(eye, fwd);
-  let right = norm3(cross3(fwd, [0, 1, 0])), up = cross3(right, fwd);
+  const ws = skimWeight(bars), look = lookAt(bars), toC = norm3(sub3(st.center, eye)), wt = threadWeight(bars, win, plan);
+  // the filtered aim, kept within the cone (+8°) round the centre as seen from here
+  const fwd = slerpDir(toC, look.dir, 1, lookCone(eye, st, wt) + 8 * DEG), at = add3(eye, fwd);
+  let right = norm3(cross3(fwd, frameUp(bars, fwd, win, plan, wt))), up = cross3(right, fwd);
   const roll = look.roll * DEG, cr = Math.cos(roll), sr = Math.sin(roll);
   [right, up] = [add3(mul3(right, cr), mul3(up, sr)), sub3(mul3(up, cr), mul3(right, sr))];
   // FOV kick on the drop: +8°, easing back over one beat
