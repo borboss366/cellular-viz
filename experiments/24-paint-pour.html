@@ -132,7 +132,9 @@ function clockRead(now) {
       for (const h of clock.events) if (h.time <= tNow && tNow - h.time < 1) hits.push({ lane: h.lane, beat: Math.round((beats - (tNow - h.time) * bps) * 4) / 4 });
       return { beats, bpb: params.bpb, hits, read: r };
     }
-    return { beats: shift, bpb: params.bpb, hits: [], read: r };   // Play pressed, first click not heard yet: hold at the start
+    // Play pressed, first click not heard yet: hold at the start, with that first step's hits (once the click is heard
+    // its beat is no longer after the last beat seen, so the kick on beat 1 was lost: truth 9's one-op diff, viz-134-3)
+    return { beats: shift, bpb: params.bpb, hits: K.patternHits(shift - 0.25, shift, params.bpb, params), read: r };
   }
   const beats = (now - clockStart) / 1000 * params.bpm / 60 + shift;
   return { beats, bpb: params.bpb, hits: K.patternHits(beats - 1, beats, params.bpb, params), read: null };

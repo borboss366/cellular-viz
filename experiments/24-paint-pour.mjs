@@ -184,7 +184,7 @@ export function createScene() {
   function init(g, { width, height, seed = 1 }) {
     gl = g; st.seed = seed; W = width; H = height;
     gl.getExtension('EXT_color_buffer_float');
-    progs = { render: compile(RENDER_FS), bake: compile(BAKE_FS) };
+    progs = { render: compile(RENDER_FS), bake: compile(BAKE_FS), probe: compile(PROBE_FS) };
     vao = gl.createVertexArray();
     ubo = gl.createBuffer(); gl.bindBuffer(gl.UNIFORM_BUFFER, ubo); gl.bufferData(gl.UNIFORM_BUFFER, opData.byteLength, gl.DYNAMIC_DRAW); gl.bindBuffer(gl.UNIFORM_BUFFER, null);
   }
@@ -235,7 +235,7 @@ export function createScene() {
 
   // a fresh canvas: no paint, no ops (the page calls it on Play, so the song starts from the ground)
   function reset() {
-    Object.assign(st, { live: [], pending: [], history: [], opLog: [], lastBeat: null, bake: null, bakes: [], pour: null, trig: [], lastTrigDrop: -1e9, kickBeat: undefined, lastDropColour: undefined });
+    Object.assign(st, { live: [], pending: [], history: [], opLog: [], lastBeat: null, bake: null, bakes: [], pour: null, trig: [], lastTrigDrop: -1e9, kickBeat: undefined, lastDropColour: undefined, lastBakeEnd: undefined });
     base.cur = -1;
   }
   function press(slot, holdMs = 0, now = performance.now()) {
@@ -294,12 +294,23 @@ export function createScene() {
     // --- bake: when the ops near opsMax (or forced), bake the finished oldest ops in 8 row tiles, then drop them
     if (!st.bake) {
       const n0 = (() => { let n = 0; while (n < st.live.length && K.progress(st.live[n], beats) >= 1 && !(st.live[n].role === 'pour' && beats < st.live[n].start + st.live[n].dur)) n++; return n; })();
-      if ((st.live.length >= Math.min(MAXOPS, ctl.opsMax) - BAKE_HEADROOM || st.forceBake) && n0 > 0) {
+      // a bake must take a good share of the ops and not follow the last one too closely, or a short finished prefix
+      // starts bake after bake (viz-134-3: every run baked, GPU p50 5.43 → 6.05 ms)
+      const due = st.live.length >= Math.min(MAXOPS, ctl.opsMax) - BAKE_HEADROOM && n0 >= Math.max(8, st.live.length / 3) && now - (st.lastBakeEnd ?? -1e9) > 4000;
+      if ((due || st.forceBake) && n0 > 0) {
         st.bake = { n0, tile: 0, dst: base.cur === 0 ? 1 : 0, ops: st.live.slice(0, n0), t0: now, beat: beats, forced: st.forceBake };
       }
       st.forceBake = false;
     }
     gl.bindVertexArray(vao); gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+    // warm the bake program once on the first frame (1 texel, no ops): drivers link a program on its first draw, and
+    // that stall landed inside the first bake (viz-134-3: 4K frames up to 167 ms, ops 99 ms late)
+    if (!st.warm) {
+      st.warm = true; const bp = progs.bake;
+      gl.useProgram(bp.p); pack([], 0); setTrace(bp, 0); gl.uniform2f(bp.u.uBakeSize, base.tw, base.th); gl.uniform4fv(bp.u.uBakeRect, BASE_RECT);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, base.fbo[1]); gl.viewport(0, 0, base.tw, base.th);
+      gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.disable(gl.SCISSOR_TEST);
+    }
     if (st.bake) {
       const b = st.bake, bp = progs.bake, rows = Math.ceil(base.th / BAKE_TILES);
       pack(b.ops, beats);
@@ -313,7 +324,7 @@ export function createScene() {
       if (b.tile >= BAKE_TILES) {   // swap: the new base holds exactly what the baked ops drew
         base.cur = b.dst; st.live.splice(0, b.n0);
         st.bakes.push({ t: now, beat: b.beat, ops: b.n0, frames: BAKE_TILES, ms: now - b.t0, forced: b.forced }); if (st.bakes.length > 64) st.bakes.shift();
-        st.bake = null;
+        st.bake = null; st.lastBakeEnd = now;
       }
     }
     // --- envelopes, camera, pour, strings
@@ -491,7 +502,7 @@ export const DETAIL = [
   { name: 'palette', type: 'long', values: K.PALETTE_NAMES, default: 'canada' },
   { name: 'veinColour', type: 'long', values: ['lime', 'yellow', 'black', 'none'], default: 'lime' },
   { name: 'seed', type: 'long', default: 1, min: 1, max: 1e6 },
-  { name: 'opsMax', type: 'long', default: 64, min: 32, max: 128 },
+  { name: 'opsMax', type: 'long', default: 56, min: 32, max: 128 },
   { name: 'dropScale', type: 'float', default: 1, min: 0.4, max: 1.4 },
   { name: 'cellsPerDrop', type: 'float', default: 0.5, min: 0, max: 1 },
   { name: 'blackShare', type: 'float', default: 0.3, min: 0, max: 0.6 },
