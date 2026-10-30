@@ -10,7 +10,9 @@
 //   metronome.read()             → { beats, bars, phase, bar, beatInBar, bpm, confidence, kick, snare, hat, level, bands }
 //   metronome.read({ raw: true }) → the same, without the visual offset (for analysis and tests)
 //   metronome.read(lead)         → 11's form: lead seconds ahead of the heard clock
-//   metronome.events             → drum hits only: [{ type: 'hit', lane, time, vel, step }]
+//   metronome.events             → drum hits only: [{ type: 'hit', lane, time, vel, step }] (the last second)
+//   metronome.hitLog             → every hit booked since start(), capped at 4096, never pruned (batch A, #95 6533515449)
+//   metronome.hitsDue(lanes)     → hits whose time ≤ now() not handed out yet; each hit is handed out once per clock
 //   metronome.jumps              → hand commands: [{ type: 'jump', at, kind, fromBeats, toBeats }]
 //   metronome.fix(kind, arg)     → kind: 'nudge' (arg ms, + = clock ahead) | 'x2' | 'half' | 'setOne' | 'reset'
 //   metronome.setVisualOffset(ms) / .visualOffsetMs   → −100 … +200 ms, + = visuals earlier (#95 6498683963)
@@ -27,7 +29,7 @@
   const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
   const LANES = ['kick', 'snare', 'hat'];
   const BANDS = ['sub', 'kick', 'low', 'lowMid', 'mid', 'upperMid', 'presence', 'air'];
-  const OFFSET_MIN = -100, OFFSET_MAX = 200, JUMPS_KEPT = 256;
+  const OFFSET_MIN = -100, OFFSET_MAX = 200, JUMPS_KEPT = 256, HITLOG_KEPT = 4096;
   const SOURCES_LATER = /^(file:|line$)/;
 
   function defaultContext() {
@@ -64,7 +66,7 @@
       source, requested, fallback, settings,
       ctx: null, master: null, bus: null, analyser: null, noise: null, timer: 0, playing: false,
       nextTime: 0, step: 0, hits: [], steps: [], wave: withAnalyser ? new Float32Array(2048) : null,
-      jumps: [], beatShift: 0, oneAt: 0, offsetMs: 0,
+      jumps: [], beatShift: 0, oneAt: 0, offsetMs: 0, hitLog: [], dueAt: 0,
       start() {
         if (!this.ctx) {
           const ctx = makeContext();
@@ -78,7 +80,7 @@
           const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
         }
         this.ctx.resume(); this.master.gain.value = settings.muted ? 0 : 0.35;
-        this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+        this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = []; this.hitLog = []; this.dueAt = 0;
         this.beatShift = 0; this.oneAt = 0;
         this.playing = true;
         if (useTimers) this.timer = setInterval(() => this.schedule(), 25);
@@ -97,7 +99,9 @@
         for (const lane of LANES) {
           if (settings[lane][inBar % 16] !== 'x') continue;
           const vel = inBar === 0 ? 1 : 0.7;
-          this.hits.push(hitStep ? { type: 'hit', lane, time, vel, step } : { type: 'hit', lane, time, vel });
+          const hit = hitStep ? { type: 'hit', lane, time, vel, step } : { type: 'hit', lane, time, vel };
+          this.hits.push(hit); this.hitLog.push(hit);
+          if (this.hitLog.length > HITLOG_KEPT) { this.hitLog.shift(); this.dueAt = Math.max(0, this.dueAt - 1); }
           this.click(lane, time, vel);
         }
       },
@@ -113,6 +117,17 @@
 
       // ---------- the shared clock on top ----------
       get events() { return this.hits; },
+      // the hits the visuals have reached since the last call (time ≤ now()), each handed out once; lanes filters them
+      hitsDue(lanes) {
+        const out = [];
+        if (!this.ctx) return out;
+        const now = this.now();
+        while (this.dueAt < this.hitLog.length && this.hitLog[this.dueAt].time <= now) {
+          const h = this.hitLog[this.dueAt++];
+          if (!lanes || lanes.includes(h.lane)) out.push(h);
+        }
+        return out;
+      },
       get visualOffsetMs() { return this.offsetMs; },
       setVisualOffset(ms) {
         if (Number.isFinite(ms)) this.offsetMs = Math.max(OFFSET_MIN, Math.min(OFFSET_MAX, ms));
@@ -181,7 +196,7 @@
 
   // events and jumps as one list in time order, for a page's __qa.events
   function qaEvents(clock) {
-    return [...clock.events, ...clock.jumps].sort((a, b) => (a.type === 'jump' ? a.at : a.time) - (b.type === 'jump' ? b.at : b.time));
+    return [...(clock.hitLog || clock.events), ...clock.jumps].sort((a, b) => (a.type === 'jump' ? a.at : a.time) - (b.type === 'jump' ? b.at : b.time));
   }
 
   const api = { create, qaEvents, TAU, LANES, BANDS, OFFSET_MIN, OFFSET_MAX };

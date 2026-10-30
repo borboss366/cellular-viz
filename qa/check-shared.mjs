@@ -345,12 +345,16 @@ if (only !== 'flash') {
     hist: [8, 12, 16, 17.5, 20, 25, 33.4, 50, 1e9].map((hi, i, a) => [i ? a[i - 1] : 0, hi, p.dt.filter(x => x > (i ? a[i - 1] : 0) && x <= hi).length]) };
   if (p.blend && p.blend.gpu) { const b = p.blend; p.blendStats = { n: b.gpu.length, p50: q(b.gpu, 0.5), p95: q(b.gpu, 0.95), p99: q(b.gpu, 0.99), rafOver20: b.dt.filter(x => x > 20).length, rafN: b.dt.length }; delete b.gpu; delete b.dt; }
   delete p.gpu; delete p.dt; if (p.modules) p.modules = p.modules.map(m => ({ module: m.module, method: m.method, n: m.gpuMs.length }));
-  // beat match (clock port ruling, VIZ research 30 Oct): experiments/audio-in.js logs each clock hit the first frame the
-  // visuals reach it (__qa.beatLog); null = the page is not on audio-in.js (or has no beat: 01, 02, 05)
+  // beat match (clock port, contract #95 comment 6533515449): the page logs each clock hit it responds to in
+  // __qa.beatLog; the clock's hits since Play are __qa.events (Clock.qaEvents: hitLog + jumps). null = no beatLog
+  // (page not ported yet, or wiring only: 01, 02, 05)
   res.beat = await page.evaluate(() => {
     const qa = window.__qa || {};
     if (!Array.isArray(qa.beatLog)) return null;
-    return { log: qa.beatLog.slice(-1024).map(e => ({ lane: e.lane, lagMs: e.lagMs, frameMs: e.frameMs })), audioIn: qa.audioIn || null };
+    const ev = Array.isArray(qa.events) ? qa.events : [], ai = qa.audioIn || null;
+    return { log: qa.beatLog.map(e => ({ time: e.time, lane: e.lane, now: e.now, dt: e.dt })),
+      hits: ev.filter(e => e && e.type === 'hit').map(h => ({ time: h.time, lane: h.lane })),
+      lanes: Array.isArray(qa.beatLanes) ? qa.beatLanes : null, now: ai && Number.isFinite(ai.now) ? ai.now : null, audioIn: ai };
   }).catch(e => ({ err: String(e && e.message || e) }));
   await page.close();
 }
@@ -470,22 +474,33 @@ if (res.flash) {
     } else add('drops during the flash clip', null, f.drops.length ? f.drops.map(k => '__qa.' + k + '()').join(', ') : 'no drop hook: the page ran its own show');
   }
 }
-// the beat-match row is a hard gate on every ported page, pages from before #88 included (no LEGACY downgrade)
+// the beat-match row (contract #95 comment 6533515449): every clock hit on the page's lanes since Play has exactly one
+// beatLog entry (same lane, |time − hit| < 1e-6) drawn in the first frame whose visual time passed it:
+// 0 ≤ now − time < dt + 1 ms. A hard gate on every ported page, pages from before #88 included (no LEGACY downgrade).
 {
-  const G = 'beat match: every clock hit reaches the visuals within 1 frame (audio-in.js __qa.beatLog)';
+  const G = 'beat match: every clock hit drawn in the first frame that reaches it (__qa.beatLog)';
   const hard = (pass, detail) => rows.push(`| ${G} | ${pass === null ? 'ℹ️' : ok(pass)} | ${String(detail).replace(/[|\n]/g, ' ')} |`);
   const b = res.beat;
   if (b === undefined) hard(null, 'not measured (flash-only run)');
-  else if (b === null) hard(null, 'no __qa.beatLog: page not on audio-in.js yet, or no beat (01, 02, 05)');
+  else if (b === null) hard(null, 'no __qa.beatLog: page not ported yet, or wiring only (01, 02, 05)');
   else if (b.err) hard(false, `could not read __qa.beatLog: ${b.err}`);
   else {
-    const L = b.log, late = L.filter(e => !(e.lagMs >= -0.5 && e.lagMs <= e.frameMs + 1));
-    const lag = L.map(e => e.lagMs), worst = lag.length ? Math.max(...lag) : null, frame = L.map(e => e.frameMs);
-    const src = b.audioIn ? ` · audio-in source ${b.audioIn.source}${b.audioIn.fallback ? ` (${b.audioIn.fallback})` : ''}${b.audioIn.error ? ` · error ${b.audioIn.error}` : ''}` : '';
-    hard(L.length >= 20 && late.length === 0,
-      `${L.length} hits logged${L.length < 20 ? ' (need ≥ 20: was Play pressed, does the page call audio.read() every frame?)' : ''} · ${late.length} later than their frame` +
-      `${late.length ? ` (worst ${Math.max(...late.map(e => e.lagMs)).toFixed(1)} ms vs frame ${late.find(e => e.lagMs === Math.max(...late.map(x => x.lagMs))).frameMs.toFixed(1)} ms)` : ''}` +
-      ` · lag p50 ${q(lag, 0.5)} · max ${worst === null ? '–' : worst.toFixed(1)} ms · frame p50 ${q(frame, 0.5)} ms${src}`);
+    const lanes = b.lanes && b.lanes.length ? b.lanes : [...new Set(b.log.map(e => e.lane))];
+    const end = b.now ?? Math.max(-Infinity, ...b.log.map(e => e.now));
+    const due = b.hits.filter(h => lanes.includes(h.lane) && h.time <= end - 0.1);   // 0.1 s: hits the last frames may not have reached
+    let missing = 0, dup = 0, early = 0, late = 0, worst = 0; const lags = [];
+    for (const h of due) {
+      const m = b.log.filter(e => e.lane === h.lane && Math.abs(e.time - h.time) < 1e-6);
+      if (!m.length) { missing++; continue; }
+      if (m.length > 1) dup++;
+      const e = m[0], lag = e.now - e.time; lags.push(1000 * lag);
+      if (lag < 0) early++; else if (!(lag < (e.dt || 0) + 0.001)) { late++; worst = Math.max(worst, 1000 * (lag - (e.dt || 0))); }
+    }
+    const src = b.audioIn ? ` · audio-in ${b.audioIn.source}${b.audioIn.fallback ? ` (${b.audioIn.fallback})` : ''}${b.audioIn.error ? `, error ${b.audioIn.error}` : ''}` : '';
+    hard(due.length >= 20 && !missing && !dup && !early && !late,
+      `lanes ${lanes.join(',') || '–'} · ${due.length} clock hits since Play${due.length < 20 ? ' (need ≥ 20: Play pressed? __qa.events = Clock.qaEvents(clock)?)' : ''}` +
+      ` · missing ${missing} · twice ${dup} · early ${early} · late ${late}${late ? ` (worst ${worst.toFixed(1)} ms past its frame)` : ''}` +
+      ` · lag p50 ${q(lags, 0.5) ?? '–'} · max ${lags.length ? Math.max(...lags).toFixed(1) : '–'} ms${src}`);
   }
 }
 add('#88 gating for this page', null, gated ? (legacy ? 'gated: page from before #88 that has __qa.forceDrop' : 'gated: new scene') : 'report-only: page from before #88 without __qa.forceDrop');
