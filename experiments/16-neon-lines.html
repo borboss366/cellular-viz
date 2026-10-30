@@ -1,0 +1,292 @@
+<!doctype html>
+<!--
+  16c · 27 Neon Lines, "the drop"   (Millennium track #37, Hodge set; spec: VIZ research, #37 comment 6444942841, 16c)
+
+  The Clebsch diagonal cubic as an iridescent soap film carrying all 27 real lines as neon lasers; its 10 Eckardt
+  points (3 lines through each) are gold diamonds, the 3 at infinity drawn at the vanishing points where their parallel
+  lasers converge. Exact: the film is a ray–cubic solve (no sphere tracing), the lasers are the table's lines.
+  S5 choreography: even permutations glide along R(s) = exp(s·log Pσ), the surface stays a smooth cubic with its
+  lines on it, lands on itself and the lines (colour attached) are permuted; a 5-cycle on the drop; a transposition
+  is only a 1-beat mirror wipe of the colours. Build-up 3 → 7 → 15 → 27 (auto): Klein's six points in pairs
+  c_k ± √u_k·d_k; pair 1 crosses u = 0 at bar 8, pair 2 at bar 16, pair 3 at the drop (bar 24 of 32); each wall is a
+  nodal surface where new lines are born as twins (a soft gold flash). Back to 3 over bar 31.
+  The scene is a #85 module (16-neon-lines.mjs); this page runs it standalone with a metronome. Clock: beats and
+  beats per bar only.
+
+  Controls (#85): macro1 shape rate (glide every 8 · 4 · 2 · 1 · ½ bars, as 16b), macro2 laser glow, macro3 lines
+  (3 · 7 · 15 · 27; moving it switches auto → manual), macro4 trails. Triggers: 1 next glide (beat), 2 drop (bar),
+  3 mirror (beat), 4 flare (now); keys Z X C V; [ ] shape rate.
+  window.__qa: check() (truths 1–6, float64), view, live (lines on the drawn surface every frame), metrics, glides, walls,
+  setMacro(i,v), macros, pressTrigger(i,holdMs), triggers, triggerLog, triggerEnv, bpm, beats, bars, events, errors,
+  forceDrop() (panic.js; the drop is bar 24 of each 32-bar section).
+  ?macro1..4=0..1, ?variant=auto|manual, ?u=a,b,c (fixed build-up), ?chart=affine|allFinite, ?startBar=, ?glides=0,
+  ?seed=, ?bpm=, ?film=, ?filmThickness=, ?clipRadius=, ?diamondSize=, ?tails=, ?labels=0, ?muted=1.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>16c · 27 Neon Lines</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #06051a; color: #f1e9ff;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 16 / 9;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #ov { pointer-events: none; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #c7b6e8; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 104px; flex: none; color: #c7b6e8; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 64px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #3b2a5c; border-radius: 8px;
+    background: #191233; color: inherit; font: inherit; }
+  button.on { background: #5b2a6b; border-color: #ff1f8e; }
+  a { color: #ffc83d; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(62vw, calc(100vh * 16 / 9)); margin: 0; position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <canvas id="ov"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Macros</h3>
+  <div class="row"><label for="m1">1 shape rate [ ]</label><input id="m1" type="range" min="0" max="1" step="0.01"><output id="m1Out"></output></div>
+  <div class="row"><label for="m2">2 laser glow</label><input id="m2" type="range" min="0" max="1" step="0.01"><output id="m2Out"></output></div>
+  <div class="row"><label for="m3">3 lines</label><input id="m3" type="range" min="0" max="1" step="0.01"><output id="m3Out"></output></div>
+  <div class="row"><label for="m4">4 trails</label><input id="m4" type="range" min="0" max="1" step="0.01"><output id="m4Out"></output></div>
+  <h3>Triggers</h3>
+  <div class="buttons">
+    <button id="t1">Z next glide</button><button id="t2">X drop</button><button id="t3">C mirror</button><button id="t4">V flare</button>
+  </div>
+  <h3>Detail</h3>
+  <div class="buttons"><button id="vAuto">auto (song)</button><button id="vManual">manual (lines knob)</button><button id="chart">all 10 in view</button></div>
+  <div class="row"><label for="film">soap film</label><input id="film" type="range" min="0" max="1" step="0.01"><output id="filmOut"></output></div>
+  <div class="row"><label for="filmThickness">film nm</label><input id="filmThickness" type="range" min="150" max="1200" step="5"><output id="filmThicknessOut"></output></div>
+  <div class="row"><label for="clipRadius">clip ball</label><input id="clipRadius" type="range" min="0.6" max="2.4" step="0.05"><output id="clipRadiusOut"></output></div>
+  <div class="row"><label for="diamondSize">diamonds</label><input id="diamondSize" type="range" min="0" max="30" step="0.5"><output id="diamondSizeOut"></output></div>
+  <div class="row"><label for="tails">laser tails</label><input id="tails" type="range" min="0" max="1" step="0.01"><output id="tailsOut"></output></div>
+  <div class="row"><label for="intensity">intensity</label><input id="intensity" type="range" min="0" max="1" step="0.01"><output id="intensityOut"></output></div>
+  <div class="row"><label for="speed">speed</label><input id="speed" type="range" min="0" max="1" step="0.01"><output id="speedOut"></output></div>
+  <div class="row"><label for="hue">hue</label><input id="hue" type="range" min="0" max="1" step="0.01"><output id="hueOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <a href="../index.html">← all experiments</a>
+</div>
+<script>
+  // #88 drop hook, before panic.js so its forceDrop attaches at once: the drop is bar 24 of each 32-bar section
+  window.__qaNextDrop = b => window.__qaSectionDrop(b, 32, 24);
+  window.__qa = window.__qa || {};
+</script>
+<script src="panic.js"></script>
+<script type="module">
+import scene, { MACROS, TRIGGERS, holdOf, LEVELS, levelOf } from './16-neon-lines.mjs';
+const $ = id => document.getElementById(id);
+const query = new URLSearchParams(location.search);
+const params = { bpm: 120, bpb: 4, muted: false, seed: 1, variant: 'auto', u: null, chart: 'affine', startBar: 0, glides: true, labels: true,
+  macro: MACROS.map(m => m.default), film: 0.55, filmThickness: 520, clipRadius: 1.6, diamondSize: 11, tails: 0.35,
+  intensity: 0.7, speed: 0.5, hue: 0, opacity: 1,
+  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+
+// ---------- metronome (as 15a): the test double until clock.js lands ----------
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 }, LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, steps: [],
+  start() {
+    if (!this.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    this.ctx.resume(); this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.steps = [];
+    this.playing = true; this.timer = setInterval(() => this.schedule(), 25); this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  schedule() {
+    while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / params.bpm / 4; this.step++; }
+    const old = this.ctx.currentTime - 1;
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, time) {
+    const inBar = step % (params.bpb * 4); this.steps.push({ time, step });
+    for (const lane of LANES) if (params[lane][inBar % 16] === 'x') this.click(lane, time, inBar === 0 ? 1 : 0.7);
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain(); g.connect(this.master);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') { src = ctx.createOscillator(); src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08); src.connect(g); }
+    else { src = ctx.createBufferSource(); src.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = lane === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = lane === 'snare' ? 1800 : 8000; src.connect(f); f.connect(g); }
+    const end = t + TAU[lane] * 4; g.gain.exponentialRampToValueAtTime(0.001, end); src.start(t); src.stop(end + 0.01);
+  },
+  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
+  beats() {
+    if (!this.ctx) return -1;
+    const now = this.ctx.currentTime - this.latency();
+    let last = null; for (const s of this.steps) if (s.time <= now) last = s;
+    return last ? (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / 4 : -1;
+  },
+};
+let clockStart = performance.now();
+// the clock as the scene reads it: beats (heard) and beats per bar; __qaShift is #88's forceDrop, startBar a QA offset
+function clockRead(now) {
+  const mb = metronome.beats();
+  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60) + (params.startBar + (window.__qaShift || 0)) * params.bpb;
+  return { beats, bpb: params.bpb };
+}
+
+// ---------- URL settings ----------
+const q = k => query.get(k), num = (k, lo, hi) => { const v = parseFloat(q(k)); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null; };
+for (let i = 1; i <= 4; i++) { const v = num('macro' + i, 0, 1); if (v !== null) { params.macro[i - 1] = v; if (i === 3) params.variant = 'manual'; } }
+if (q('variant') === 'auto' || q('variant') === 'manual') params.variant = q('variant');
+if (q('u')) { const u = q('u').split(',').map(Number); if (u.length === 3 && u.every(x => Number.isFinite(x) && x >= -1 && x <= 1)) params.u = u; }
+if (q('chart') === 'allFinite') params.chart = 'allFinite';
+for (const [k, lo, hi] of [['bpm', 60, 180], ['startBar', 0, 4096], ['film', 0, 1], ['filmThickness', 150, 1200], ['clipRadius', 0.6, 2.4], ['diamondSize', 0, 30], ['tails', 0, 1], ['intensity', 0, 1], ['speed', 0, 1], ['hue', 0, 1]]) { const v = num(k, lo, hi); if (v !== null) params[k] = v; }
+if (parseInt(q('seed'), 10) > 0) params.seed = parseInt(q('seed'), 10);
+params.glides = q('glides') !== '0'; params.labels = q('labels') !== '0'; params.muted = q('muted') === '1';
+
+// ---------- controls (#85 contract) ----------
+const macroText = i => i === 0 ? `${holdOf(params.macro[0])} bar${holdOf(params.macro[0]) === 1 ? '' : 's'}` : i === 2 ? `${LEVELS[levelOf(params.macro[2])]}` : params.macro[i].toFixed(2);
+function setMacro(i, v) {
+  if (!(i >= 1 && i <= 4)) return null;
+  params.macro[i - 1] = Math.max(0, Math.min(1, +v));
+  if (i === 3 && !params.u) params.variant = 'manual';   // touching the lines knob takes the build-up off the song schedule
+  sync(); return params.macro[i - 1];
+}
+for (let i = 1; i <= 4; i++) $('m' + i).addEventListener('input', e => setMacro(i, parseFloat(e.target.value)));
+function stepRate(d) { setMacro(1, Math.max(0, Math.min(4, Math.round(params.macro[0] * 4) + d)) / 4); }
+function pressTrigger(i, holdMs = 0) { if (!(i >= 1 && i <= 4)) return false; return scene.press(i, holdMs, performance.now()); }
+for (let i = 1; i <= 4; i++) $('t' + i).onclick = () => pressTrigger(i);
+window.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target && (e.target.tagName === 'TEXTAREA' || (e.target.tagName === 'INPUT' && e.target.type === 'text'))) return;
+  const k = 'zxcv'.indexOf(e.key.toLowerCase());
+  if (k >= 0) { e.preventDefault(); pressTrigger(k + 1); }
+  else if (e.key === '[') { e.preventDefault(); stepRate(-1); }
+  else if (e.key === ']') { e.preventDefault(); stepRate(1); }
+});
+const DETAIL_SLIDERS = { film: 2, filmThickness: 0, clipRadius: 2, diamondSize: 1, tails: 2, intensity: 2, speed: 2, hue: 2, bpm: 0 };
+for (const name of Object.keys(DETAIL_SLIDERS)) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); sync(); });
+$('vAuto').onclick = () => { params.variant = 'auto'; sync(); };
+$('vManual').onclick = () => { params.variant = 'manual'; sync(); };
+$('chart').onclick = () => { params.chart = params.chart === 'affine' ? 'allFinite' : 'affine'; sync(); };
+function sync() {
+  for (let i = 1; i <= 4; i++) { $('m' + i).value = params.macro[i - 1]; $('m' + i + 'Out').textContent = macroText(i - 1); }
+  for (const [name, dec] of Object.entries(DETAIL_SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
+  $('mute').classList.toggle('on', params.muted);
+  $('vAuto').classList.toggle('on', params.variant === 'auto'); $('vManual').classList.toggle('on', params.variant === 'manual');
+  $('chart').classList.toggle('on', params.chart === 'allFinite');
+}
+$('play').onclick = () => { if (metronome.playing) { metronome.stop(); $('play').textContent = '▶ Play'; } else { metronome.start(); clockStart = performance.now(); $('play').textContent = '■ Stop'; } };
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen()).catch(() => {}); };
+const controls = () => ({
+  macro: params.macro, intensity: params.intensity, speed: params.speed, speedMul: Math.pow(4, params.speed - 0.5), hue: params.hue, opacity: params.opacity,
+  colourSpeed: 1, variant: params.variant, u: params.u, chart: params.chart, film: params.film, thickness: params.filmThickness,
+  clipRadius: params.clipRadius, diamondSize: params.diamondSize, tails: params.tails, glides: params.glides,
+});
+window.__modules = { '16-neon-lines': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
+
+// ---------- canvas, scene ----------
+const canvas = $('c'), ov = $('ov'), hud = $('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false });
+const octx = ov.getContext('2d');
+const errors = [], events = [];
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(3840, Math.round(canvas.clientWidth * dpr)), h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; scene.resize(w, h); }
+  // the labels: at most 1280 px wide (CSS scales them), so the scene canvas stays the biggest one
+  const os = Math.min(1, 1280 / Math.max(1, canvas.clientWidth)), ow = Math.round(canvas.clientWidth * os), oh = Math.round(canvas.clientHeight * os);
+  if (ov.width !== ow || ov.height !== oh) { ov.width = ow; ov.height = oh; lastLabel = ''; }
+}
+let lastLabel = '', frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, glidesSeen = 0, lastStep = -1;
+function logEvent(e, now) {
+  if (metronome.playing && e.tBeat != null) { e.tHeard = e.tBeat + metronome.latency(); e.perfHeard = performance.now() + (e.tHeard - metronome.ctx.currentTime) * 1000; }
+  e.perfDrawn = now; events.push(e); if (events.length > 512) events.shift();
+}
+const stepTime = step => { const s = metronome.playing && metronome.steps.find(x => x.step === step); return s ? s.time : null; };
+function labels(v) {
+  const c = octx, OW = ov.width, OH = ov.height, s = OH / 720;
+  const glide = v.glide ? `glide ${v.glide.type === '3' ? '3-cycle' : v.glide.type === '5' ? '5-cycle' : 'double swap'} (${v.glide.sig.map(x => x + 1).join(' ')})` : `S5 · ${v.pc.map(x => x + 1).join('')}`;
+  const text = `${v.lines}|${v.eckardt}|${v.full}|${glide}|${v.mode}`;
+  if (text === lastLabel) return; lastLabel = text;
+  c.clearRect(0, 0, OW, OH);
+  if (!params.labels) return;
+  c.textBaseline = 'top'; c.fillStyle = 'rgba(255,200,61,0.85)'; c.font = `600 ${Math.round(20 * s)}px ui-monospace, Menlo, monospace`;
+  c.fillText('16c · 27 Neon Lines', 18 * s, 16 * s);
+  c.fillStyle = 'rgba(220,210,255,0.62)'; c.font = `500 ${Math.round(13 * s)}px ui-monospace, Menlo, monospace`;
+  c.fillText(v.full ? 'exact · Clebsch diagonal cubic · ray–cubic solve' : 'exact · P² blown up at Klein\'s 6 points', 18 * s, 42 * s);
+  c.fillText(`${v.lines} real lines${v.full ? ' · 135 meetings' : ''} · ${v.eckardt} Eckardt points`, 18 * s, 60 * s);
+  c.textAlign = 'right'; c.fillText(glide, OW - 18 * s, 16 * s); c.textAlign = 'left';
+}
+function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; if (window.__panicError) window.__panicError(); }
+}
+function draw(now) {
+  resize();
+  const { beats, bpb } = clockRead(now);
+  window.__qaNowBars = beats / bpb;
+  scene.frame({ target: null, t: now / 1000, beats, bpb, bpm: params.bpm, controls: controls(), now });
+  const v = scene.qa.view;
+  // events for the sync checks: kicks when heard, glide starts and drops when drawn
+  const step = Math.floor(beats * 4);
+  const stepOffset = (params.startBar + (window.__qaShift || 0)) * bpb * 4;   // metronome steps count from Play
+  if (step !== lastStep) { lastStep = step; if (params.kick[((step % 16) + 16) % 16] === 'x' && metronome.playing) logEvent({ type: 'kick', tBeat: stepTime(step - stepOffset) }, now); }
+  const gl_ = scene.qa.glides;
+  while (glidesSeen < gl_.length) { const g = gl_[glidesSeen++]; logEvent({ type: g.cause === 'drop' ? 'drop' : 'glide', beat: g.beat, cycle: g.type, tBeat: stepTime(Math.round(g.beat * 4 - stepOffset)) }, now); }
+  labels(v);
+  Object.assign(window.__qa, { beats, bars: beats / bpb, bpm: params.bpm, view: v, live: scene.qa.live, metrics: scene.qa.metrics });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const s = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    hud.textContent = `16c neon lines · ${v.lines} lines · ${v.mode} · bar ${((v.bars % 32) + 32) % 32 | 0}/32 · hold ${v.hold} bar · ${params.bpm} bpm · ${s}\n${canvas.width}×${canvas.height} · ${fps} fps`;
+  }
+}
+
+// ---------- QA ----------
+// getters stay getters on window.__qa (Object.assign would copy their values once)
+const expose = o => { for (const [k, d] of Object.entries(Object.getOwnPropertyDescriptors(o))) Object.defineProperty(window.__qa, k, { ...d, configurable: true, enumerable: true }); };
+expose({
+  errors, events, setMacro, pressTrigger, triggers: TRIGGERS,
+  get macros() { return MACROS.map((m, i) => ({ slot: m.slot, name: m.name, label: m.label, value: params.macro[i], default: m.default, shown: macroText(i) })); },
+  get triggerLog() { return scene.qa.triggerLog; }, triggerEnv: scene.qa.triggerEnv,
+  check: () => scene.qa.truths(), truths: () => scene.qa.truths(),
+  get glides() { return scene.qa.glides; }, get walls() { return scene.qa.walls; }, get wallCrossings() { return scene.qa.wallCrossings; }, get drops() { return scene.qa.drops; }, get peaks() { return scene.qa.peaks; },
+});
+if (!gl) { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2'); }
+else {
+  try { scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed }); }
+  catch (e) { errors.push(String(e && e.stack || e)); hud.textContent = 'init error: ' + e.message; }
+  sync();
+  requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>
