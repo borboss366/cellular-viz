@@ -278,7 +278,7 @@ expose({
   get macros() { return MACROS.map((m, i) => ({ slot: m.slot, name: m.name, label: m.label, value: params.macro[i], default: m.default, shown: macroText(i) })); },
   get triggerLog() { return scene.qa.triggerLog; }, triggerEnv: scene.qa.triggerEnv,
   check: () => scene.qa.truths(), truths: () => scene.qa.truths(),
-  get glides() { return scene.qa.glides; }, get walls() { return scene.qa.walls; }, get drops() { return scene.qa.drops; }, get peaks() { return scene.qa.peaks; },
+  get glides() { return scene.qa.glides; }, get walls() { return scene.qa.walls; }, get wallCrossings() { return scene.qa.wallCrossings; }, get drops() { return scene.qa.drops; }, get peaks() { return scene.qa.peaks; },
 });
 if (!gl) { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2'); }
 else {

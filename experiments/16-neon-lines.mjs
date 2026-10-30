@@ -200,7 +200,7 @@ export function createScene() {
     sched: newSched(), glide: null, pc: [0, 1, 2, 3, 4], slotOf: [...Array(27).keys()], wipe: null,
     rand: K.rng(1), lastSig: null, prevU: null, base: null, baseKey: '', prevCubic: null,
     man: { init: [1, 1, 1], moves: [[], [], []], level: 3, knob: null }, mode: 'auto', pending: [], dropAt: null, dropCount: 0,
-    autoShift: 0, prevSec: null, prevURaw: null, uBlend: null,
+    autoShift: 0, prevSec: null, prevURaw: null, uBlend: null, band: [null, null, null], wallCrossings: [],
     peak: { start: -1e9, att: 100, dec: 400, amp: { gold: 0, flare: 0 }, count: 0 }, mirrorAt: null,
     glides: [], walls: [], lastT: null, frames: 0,
     live: { frames: 0, maxRelF: 0, worst: null, lineCountOk: true, countsSeen: {}, eckSeen: {}, pairsChecked: 0, pairsBad: 0 },
@@ -419,6 +419,20 @@ export function createScene() {
     const Hinv = K.inverse(Hc), cubic = K.normCubic(K.composeCubic(base.cubic, Hinv));
     // --- walls: a soft gold flash where a pair crosses u = 0
     if (st.prevU) for (let k = 0; k < 3; k++) if ((st.prevU[k] > 0) !== (u[k] > 0)) { st.walls.push({ k, beat: beats, up: u[k] > 0 }); if (st.walls.length > 64) st.walls.shift(); requestPeak('gold', 0.55, now, 110, 380); }
+    // --- wall crossings for QA (VIZ research's ruling on #124): |u_k| dips below 0.1 and comes back. Logged per
+    // crossing: perf times of entering and leaving the band, of the zero crossing, and of the wall beat (the beat the
+    // zero crossing rounds to, as heard). Gates: the band lasts ≤ 1 beat, tEnter is within 40 ms of the wall beat.
+    for (let k = 0; k < 3; k++) {
+      const inside = Math.abs(u[k]) < 0.1, flipped = !!st.prevU && (st.prevU[k] > 0) !== (u[k] > 0);
+      if (inside && !st.band[k]) st.band[k] = { k, bar: Math.floor(beats / bpb), tEnter: now, beatEnter: beats, tCross: null, wallBeat: null, wallBeatT: null, up: null };
+      if (flipped && !st.band[k]) st.band[k] = { k, bar: Math.floor(beats / bpb), tEnter: now, beatEnter: beats, tCross: null, wallBeat: null, wallBeatT: null, up: null, skipped: true };   // jumped the band in one frame
+      const c = st.band[k];
+      if (c && flipped) { c.tCross = now; c.wallBeat = Math.round(beats); c.bar = Math.floor(c.wallBeat / bpb); c.wallBeatT = perfOf(c.wallBeat); c.up = u[k] > 0; }
+      if (c && !inside) {
+        c.tExit = now; c.beatExit = beats; st.band[k] = null;
+        if (c.tCross !== null) { st.wallCrossings.push(c); if (st.wallCrossings.length > 64) st.wallCrossings.shift(); }   // a dip that turned back is not a crossing
+      }
+    }
     st.prevU = u.slice();
     // --- envelopes: beat pulse (30 ms attack, ≥ 120 ms tail at 180 bpm), flare and gold through the peak limiter
     const f = beats - Math.floor(beats), pulse = (1 - Math.exp(-f / 0.06)) * Math.exp(-f / 0.36) / 0.62;
@@ -610,7 +624,7 @@ export function createScene() {
     init, resize, frame, dispose, press,
     trigger(name) { const i = ['next', 'drop', 'mirror', 'flare'].indexOf(name); return i >= 0 ? press(i + 1) : false; },
     qa: { truths, get view() { return st.view; }, get live() { return st.live; }, get metrics() { return st.metrics; }, get glides() { return st.glides; },
-      get walls() { return st.walls; }, get triggerLog() { return st.triggerLog; }, get triggerEnv() { return st.triggerEnv; }, get peaks() { return st.peak.count; },
+      get walls() { return st.walls; }, get wallCrossings() { return st.wallCrossings; }, get triggerLog() { return st.triggerLog; }, get triggerEnv() { return st.triggerEnv; }, get peaks() { return st.peak.count; },
       get drops() { return st.dropCount; }, schedStep, autoU },
   };
 }
