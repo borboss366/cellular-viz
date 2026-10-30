@@ -32,9 +32,9 @@ function fakeContext() {
 }
 const hzBin = hz => Math.round(hz / (SR / 2 / BINS));
 function setBand(ctx, lo, hi, db) { for (let k = hzBin(lo); k <= hzBin(hi); k++) ctx.spectrum[k] = db; }
-function rig(source = 'clock', extra = {}) {
+function rig(source = 'clock', extra = {}, settings = null) {
   const ctx = fakeContext();
-  const clock = Clock.create({ bpm: 120, bpb: 4, audioContext: () => ctx, timers: false });
+  const clock = Clock.create({ bpm: 120, bpb: 4, audioContext: () => ctx, timers: false, ...(settings ? { settings } : {}) });
   const audio = AudioIn.create({ clock, source, storage: null, device: null, ...extra }).start();
   clock.start();
   let ms = 0;
@@ -91,6 +91,51 @@ test('due(): each hit once, in the first frame whose visual time passed it; beat
     for (const k of ['time', 'lane', 'now', 'beats', 'frame', 't', 'dt']) assert.ok(k in e, k);
     assert.ok(e.now - e.time >= 0 && e.now - e.time < e.dt + 0.001, `lag ${e.now - e.time} dt ${e.dt}`);
   }
+});
+
+const ALL16 = { bpm: 120, bpb: 4, muted: true, kick: 'x---x---x---x---', snare: '----x-------x---', hat: 'xxxxxxxxxxxxxxxx' };
+const grid = h => 0.05 + h.step * 0.125;   // start() books step 0 at currentTime + 0.05; a 16th at 120 bpm is 0.125 s
+
+test('swing: odd 16ths late by swing × a 16th, even ones and the steps (beats) stay on the grid', () => {
+  const plain = rig('clock', {}, { ...ALL16 }), sw = rig('clock', {}, { ...ALL16, swing: 0.5 });
+  for (let i = 0; i < 240; i++) { plain.frame(); sw.frame(); }
+  assert.equal(sw.clock.hitLog.length, plain.clock.hitLog.length);
+  for (const h of sw.clock.hitLog) {
+    const want = grid(h) + (h.step % 2 ? 0.5 * 0.125 : 0);
+    assert.ok(Math.abs(h.time - want) < 1e-9, `${h.lane} step ${h.step}: ${h.time} vs ${want}`);
+  }
+  for (const h of plain.clock.hitLog) assert.ok(Math.abs(h.time - grid(h)) < 1e-9, 'swing 0: on the grid');
+  assert.ok(Math.abs(sw.clock.read({ raw: true }).beats - plain.clock.read({ raw: true }).beats) < 1e-12, 'beats unchanged by swing');
+});
+
+test('human: ± ms jitter per hit, hitLog stays in time order, due() still hands each hit out in its first frame', () => {
+  const { clock, audio, frame } = rig('clock', {}, { ...ALL16, human: 40 });
+  let n = 0;
+  for (let i = 0; i < 60 * 8; i++) n += frame().hits.length;
+  const L = clock.hitLog;
+  for (let i = 1; i < L.length; i++) assert.ok(L[i - 1].time <= L[i].time, `hitLog out of order at ${i}`);
+  assert.ok(L.some(h => Math.abs(h.time - grid(h)) > 0.005), 'some hits moved off the grid');
+  for (const h of L) assert.ok(Math.abs(h.time - grid(h)) <= 0.040 + 1e-9, `jitter ${h.time - grid(h)}`);
+  assert.equal(n, L.filter(h => h.time <= audio.now).length, 'every reached hit handed out');
+  for (const e of audio.beatLog) assert.ok(e.now - e.time >= 0 && e.now - e.time < e.dt + 0.001, `lag ${e.now - e.time} dt ${e.dt}`);
+});
+
+test('dt is the step of the visual time between frames (audio clock), not rAF: ~10 ms audio chunks never read as late', () => {
+  const { ctx, clock, audio } = rig();
+  let ms = 0, audioMs = 0, late = 0;
+  for (let i = 0; i < 60 * 8; i++) {
+    ms += 1000 / 60;
+    while (audioMs + 10 <= ms + (i % 3 === 0 ? 10 : 0)) audioMs += 10;   // currentTime moves in 10 ms chunks, some frames 20 ms
+    ctx.currentTime = audioMs / 1000; clock.schedule();
+    audio.frameStart(ms); audio.read(); audio.due(['kick', 'snare', 'hat']);
+  }
+  assert.ok(audio.beatLog.length > 20);
+  for (const e of audio.beatLog) {
+    if (!(e.now - e.time < e.dt + 0.001)) late++;
+    assert.ok('rafDt' in e && Math.abs(e.rafDt - 1 / 60) < 1e-9);
+  }
+  assert.equal(late, 0);
+  assert.ok(audio.beatLog.some(e => e.dt > e.rafDt + 0.002), 'some frames saw a bigger audio step than rAF');
 });
 
 test('due(lanes): only those lanes, and beatLanes says so', () => {

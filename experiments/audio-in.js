@@ -6,7 +6,7 @@
 //   const audio = AudioIn.create({ clock, source: qs.get('audio') || 'clock' });
 //   AudioIn.qa(audio, window.__qa);   // __qa.beatLog, .frame, .beatLanes, .events, .audioIn (live getters)
 //   // in the rAF callback:
-//   audio.frameStart(nowMs);          // top of the callback, before drawing: __qa.frame += 1, t, dt
+//   audio.frameStart(nowMs);          // top of the callback, before drawing: __qa.frame += 1, t, now, dt (audio clock)
 //   const A = audio.read();           // { level, kick, snare, hat, bands: { sub … air }, wave }  (the #85 frame().audio)
 //   for (const hit of audio.due(['kick'])) firePulse(hit);   // the hits the visuals reached this frame, logged
 //
@@ -97,7 +97,7 @@
       source, requested, fallback, clock, ctx: null, analyser: null, input: null, db: null, wave: null,
       status: 'idle', error: null, running: false, warning: null, device: null,
       lanes: { kick: onsetLane('kick'), snare: onsetLane('snare'), hat: onsetLane('hat') },
-      beatLog: [], beatLanes: null, frame: 0, t: null, dt: 0,
+      beatLog: [], beatLanes: null, frame: 0, t: null, dt: 0, rafDt: 0, now: null,
       // start() / stop(): reading is on between them; start() before the clock exists is fine (attached on read)
       start() { this.running = true; this.attach(); return this; },
       stop() {
@@ -164,10 +164,15 @@
           el.textContent = 'audio: ' + msg;
         } catch (e) {}
       },
-      // the top of each rAF callback, before drawing: the frame counter and this frame's time (nowMs: rAF's argument)
+      // the top of each rAF callback, before drawing: the frame counter and this frame's time (nowMs: rAF's argument).
+      // The frame's visual time is clock.now(), read once here; dt is its step since the last frame, on the audio
+      // clock (Chrome's currentTime can move in ~10 ms chunks, so a 16.7 ms frame may see a 20 ms step); rafDt is rAF's.
       frameStart(nowMs) {
         const t = (Number.isFinite(nowMs) ? nowMs : (root.performance ? root.performance.now() : Date.now())) / 1000;
-        this.dt = this.t === null ? 0 : t - this.t; this.t = t; this.frame++;
+        this.rafDt = this.t === null ? 0 : t - this.t; this.t = t; this.frame++;
+        const now = clock.ctx && typeof clock.now === 'function' ? clock.now() : null;
+        this.dt = Number.isFinite(now) && Number.isFinite(this.now) ? Math.max(0, now - this.now) : 0;
+        this.now = Number.isFinite(now) ? now : null;
         return this.frame;
       },
       // the frame's audio (#85 frame().audio): call once per frame
@@ -194,11 +199,13 @@
       due(lanes) {
         if (lanes) this.beatLanes = lanes.slice();
         if (!clock.ctx || typeof clock.hitsDue !== 'function') return [];
-        const hits = clock.hitsDue(lanes);
+        // the frame's visual time from frameStart (so a hit is due in exactly the frame whose now passed it)
+        const at = Number.isFinite(this.now) ? this.now : clock.now();
+        const hits = clock.hitsDue(lanes, at);
         if (hits.length) {
-          const now = clock.now(), beats = clock.read().beats;
+          const beats = clock.read().beats;
           for (const h of hits) {
-            this.beatLog.push({ time: h.time, lane: h.lane, now, beats, frame: this.frame, t: this.t, dt: this.dt });
+            this.beatLog.push({ time: h.time, lane: h.lane, now: at, beats, frame: this.frame, t: this.t, dt: this.dt, rafDt: this.rafDt });
             if (this.beatLog.length > LOG_KEPT) this.beatLog.shift();
           }
         }

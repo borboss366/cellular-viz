@@ -476,7 +476,7 @@ if (res.flash) {
 }
 // the beat-match row (contract #95 comment 6533515449): every clock hit on the page's lanes since Play has exactly one
 // beatLog entry (same lane, |time − hit| < 1e-6) drawn in the first frame whose visual time passed it:
-// 0 ≤ now − time < dt + 1 ms. A hard gate on every ported page, pages from before #88 included (no LEGACY downgrade).
+// 0 ≤ now − time < dt + 1 ms, dt being the frame's step of clock.now() (audio clock, not rAF). A hard gate on every ported page, pages from before #88 included (no LEGACY downgrade).
 {
   const G = 'beat match: every clock hit drawn in the first frame that reaches it (__qa.beatLog)';
   const hard = (pass, detail) => rows.push(`| ${G} | ${pass === null ? 'ℹ️' : ok(pass)} | ${String(detail).replace(/[|\n]/g, ' ')} |`);
