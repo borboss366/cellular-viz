@@ -132,6 +132,7 @@ function clockRead(now) {
       for (const h of clock.events) if (h.time <= tNow && tNow - h.time < 1) hits.push({ lane: h.lane, beat: Math.round((beats - (tNow - h.time) * bps) * 4) / 4 });
       return { beats, bpb: params.bpb, hits, read: r };
     }
+    return { beats: shift, bpb: params.bpb, hits: [], read: r };   // Play pressed, first click not heard yet: hold at the start
   }
   const beats = (now - clockStart) / 1000 * params.bpm / 60 + shift;
   return { beats, bpb: params.bpb, hits: K.patternHits(beats - 1, beats, params.bpb, params), read: null };
@@ -164,7 +165,7 @@ function sync() {
 }
 $('play').onclick = () => {
   if (clock.playing) { clock.stop(); $('play').textContent = '▶ Play'; }
-  else { clock.start(); clockStart = performance.now(); $('play').textContent = '■ Stop'; }
+  else { clock.start(); clockStart = performance.now(); scene.reset(); $('play').textContent = '■ Stop'; }
 };
 $('mute').onclick = () => { params.muted = !params.muted; clock.setMuted(params.muted); sync(); };
 $('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen()).catch(() => {}); };

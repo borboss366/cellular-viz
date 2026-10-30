@@ -222,6 +222,11 @@ export function createScene() {
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ubo);
   }
 
+  // a fresh canvas: no paint, no ops (the page calls it on Play, so the song starts from the ground)
+  function reset() {
+    Object.assign(st, { live: [], pending: [], history: [], opLog: [], lastBeat: null, bake: null, bakes: [], pour: null, trig: [], lastTrigDrop: -1e9, kickBeat: undefined, lastDropColour: undefined });
+    base.cur = -1;
+  }
   function press(slot, holdMs = 0, now = performance.now()) {
     const e = { t: now, slot: `trigger${slot}`, holdMs, firedAt: null, quantisedTo: null, fired: null };
     st.triggerLog.push(e); if (st.triggerLog.length > 256) st.triggerLog.shift();
@@ -436,7 +441,7 @@ export function createScene() {
 
   return {
     id: '24-paint-pour', title: '24 · Paint Pour',
-    init, resize, frame, dispose, press,
+    init, resize, frame, dispose, press, reset,
     trigger(name) { const i = ['drop', 'cells', 'vortex', 'comb'].indexOf(name); return i >= 0 ? press(i + 1) : false; },
     qa: { get view() { return st.view; }, get metrics() { return st.metrics; }, get ops() { return opsView(); }, get opLog() { return st.opLog; },
       get bakes() { return st.bakes; }, get pour() { return pourView(); }, get palette() { return st.pal; },
