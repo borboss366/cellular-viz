@@ -64,6 +64,9 @@ const LEGACY = new Set(['01-gray-scott', '02-lenia', '03-lenia-audio', '04-lenia
 // by file name only (VIZ research's ruling on #124): 16b (#84) was in flight before #88; 16-neon-lines (16c) and every
 // later page are new scenes, so their flash and GPU rows are hard gates (❌), never ⚠️
 const legacy = LEGACY.has(id);
+// the user's ruling (30 Oct 2026, after watching both pages): no visible flash on 23 and 25, so their general-flash row is
+// report-only (⚠️, never ❌); every other row on them stays gated
+const FLASH_REPORT_ONLY = new Set(['23-shape-shifter', '25-shape-shifter-2']);
 // if this check itself breaks, say so in check.md: ⚠️ on pages from before #88 (never blocks them), ❌ on new scenes
 const crash = e => {
   try { fs.writeFileSync(path.join(out, 'check.md'), `# Shared gates (#88) · ${pageName} · ${stamp}\n\n| gate | result | detail |\n|---|---|---|\n` +
@@ -430,7 +433,8 @@ if (res.flash) {
     const secs = (f.t1 - f.t0) / 1000, fps = f.frames / Math.max(secs, 1e-3), good = fps >= 55, w = f.worst;
     const g = (name, n, detail) => add(name, good ? n === 0 : 'warn', (good ? '' : `not measured: analysed only ${fps.toFixed(1)} fps · `) + `${n} failing frames · ${detail}`);
     add('flash capture', good ? true : 'warn', `${f.frames} frames in ${secs.toFixed(1)} s (${fps.toFixed(1)} fps, ${f.skipped} skipped) · tap ${f.tapMs} ms/frame · scene canvas ${f.src.join('×')} → 640×360 linear · window ${f.win[0]}×${f.win[1]} (${f.win[0] * 4}×${f.win[1] * 4} at 1440p, fov ${FOV}°) · ${f.win[3]} windows${f.tapErr ? ' · tap error ' + f.tapErr : ''}`);
-    g('general flash: ≥ 4 flashes/s on ≤ 25 % of any 10° window', f.flashFail, `worst ${(100 * w.flash.v).toFixed(1)} %${w.flash.at ? ` at ${w.flash.at} (t ${w.flash.t} s)` : ''}`);
+    if (FLASH_REPORT_ONLY.has(id) && good && f.flashFail > 0) add('general flash: ≥ 4 flashes/s on ≤ 25 % of any 10° window', 'warn', `report-only (user's ruling 30 Oct: no visible flash on this page) · ${f.flashFail} failing frames · worst ${(100 * w.flash.v).toFixed(1)} %${w.flash.at ? ` at ${w.flash.at} (t ${w.flash.t} s)` : ''}`);
+    else g('general flash: ≥ 4 flashes/s on ≤ 25 % of any 10° window', f.flashFail, `worst ${(100 * w.flash.v).toFixed(1)} %${w.flash.at ? ` at ${w.flash.at} (t ${w.flash.t} s)` : ''}`);
     g('red flash: ≥ 4 flashes/s on ≤ 25 % of any 10° window', f.redFail, `worst ${(100 * w.red.v).toFixed(1)} %${w.red.at ? ` at ${w.red.at} (t ${w.red.t} s)` : ''}`);
     g('frame mean L ≤ 0.60', f.meanFail, `max ${w.mean.v} (t ${w.mean.t ?? '–'} s)`);
     g('10° window mean L ≤ 0.80', f.winFail, `max ${w.win.v}${w.win.at ? ` at ${w.win.at} (t ${w.win.t} s)` : ''}`);
