@@ -59,7 +59,7 @@ const SURF_FS = `#version 300 es
 precision highp float;
 uniform vec2 uRes; uniform vec3 uCam, uFwd, uRight, uUp, uCenter; uniform float uFocal, uRadius;
 uniform float uC[20];
-uniform float uTime, uThick, uFilmOp, uGold, uDim;
+uniform float uTime, uThick, uFilmOp, uGold, uDim, uSmear;
 out vec4 o;
 const float PI = 3.14159265;
 const vec3 GOLD = vec3(1.0, 0.784, 0.239);
@@ -102,7 +102,7 @@ void main() {
     float cv = abs(dot(nrm, rd)), fr = pow(1.0 - cv, 3.0);
     float d = uThick * (0.62 + 0.30 * nrm.y + 0.18 * sin(7.0 * dot(p, vec3(0.6, 0.5, 0.7)) + 0.7 * uTime));
     float alpha = uFilmOp * (0.10 + 0.55 * fr);
-    vec3 em = film(d) * (0.20 + 1.10 * fr) + GOLD * uGold * 0.6;
+    vec3 em = mix(film(d), vec3(0.5), 0.7 * uSmear) * (0.20 + 1.10 * fr) + GOLD * uGold * 0.6;   // fringes soften while the surface glides fast
     col += T * alpha * em; T *= 1.0 - alpha;
   }
   o = vec4(bg * T + col * uDim, 1.0);
@@ -388,7 +388,7 @@ export function createScene() {
     if (st.uBlend) { const a = ease((now - st.uBlend.t0) / 250); if (a >= 1) st.uBlend = null; else u = uRaw.map((v, k) => st.uBlend.from[k] + (v - st.uBlend.from[k]) * a); }
     if (dropEv && ctl.glides === false) dropEv = null;   // ?glides=0: the choreography stands still (QA)
     if (dropEv) {
-      const len = Math.min(bpb, hb);
+      const len = bpb;   // the 5-cycle on the drop takes a whole bar (it took up to ½ bar: thin beams swept every pixel ≥ 4×/s, #124 flash)
       startGlide(pickSig('drop'), dropEv.beat, len, 'drop', now);
       st.sched.last = dropEv.beat; st.sched.next = alignUp(dropEv.beat + Math.max(hb, len), gridOf(hb, bpb)); st.sched.cause = 'auto'; st.sched.hold = hb;
       requestPeak('flare', 0.8, now, 120, 700); st.dropCount++;
@@ -400,6 +400,17 @@ export function createScene() {
     if (st.glide && beats < st.glide.start - 2 * bpb) st.glide = null;   // the clock jumped back
     let s = 0;
     if (st.glide) { s = ease((beats - st.glide.start) / st.glide.len); if (s >= 1) { commitGlide(); s = 0; } }
+    // motion smear (flash safety, #124): the glide's turn rate in rad/s (smoothstep speed × the cycle's largest angle).
+    // Fast glides sweep thin bright beams and film fringes across every pixel; above ~0.8 rad/s the beams widen with
+    // their energy kept (lower peak per pixel) and the fringes soften, so a pixel's swing per pass stays small.
+    let smear = 0;
+    if (st.glide && s > 0) {
+      const x = clamp01((beats - st.glide.start) / st.glide.len), ct = K.cycleType(st.glide.sig);
+      const ang = ct === '5' ? 4 * Math.PI / 5 : ct === '3' ? 2 * Math.PI / 3 : Math.PI;
+      const radPerSec = 6 * x * (1 - x) / st.glide.len * (bpm / 60) * ang;
+      smear = clamp01((radPerSec - 0.8) / 2.0);
+    }
+    st.smear = smear;
     // --- the base surface for u, then the moving chart: H = K·M·R(s)·Pcur·M⁻¹
     const base = baseFor(u);
     if (st.mirrorAt && beats >= st.mirrorAt.beat) {   // trigger 3: a transposition relabels the lines (a mirror wipe, 1 beat)
@@ -441,8 +452,10 @@ export function createScene() {
     const cam = camera(bars, ctl);
     // --- lasers: each real line, clipped to the ball, plus tails that fade out towards infinity
     const R = ctl.clipRadius, RE = 0.8 * cam.D, glowK = Math.pow(ctl.macro[1], 1.2), sc = H / 1440;
-    const width = (1.1 + 3.2 * glowK) * sc * (1 + 0.35 * pulse + 0.5 * flare), glow = (5 + 42 * glowK) * sc * (1 + 0.25 * pulse);
-    const inten = (0.45 + 0.8 * ctl.intensity) * (1 + 0.45 * pulse + 1.1 * flare);
+    // the flare is milder than before (×1.4 at most, was ×1.9): on the drop it multiplied the fast glide's pixel swings
+    const wMul = 1 + 1.6 * smear, pulseK = 1 - 0.6 * smear;
+    const width = (1.1 + 3.2 * glowK) * sc * (1 + 0.35 * pulseK * pulse + 0.25 * flare) * wMul, glow = (5 + 42 * glowK) * sc * (1 + 0.25 * pulseK * pulse);
+    const inten = (0.45 + 0.8 * ctl.intensity) * (1 + 0.45 * pulseK * pulse + 0.5 * flare) / wMul;
     const slotInv = K.invertPerm(st.slotOf);
     let nSeg = 0, nDrawn = 0, energy = 0, maxRel = 0, worst = null;
     const tailAmt = ctl.tails;
@@ -497,7 +510,7 @@ export function createScene() {
     if (base.pairs !== null) { lv.pairsChecked++; if (base.pairs !== { 3: 3, 7: 9, 15: 45, 27: 135 }[base.lines.length]) lv.pairsBad++; }
     lv.lastMaxRel = maxRel;
     st.view = { u, full: base.full, lines: base.lines.length, expected: base.expected, drawn: nDrawn, segments: nSeg, eckardt: base.eck.length, diamondsOnScreen: nD, glide: st.glide ? { type: K.cycleType(st.glide.sig), sig: st.glide.sig, s, cause: st.glide.cause } : null, pc: st.pc.slice(), slotOf: st.slotOf.slice(), mode: ctl.u ? 'fixed' : st.mode, level: st.man.level, hold: hb / bpb, bars, beats };
-    st.metrics = { lineCount: base.lines.length, laserEnergy: energy / (W * H), glidesStarted: st.glides.length, trail: ctl.macro[3] * 0.97, pulse, flare, gold };
+    st.metrics = { lineCount: base.lines.length, laserEnergy: energy / (W * H), glidesStarted: st.glides.length, trail: ctl.macro[3] * 0.97, pulse, flare, gold, smear };
     st.triggerEnv[0] = st.glide && st.glide.cause === 'trigger' ? Math.sin(Math.PI * s) : 0;
     st.triggerEnv[1] = st.glide && st.glide.cause === 'drop' ? Math.max(Math.sin(Math.PI * s), flare) : 0;
     st.triggerEnv[2] = st.wipe ? clamp01((beats - st.wipe.start) / st.wipe.len) * (1 - clamp01((beats - st.wipe.start) / st.wipe.len)) * 4 : 0;
@@ -514,7 +527,7 @@ export function createScene() {
     gl.uniform3fv(su.uCenter, cam.C); gl.uniform1f(su.uFocal, cam.focal); gl.uniform1f(su.uRadius, R);
     gl.uniform1fv(su.uC, Float32Array.from(cubic));
     gl.uniform1f(su.uTime, t * ctl.speedMul); gl.uniform1f(su.uThick, ctl.thickness); gl.uniform1f(su.uFilmOp, ctl.film);
-    gl.uniform1f(su.uGold, gold); gl.uniform1f(su.uDim, 0.6 + 0.4 * ctl.intensity);
+    gl.uniform1f(su.uGold, gold); gl.uniform1f(su.uDim, 0.6 + 0.4 * ctl.intensity); gl.uniform1f(su.uSmear, st.smear || 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     // lasers and diamonds, additive
     gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
