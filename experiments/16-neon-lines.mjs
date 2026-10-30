@@ -421,7 +421,8 @@ export function createScene() {
     if (st.prevU) for (let k = 0; k < 3; k++) if ((st.prevU[k] > 0) !== (u[k] > 0)) { st.walls.push({ k, beat: beats, up: u[k] > 0 }); if (st.walls.length > 64) st.walls.shift(); requestPeak('gold', 0.55, now, 110, 380); }
     // --- wall crossings for QA (VIZ research's ruling on #124): |u_k| dips below 0.1 and comes back. Logged per
     // crossing: perf times of entering and leaving the band, of the zero crossing, and of the wall beat (the beat the
-    // zero crossing rounds to, as heard). Gates: the band lasts ≤ 1 beat, tEnter is within 40 ms of the wall beat.
+    // zero crossing rounds to, as heard). Gates: the band lasts ≤ 1 beat, the zero crossing (tCross) is within 40 ms of the
+    // wall beat (VIZ research amended: tEnter leads by ~0.067 beat, ~50 ms at 80 BPM). A frame that skips the band counts.
     for (let k = 0; k < 3; k++) {
       const inside = Math.abs(u[k]) < 0.1, flipped = !!st.prevU && (st.prevU[k] > 0) !== (u[k] > 0);
       if (inside && !st.band[k]) st.band[k] = { k, bar: Math.floor(beats / bpb), tEnter: now, beatEnter: beats, tCross: null, wallBeat: null, wallBeatT: null, up: null };
