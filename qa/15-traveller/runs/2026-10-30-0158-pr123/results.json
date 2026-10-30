@@ -1,0 +1,904 @@
+{
+ "id": "15-traveller",
+ "page": "15-traveller",
+ "pr": 123,
+ "sha": "ce1f5ff17650974baea545fdeec159c62c051cd0",
+ "vs": null,
+ "at": "2026-10-30T02:06:17.163Z",
+ "host": "3adc2b2ec197",
+ "hasGpu": true,
+ "runs": [
+  {
+   "label": "settled@1080p",
+   "variant": "settled",
+   "base": "settled",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "build": "0",
+    "firstDrop": "2"
+   },
+   "url": "15-traveller.html?build=0&firstDrop=2",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 728,
+    "clip": 0.392,
+    "clip.mean": 0.349,
+    "clipFrames": 104,
+    "lum.mean": 2.87,
+    "lum.min": 2.84,
+    "lum.max": 2.95,
+    "errors": 0
+   },
+   "values": {
+    "hamiltonian": true,
+    "crossings": 0,
+    "settled": true,
+    "truth1Ok": true,
+    "truth1Bad": 0,
+    "routeCountOk": true,
+    "heldKarpOk": true,
+    "antDecayBad": 0,
+    "antIters": 0,
+    "n": 50,
+    "hkOptimal": null,
+    "hkGap": null,
+    "metrics": {
+     "nodes": 50,
+     "improvementsLastBar": 0,
+     "pheromoneShare": 0,
+     "uphillAccepted": 0
+    },
+    "snapOk": true,
+    "snap": {
+     "ok": true,
+     "snaps": 2,
+     "done": 2,
+     "late": 0,
+     "crossed": 0,
+     "worstBeats": 0.20098866213152
+    },
+    "uphillProposed": 0,
+    "uphillAccepted": 0
+   },
+   "stills": [
+    "stills/settled@1080p-1.png",
+    "stills/settled@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "settled@4k",
+   "variant": "settled",
+   "base": "settled",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "build": "0",
+    "firstDrop": "2"
+   },
+   "url": "15-traveller.html?build=0&firstDrop=2",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 723,
+    "clip": 0.513,
+    "clip.mean": 0.466,
+    "clipFrames": 81,
+    "lum.mean": 2.86,
+    "lum.min": 2.83,
+    "lum.max": 2.95,
+    "errors": 0
+   },
+   "values": {
+    "hamiltonian": true,
+    "crossings": 0,
+    "settled": true,
+    "truth1Ok": true,
+    "truth1Bad": 0,
+    "routeCountOk": true,
+    "heldKarpOk": true,
+    "antDecayBad": 0,
+    "antIters": 0,
+    "n": 50,
+    "hkOptimal": null,
+    "hkGap": null,
+    "metrics": {
+     "nodes": 50,
+     "improvementsLastBar": 0,
+     "pheromoneShare": 0,
+     "uphillAccepted": 0
+    },
+    "snapOk": true,
+    "snap": {
+     "ok": true,
+     "snaps": 2,
+     "done": 2,
+     "late": 0,
+     "crossed": 0,
+     "worstBeats": 0.39618140589568895
+    },
+    "uphillProposed": 0,
+    "uphillAccepted": 0
+   },
+   "stills": [
+    "stills/settled@4k-1.png",
+    "stills/settled@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "build@1080p",
+   "variant": "build",
+   "base": "build",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {},
+   "url": "15-traveller.html?",
+   "metrics": {
+    "gpuBusy": 3,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 729,
+    "clip": 0.379,
+    "clip.mean": 0.346,
+    "clipFrames": 104,
+    "lum.mean": 2.86,
+    "lum.min": 2.84,
+    "lum.max": 2.93,
+    "errors": 0
+   },
+   "values": {
+    "hamiltonian": true,
+    "crossings": 0,
+    "settled": true,
+    "truth1Ok": true,
+    "truth1Bad": 0,
+    "routeCountOk": true,
+    "heldKarpOk": true,
+    "antDecayBad": 0,
+    "antIters": 0,
+    "n": 50,
+    "hkOptimal": null,
+    "hkGap": null,
+    "metrics": {
+     "nodes": 50,
+     "improvementsLastBar": 0,
+     "pheromoneShare": 0,
+     "uphillAccepted": 0
+    },
+    "snapOk": true,
+    "snap": {
+     "ok": true,
+     "snaps": 1,
+     "done": 1,
+     "late": 0,
+     "crossed": 0,
+     "worstBeats": 0.11754195011337742
+    },
+    "uphillProposed": 0,
+    "uphillAccepted": 0
+   },
+   "stills": [
+    "stills/build@1080p-1.png",
+    "stills/build@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "build@4k",
+   "variant": "build",
+   "base": "build",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {},
+   "url": "15-traveller.html?",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 723,
+    "clip": 0.516,
+    "clip.mean": 0.467,
+    "clipFrames": 81,
+    "lum.mean": 2.86,
+    "lum.min": 2.83,
+    "lum.max": 2.94,
+    "errors": 0
+   },
+   "values": {
+    "hamiltonian": true,
+    "crossings": 0,
+    "settled": true,
+    "truth1Ok": true,
+    "truth1Bad": 0,
+    "routeCountOk": true,
+    "heldKarpOk": true,
+    "antDecayBad": 0,
+    "antIters": 0,
+    "n": 50,
+    "hkOptimal": null,
+    "hkGap": null,
+    "metrics": {
+     "nodes": 50,
+     "improvementsLastBar": 0,
+     "pheromoneShare": 0,
+     "uphillAccepted": 0
+    },
+    "snapOk": true,
+    "snap": {
+     "ok": true,
+     "snaps": 1,
+     "done": 1,
+     "late": 0,
+     "crossed": 0,
+     "worstBeats": 0.338131519274377
+    },
+    "uphillProposed": 0,
+    "uphillAccepted": 0
+   },
+   "stills": [
+    "stills/build@4k-1.png",
+    "stills/build@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "ants@1080p",
+   "variant": "ants",
+   "base": "ants",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "build": "0",
+    "macro3": "1"
+   },
+   "url": "15-traveller.html?build=0&macro3=1",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 729,
+    "clip": 0.383,
+    "clip.mean": 0.341,
+    "clipFrames": 104,
+    "lum.mean": 2.9,
+    "lum.min": 2.88,
+    "lum.max": 2.99,
+    "errors": 0
+   },
+   "values": {
+    "hamiltonian": true,
+    "crossings": 0,
+    "settled": true,
+    "truth1Ok": true,
+    "truth1Bad": 0,
+    "routeCountOk": true,
+    "heldKarpOk": true,
+    "antDecayBad": 0,
+    "antIters": 58,
+    "n": 50,
+    "hkOptimal": null,
+    "hkGap": null,
+    "metrics": {
+     "nodes": 50,
+     "improvementsLastBar": 0,
+     "pheromoneShare": 0.23760838412366672,
+     "uphillAccepted": 0
+    },
+    "snapOk": true,
+    "snap": {
+     "ok": true,
+     "snaps": 1,
+     "done": 1,
+     "late": 0,
+     "crossed": 0,
+     "worstBeats": 0.19881179138321414
+    },
+    "uphillProposed": 0,
+    "uphillAccepted": 0
+   },
+   "stills": [
+    "stills/ants@1080p-1.png",
+    "stills/ants@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "ants@4k",
+   "variant": "ants",
+   "base": "ants",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "build": "0",
+    "macro3": "1"
+   },
+   "url": "15-traveller.html?build=0&macro3=1",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 723,
+    "clip": 0.499,
+    "clip.mean": 0.449,
+    "clipFrames": 82,
+    "lum.mean": 2.9,
+    "lum.min": 2.87,
+    "lum.max": 2.99,
+    "errors": 0
+   },
+   "values": {
+    "hamiltonian": true,
+    "crossings": 0,
+    "settled": true,
+    "truth1Ok": true,
+    "truth1Bad": 0,
+    "routeCountOk": true,
+    "heldKarpOk": true,
+    "antDecayBad": 0,
+    "antIters": 58,
+    "n": 50,
+    "hkOptimal": null,
+    "hkGap": null,
+    "metrics": {
+     "nodes": 50,
+     "improvementsLastBar": 0,
+     "pheromoneShare": 0.23760838412366672,
+     "uphillAccepted": 0
+    },
+    "snapOk": true,
+    "snap": {
+     "ok": true,
+     "snaps": 1,
+     "done": 1,
+     "late": 0,
+     "crossed": 0,
+     "worstBeats": 0.39618140589568895
+    },
+    "uphillProposed": 0,
+    "uphillAccepted": 0
+   },
+   "stills": [
+    "stills/ants@4k-1.png",
+    "stills/ants@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "small-verify@1080p",
+   "variant": "small-verify",
+   "base": "small-verify",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "build": "0",
+    "macro1": "0"
+   },
+   "url": "15-traveller.html?build=0&macro1=0",
+   "metrics": {
+    "gpuBusy": 4,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 728,
+    "clip": 0.157,
+    "clip.mean": 0.151,
+    "clipFrames": 101,
+    "lum.mean": 2.76,
+    "lum.min": 2.74,
+    "lum.max": 2.8,
+    "errors": 0
+   },
+   "values": {
+    "hamiltonian": true,
+    "crossings": 0,
+    "settled": true,
+    "truth1Ok": true,
+    "truth1Bad": 0,
+    "routeCountOk": true,
+    "heldKarpOk": true,
+    "antDecayBad": 0,
+    "antIters": 0,
+    "n": 8,
+    "hkOptimal": true,
+    "hkGap": 0,
+    "metrics": {
+     "nodes": 8,
+     "improvementsLastBar": 0,
+     "pheromoneShare": 0,
+     "uphillAccepted": 0
+    },
+    "snapOk": true,
+    "snap": {
+     "ok": true,
+     "snaps": 1,
+     "done": 1,
+     "late": 0,
+     "crossed": 0,
+     "worstBeats": 0.018857142857143572
+    },
+    "uphillProposed": 0,
+    "uphillAccepted": 0
+   },
+   "stills": [
+    "stills/small-verify@1080p-1.png",
+    "stills/small-verify@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "small-verify@4k",
+   "variant": "small-verify",
+   "base": "small-verify",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "build": "0",
+    "macro1": "0"
+   },
+   "url": "15-traveller.html?build=0&macro1=0",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 725,
+    "clip": 0.212,
+    "clip.mean": 0.205,
+    "clipFrames": 68,
+    "lum.mean": 2.76,
+    "lum.min": 2.74,
+    "lum.max": 2.8,
+    "errors": 0
+   },
+   "values": {
+    "hamiltonian": true,
+    "crossings": 0,
+    "settled": true,
+    "truth1Ok": true,
+    "truth1Bad": 0,
+    "routeCountOk": true,
+    "heldKarpOk": true,
+    "antDecayBad": 0,
+    "antIters": 0,
+    "n": 8,
+    "hkOptimal": true,
+    "hkGap": 0,
+    "metrics": {
+     "nodes": 8,
+     "improvementsLastBar": 0,
+     "pheromoneShare": 0,
+     "uphillAccepted": 0
+    },
+    "snapOk": true,
+    "snap": {
+     "ok": true,
+     "snaps": 1,
+     "done": 1,
+     "late": 0,
+     "crossed": 0,
+     "worstBeats": 0.018857142857143572
+    },
+    "uphillProposed": 0,
+    "uphillAccepted": 0
+   },
+   "stills": [
+    "stills/small-verify@4k-1.png",
+    "stills/small-verify@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "big@1080p",
+   "variant": "big",
+   "base": "big",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "build": "0",
+    "firstDrop": "2",
+    "macro1": "1",
+    "macro2": "1"
+   },
+   "url": "15-traveller.html?build=0&firstDrop=2&macro1=1&macro2=1",
+   "metrics": {
+    "gpuBusy": 3,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 730,
+    "clip": 1.009,
+    "clip.mean": 0.857,
+    "clipFrames": 104,
+    "lum.mean": 3.42,
+    "lum.min": 3.34,
+    "lum.max": 3.7,
+    "errors": 0
+   },
+   "values": {
+    "hamiltonian": true,
+    "crossings": 0,
+    "settled": true,
+    "truth1Ok": true,
+    "truth1Bad": 0,
+    "routeCountOk": true,
+    "heldKarpOk": true,
+    "antDecayBad": 0,
+    "antIters": 0,
+    "n": 200,
+    "hkOptimal": null,
+    "hkGap": null,
+    "metrics": {
+     "nodes": 200,
+     "improvementsLastBar": 0,
+     "pheromoneShare": 0,
+     "uphillAccepted": 0
+    },
+    "snapOk": true,
+    "snap": {
+     "ok": true,
+     "snaps": 2,
+     "done": 2,
+     "late": 0,
+     "crossed": 0,
+     "worstBeats": 0.6574058956916105
+    },
+    "uphillProposed": 0,
+    "uphillAccepted": 0
+   },
+   "stills": [
+    "stills/big@1080p-1.png",
+    "stills/big@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "big@4k",
+   "variant": "big",
+   "base": "big",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "build": "0",
+    "firstDrop": "2",
+    "macro1": "1",
+    "macro2": "1"
+   },
+   "url": "15-traveller.html?build=0&firstDrop=2&macro1=1&macro2=1",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 722,
+    "clip": 1.278,
+    "clip.mean": 1.095,
+    "clipFrames": 81,
+    "lum.mean": 3.41,
+    "lum.min": 3.33,
+    "lum.max": 3.74,
+    "errors": 0
+   },
+   "values": {
+    "hamiltonian": true,
+    "crossings": 0,
+    "settled": true,
+    "truth1Ok": true,
+    "truth1Bad": 0,
+    "routeCountOk": true,
+    "heldKarpOk": true,
+    "antDecayBad": 0,
+    "antIters": 0,
+    "n": 200,
+    "hkOptimal": null,
+    "hkGap": null,
+    "metrics": {
+     "nodes": 200,
+     "improvementsLastBar": 0,
+     "pheromoneShare": 0,
+     "uphillAccepted": 0
+    },
+    "snapOk": true,
+    "snap": {
+     "ok": true,
+     "snaps": 2,
+     "done": 2,
+     "late": 0,
+     "crossed": 0,
+     "worstBeats": 0.8954104308390001
+    },
+    "uphillProposed": 0,
+    "uphillAccepted": 0
+   },
+   "stills": [
+    "stills/big@4k-1.png",
+    "stills/big@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "hot@1080p",
+   "variant": "hot",
+   "base": "hot",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "build": "0",
+    "macro4": "1"
+   },
+   "url": "15-traveller.html?build=0&macro4=1",
+   "metrics": {
+    "gpuBusy": 3,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 728,
+    "clip": 0.385,
+    "clip.mean": 0.35,
+    "clipFrames": 103,
+    "lum.mean": 2.87,
+    "lum.min": 2.84,
+    "lum.max": 2.96,
+    "errors": 0
+   },
+   "values": {
+    "hamiltonian": true,
+    "crossings": 0,
+    "settled": true,
+    "truth1Ok": true,
+    "truth1Bad": 0,
+    "routeCountOk": true,
+    "heldKarpOk": true,
+    "antDecayBad": 0,
+    "antIters": 0,
+    "n": 50,
+    "hkOptimal": null,
+    "hkGap": null,
+    "metrics": {
+     "nodes": 50,
+     "improvementsLastBar": 1,
+     "pheromoneShare": 0,
+     "uphillAccepted": 0.021551724137931036
+    },
+    "snapOk": true,
+    "snap": {
+     "ok": true,
+     "snaps": 1,
+     "done": 1,
+     "late": 0,
+     "crossed": 0,
+     "worstBeats": 0.17559183673468937
+    },
+    "uphillProposed": 1,
+    "uphillAccepted": 0.021551724137931036
+   },
+   "stills": [
+    "stills/hot@1080p-1.png",
+    "stills/hot@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "hot@4k",
+   "variant": "hot",
+   "base": "hot",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "build": "0",
+    "macro4": "1"
+   },
+   "url": "15-traveller.html?build=0&macro4=1",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 721,
+    "clip": 0.499,
+    "clip.mean": 0.468,
+    "clipFrames": 80,
+    "lum.mean": 2.87,
+    "lum.min": 2.83,
+    "lum.max": 2.97,
+    "errors": 0
+   },
+   "values": {
+    "hamiltonian": true,
+    "crossings": 0,
+    "settled": false,
+    "truth1Ok": true,
+    "truth1Bad": 0,
+    "routeCountOk": true,
+    "heldKarpOk": true,
+    "antDecayBad": 0,
+    "antIters": 0,
+    "n": 50,
+    "hkOptimal": null,
+    "hkGap": null,
+    "metrics": {
+     "nodes": 50,
+     "improvementsLastBar": 1,
+     "pheromoneShare": 0,
+     "uphillAccepted": 0.021551724137931036
+    },
+    "snapOk": true,
+    "snap": {
+     "ok": true,
+     "snaps": 1,
+     "done": 1,
+     "late": 0,
+     "crossed": 0,
+     "worstBeats": 0.3787664399092989
+    },
+    "uphillProposed": 1,
+    "uphillAccepted": 0.021551724137931036
+   },
+   "stills": [
+    "stills/hot@4k-1.png",
+    "stills/hot@4k-2.png"
+   ],
+   "errors": []
+  }
+ ],
+ "checks": [],
+ "swipe": {
+  "dir": "15-traveller/runs/2026-10-30-0158-pr123-swipe",
+  "url": "/run/15-traveller/2026-10-30-0158-pr123-swipe/compare",
+  "old": null,
+  "new": "ce1f5ff17650974baea545fdeec159c62c051cd0"
+ },
+ "gates": [
+  {
+   "name": "QA 3: the tour is a Hamiltonian cycle",
+   "ok": true,
+   "value": "settled@1080p true · settled@4k true · build@1080p true · build@4k true · ants@1080p true · ants@4k true · small-verify@1080p true · small-verify@4k true · big@1080p true · big@4k true · hot@1080p true · hot@4k true"
+  },
+  {
+   "name": "QA 1: with heat 0 no move raises the length",
+   "ok": true,
+   "value": "settled@1080p 0 · settled@4k 0 · build@1080p 0 · build@4k 0 · ants@1080p 0 · ants@4k 0 · small-verify@1080p 0 · small-verify@4k 0 · big@1080p 0 · big@4k 0 · hot@1080p 0 · hot@4k 0"
+  },
+  {
+   "name": "QA 2: a settled 2-opt tour has no crossings",
+   "ok": true,
+   "value": "settled@1080p 0 · settled@4k 0 · small-verify@1080p 0 · small-verify@4k 0 · big@1080p 0 · big@4k 0"
+  },
+  {
+   "name": "QA 2b: after a snap the tour is crossing-free within 4 bars",
+   "ok": true,
+   "value": "settled@1080p true · settled@4k true · big@1080p true · big@4k true"
+  },
+  {
+   "name": "heat 0: no uphill moves",
+   "ok": true,
+   "value": "settled@1080p 0 · settled@4k 0 · ants@1080p 0 · ants@4k 0 · small-verify@1080p 0 · small-verify@4k 0 · big@1080p 0 · big@4k 0"
+  },
+  {
+   "name": "heat 1: uphill moves accepted (knob metric > 0)",
+   "ok": true,
+   "value": "hot@1080p 0.022 · hot@4k 0.022"
+  },
+  {
+   "name": "QA 4: (n-1)!/2 = 181440 at 10, 60822550204416000 at 20",
+   "ok": true,
+   "value": "settled@1080p true · settled@4k true · build@1080p true · build@4k true · ants@1080p true · ants@4k true · small-verify@1080p true · small-verify@4k true · big@1080p true · big@4k true · hot@1080p true · hot@4k true"
+  },
+  {
+   "name": "QA 5: an edge no ant used decays by exactly (1-rho)",
+   "ok": true,
+   "value": "ants@1080p 0 · ants@4k 0"
+  },
+  {
+   "name": "QA 5: ant iterations ran (one per beat)",
+   "ok": true,
+   "value": "ants@1080p 58 · ants@4k 58"
+  },
+  {
+   "name": "QA 6: Held-Karp = brute force (n 5-9, in the page)",
+   "ok": true,
+   "value": "settled@1080p true · settled@4k true · build@1080p true · build@4k true · ants@1080p true · ants@4k true · small-verify@1080p true · small-verify@4k true · big@1080p true · big@4k true · hot@1080p true · hot@4k true"
+  },
+  {
+   "name": "cities macro 0 = 8 (Held-Karp range)",
+   "ok": true,
+   "value": "small-verify@1080p 8 · small-verify@4k 8"
+  },
+  {
+   "name": "fps.p05 ≥ 55",
+   "ok": true,
+   "value": "settled@1080p 59.88 · settled@4k 59.88 · build@1080p 59.52 · build@4k 59.52 · ants@1080p 59.52 · ants@4k 59.88 · small-verify@1080p 59.88 · small-verify@4k 59.88 · big@1080p 59.88 · big@4k 59.52 · hot@1080p 59.88 · hot@4k 59.88"
+  },
+  {
+   "name": "longFrames ≤ 0.5",
+   "ok": true,
+   "value": "settled@1080p 0 · settled@4k 0 · build@1080p 0 · build@4k 0 · ants@1080p 0 · ants@4k 0 · small-verify@1080p 0 · small-verify@4k 0 · big@1080p 0 · big@4k 0 · hot@1080p 0 · hot@4k 0"
+  },
+  {
+   "name": "errors ≤ 0",
+   "ok": true,
+   "value": "settled@1080p 0 · settled@4k 0 · build@1080p 0 · build@4k 0 · ants@1080p 0 · ants@4k 0 · small-verify@1080p 0 · small-verify@4k 0 · big@1080p 0 · big@4k 0 · hot@1080p 0 · hot@4k 0"
+  },
+  {
+   "name": "gpuBusy ≤ 10",
+   "ok": true,
+   "value": "settled@1080p 0 · settled@4k 0 · build@1080p 3 · build@4k 0 · ants@1080p 2 · ants@4k 0 · small-verify@1080p 4 · small-verify@4k 0 · big@1080p 3 · big@4k 0 · hot@1080p 3 · hot@4k 0"
+  },
+  {
+   "name": "no white blobs: <= 1 % pixels clipped",
+   "ok": false,
+   "value": "fails on big@1080p, big@4k · settled@1080p 0.392 · settled@4k 0.513 · build@1080p 0.379 · build@4k 0.516 · ants@1080p 0.383 · ants@4k 0.499 · small-verify@1080p 0.157 · small-verify@4k 0.212 · big@1080p 1.009 · big@4k 1.278 · hot@1080p 0.385 · hot@4k 0.499"
+  }
+ ],
+ "notes": []
+}
