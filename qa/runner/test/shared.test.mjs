@@ -80,3 +80,14 @@ test('without the script on the checks ref: an ℹ️ row, no gate, nothing run'
   assert.ok(md.includes('ℹ️'));
   assert.equal(gates(md).length, 1);   // only the page's own gate
 });
+
+test('experimentPage: experiment builds get shared gates only for a real page with a check.md', async () => {
+  const { experimentPage } = await import('../shared.mjs');
+  const { tree, dest } = setup();
+  fs.writeFileSync(path.join(tree, 'experiments', '16-neon-lines.html'), '<!doctype html>\n');
+  assert.equal(experimentPage({ page: '16-neon-lines', tree, dest }), '16-neon-lines');
+  assert.equal(experimentPage({ page: 'pr-124', tree, dest }), null);          // no id in the experiment file
+  assert.equal(experimentPage({ page: '24-paint-pour', tree, dest }), null);   // page not in the PR's tree
+  fs.rmSync(path.join(dest, 'check.md'));
+  assert.equal(experimentPage({ page: '16-neon-lines', tree, dest }), null);   // the run wrote no check.md
+});
