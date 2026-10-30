@@ -453,9 +453,31 @@ export function createScene() {
     // --- lasers: each real line, clipped to the ball, plus tails that fade out towards infinity
     const R = ctl.clipRadius, RE = 0.8 * cam.D, glowK = Math.pow(ctl.macro[1], 1.2), sc = H / 1440;
     // the flare is milder than before (×1.4 at most, was ×1.9): on the drop it multiplied the fast glide's pixel swings
-    const wMul = 1 + 1.6 * smear, pulseK = 1 - 0.6 * smear;
-    const width = (1.1 + 3.2 * glowK) * sc * (1 + 0.35 * pulseK * pulse + 0.25 * flare) * wMul, glow = (5 + 42 * glowK) * sc * (1 + 0.25 * pulseK * pulse);
-    const inten = (0.45 + 0.8 * ctl.intensity) * (1 + 0.45 * pulseK * pulse + 0.5 * flare) / wMul;
+    // While the shape glides fast the beat pulse leaves the beams (pulse + crossings would reach 4 flashes/s).
+    // Widening the beams (df443d8) made it worse: a wider beam still more than 0.1 above the background flips more cells.
+    const pulseK = st.glide && st.glide.cause === 'drop' && s > 0 ? 0 : 1 - smear;
+    const width = (1.1 + 3.2 * glowK) * sc * (1 + 0.35 * pulseK * pulse + 0.25 * flare), glow = (5 + 42 * glowK) * sc * (1 + 0.25 * pulseK * pulse);
+    const inten = (0.45 + 0.8 * ctl.intensity) * (1 + 0.45 * pulseK * pulse + 0.5 * flare);
+    // Speed fade (flash safety, #124): a beam that sweeps fast across the screen lights each cell it passes for a frame
+    // or two, and many such passes a second are a flash. Each line's screen speed (its faster end, px/s at 1440p) sets a
+    // fade 1/(1+(v/V)²): slow beams keep their full neon, fast ones become faint streaks. The fade drops at once and
+    // comes back over ~150 ms, so the fade itself never blinks.
+    const dtS = st.beamT ? Math.max(1e-3, (now - st.beamT) / 1000) : 0, V_FADE = 260;
+    st.beamT = now; st.beamEnds = st.beamEnds || {}; st.beamFade = st.beamFade || {};
+    const seenEnds = {}; let fadeMin = 1, fadeSum = 0, fadeN = 0, vMax = 0;
+    const beamFade = (key, A0, A1) => {
+      const pv = st.beamEnds[key]; seenEnds[key] = [A0[0], A0[1], A1[0], A1[1]];
+      let target = 1;
+      if (pv && dtS > 0) {
+        const v = Math.max(Math.hypot(A0[0] - pv[0], A0[1] - pv[1]), Math.hypot(A1[0] - pv[2], A1[1] - pv[3])) / dtS / sc;
+        if (v > 15000) { st.beamFade[key] = 1; return 1; }   // a jump (clock seek, forceDrop), not a sweep: no fade
+        vMax = Math.max(vMax, v); target = 1 / (1 + (v / V_FADE) ** 2);
+      }
+      const prev = st.beamFade[key] ?? target, k = dtS > 0 ? 1 - Math.exp(-dtS / 0.15) : 1;
+      const f = target < prev ? target : prev + (target - prev) * k;
+      st.beamFade[key] = f; fadeMin = Math.min(fadeMin, f); fadeSum += f; fadeN++;
+      return f;
+    };
     const slotInv = K.invertPerm(st.slotOf);
     let nSeg = 0, nDrawn = 0, energy = 0, maxRel = 0, worst = null;
     const tailAmt = ctl.tails;
@@ -482,13 +504,15 @@ export function createScene() {
       }
       const A0 = project(cam, at(l0)), A1 = project(cam, at(l1)); if (!A0 || !A1) continue;
       const hNew = hueOf(label), hOld = st.wipe && base.full ? st.wipe.oldHueOfSlot[slot] : hNew, ph = label * 0.73;
-      putSeg(A0, A1, 1, 1, hNew, hOld, L.alpha, ph); nDrawn++;
+      const fb = beamFade(label, A0, A1);
+      putSeg(A0, A1, fb, fb, hNew, hOld, L.alpha, ph); nDrawn++;
       if (tailAmt > 0.01) {
         const E0 = project(cam, at(-b - sqE)), E1 = project(cam, at(-b + sqE));
-        if (E0) putSeg(E0, A0, 0, tailAmt, hNew, hOld, L.alpha, ph);
-        if (E1) putSeg(A1, E1, tailAmt, 0, hNew, hOld, L.alpha, ph);
+        if (E0) putSeg(E0, A0, 0, tailAmt * fb, hNew, hOld, L.alpha, ph);
+        if (E1) putSeg(A1, E1, tailAmt * fb, 0, hNew, hOld, L.alpha, ph);
       }
     }
+    st.beamEnds = seenEnds;   // lines that left the view start fresh when they come back
     // --- diamonds: the Eckardt points (finite ones in perspective, the far ones at their vanishing points)
     let nD = 0;
     const dsz = ctl.diamondSize * sc * (1 + 0.12 * pulse);
@@ -510,7 +534,7 @@ export function createScene() {
     if (base.pairs !== null) { lv.pairsChecked++; if (base.pairs !== { 3: 3, 7: 9, 15: 45, 27: 135 }[base.lines.length]) lv.pairsBad++; }
     lv.lastMaxRel = maxRel;
     st.view = { u, full: base.full, lines: base.lines.length, expected: base.expected, drawn: nDrawn, segments: nSeg, eckardt: base.eck.length, diamondsOnScreen: nD, glide: st.glide ? { type: K.cycleType(st.glide.sig), sig: st.glide.sig, s, cause: st.glide.cause } : null, pc: st.pc.slice(), slotOf: st.slotOf.slice(), mode: ctl.u ? 'fixed' : st.mode, level: st.man.level, hold: hb / bpb, bars, beats };
-    st.metrics = { lineCount: base.lines.length, laserEnergy: energy / (W * H), glidesStarted: st.glides.length, trail: ctl.macro[3] * 0.97, pulse, flare, gold, smear };
+    st.metrics = { lineCount: base.lines.length, laserEnergy: energy / (W * H), glidesStarted: st.glides.length, trail: ctl.macro[3] * 0.97, pulse, flare, gold, smear, beamFadeMin: fadeMin, beamFadeMean: fadeN ? fadeSum / fadeN : 1, beamSpeedMax: vMax };
     st.triggerEnv[0] = st.glide && st.glide.cause === 'trigger' ? Math.sin(Math.PI * s) : 0;
     st.triggerEnv[1] = st.glide && st.glide.cause === 'drop' ? Math.max(Math.sin(Math.PI * s), flare) : 0;
     st.triggerEnv[2] = st.wipe ? clamp01((beats - st.wipe.start) / st.wipe.len) * (1 - clamp01((beats - st.wipe.start) / st.wipe.len)) * 4 : 0;
