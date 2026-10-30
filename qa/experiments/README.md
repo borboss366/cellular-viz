@@ -47,7 +47,8 @@ Unknown fields are errors, so a typo never passes silently. At most 64 runs (var
 
 ### Gates
 
-`{"metric": "<metric>", "min": n, "max": n, "equals": x, "variant": name(s), "resolution": r(s), "name": "own label"}`.
+`{"metric": "<metric>", "min": n, "max": n, "equals": x, "variant": name(s), "resolution": r(s), "name": "own label", "track": name}`
+(`track`: a real track, below; the gate is skipped when it's missing).
 A gate holds on every run it applies to (all runs, or only the `variant` / `resolution` named; a sweep variant also
 answers to its parent's name). The report shows the value of every run and which ones failed.
 
@@ -66,6 +67,21 @@ answers to its parent's name). The report shows the value of every run and which
 
 Each check script's own ✅/❌ rows become gates too, named `check-18: <its gate>`. A script that doesn't finish,
 or isn't on the checks ref, is a failed gate.
+
+### Real tracks (clock truth (b), #95)
+
+Four copyrighted tracks live only on the QA box, in `QA_AUDIO_DIR` (default
+`/home/puggie/pi-durable-worker/data/qa-audio/tracks`), never in git, a run folder or a report. Fixed names, each as
+`.flac`, `.wav`, `.m4a` or `.mp3` (looked up in that order): `darude-sandstorm`, `prodigy-voodoo-people`,
+`massive-attack-teardrop`, `james-brown`.
+
+- The page loads one from `/qa-audio/<name>` on the run's 127.0.0.1 server (nothing else serves them). Pass the name
+  as `params.track` (or in a variant or sweep), so the runner knows which runs need it.
+- A run whose `params.track` is missing isn't run, and its gates are skipped (an ℹ️ row, "skipped: track missing"),
+  never failed. A gate can name its track itself with `"track": "<name>"`.
+- `results.json` lists each used track as its file name, sha256, format, sample rate and, for `.m4a`/`.mp3`, the
+  encoder delay read from the file (LAME tag, iTunSMPB or the edit list), because a decoder offset matters against
+  40 ms gates. Never the audio or the folder.
 
 ### Check scripts: who writes what
 

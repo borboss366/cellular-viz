@@ -149,3 +149,7 @@ vite.config.ts.timestamp-*
 .turbo
 qa/*/checks/*-sweep/*.png
 qa/*/checks/*/closeup/*.png
+
+# real music tracks (#95 truth (b)) are copyrighted: they live in QA_AUDIO_DIR on the QA box, never here
+qa-audio/
+*.flac
