@@ -1,0 +1,16 @@
+#!/bin/sh
+# 2026-10-30-1300-runner-pr124-16-neon-lines: runner build viz-124-8, #124 16-neon-lines @45a4258, checks from main; result: viz-124-8 failed 41/42
+# The commands as the QA runner ran them, in order (no shell; temp folders were removed after the build).
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo fetch -q --force origin +refs/pull/124/head:refs/runner/pr-124 +refs/heads/main:refs/runner/checks +refs/heads/main:refs/runner/main
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo fetch -q --force origin +refs/pull/124/head:refs/runner/pr-124 +refs/heads/main:refs/runner/checks +refs/heads/main:refs/runner/main
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo cat-file -e 45a42589fe4828034f64da7d78c7e27e65f29346:qa/experiments/124.json
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo show 45a42589fe4828034f64da7d78c7e27e65f29346:qa/experiments/124.json
+node /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/builds.mjs start --page 16-neon-lines --pr 124 --commit 45a4258
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo archive -o /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-H0gFyY/tree-qa.tar refs/runner/checks qa
+tar -xf /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-H0gFyY/tree-qa.tar -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-H0gFyY/tree
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo archive -o /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-H0gFyY/tree-experiments.tar 45a42589fe4828034f64da7d78c7e27e65f29346 experiments
+tar -xf /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-H0gFyY/tree-experiments.tar -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-H0gFyY/tree
+node /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/builds.mjs set --id viz-124-8 --status running
+node /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-H0gFyY/tree/qa/runner/exp-run.mjs --file /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-H0gFyY/experiment.json --experiments /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-H0gFyY/tree/experiments --qa /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-H0gFyY/tree/qa --pr 124 --sha 45a42589fe4828034f64da7d78c7e27e65f29346 --audio-dir /home/puggie/pi-durable-worker/data/qa-audio/tracks --out /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-H0gFyY/tree/qa/16-neon-lines/runs/2026-10-30-1248-pr124
+node /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-H0gFyY/tree/qa/check-shared.mjs --experiments /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-H0gFyY/tree/experiments --page 16-neon-lines.html --out /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/16-neon-lines/runs/2026-10-30-1248-pr124/shared
+node /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/builds.mjs finish --id viz-124-8 --check /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/16-neon-lines/runs/2026-10-30-1248-pr124
