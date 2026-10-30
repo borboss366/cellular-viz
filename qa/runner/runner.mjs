@@ -29,7 +29,7 @@ import { putJob, superseded } from './queue.mjs';
 import { loadFile } from './experiment.mjs';
 import { historyEntry, commitPaths, reportFiles, buildDirs, messageFor } from './post.mjs';
 import { sync as boardSync } from './board.mjs';
-import { runShared } from './shared.mjs';
+import { runShared, experimentPage } from './shared.mjs';
 import { addTodo } from './todo.mjs';
 import { audioDir, scanTracks } from './audio.mjs';
 
@@ -307,6 +307,16 @@ async function runExperiment(job, gate) {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.cpSync(out, dest, { recursive: true });
     fs.writeFileSync(path.join(dest, 'runner.log'), `commit ${job.sha}\nchecks ${CFG.checksRef}\nexit ${r.code}\n\n${r.err.slice(-50000)}`);
+    // the shared gates every page gets (#88), as in runBuild: still inside this build's GPU lock, on the experiment's
+    // page at its default URL; their rows join dest/check.md before builds finish. A qa-ready PR never reaches
+    // runBuild (its page builds are dropped), so before this no labelled page was flash- or GPU-gated (16c, #124).
+    const sharedPage = CFG.shared ? experimentPage({ page, tree, dest }) : null;
+    if (sharedPage) {
+      const t0 = Date.now();
+      try { await runShared({ run, tree, page: sharedPage, dest, timeoutMs: CFG.sharedMin * 60e3, log }); }
+      catch (e) { log(`shared gates for ${sharedPage} could not run: ${e.message}`); }
+      log(`shared gates for ${sharedPage} took ${((Date.now() - t0) / 60e3).toFixed(1)} min`);
+    }
     saveGate(dest, gate);
     let swipe = null;
     try { swipe = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8')).swipe; } catch {}

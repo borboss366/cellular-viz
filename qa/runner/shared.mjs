@@ -47,3 +47,15 @@ export async function runShared({ run, tree, page, dest, timeoutMs = 12 * 60e3, 
   append(section(fs.readFileSync(md, 'utf8')));
   return { ran: true, ok: true, why: null };
 }
+
+/**
+ * Experiment builds (qa/experiments/<PR>.json) get the shared gates too, for the page the experiment names (its id,
+ * like '16-neon-lines'), when that page is in the PR's experiments/ folder and the run wrote a check.md.
+ * → the page id, or null (no page, the 'pr-<n>' placeholder, or no check.md to append to)
+ */
+export function experimentPage({ page, tree, dest }) {
+  if (typeof page !== 'string' || !/^\d\d-[a-z0-9-]+$/.test(page)) return null;
+  if (!fs.existsSync(path.join(tree, 'experiments', `${page}.html`))) return null;
+  if (!fs.existsSync(path.join(dest, 'check.md'))) return null;
+  return page;
+}
