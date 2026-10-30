@@ -587,9 +587,12 @@ function program(vs, fs) {
 const FULL_VS = `#version 300 es
 out vec2 vUv;
 void main() { vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = p; gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
-const marchProg = program(FULL_VS, `#version 300 es
+// The march shader comes in two builds of one source: the normal one, and (?passes=1 only) one with DIAG defined that
+// writes march stats instead of colour (#127). The stats code is compiled out of the normal build: as a uniform branch
+// it cost registers in every frame (25 solo p99 14.78 → 15.35 ms with it in).
+const marchSrc = diag => `#version 300 es
 precision highp float;
-in vec2 vUv; out vec4 o;
+${diag ? '#define DIAG\n' : ''}in vec2 vUv; out vec4 o;
 uniform float uB[15];      // ra rb h taper dimple cav spout knob box spike capR capY barL barR lift
 uniform vec4 uHc[3], uHu[3], uHv[3], uHn[3], uHx[3];   // (c, R) (u, r) (v, a) (n, p) (w, Rk, -, -)
 uniform vec4 uRing[4];     // centre, age in beats (< 0 = off)
@@ -626,7 +629,9 @@ float handleD(int i, vec3 p, out float tubeD, out float rl) {
   // far from the handle (0.35 beyond its reach) its distance is bounded below by lq - ext and its bump caps
   // do nothing, so skip the atan and the tube (a far-field bound only: the surface is the same as sdfJS's)
   float ext = C.w + X.y + U.w * V.w, lq = length(q);
-  if (lq > ext + 0.35) return lq - ext;
+  // (#127: 0.2, was 0.35: the bump caps act only where tubeD < rl + 0.15, and tubeD ≥ lq − (R + Rk), so beyond
+  // ext + 0.15 the full tube is never needed; in the dives most samples sat in the old 0.2–0.35 shell)
+  if (lq > ext + 0.2) return lq - ext;
   float a1 = dot(q, U.xyz), a2 = dot(q, V.xyz), a3 = dot(q, N.xyz);
   float al = atan(a2, a1), pin = 1.0 - N.w * exp(-(al * al) / 0.16), rho = length(vec2(a1, a2));
   float d, cutter;
@@ -659,6 +664,13 @@ float sdf(vec3 p0) {
   for (int i = 0; i < 3; i++) { float td, rl; float dh = handleD(i, p, td, rl); hAll = min(hAll, dh); if (td < 1e2) A = capA(A, rl, td); }
   float base = smin(b, hAll, 0.04);
   if (uB[5] > 0.001) { float dIn = bodyF(p - vec3(0.0, uB[14], 0.0)) + THICK; base = smax(base, -dIn, 0.03); A = capA(A, THICK, abs(dIn)); }
+  // Far from the surface the bumps can't matter: they move it by at most A (≤ uWave.x), so with |base| > uWave.x + 0.15
+  // the bump-free distance is returned and the waves (4 rings × 2 exp + 2 sin) and the remaining caps are skipped.
+  // The surface is unchanged (the sign of the distance is the same there). The march's far step already keeps 2·uWave.x
+  // clear; normal and K taps (0.006) and AO taps (≤ 0.12 along the normal) stay inside the 0.15 shell, so their
+  // shading has no seam. #127 diag: the slowest dive frames cost 2.7× the median with only 1.5× the steps, so the
+  // time was in each SDF evaluation, and most samples in a march are far ones.
+  if (abs(base) > uWave.x + 0.15) return base * uSq.w;
   A = capA(A, spR, spD); A = capA(A, kR, knD);
   if (uB[12] > 0.001) A = capA(A, uB[13], segD(p, vec3(-uB[12], 0.0, 0.0), vec3(uB[12], 0.0, 0.0)));
   A = capA(A, uB[0] + uB[1], length(p.xz));
@@ -672,47 +684,70 @@ void main() {
   vec3 rd = normalize(uFwd * uFocal + uRight * sp.x + uUp * sp.y), ro = uEye;
   vec3 bg = mix(vec3(0.015, 0.015, 0.03), vec3(0.06, 0.05, 0.1), vUv.y) + vec3(0.2, 0.15, 0.35) * 0.08 * exp(-dot(sp, sp));
   vec3 oc = ro - uCenter; float bq = dot(oc, rd), cc = dot(oc, oc) - uBound * uBound, disc = bq * bq - cc;
-  if (disc < 0.0) { o = vec4(bg, 1.0); return; }
+  if (disc < 0.0) {
+#ifdef DIAG
+    o = vec4(0.0); return;
+#endif
+    o = vec4(bg, 1.0); return;
+  }
   float t = max(0.0, -bq - sqrt(disc)), tEnd = -bq + sqrt(disc);
   // #88 GPU gate (comment 6491353229): over-relaxed sphere tracing (Keinert et al. 2014) near the surface. A
   // relaxed step of uRelax·r is kept while the safe spheres overlap; if they don't, step back to the plain step and
   // stay plain for this ray. The step cap is uSteps (96); a ray that runs out of steps close to the surface counts
   // as a hit (distance fallback) instead of a hole of background.
   bool hit = false, gone = false; vec3 p = ro;
-  float om = uRelax, tPrev = t, rPrev = 0.0, dLast = 1e9; bool relaxed = false;
+  float om = uRelax, tPrev = t, rPrev = 0.0, dLast = 1e9; bool relaxed = false, fb = false; int nSteps = 0;
   for (int i = 0; i < 160; i++) {
     if (i >= uSteps) break;
+    nSteps = i + 1;
     p = ro + rd * t; float d = sdf(p), r = d * uStepK;
     if (relaxed && r + rPrev < t - tPrev) { t = tPrev + rPrev; om = 1.0; relaxed = false; continue; }
-    if (d < 0.0006 * t + 0.0004) { hit = true; break; }
+    // the hit tolerance grows on long rays (after 40 steps, +15 % a step): the rays that ran to the step cap were the
+    // ones grazing the surface in close-ups (#127: 20 ms frames at bars 10.80–10.96, march-bound, not shading-bound)
+    if (d < (0.0006 * t + 0.0004) * (1.0 + 0.15 * float(max(i - 40, 0)))) { hit = true; break; }
     dLast = d; tPrev = t; rPrev = r;
     relaxed = d <= 0.3 && om > 1.0;
     t += d > 0.3 ? max(d - 2.0 * uWave.x, r) : r * om;
     if (t > tEnd) { gone = true; break; }
   }
-  if (!hit && !gone && dLast < 0.004 + 0.004 * t) { hit = true; p = ro + rd * tPrev; }
-  if (!hit) { o = vec4(bg, 1.0); return; }
+  if (!hit && !gone && dLast < 0.004 + 0.004 * t) { hit = true; fb = true; p = ro + rd * tPrev; }
+  // diag G: 64 left the bound, 255 ran out of steps with no hit, 128 distance-fallback hit, 192 hit
+  if (!hit) {
+#ifdef DIAG
+    o = vec4(float(nSteps) / 255.0, gone ? 64.0 / 255.0 : 1.0, 0.0, 0.0); return;
+#endif
+    o = vec4(bg, 1.0); return;
+  }
   float e = 0.006, f0 = sdf(p);
   float fpx = sdf(p + vec3(e, 0, 0)), fmx = sdf(p - vec3(e, 0, 0)), fpy = sdf(p + vec3(0, e, 0)), fmy = sdf(p - vec3(0, e, 0)), fpz = sdf(p + vec3(0, 0, e)), fmz = sdf(p - vec3(0, 0, e));
   vec3 g = vec3(fpx - fmx, fpy - fmy, fpz - fmz) / (2.0 * e);
   float fxx = (fpx - 2.0 * f0 + fmx) / (e * e), fyy = (fpy - 2.0 * f0 + fmy) / (e * e), fzz = (fpz - 2.0 * f0 + fmz) / (e * e);
-  // mixed partials from 3 forward taps instead of 12 central ones (colour only; QA's curvature is curvJS)
-  float fxy = (sdf(p + vec3(e, e, 0)) - fpx - fpy + f0) / (e * e);
-  float fxz = (sdf(p + vec3(e, 0, e)) - fpx - fpz + f0) / (e * e);
-  float fyz = (sdf(p + vec3(0, e, e)) - fpy - fpz + f0) / (e * e);
-  float A11 = fyy * fzz - fyz * fyz, A22 = fxx * fzz - fxz * fxz, A33 = fxx * fyy - fxy * fxy;
-  float A12 = fxz * fyz - fxy * fzz, A13 = fxy * fyz - fxz * fyy, A23 = fxy * fxz - fxx * fyz;
-  float g2 = dot(g, g);
-  float K = (g.x * g.x * A11 + g.y * g.y * A22 + g.z * g.z * A33 + 2.0 * (g.x * g.y * A12 + g.x * g.z * A13 + g.y * g.z * A23)) / (g2 * g2 + 1e-12);
+  // Level of detail under the near-camera fade (below): where the fade covers ≥ 60 % the curvature colour, the soft
+  // shadow and the AO can't be seen, so they aren't computed; between 40 and 60 % they blend out, so there is no
+  // visible line. Close-ups fill the frame with such pixels (#104: the slowest marches were the approach to the
+  // first dive, 20.5 ms at bar 10.88).
+  float nearW = 0.85 * (1.0 - smoothstep(0.1, 0.7, length(p - ro))), lod = smoothstep(0.4, 0.6, nearW);
+  float K = 0.0, g2 = dot(g, g);
+  if (lod < 1.0) {
+    // mixed partials from 3 forward taps instead of 12 central ones (colour only; QA's curvature is curvJS)
+    float fxy = (sdf(p + vec3(e, e, 0)) - fpx - fpy + f0) / (e * e);
+    float fxz = (sdf(p + vec3(e, 0, e)) - fpx - fpz + f0) / (e * e);
+    float fyz = (sdf(p + vec3(0, e, e)) - fpy - fpz + f0) / (e * e);
+    float A11 = fyy * fzz - fyz * fyz, A22 = fxx * fzz - fxz * fxz, A33 = fxx * fyy - fxy * fxy;
+    float A12 = fxz * fyz - fxy * fzz, A13 = fxy * fyz - fxz * fyy, A23 = fxy * fxz - fxx * fyz;
+    K = (g.x * g.x * A11 + g.y * g.y * A22 + g.z * g.z * A33 + 2.0 * (g.x * g.y * A12 + g.x * g.z * A13 + g.y * g.z * A23)) / (g2 * g2 + 1e-12);
+  }
   vec3 n = normalize(g), v = -rd, l = normalize(vec3(0.6, 0.8, 0.4));
-  float kt = K / (abs(K) + 4.0);
+  // |K| far above any smooth part's (creases: the surgery cut, smin/smax seams) is finite-difference noise whose sign
+  // flips frame to frame, so the curvature colour flickered there; it fades out above |K| 25 (#127)
+  float kt = K / (abs(K) + 4.0) * (1.0 - lod) * (1.0 - smoothstep(25.0, 100.0, abs(K)));
   vec3 curv = kt > 0.0 ? mix(vec3(0.9, 0.85, 0.8), vec3(1.0, 0.45, 0.15), kt) : mix(vec3(0.9, 0.85, 0.8), vec3(0.15, 0.45, 1.0), -kt);
-  float sh = 1.0, st = 0.02;
+  float sh = 1.0, st = 0.02; int nSh = 0;
   if (dot(n, l) <= 0.0) sh = 0.0;   // facing away from the light: no shadow march (diffuse and specular are 0 there)
-  else for (int i = 0; i < 12; i++) { float h = sdf(p + n * 0.002 + l * st); sh = min(sh, 10.0 * h / st); st += clamp(h, 0.03, 0.25); if (sh < 0.02 || st > 2.0) break; }
-  sh = clamp(sh, 0.0, 1.0);
-  float ao = 0.0; for (int i = 1; i <= 4; i++) { float hh = 0.03 * float(i); ao += (hh - sdf(p + n * hh)) / hh; }
-  ao = clamp(1.0 - 0.25 * ao, 0.2, 1.0);
+  else if (lod < 1.0) for (int i = 0; i < 12; i++) { nSh = i + 1; float h = sdf(p + n * 0.002 + l * st); sh = min(sh, 10.0 * h / st); st += clamp(h, 0.03, 0.25); if (sh < 0.02 || st > 2.0) break; }
+  sh = mix(clamp(sh, 0.0, 1.0), dot(n, l) > 0.0 ? 1.0 : 0.0, lod);
+  float ao = 0.0; if (lod < 1.0) for (int i = 1; i <= 4; i++) { float hh = 0.03 * float(i); ao += (hh - sdf(p + n * hh)) / hh; }
+  ao = mix(clamp(1.0 - 0.25 * ao, 0.2, 1.0), 1.0, lod);
   float diff = max(dot(n, l), 0.0), fres = pow(1.0 - max(dot(n, v), 0.0), 3.0), spec = pow(max(dot(reflect(-l, n), v), 0.0), 60.0);
   vec3 col;
   if (uPal == 0) {
@@ -728,10 +763,15 @@ void main() {
   col += curv * uKick * 0.12 + vec3(1.0, 0.95, 0.9) * uFlash * 0.3;
   // near-camera contrast fade: a surface within ~0.7 of the eye fills the frame and sweeps past fast in the
   // fly-throughs, so its shading detail crossed a 10° window ≥ 4 times a second (flash gate, #104); ease it to a mid tone
-  col = mix(col, vec3(0.24, 0.23, 0.22), 0.85 * (1.0 - smoothstep(0.1, 0.7, length(p - ro))));
+  col = mix(col, vec3(0.24, 0.23, 0.22), nearW);
   col = vec3(1.0) - exp(-col * 1.4);
+#ifdef DIAG
+  o = vec4(float(nSteps) / 255.0, fb ? 128.0 / 255.0 : 192.0 / 255.0, lod, float(nSh) / 255.0); return;
+#endif
   o = vec4(pow(col, vec3(0.92)), 1.0);
-}`);
+}`;
+const marchProg = program(FULL_VS, marchSrc(false));
+let diagProg = null;   // compiled on the first ?passes=1 frame
 const emptyVao = gl.createVertexArray();
 // Dynamic resolution renders into the lower-left corner of one full-size target and stretches that to the canvas,
 // so a scale step reallocates nothing (QA #57 round 5: resizing the canvas on each step stalled 100–333 ms).
@@ -1136,7 +1176,48 @@ function passKey(now) {   // which sweep step this frame is in (null while settl
 }
 function passBegin(name, tag) { if (!passes.on) return null; const qy = gl.createQuery(); gl.beginQuery(passes.ext.TIME_ELAPSED_EXT, qy); return [name, qy, passes.key, tag]; }
 function passEnd(t) { if (!t) return; gl.endQuery(passes.ext.TIME_ELAPSED_EXT); passes.pending.push(t); }
-function passBucket(key) { return passes.by[key] || (passes.by[key] = { vp: null, cpu: [], march: [], blit: [], worst: [] }); }
+function passBucket(key) { return passes.by[key] || (passes.by[key] = { vp: null, cpu: [], march: [], blit: [], worst: [], dsum: null, dn: 0 }); }
+// March stats (#127, QA box: the ~20 ms frames at bars 10.87–10.88 didn't move with less shading or a looser hit, so
+// measure before guessing). With ?passes=1, after each timed frame the same march runs again untimed at 1/4 of the
+// canvas size into its own target, writing per pixel: steps taken, how the ray ended, the LOD and the shadow steps.
+// It is read back (a sync stall, debug only; the timer queries above are GPU time, so the march numbers don't change).
+// Per frame: s mean/p95/max steps, w mean over 2×2 blocks of the block's max steps (a 2×2 here is ~6×6 render pixels at
+// 0.75, about one GPU wave, which costs its slowest ray), and % of pixels: hit, fb (distance-fallback hit), cap (ran out
+// of steps, no hit), out (left the bound), full (hit with K, shadow and AO computed), sh mean shadow steps on hits.
+const diag = { tex: null, fbo: null, w: 0, h: 0, buf: null, byTag: new Map() };
+function diagRun(W, H, tag, bk, setMarch) {
+  const dw = Math.max(2, Math.round(W / 4)) & ~1, dh = Math.max(2, Math.round(H / 4)) & ~1;
+  if (diag.w !== dw || diag.h !== dh) {
+    if (!diag.tex) { diag.tex = gl.createTexture(); diag.fbo = gl.createFramebuffer(); }
+    gl.bindTexture(gl.TEXTURE_2D, diag.tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, dw, dh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, diag.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, diag.tex, 0);
+    diag.w = dw; diag.h = dh; diag.buf = new Uint8Array(dw * dh * 4);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, diag.fbo); gl.viewport(0, 0, dw, dh);
+  if (!diagProg) diagProg = program(FULL_VS, marchSrc(true));
+  setMarch(diagProg);
+  gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.readPixels(0, 0, dw, dh, gl.RGBA, gl.UNSIGNED_BYTE, diag.buf);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  const b = diag.buf, n = dw * dh, hist = new Uint32Array(256);
+  let sum = 0, mx = 0, hit = 0, fb = 0, cap = 0, out = 0, full = 0, sh = 0, wsum = 0;
+  for (let i = 0; i < b.length; i += 4) {
+    const s = b[i], k = b[i + 1]; hist[s]++; sum += s; if (s > mx) mx = s;
+    if (k === 255) cap++; else if (k === 64) out++; else if (k >= 128) { hit++; if (k === 128) fb++; if (b[i + 2] < 255) full++; sh += b[i + 3]; }
+  }
+  for (let y = 0; y < dh; y += 2) for (let x = 0; x < dw; x += 2) {
+    const i0 = (y * dw + x) * 4, i1 = i0 + dw * 4;
+    wsum += Math.max(b[i0], b[i0 + 4], b[i1], b[i1 + 4]);
+  }
+  let p95 = 0; for (let c = 0, s = 0; s < 256; s++) { c += hist[s]; if (c >= 0.95 * n) { p95 = s; break; } }
+  const v = [sum / n, p95, mx, wsum / (n / 4), 100 * hit / n, 100 * fb / n, 100 * cap / n, 100 * out / n, 100 * full / n, hit ? sh / hit : 0];
+  diag.byTag.set(tag, diagStr(v)); if (diag.byTag.size > 600) diag.byTag.delete(diag.byTag.keys().next().value);
+  if (bk) { bk.dsum = bk.dsum ? bk.dsum.map((a, i) => a + v[i]) : v.slice(); bk.dn++; }
+}
+const diagStr = v => `s${v[0].toFixed(0)}/${v[1].toFixed(0)}/${v[2].toFixed(0)} w${v[3].toFixed(0)} hit${v[4].toFixed(0)} fb${v[5].toFixed(0)} cap${v[6].toFixed(0)} out${v[7].toFixed(0)} full${v[8].toFixed(0)} sh${v[9].toFixed(1)}`;
 function passPoll() {
   while (passes.pending.length) {
     const [name, qy, key, tag] = passes.pending[0];
@@ -1147,7 +1228,7 @@ function passPoll() {
       passes[name].push(ns / 1e6); if (passes[name].length > 3600) passes[name].shift();
       if (key) passBucket(key)[name].push(ns / 1e6);
       // the 3 slowest marches per scale with the bar and camera mode (o/s/t), to see where 25's p95-p99 tail lives
-      if (key && tag && name === 'march') { const w = passBucket(key).worst; w.push([ns / 1e6, tag]); w.sort((a, b) => b[0] - a[0]); w.length = Math.min(w.length, 3); }
+      if (key && tag && name === 'march') { const w = passBucket(key).worst; w.push([ns / 1e6, tag, diag.byTag.get(tag)]); w.sort((a, b) => b[0] - a[0]); w.length = Math.min(w.length, 3); }
     }
   }
 }
@@ -1161,8 +1242,9 @@ function draw(now) {
   const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
   dynRes(dt, now);
   const mb = metronome.beats();
-  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60);
+  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60) + (window.__qaShift || 0) * params.bpb;   // __qaShift (bars): forceDrop moves the clock (QA, #88)
   const bars = beats / params.bpb, cam = cameraAt(bars), st = cam.st;
+  window.__qaNowBars = bars;
   // logged events
   if (metronome.playing) {
     const heard = metronome.ctx.currentTime - metronome.latency();
@@ -1197,14 +1279,16 @@ function draw(now) {
     passes.cpu.push(c); if (passes.cpu.length > 3600) passes.cpu.shift(); passes.render = [RW, RH]; passes.canvas = [W, H];
     if (passes.key) { const bk = passBucket(passes.key); bk.cpu.push(c); if (!bk.vp) bk.vp = Array.from(gl.getParameter(gl.VIEWPORT)).join(','); }
   }
-  gl.useProgram(marchProg.p);
-  const u = marchProg.u;
-  gl.uniform1fv(u.uB, [...BODY_KEYS.map(k => P[k]), P.lift]);
   const hc = [], hu = [], hv = [], hn = [], hx = [];
   for (const s of st.slots) { hc.push(...s.c, s.R); hu.push(...s.u, s.r); hv.push(...s.v, s.a); hn.push(...s.n, s.p); hx.push(s.w, s.Rk, 0, 0); }
-  gl.uniform4fv(u.uHc, hc); gl.uniform4fv(u.uHu, hu); gl.uniform4fv(u.uHv, hv); gl.uniform4fv(u.uHn, hn); gl.uniform4fv(u.uHx, hx);
   const rings = new Float32Array(16).fill(-1);
   st.rings.forEach((r, i) => rings.set(r, i * 4));
+  const pal = params.palette === 'auto' ? Math.floor(st.ph / 2) % 3 : PALETTES.indexOf(params.palette);
+  const setMarch = M => {   // the march uniforms, on the normal program and (?passes=1) on the stats build too
+  gl.useProgram(M.p);
+  const u = M.u;
+  gl.uniform1fv(u.uB, [...BODY_KEYS.map(k => P[k]), P.lift]);
+  gl.uniform4fv(u.uHc, hc); gl.uniform4fv(u.uHu, hu); gl.uniform4fv(u.uHv, hv); gl.uniform4fv(u.uHn, hn); gl.uniform4fv(u.uHx, hx);
   gl.uniform4fv(u.uRing, rings);
   gl.uniform4f(u.uWave, w.A, w.bass, w.hat, w.snare);
   gl.uniform4f(u.uSq, st.sqInv[0], st.sqInv[1], st.sqInv[2], st.sqMin);
@@ -1212,9 +1296,10 @@ function draw(now) {
   gl.uniform1f(u.uCurv, params.curvColor); gl.uniform1f(u.uKick, kickLevel); gl.uniform1f(u.uFlash, prev.flash);
   gl.uniform1f(u.uFocal, 1 / Math.tan(cam.fov * Math.PI / 360)); gl.uniform1f(u.uBound, st.bound);
   gl.uniform1i(u.uSteps, Math.round(params.steps)); gl.uniform1f(u.uRelax, params.march === 'plain' ? 1 : 1.5);
-  const pal = params.palette === 'auto' ? Math.floor(st.ph / 2) % 3 : PALETTES.indexOf(params.palette);
   gl.uniform1i(u.uPal, pal);
   gl.uniform3fv(u.uEye, cam.eye); gl.uniform3fv(u.uFwd, cam.fwd); gl.uniform3fv(u.uRight, cam.right); gl.uniform3fv(u.uUp, cam.up); gl.uniform3fv(u.uCenter, st.center);
+  };
+  setMarch(marchProg);
   const tMarch = passBegin('march', `${bars.toFixed(2)}${cam.mode[0]}`);
   gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
   passEnd(tMarch);
@@ -1229,6 +1314,7 @@ function draw(now) {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     passEnd(tBlit);
   }
+  if (passes.on && passes.key) diagRun(W, H, `${bars.toFixed(2)}${cam.mode[0]}`, passBucket(passes.key), setMarch);
 
   Object.assign(window.__qa, {
     bars, beats, genusNow: st.genus, shape: { from: nice(st.k0), to: nice(st.k1), u: st.u, step: st.step },
@@ -1245,6 +1331,8 @@ function draw(now) {
   }
 }
 
+// QA (#88): the drop is bars 24–32 of the 32-bar song loop (SONG); __qa.forceDrop() (panic.js) jumps the clock to the next one
+window.__qaNextDrop = b => window.__qaSectionDrop(b, 32, DROP_BAR);
 const angP99 = () => { if (!angHistory.length) return null; const a = angHistory.slice().sort((x, y) => x - y); return a[Math.floor(0.99 * (a.length - 1))]; };
 window.__qa = {
   errors, events, THICK, angSpeed: 0, angP99,
@@ -1274,7 +1362,8 @@ if (q('scale') === 'solo' || q('scale') === 'blend') setRenderScale(q('scale'));
 else if (q('res') || q('scale')) setRenderScale(null);   // ?res=native or a numeric ?scale=: the old cap + dynamic resolution
 if (q('march') === 'plain') params.march = 'plain';   // A/B: the old plain sphere tracing (no over-relaxation)
 if (q('passes') === '1') { passes.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2'); passes.on = !!passes.ext; }
-Object.defineProperty(window.__qa, 'passes', { enumerable: true, get: () => ({   // the sweep first: check-25's row keeps 600 chars
+Object.defineProperty(window.__qa, 'passes', { enumerable: true, get: () => ({   // check-25's row keeps 600 chars: march stats at 0.75 first, then the sweep
+  diag: Object.fromEntries(Object.entries(passes.by).filter(([k]) => k === '0.75').map(([k, b]) => [k, { avg: b.dn ? diagStr(b.dsum.map(a => a / b.dn)) : '-', worst: b.worst.map(([ms, t, d]) => `${ms.toFixed(1)}@${t} ${d || '?'}`).join(' · ') }])),
   sweep: Object.fromEntries(Object.entries(passes.by).map(([k, b]) => [k, { vp: b.vp, cpu: passStr(b.cpu), march: passStr(b.march), blit: passStr(b.blit), worst: b.worst.map(([ms, t]) => `${ms.toFixed(1)}@${t}`).join(' ') }])),
   on: passes.on, render: passes.render, canvas: passes.canvas,
   cpuMs: passStats(passes.cpu), marchMs: passStats(passes.march), blitMs: passStats(passes.blit) }) });
