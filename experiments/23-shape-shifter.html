@@ -108,9 +108,12 @@ const query = new URLSearchParams(location.search);
 // (morphs to a sphere, attach on its drop); '1' / '0' hold one family without events.
 // res: 'cap' renders at most 1920×1080 pixels and lets the browser scale up; 'native' renders all.
 const params = { family: 'auto', palette: 'auto', fly: true, bumpAmp: 0.5, curvColor: 0.7,
-                 morphBars: 8, orbitBars: 16, steps: 128, bpm: 120, bpb: 4, muted: false, res: 'cap',
+                 morphBars: 8, orbitBars: 16, steps: 96, march: 'sor', bpm: 120, bpb: 4, muted: false, res: 'cap',
                  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 const PALETTES = ['ceramic', 'chrome', 'iridescent'];
+// #88 GPU gate for ray-march scenes (comment 6491353229): declared render scales, fractions of the full
+// device-pixel canvas per axis. Solo plays at soloScale; in a crossfade the host drops it to blendScale.
+const PERF = { soloScale: 0.75, blendScale: 0.5 };
 const THICK = 0.12, SPR = 0.09;
 
 // ---------- keyframes (parameter sets) ----------
@@ -226,7 +229,7 @@ function stateAt(bars) {
     for (let s2 = step; s2 > step - 16 && s2 >= 0; s2--) if (params[lane][s2 % 16] === 'x') return Math.exp(-((beats * 4 - s2) * spb / 4) / tau);
     return 0;
   };
-  const wave = { A: params.bumpAmp * 0.16, bass: 0.5 + 0.5 * Math.sin(2 * Math.PI * beats / 8), hat: env('hat', 0.06), snare: env('snare', 0.15) };
+  const wave = { A: params.bumpAmp * 0.16, bass: 0.5 + 0.5 * Math.sin(2 * Math.PI * beats / 8), hat: env('hat', 1.0), snare: env('snare', 0.15) };
   const center = shapeCenter(P);
   for (const rg of rings) { rg[0] += center[0]; rg[1] += center[1]; rg[2] += center[2]; }
   const thin = [];
@@ -282,7 +285,7 @@ function wavesJS(st, x, y, z) {
   let w = 0;
   for (const r of st.rings) { const d = Math.hypot(x - r[0], y - r[1], z - r[2]) - 0.9 * r[3]; w += Math.exp(-(d * d) / 0.0144) * Math.exp(-r[3] / 0.8); }
   w += 0.5 * st.wave.bass;
-  w += 0.25 * st.wave.hat * Math.sin(23 * x + 17 * y + 29 * z + st.beats * 12);
+  w += 0.12 * st.wave.hat * Math.sin(23 * x + 17 * y + 29 * z + st.beats * 1.5);
   w += 0.35 * st.wave.snare * Math.sin(y * 9 - st.beats * 6.2832);
   return Math.max(-1, Math.min(1, w));
 }
@@ -372,7 +375,7 @@ in vec2 vUv; out vec4 o;
 uniform float uP[16];      // ra rb h taper dimple cav spout knob hx hy Rh rh a p w lift
 uniform vec4 uRing[4];     // centre, age in beats (< 0 = off)
 uniform vec4 uWave;        // A, bass, hat, snare
-uniform float uBeats, uAspect, uStepK, uCurv, uKick, uFlash;
+uniform float uBeats, uAspect, uStepK, uCurv, uKick, uFlash, uRelax;
 uniform int uSteps, uPal;
 uniform vec3 uEye, uFwd, uRight, uUp, uCenter;
 const float THICK = ${THICK.toFixed(2)}, SPR = ${SPR.toFixed(2)};
@@ -409,7 +412,7 @@ float sdf(vec3 p) {
   A = A + (min(A, 0.4 * kR) - A) * (1.0 - smoothstep(kR + 0.03, kR + 0.15, knD));
   float w = 0.0;
   for (int i = 0; i < 4; i++) { vec4 r = uRing[i]; if (r.w < 0.0) continue; float d = length(p - r.xyz) - 0.9 * r.w; w += exp(-(d * d) / 0.0144) * exp(-r.w / 0.8); }
-  w += 0.5 * uWave.y + 0.25 * uWave.z * sin(23.0 * p.x + 17.0 * p.y + 29.0 * p.z + uBeats * 12.0) + 0.35 * uWave.w * sin(p.y * 9.0 - uBeats * 6.2832);
+  w += 0.5 * uWave.y + 0.12 * uWave.z * sin(23.0 * p.x + 17.0 * p.y + 29.0 * p.z + uBeats * 1.5) + 0.35 * uWave.w * sin(p.y * 9.0 - uBeats * 6.2832);
   return base - A * clamp(w, -1.0, 1.0);
 }
 vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
@@ -422,14 +425,22 @@ void main() {
   vec3 oc = ro - uCenter; float b = dot(oc, rd), cc = dot(oc, oc) - 1.7 * 1.7, disc = b * b - cc;
   if (disc < 0.0) { o = vec4(bg, 1.0); return; }
   float t = max(0.0, -b - sqrt(disc)), tEnd = -b + sqrt(disc);
-  bool hit = false; vec3 p;
+  // #88 blend p99 (as 25, #104): over-relaxed sphere tracing (Keinert et al. 2014) near the surface. A relaxed step of
+  // uRelax·r is kept while the safe spheres overlap, else step back to the plain step and stay plain for this ray.
+  // Step cap uSteps (96); a ray that runs out of steps close to the surface is a hit (distance fallback), not a hole.
+  bool hit = false, gone = false; vec3 p = ro;
+  float om = uRelax, tPrev = t, rPrev = 0.0, dLast = 1e9; bool relaxed = false;
   for (int i = 0; i < 160; i++) {
     if (i >= uSteps) break;
-    p = ro + rd * t; float d = sdf(p);
+    p = ro + rd * t; float d = sdf(p), r = d * uStepK;
+    if (relaxed && r + rPrev < t - tPrev) { t = tPrev + rPrev; om = 1.0; relaxed = false; continue; }
     if (d < 0.0006 * t + 0.0004) { hit = true; break; }
-    t += d > 0.3 ? d - 2.0 * uWave.x : d * uStepK;   // far: |A·w| ≤ A bounds the gap; near: Lipschitz step
-    if (t > tEnd) break;
+    dLast = d; tPrev = t; rPrev = r;
+    relaxed = d <= 0.3 && om > 1.0;
+    t += d > 0.3 ? d - 2.0 * uWave.x : r * om;   // far: |A·w| ≤ A bounds the gap; near: Lipschitz step, relaxed
+    if (t > tEnd) { gone = true; break; }
   }
+  if (!hit && !gone && dLast < 0.004 + 0.004 * t) { hit = true; p = ro + rd * tPrev; }
   if (!hit) { o = vec4(bg, 1.0); return; }
   // gradient and Hessian by central differences (19 samples), Gaussian curvature by the adjugate
   float e = 0.006, f0 = sdf(p);
@@ -448,7 +459,8 @@ void main() {
   vec3 curv = kt > 0.0 ? mix(vec3(0.9, 0.85, 0.8), vec3(1.0, 0.45, 0.15), kt) : mix(vec3(0.9, 0.85, 0.8), vec3(0.15, 0.45, 1.0), -kt);
   // soft shadow and ambient occlusion
   float sh = 1.0, st = 0.02;
-  for (int i = 0; i < 16; i++) { float h = sdf(p + n * 0.002 + l * st); sh = min(sh, 10.0 * h / st); st += clamp(h, 0.02, 0.2); if (sh < 0.02 || st > 2.0) break; }
+  if (dot(n, l) <= 0.0) sh = 0.0;   // facing away from the light: no shadow march (diffuse and specular are 0 there)
+  else for (int i = 0; i < 16; i++) { float h = sdf(p + n * 0.002 + l * st); sh = min(sh, 10.0 * h / st); st += clamp(h, 0.02, 0.2); if (sh < 0.02 || st > 2.0) break; }
   sh = clamp(sh, 0.0, 1.0);
   float ao = 0.0; for (int i = 1; i <= 4; i++) { float hh = 0.03 * float(i); ao += (hh - sdf(p + n * hh)) / hh; }
   ao = clamp(1.0 - 0.25 * ao, 0.2, 1.0);
@@ -464,7 +476,10 @@ void main() {
     vec3 film = hue(0.55 + 1.2 * (1.0 - dot(n, v)) + kt * 0.25);
     col = mix(film, curv, uCurv * 0.5) * (0.15 + 0.85 * diff * sh) * ao + spec * sh * 0.8 + film * fres * 0.6;
   }
-  col += curv * uKick * 0.12 + vec3(1.0, 0.95, 0.9) * uFlash * 0.5;
+  col += curv * uKick * 0.12 + vec3(1.0, 0.95, 0.9) * uFlash * 0.3;
+  // near-camera contrast fade: a surface within ~0.7 of the eye fills the frame and sweeps past fast in the
+  // fly-throughs, so its shading detail crossed a 10° window ≥ 4 times a second (flash gate, #104); ease it to a mid tone
+  col = mix(col, vec3(0.24, 0.23, 0.22), 0.85 * (1.0 - smoothstep(0.1, 0.7, length(p - ro))));
   col = vec3(1.0) - exp(-col * 1.4);
   o = vec4(pow(col, vec3(0.92)), 1.0);
 }`);
@@ -549,20 +564,52 @@ window.__modules = { 'shape-shifter': { inputs: [
   { name: 'fly', type: 'bool', default: true },
   { name: 'bumpAmp', type: 'float', default: 0.5, min: 0, max: 1 }, { name: 'curvColor', type: 'float', default: 0.7, min: 0, max: 1 },
   { name: 'morphBars', type: 'long', default: 8, min: 4, max: 16 }, { name: 'orbitBars', type: 'long', default: 16, min: 4, max: 64 },
-  { name: 'steps', type: 'long', default: 128, min: 48, max: 160 },
-] } };
+  { name: 'steps', type: 'long', default: 96, min: 48, max: 160 },
+], perf: PERF } };
 
 // ---------- main loop ----------
+// The scales are fractions of 2560×1440 a side (#88): the canvas always matches the window (device pixels) and the
+// march renders fixedScale·2560 × fixedScale·1440 worth of pixels (1920×1080 at 0.75) into a corner of a render
+// target, stretched to the canvas, so solo ↔ blend reallocates nothing. A smaller window renders at most its own pixels.
+// null (setRenderScale(null), ?res=… or a numeric ?scale=): the old cap (≤ 1920×1080 pixels) on the canvas itself.
+let fixedScale = PERF.soloScale;
+function setRenderScale(s) {   // 'solo' | 'blend' | a number 0.25–1 | null (back to the cap); returns the scale in force
+  const v = s === 'solo' ? PERF.soloScale : s === 'blend' ? PERF.blendScale : s === null ? NaN : parseFloat(s);
+  fixedScale = Number.isFinite(v) ? Math.max(0.25, Math.min(1, v)) : null;
+  return fixedScale;
+}
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
-  const cap = (params.res === 'native' ? 1 : Math.min(1, Math.sqrt(1920 * 1080 / (w * h)))) * params.scale;
+  const cap = fixedScale !== null ? 1 : (params.res === 'native' ? 1 : Math.min(1, Math.sqrt(1920 * 1080 / (w * h)))) * params.scale;
   w = Math.max(1, Math.round(w * cap)); h = Math.max(1, Math.round(h * cap));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 }
+const renderK = () => fixedScale === null ? 1 : Math.min(1, fixedScale * Math.sqrt(2560 * 1440 / (canvas.width * canvas.height)));
+const blitProg = program(FULL_VS, `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 o;
+uniform sampler2D uTex;
+uniform vec2 uScale, uMax;
+void main() { o = texture(uTex, min(vUv * uScale, uMax)); }`);
+const rt = { tex: null, fbo: null, w: 0, h: 0 };
+function ensureRT(w, h) {   // allocated once per canvas size, never on a scale change
+  if (rt.w === w && rt.h === h) return;
+  if (!rt.tex) { rt.tex = gl.createTexture(); rt.fbo = gl.createFramebuffer(); }
+  gl.bindTexture(gl.TEXTURE_2D, rt.tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, rt.fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rt.tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  rt.w = w; rt.h = h;
+}
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastNow = 0;
 const errors = [], events = [], logged = new Set();
-const prev = { genus: null, from: null, mode: null, beat: -1, flash: 0 };
+const prev = { genus: null, from: null, mode: null, beat: -1, flash: 0, flashAge: Infinity };
 function logEvent(e, now) {
   if (!metronome.playing) { e.tBeat = null; e.perfDrawn = now; events.push(e); if (events.length > 256) events.shift(); return; }
   e.tHeard = e.tBeat + metronome.latency();
@@ -593,20 +640,24 @@ function draw(now) {
   const base = st.k * st.S;
   if (prev.genus !== null && st.genus !== prev.genus) {
     const type = st.genus < prev.genus ? 'surgery' : 'attach';
-    logAt(type, base + st.S - 2, { from: prev.genus, to: st.genus }, now); prev.flash = 1;
+    logAt(type, base + st.S - 2, { from: prev.genus, to: st.genus }, now); prev.flashAge = 0;
   }
   if (prev.from !== null && st.from !== prev.from) logAt('morph', Math.round(bars), { shape: st.from }, now);
   const cam = cameraAt(st);
   if (cam.mode === 'fly' && prev.mode !== 'fly') logAt('fly', base + st.S - 3, { genus: st.genus }, now);
   prev.genus = st.genus; prev.from = st.from; prev.mode = cam.mode;
-  prev.flash = Math.max(0, prev.flash - dt * 2);
+  // genus-change glow: 0.45 s smoothstep attack, 0.6 s linear release (#104: the instant +0.5 white tripped the 0.25-in-100-ms rise gate)
+  { const a = prev.flashAge += dt, x = a / 0.45; prev.flash = a < 0.45 ? x * x * (3 - 2 * x) : Math.max(0, 1 - (a - 0.45) / 0.6); }
   const beat = Math.floor(beats), kickLevel = params.kick[(beat * 4) % 16] === 'x' ? Math.exp(-(beats - beat) * 60 / params.bpm / 0.15) : 0;
 
   const W = canvas.width, H = canvas.height;
   const fwd = norm3(sub3(cam.at, cam.eye)), right = norm3(cross3(fwd, [0, 1, 0])), up = cross3(right, fwd);
   const P = st.P, w = st.wave;
-  const L = w.A * (2 * 0.9 / 0.12 + 0.25 * w.hat * 40 + 0.35 * w.snare * 9);   // a bound on |∇(A·waves)|
-  gl.viewport(0, 0, W, H);
+  const L = w.A * (2 * 0.9 / 0.12 + 0.12 * w.hat * 40 + 0.35 * w.snare * 9);   // a bound on |∇(A·waves)|
+  const k = renderK(), useRT = k < 1, RW = useRT ? Math.max(1, Math.round(W * k)) : W, RH = useRT ? Math.max(1, Math.round(H * k)) : H;
+  if (useRT) ensureRT(W, H);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, useRT ? rt.fbo : null);
+  gl.viewport(0, 0, RW, RH);
   gl.useProgram(marchProg.p);
   const u = marchProg.u;
   gl.uniform1fv(u.uP, [P.ra, P.rb, P.h, P.taper, P.dimple, P.cav, P.spout, P.knob, P.hx, P.hy, P.Rh, P.rh, P.a, P.p, P.w, liftOf(P)]);
@@ -616,11 +667,20 @@ function draw(now) {
   gl.uniform4f(u.uWave, w.A, w.bass, w.hat, w.snare);
   gl.uniform1f(u.uBeats, beats); gl.uniform1f(u.uAspect, W / H); gl.uniform1f(u.uStepK, 1 / (1 + L));
   gl.uniform1f(u.uCurv, params.curvColor); gl.uniform1f(u.uKick, kickLevel); gl.uniform1f(u.uFlash, prev.flash);
-  gl.uniform1i(u.uSteps, Math.round(params.steps));
+  gl.uniform1i(u.uSteps, Math.round(params.steps)); gl.uniform1f(u.uRelax, params.march === 'plain' ? 1 : 1.5);
   const pal = params.palette === 'auto' ? Math.floor(st.k / 2) % 3 : PALETTES.indexOf(params.palette);
   gl.uniform1i(u.uPal, pal);
   gl.uniform3fv(u.uEye, cam.eye); gl.uniform3fv(u.uFwd, fwd); gl.uniform3fv(u.uRight, right); gl.uniform3fv(u.uUp, up); gl.uniform3fv(u.uCenter, st.center);
   gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  if (useRT) {   // stretch the rendered corner to the canvas
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, W, H);
+    gl.useProgram(blitProg.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, rt.tex); gl.uniform1i(blitProg.u.uTex, 0);
+    gl.uniform2f(blitProg.u.uScale, RW / W, RH / H);
+    gl.uniform2f(blitProg.u.uMax, (RW - 0.5) / W, (RH - 0.5) / H);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
 
   Object.assign(window.__qa, {
     bars, beats, section: st.k, family: st.fam, genusExpected: st.genus, featureMin: st.featureMin,
@@ -655,6 +715,15 @@ if (q('fly') !== null) params.fly = q('fly') !== '0';
 for (const k of Object.keys(SLIDERS)) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
 if (q('res') === 'native') params.res = 'native';
 params.scale = Math.max(0.25, Math.min(1, parseFloat(q('scale')) || 1));   // ?scale=0.75 renders fewer pixels
+if (q('march') === 'plain') params.march = 'plain';   // A/B: the old plain sphere tracing (no over-relaxation)
+if (q('scale') === 'solo' || q('scale') === 'blend') setRenderScale(q('scale'));   // #88: the declared scales, for the GPU gate
+else if (q('res') || q('scale')) setRenderScale(null);   // ?res=native or a numeric ?scale=: the old cap on the canvas
+Object.assign(window.__qa, { setRenderScale, scales: PERF,   // check-shared reads __qa.scales (#88)
+  minFeature: b => stateAt(b ?? window.__qa.bars).featureMin });   // thinnest feature at bar b (check-23 gate 2 resolves frames by it, #56)
+Object.defineProperties(window.__qa, {   // live values (Object.assign would copy them once)
+  scaleNow: { get: () => fixedScale, enumerable: true },
+  canvasPx: { get: () => [canvas.width, canvas.height], enumerable: true },
+  renderPx: { get: () => { const k = renderK(); return [Math.round(canvas.width * k), Math.round(canvas.height * k)]; }, enumerable: true } });
 params.muted = q('muted') === '1';
 sync();
 requestAnimationFrame(frame);
