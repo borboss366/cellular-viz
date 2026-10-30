@@ -1,0 +1,977 @@
+{
+ "id": "16-neon-lines",
+ "page": "16-neon-lines",
+ "pr": 124,
+ "sha": "01fe493fae1bb811426cd1492ab02f7632cba734",
+ "vs": null,
+ "at": "2026-10-30T08:09:21.529Z",
+ "host": "3adc2b2ec197",
+ "hasGpu": true,
+ "runs": [
+  {
+   "label": "drop@1080p",
+   "variant": "drop",
+   "base": "drop",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "variant": "manual",
+    "macro3": "1",
+    "startBar": "20"
+   },
+   "url": "16-neon-lines.html?variant=manual&macro3=1&startBar=20",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 719,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 28.64,
+    "lum.min": 23.09,
+    "lum.max": 36.89,
+    "errors": 0
+   },
+   "values": {
+    "truths": true,
+    "t1": true,
+    "t1maxF": 1.7053025658242404e-10,
+    "t2": true,
+    "t3": true,
+    "t4": true,
+    "t5": true,
+    "glideMaxF": 7.536331652594104e-16,
+    "t6": true,
+    "buildCounts": "3,7,15,27",
+    "generalPosition": 0.08355087348824392,
+    "liveMaxRelF": 4.495731530107876e-14,
+    "pairsBad": 0,
+    "pairsChecked": 1741,
+    "lineCountOk": true,
+    "counts": "27",
+    "walls": 0,
+    "wallCrossings": 0,
+    "wallBandMaxBeats": 99,
+    "wallEnterMaxMs": 999,
+    "firstWall": "none",
+    "glides": 29,
+    "drops": 1,
+    "lines": 27,
+    "eckardt": 10,
+    "diamondsOnScreen": 10,
+    "peaks": 1,
+    "laserEnergy": 0.038293294457059285,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/drop@1080p-1.png",
+    "stills/drop@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "drop@4k",
+   "variant": "drop",
+   "base": "drop",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "variant": "manual",
+    "macro3": "1",
+    "startBar": "20"
+   },
+   "url": "16-neon-lines.html?variant=manual&macro3=1&startBar=20",
+   "metrics": {
+    "gpuBusy": 1,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 730,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 80,
+    "lum.mean": 28.42,
+    "lum.min": 23.13,
+    "lum.max": 36,
+    "errors": 0
+   },
+   "values": {
+    "truths": true,
+    "t1": true,
+    "t1maxF": 1.7053025658242404e-10,
+    "t2": true,
+    "t3": true,
+    "t4": true,
+    "t5": true,
+    "glideMaxF": 7.536331652594104e-16,
+    "t6": true,
+    "buildCounts": "3,7,15,27",
+    "generalPosition": 0.08355087348824392,
+    "liveMaxRelF": 4.495731530107876e-14,
+    "pairsBad": 0,
+    "pairsChecked": 1653,
+    "lineCountOk": true,
+    "counts": "27",
+    "walls": 0,
+    "wallCrossings": 0,
+    "wallBandMaxBeats": 99,
+    "wallEnterMaxMs": 999,
+    "firstWall": "none",
+    "glides": 29,
+    "drops": 1,
+    "lines": 27,
+    "eckardt": 10,
+    "diamondsOnScreen": 9,
+    "peaks": 1,
+    "laserEnergy": 0.031744582825366456,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/drop@4k-1.png",
+    "stills/drop@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "build@1080p",
+   "variant": "build",
+   "base": "build",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "variant": "auto",
+    "startBar": "4"
+   },
+   "url": "16-neon-lines.html?variant=auto&startBar=4",
+   "metrics": {
+    "gpuBusy": 3,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 727,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 21.16,
+    "lum.min": 16.21,
+    "lum.max": 32.45,
+    "errors": 0
+   },
+   "values": {
+    "truths": true,
+    "t1": true,
+    "t1maxF": 1.7053025658242404e-10,
+    "t2": true,
+    "t3": true,
+    "t4": true,
+    "t5": true,
+    "glideMaxF": 7.536331652594104e-16,
+    "t6": true,
+    "buildCounts": "3,7,15,27",
+    "generalPosition": 0.08355087348824392,
+    "liveMaxRelF": 2.370889555501283e-12,
+    "pairsBad": 0,
+    "pairsChecked": 1739,
+    "lineCountOk": true,
+    "counts": "3,7,15",
+    "walls": 2,
+    "wallCrossings": 2,
+    "wallBandMaxBeats": 0.13320000000000073,
+    "wallEnterMaxMs": 31.038321995465594,
+    "firstWall": "8:1up",
+    "glides": 28,
+    "drops": 0,
+    "lines": 15,
+    "eckardt": 2,
+    "diamondsOnScreen": 2,
+    "peaks": 2,
+    "laserEnergy": 0.016900321107700057,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/build@1080p-1.png",
+    "stills/build@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "build@4k",
+   "variant": "build",
+   "base": "build",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "variant": "auto",
+    "startBar": "4"
+   },
+   "url": "16-neon-lines.html?variant=auto&startBar=4",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 731,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 81,
+    "lum.mean": 21.1,
+    "lum.min": 16.32,
+    "lum.max": 30.44,
+    "errors": 0
+   },
+   "values": {
+    "truths": true,
+    "t1": true,
+    "t1maxF": 1.7053025658242404e-10,
+    "t2": true,
+    "t3": true,
+    "t4": true,
+    "t5": true,
+    "glideMaxF": 7.536331652594104e-16,
+    "t6": true,
+    "buildCounts": "3,7,15,27",
+    "generalPosition": 0.08355087348824392,
+    "liveMaxRelF": 2.370889555501283e-12,
+    "pairsBad": 0,
+    "pairsChecked": 1661,
+    "lineCountOk": true,
+    "counts": "3,7,15",
+    "walls": 2,
+    "wallCrossings": 2,
+    "wallBandMaxBeats": 0.13320000000000073,
+    "wallEnterMaxMs": 23.245804988660893,
+    "firstWall": "8:1up",
+    "glides": 28,
+    "drops": 0,
+    "lines": 15,
+    "eckardt": 2,
+    "diamondsOnScreen": 2,
+    "peaks": 2,
+    "laserEnergy": 0.015435324819433788,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/build@4k-1.png",
+    "stills/build@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "climb@1080p",
+   "variant": "climb",
+   "base": "climb",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "variant": "auto",
+    "startBar": "12"
+   },
+   "url": "16-neon-lines.html?variant=auto&startBar=12",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 730,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 26.88,
+    "lum.min": 20.16,
+    "lum.max": 40.87,
+    "errors": 0
+   },
+   "values": {
+    "truths": true,
+    "t1": true,
+    "t1maxF": 1.7053025658242404e-10,
+    "t2": true,
+    "t3": true,
+    "t4": true,
+    "t5": true,
+    "glideMaxF": 7.536331652594104e-16,
+    "t6": true,
+    "buildCounts": "3,7,15,27",
+    "generalPosition": 0.08355087348824392,
+    "liveMaxRelF": 1.258512224060904e-12,
+    "pairsBad": 0,
+    "pairsChecked": 1742,
+    "lineCountOk": true,
+    "counts": "7,15,27",
+    "walls": 2,
+    "wallCrossings": 2,
+    "wallBandMaxBeats": 0.13340000000000146,
+    "wallEnterMaxMs": 29.687074829933408,
+    "firstWall": "16:2up",
+    "glides": 29,
+    "drops": 1,
+    "lines": 27,
+    "eckardt": 10,
+    "diamondsOnScreen": 9,
+    "peaks": 2,
+    "laserEnergy": 0.03293234361375659,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/climb@1080p-1.png",
+    "stills/climb@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "climb@4k",
+   "variant": "climb",
+   "base": "climb",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "variant": "auto",
+    "startBar": "12"
+   },
+   "url": "16-neon-lines.html?variant=auto&startBar=12",
+   "metrics": {
+    "gpuBusy": 1,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 731,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 81,
+    "lum.mean": 27,
+    "lum.min": 20.11,
+    "lum.max": 41.61,
+    "errors": 0
+   },
+   "values": {
+    "truths": true,
+    "t1": true,
+    "t1maxF": 1.7053025658242404e-10,
+    "t2": true,
+    "t3": true,
+    "t4": true,
+    "t5": true,
+    "glideMaxF": 7.536331652594104e-16,
+    "t6": true,
+    "buildCounts": "3,7,15,27",
+    "generalPosition": 0.08355087348824392,
+    "liveMaxRelF": 1.258512224060904e-12,
+    "pairsBad": 0,
+    "pairsChecked": 1663,
+    "lineCountOk": true,
+    "counts": "7,15,27",
+    "walls": 2,
+    "wallCrossings": 2,
+    "wallBandMaxBeats": 0.13320000000000437,
+    "wallEnterMaxMs": 24.697052154195262,
+    "firstWall": "16:2up",
+    "glides": 28,
+    "drops": 1,
+    "lines": 27,
+    "eckardt": 10,
+    "diamondsOnScreen": 9,
+    "peaks": 2,
+    "laserEnergy": 0.02726739534536029,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/climb@4k-1.png",
+    "stills/climb@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "drop-auto@1080p",
+   "variant": "drop-auto",
+   "base": "drop-auto",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "variant": "auto",
+    "startBar": "20"
+   },
+   "url": "16-neon-lines.html?variant=auto&startBar=20",
+   "metrics": {
+    "gpuBusy": 3,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 734,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 22.97,
+    "lum.min": 14.37,
+    "lum.max": 36.3,
+    "errors": 0
+   },
+   "values": {
+    "truths": true,
+    "t1": true,
+    "t1maxF": 1.7053025658242404e-10,
+    "t2": true,
+    "t3": true,
+    "t4": true,
+    "t5": true,
+    "glideMaxF": 7.536331652594104e-16,
+    "t6": true,
+    "buildCounts": "3,7,15,27",
+    "generalPosition": 0.08355087348824392,
+    "liveMaxRelF": 9.269440000255487e-13,
+    "pairsBad": 0,
+    "pairsChecked": 1738,
+    "lineCountOk": true,
+    "counts": "3,7,15,27",
+    "walls": 4,
+    "wallCrossings": 4,
+    "wallBandMaxBeats": 0.13340000000000146,
+    "wallEnterMaxMs": 25.286621315197408,
+    "firstWall": "24:3up",
+    "glides": 28,
+    "drops": 1,
+    "lines": 3,
+    "eckardt": 0,
+    "diamondsOnScreen": 0,
+    "peaks": 4,
+    "laserEnergy": 0.002320118121745678,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/drop-auto@1080p-1.png",
+    "stills/drop-auto@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "drop-auto@4k",
+   "variant": "drop-auto",
+   "base": "drop-auto",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "variant": "auto",
+    "startBar": "20"
+   },
+   "url": "16-neon-lines.html?variant=auto&startBar=20",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 732,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 82,
+    "lum.mean": 22.86,
+    "lum.min": 14.34,
+    "lum.max": 35.81,
+    "errors": 0
+   },
+   "values": {
+    "truths": true,
+    "t1": true,
+    "t1maxF": 1.7053025658242404e-10,
+    "t2": true,
+    "t3": true,
+    "t4": true,
+    "t5": true,
+    "glideMaxF": 7.536331652594104e-16,
+    "t6": true,
+    "buildCounts": "3,7,15,27",
+    "generalPosition": 0.08355087348824392,
+    "liveMaxRelF": 9.269440000255487e-13,
+    "pairsBad": 0,
+    "pairsChecked": 1655,
+    "lineCountOk": true,
+    "counts": "3,7,15,27",
+    "walls": 4,
+    "wallCrossings": 4,
+    "wallBandMaxBeats": 0.13359999999999855,
+    "wallEnterMaxMs": 30.991609977321787,
+    "firstWall": "24:3up",
+    "glides": 28,
+    "drops": 1,
+    "lines": 3,
+    "eckardt": 0,
+    "diamondsOnScreen": 0,
+    "peaks": 4,
+    "laserEnergy": 0.002320118121745678,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/drop-auto@4k-1.png",
+    "stills/drop-auto@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "collapse@1080p",
+   "variant": "collapse",
+   "base": "collapse",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "variant": "auto",
+    "startBar": "28"
+   },
+   "url": "16-neon-lines.html?variant=auto&startBar=28",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 729,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 18.96,
+    "lum.min": 14.85,
+    "lum.max": 26.51,
+    "errors": 0
+   },
+   "values": {
+    "truths": true,
+    "t1": true,
+    "t1maxF": 1.7053025658242404e-10,
+    "t2": true,
+    "t3": true,
+    "t4": true,
+    "t5": true,
+    "glideMaxF": 7.536331652594104e-16,
+    "t6": true,
+    "buildCounts": "3,7,15,27",
+    "generalPosition": 0.08355087348824392,
+    "liveMaxRelF": 1.011185223204921e-12,
+    "pairsBad": 0,
+    "pairsChecked": 1733,
+    "lineCountOk": true,
+    "counts": "3,7,15,27",
+    "walls": 4,
+    "wallCrossings": 4,
+    "wallBandMaxBeats": 0.13340000000000146,
+    "wallEnterMaxMs": 33.21383219954623,
+    "firstWall": "31:3down",
+    "glides": 28,
+    "drops": 0,
+    "lines": 7,
+    "eckardt": 0,
+    "diamondsOnScreen": 0,
+    "peaks": 4,
+    "laserEnergy": 0.008133630085634842,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/collapse@1080p-1.png",
+    "stills/collapse@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "collapse@4k",
+   "variant": "collapse",
+   "base": "collapse",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "variant": "auto",
+    "startBar": "28"
+   },
+   "url": "16-neon-lines.html?variant=auto&startBar=28",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 726,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 82,
+    "lum.mean": 18.99,
+    "lum.min": 14.87,
+    "lum.max": 26.76,
+    "errors": 0
+   },
+   "values": {
+    "truths": true,
+    "t1": true,
+    "t1maxF": 1.7053025658242404e-10,
+    "t2": true,
+    "t3": true,
+    "t4": true,
+    "t5": true,
+    "glideMaxF": 7.536331652594104e-16,
+    "t6": true,
+    "buildCounts": "3,7,15,27",
+    "generalPosition": 0.08355087348824392,
+    "liveMaxRelF": 1.011185223204921e-12,
+    "pairsBad": 0,
+    "pairsChecked": 1642,
+    "lineCountOk": true,
+    "counts": "3,7,15,27",
+    "walls": 4,
+    "wallCrossings": 4,
+    "wallBandMaxBeats": 0.16680000000000292,
+    "wallEnterMaxMs": 24.697052154195262,
+    "firstWall": "31:3down",
+    "glides": 28,
+    "drops": 0,
+    "lines": 7,
+    "eckardt": 0,
+    "diamondsOnScreen": 0,
+    "peaks": 4,
+    "laserEnergy": 0.009876024490752096,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/collapse@4k-1.png",
+    "stills/collapse@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "all-finite@1080p",
+   "variant": "all-finite",
+   "base": "all-finite",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "variant": "manual",
+    "macro3": "1",
+    "chart": "allFinite",
+    "glides": "0"
+   },
+   "url": "16-neon-lines.html?variant=manual&macro3=1&chart=allFinite&glides=0",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 731,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 24.26,
+    "lum.min": 22.01,
+    "lum.max": 27.74,
+    "errors": 0
+   },
+   "values": {
+    "truths": true,
+    "t1": true,
+    "t1maxF": 1.7053025658242404e-10,
+    "t2": true,
+    "t3": true,
+    "t4": true,
+    "t5": true,
+    "glideMaxF": 7.536331652594104e-16,
+    "t6": true,
+    "buildCounts": "3,7,15,27",
+    "generalPosition": 0.08355087348824392,
+    "liveMaxRelF": 3.5500914067725487e-16,
+    "pairsBad": 0,
+    "pairsChecked": 1751,
+    "lineCountOk": true,
+    "counts": "27",
+    "walls": 0,
+    "wallCrossings": 0,
+    "wallBandMaxBeats": 99,
+    "wallEnterMaxMs": 999,
+    "firstWall": "none",
+    "glides": 0,
+    "drops": 0,
+    "lines": 27,
+    "eckardt": 10,
+    "diamondsOnScreen": 10,
+    "peaks": 0,
+    "laserEnergy": 0.032075626394263375,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/all-finite@1080p-1.png",
+    "stills/all-finite@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "all-finite@4k",
+   "variant": "all-finite",
+   "base": "all-finite",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "variant": "manual",
+    "macro3": "1",
+    "chart": "allFinite",
+    "glides": "0"
+   },
+   "url": "16-neon-lines.html?variant=manual&macro3=1&chart=allFinite&glides=0",
+   "metrics": {
+    "gpuBusy": 1,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 725,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 81,
+    "lum.mean": 24.24,
+    "lum.min": 22.11,
+    "lum.max": 27.47,
+    "errors": 0
+   },
+   "values": {
+    "truths": true,
+    "t1": true,
+    "t1maxF": 1.7053025658242404e-10,
+    "t2": true,
+    "t3": true,
+    "t4": true,
+    "t5": true,
+    "glideMaxF": 7.536331652594104e-16,
+    "t6": true,
+    "buildCounts": "3,7,15,27",
+    "generalPosition": 0.08355087348824392,
+    "liveMaxRelF": 3.5500914067725487e-16,
+    "pairsBad": 0,
+    "pairsChecked": 1662,
+    "lineCountOk": true,
+    "counts": "27",
+    "walls": 0,
+    "wallCrossings": 0,
+    "wallBandMaxBeats": 99,
+    "wallEnterMaxMs": 999,
+    "firstWall": "none",
+    "glides": 0,
+    "drops": 0,
+    "lines": 27,
+    "eckardt": 10,
+    "diamondsOnScreen": 10,
+    "peaks": 0,
+    "laserEnergy": 0.032934243249069024,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/all-finite@4k-1.png",
+    "stills/all-finite@4k-2.png"
+   ],
+   "errors": []
+  }
+ ],
+ "checks": [],
+ "swipe": null,
+ "gates": [
+  {
+   "name": "QA 1: the 27 table lines lie on F (max |F| < 1e-9, float64)",
+   "ok": true,
+   "value": "drop@1080p true · drop@4k true"
+  },
+  {
+   "name": "QA 2: 135 meeting pairs (126 affine + 9 at infinity), each line meets 10",
+   "ok": true,
+   "value": "drop@1080p true · drop@4k true"
+  },
+  {
+   "name": "QA 3: 10 Eckardt points (7 finite + 3 directions)",
+   "ok": true,
+   "value": "drop@1080p true · drop@4k true"
+  },
+  {
+   "name": "QA 4: M maps the P4 model onto F = 0; e_i - e_j go to the Eckardt points",
+   "ok": true,
+   "value": "drop@1080p true · drop@4k true"
+  },
+  {
+   "name": "QA 5: S5 permutes lines and diamonds, orbits {15,12} and {10}; A5 glides keep |F_s| < 1e-9",
+   "ok": true,
+   "value": "drop@1080p true · drop@4k true"
+  },
+  {
+   "name": "QA 6: build-up 3/7/15/27 lines, 3/9/45/135 meetings, 10 Eckardt at the end",
+   "ok": true,
+   "value": "drop@1080p true · drop@4k true"
+  },
+  {
+   "name": "every drawn laser lies on the drawn surface (relative |F|, every frame)",
+   "ok": true,
+   "value": "drop@1080p 0 · drop@4k 0 · build@1080p 0 · build@4k 0 · climb@1080p 0 · climb@4k 0 · drop-auto@1080p 0 · drop-auto@4k 0 · collapse@1080p 0 · collapse@4k 0 · all-finite@1080p 0 · all-finite@4k 0"
+  },
+  {
+   "name": "meetings match the line count on every frame away from the walls",
+   "ok": true,
+   "value": "drop@1080p 0 · drop@4k 0 · build@1080p 0 · build@4k 0 · climb@1080p 0 · climb@4k 0 · drop-auto@1080p 0 · drop-auto@4k 0 · collapse@1080p 0 · collapse@4k 0 · all-finite@1080p 0 · all-finite@4k 0"
+  },
+  {
+   "name": "real line count = r + C(r,2) + c + r on every frame",
+   "ok": true,
+   "value": "drop@1080p true · drop@4k true · build@1080p true · build@4k true · climb@1080p true · climb@4k true · drop-auto@1080p true · drop-auto@4k true · collapse@1080p true · collapse@4k true · all-finite@1080p true · all-finite@4k true"
+  },
+  {
+   "name": "27 lines all the way",
+   "ok": true,
+   "value": "drop@1080p \"27\" · drop@4k \"27\" · all-finite@1080p \"27\" · all-finite@4k \"27\""
+  },
+  {
+   "name": "bar 8: pair 1 born, 3 -> 7 (first wall after startBar 4)",
+   "ok": true,
+   "value": "build@1080p \"8:1up\" · build@4k \"8:1up\""
+  },
+  {
+   "name": "bar 16: pair 2 born, 7 -> 15 (first wall after startBar 12)",
+   "ok": true,
+   "value": "climb@1080p \"16:2up\" · climb@4k \"16:2up\""
+  },
+  {
+   "name": "bar 24, the drop: pair 3 born, 15 -> 27 (first wall after startBar 20)",
+   "ok": true,
+   "value": "drop-auto@1080p \"24:3up\" · drop-auto@4k \"24:3up\""
+  },
+  {
+   "name": "bar 31: 27 -> 15 -> 7 -> 3",
+   "ok": true,
+   "value": "collapse@1080p \"3,7,15,27\" · collapse@4k \"3,7,15,27\""
+  },
+  {
+   "name": "a wall crossed (gold flash)",
+   "ok": true,
+   "value": "build@1080p 2 · build@4k 2 · climb@1080p 2 · climb@4k 2 · drop-auto@1080p 4 · drop-auto@4k 4"
+  },
+  {
+   "name": "three walls crossed back",
+   "ok": true,
+   "value": "collapse@1080p 4 · collapse@4k 4"
+  },
+  {
+   "name": "a wall crossing logged (__qa.wallCrossings: |u| below 0.1 and back)",
+   "ok": true,
+   "value": "build@1080p 2 · build@4k 2 · climb@1080p 2 · climb@4k 2 · drop-auto@1080p 4 · drop-auto@4k 4"
+  },
+  {
+   "name": "every wall crossing leaves the |u| < 0.1 band within 1 beat",
+   "ok": true,
+   "value": "build@1080p 0.133 · build@4k 0.133 · climb@1080p 0.133 · climb@4k 0.133 · drop-auto@1080p 0.133 · drop-auto@4k 0.134"
+  },
+  {
+   "name": "every wall crossing enters the band within 40 ms of its wall beat",
+   "ok": true,
+   "value": "build@1080p 31.038 · build@4k 23.246 · climb@1080p 29.687 · climb@4k 24.697 · drop-auto@1080p 25.287 · drop-auto@4k 30.992"
+  },
+  {
+   "name": "the drop fired (5-cycle glide)",
+   "ok": true,
+   "value": "drop@1080p 1 · drop@4k 1 · drop-auto@1080p 1 · drop-auto@4k 1"
+  },
+  {
+   "name": "shape rate 1/2 bar: a glide every 2 beats",
+   "ok": true,
+   "value": "drop@1080p 29 · drop@4k 29"
+  },
+  {
+   "name": "glides=0 stands still",
+   "ok": true,
+   "value": "all-finite@1080p 0 · all-finite@4k 0"
+  },
+  {
+   "name": "10 diamonds",
+   "ok": true,
+   "value": "drop@1080p 10 · drop@4k 10 · all-finite@1080p 10 · all-finite@4k 10"
+  },
+  {
+   "name": "chart allFinite: all 10 diamonds in view",
+   "ok": true,
+   "value": "all-finite@1080p 10 · all-finite@4k 10"
+  },
+  {
+   "name": "#88 forceDrop hook",
+   "ok": true,
+   "value": "drop@1080p \"function\" · drop@4k \"function\" · build@1080p \"function\" · build@4k \"function\" · climb@1080p \"function\" · climb@4k \"function\" · drop-auto@1080p \"function\" · drop-auto@4k \"function\" · collapse@1080p \"function\" · collapse@4k \"function\" · all-finite@1080p \"function\" · all-finite@4k \"function\""
+  },
+  {
+   "name": "fps.p05 ≥ 55",
+   "ok": true,
+   "value": "drop@1080p 59.52 · drop@4k 59.52 · build@1080p 59.52 · build@4k 59.88 · climb@1080p 59.52 · climb@4k 59.88 · drop-auto@1080p 59.88 · drop-auto@4k 59.88 · collapse@1080p 59.88 · collapse@4k 59.52 · all-finite@1080p 59.88 · all-finite@4k 59.88"
+  },
+  {
+   "name": "longFrames ≤ 0.5",
+   "ok": true,
+   "value": "drop@1080p 0 · drop@4k 0 · build@1080p 0 · build@4k 0 · climb@1080p 0 · climb@4k 0 · drop-auto@1080p 0 · drop-auto@4k 0 · collapse@1080p 0 · collapse@4k 0 · all-finite@1080p 0 · all-finite@4k 0"
+  },
+  {
+   "name": "errors ≤ 0",
+   "ok": true,
+   "value": "drop@1080p 0 · drop@4k 0 · build@1080p 0 · build@4k 0 · climb@1080p 0 · climb@4k 0 · drop-auto@1080p 0 · drop-auto@4k 0 · collapse@1080p 0 · collapse@4k 0 · all-finite@1080p 0 · all-finite@4k 0"
+  },
+  {
+   "name": "gpuBusy ≤ 10",
+   "ok": true,
+   "value": "drop@1080p 0 · drop@4k 1 · build@1080p 3 · build@4k 0 · climb@1080p 2 · climb@4k 1 · drop-auto@1080p 3 · drop-auto@4k 0 · collapse@1080p 2 · collapse@4k 0 · all-finite@1080p 2 · all-finite@4k 1"
+  },
+  {
+   "name": "no white blobs: <= 1 % pixels clipped",
+   "ok": true,
+   "value": "drop@1080p 0 · drop@4k 0 · build@1080p 0 · build@4k 0 · climb@1080p 0 · climb@4k 0 · drop-auto@1080p 0 · drop-auto@4k 0 · collapse@1080p 0 · collapse@4k 0 · all-finite@1080p 0 · all-finite@4k 0"
+  }
+ ],
+ "notes": []
+}
