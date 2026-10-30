@@ -1,0 +1,1025 @@
+{
+ "id": "24-paint-pour",
+ "page": "24-paint-pour",
+ "pr": 134,
+ "sha": "389935a3ab6067a76c9d33e2e789e798b268bbaa",
+ "vs": null,
+ "at": "2026-10-30T19:18:51.434Z",
+ "host": "3adc2b2ec197",
+ "hasGpu": true,
+ "runs": [
+  {
+   "label": "default@1080p",
+   "variant": "default",
+   "base": "default",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {},
+   "url": "24-paint-pour.html?",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 733,
+    "clip": 0.009,
+    "clip.mean": 0.006,
+    "clipFrames": 103,
+    "lum.mean": 14.27,
+    "lum.min": 13.83,
+    "lum.max": 15.76,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": true,
+    "t3maxErr": 0.00006831560220312307,
+    "t3hitMismatch": 0,
+    "t3ops": 64,
+    "t4": true,
+    "t5": "true",
+    "t5relErr": 0,
+    "t9": "false",
+    "t9diff": 64,
+    "t10": true,
+    "contrastMin": 3.09,
+    "ops": 64,
+    "opsLogged": 64,
+    "syncMaxMs": 20.31292517006733,
+    "drops": 1,
+    "pours": 1,
+    "breakdownDrops": 0,
+    "combs": 24,
+    "bakes": 0,
+    "bakeMs": 0,
+    "events": 7,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/default@1080p-1.png",
+    "stills/default@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "default@4k",
+   "variant": "default",
+   "base": "default",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {},
+   "url": "24-paint-pour.html?",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 734,
+    "clip": 0.009,
+    "clip.mean": 0.006,
+    "clipFrames": 72,
+    "lum.mean": 14.28,
+    "lum.min": 13.83,
+    "lum.max": 15.83,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": false,
+    "t3maxErr": 0.00012879539510874955,
+    "t3hitMismatch": 0,
+    "t3ops": 64,
+    "t4": true,
+    "t5": "true",
+    "t5relErr": 0,
+    "t9": "false",
+    "t9diff": 64,
+    "t10": true,
+    "contrastMin": 3.09,
+    "ops": 64,
+    "opsLogged": 64,
+    "syncMaxMs": 50.5170068027212,
+    "drops": 1,
+    "pours": 1,
+    "breakdownDrops": 0,
+    "combs": 24,
+    "bakes": 0,
+    "bakeMs": 0,
+    "events": 10,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/default@4k-1.png",
+    "stills/default@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "flat@1080p",
+   "variant": "flat",
+   "base": "flat",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "qa": "flat",
+    "veinColour": "none"
+   },
+   "url": "24-paint-pour.html?qa=flat&veinColour=none",
+   "metrics": {
+    "gpuBusy": 9,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 729,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 15.62,
+    "lum.min": 15.19,
+    "lum.max": 17.1,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": true,
+    "t3maxErr": 0.000055556099657646584,
+    "t3hitMismatch": 0,
+    "t3ops": 64,
+    "t4": true,
+    "t5": "true",
+    "t5relErr": 0,
+    "t9": "false",
+    "t9diff": 64,
+    "t10": true,
+    "contrastMin": 3.09,
+    "ops": 64,
+    "opsLogged": 64,
+    "syncMaxMs": 20.31292517006733,
+    "drops": 1,
+    "pours": 1,
+    "breakdownDrops": 0,
+    "combs": 24,
+    "bakes": 0,
+    "bakeMs": 0,
+    "events": 8,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/flat@1080p-1.png",
+    "stills/flat@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "flat@4k",
+   "variant": "flat",
+   "base": "flat",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "qa": "flat",
+    "veinColour": "none"
+   },
+   "url": "24-paint-pour.html?qa=flat&veinColour=none",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 723,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 73,
+    "lum.mean": 15.6,
+    "lum.min": 15.19,
+    "lum.max": 17.05,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": true,
+    "t3maxErr": 0.00007212351527887396,
+    "t3hitMismatch": 0,
+    "t3ops": 64,
+    "t4": true,
+    "t5": "true",
+    "t5relErr": 0,
+    "t9": "false",
+    "t9diff": 64,
+    "t10": true,
+    "contrastMin": 3.09,
+    "ops": 64,
+    "opsLogged": 64,
+    "syncMaxMs": 119.72335600906803,
+    "drops": 1,
+    "pours": 1,
+    "breakdownDrops": 0,
+    "combs": 24,
+    "bakes": 0,
+    "bakeMs": 0,
+    "events": 7,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/flat@4k-1.png",
+    "stills/flat@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "drop@1080p",
+   "variant": "drop",
+   "base": "drop",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "startBar": "13"
+   },
+   "url": "24-paint-pour.html?startBar=13",
+   "metrics": {
+    "gpuBusy": 9,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 730,
+    "clip": 0.008,
+    "clip.mean": 0.005,
+    "clipFrames": 100,
+    "lum.mean": 9.94,
+    "lum.min": 9.87,
+    "lum.max": 10,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": true,
+    "t3maxErr": 0.00004250399377019257,
+    "t3hitMismatch": 0,
+    "t3ops": 65,
+    "t4": true,
+    "t5": "null",
+    "t5relErr": -1,
+    "t9": "false",
+    "t9diff": 62,
+    "t10": true,
+    "contrastMin": 3.09,
+    "ops": 65,
+    "opsLogged": 65,
+    "syncMaxMs": 10.56235827664409,
+    "drops": 1,
+    "pours": 0,
+    "breakdownDrops": 0,
+    "combs": 25,
+    "bakes": 0,
+    "bakeMs": 0,
+    "events": 7,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/drop@1080p-1.png",
+    "stills/drop@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "drop@4k",
+   "variant": "drop",
+   "base": "drop",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "startBar": "13"
+   },
+   "url": "24-paint-pour.html?startBar=13",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 723,
+    "clip": 0.008,
+    "clip.mean": 0.005,
+    "clipFrames": 67,
+    "lum.mean": 9.92,
+    "lum.min": 9.83,
+    "lum.max": 9.98,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": true,
+    "t3maxErr": 0.00003662802060813477,
+    "t3hitMismatch": 0,
+    "t3ops": 65,
+    "t4": true,
+    "t5": "null",
+    "t5relErr": -1,
+    "t9": "false",
+    "t9diff": 62,
+    "t10": true,
+    "contrastMin": 3.09,
+    "ops": 65,
+    "opsLogged": 65,
+    "syncMaxMs": 168.29478458049607,
+    "drops": 1,
+    "pours": 0,
+    "breakdownDrops": 0,
+    "combs": 25,
+    "bakes": 0,
+    "bakeMs": 0,
+    "events": 8,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/drop@4k-1.png",
+    "stills/drop@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "build@1080p",
+   "variant": "build",
+   "base": "build",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "startBar": "9"
+   },
+   "url": "24-paint-pour.html?startBar=9",
+   "metrics": {
+    "gpuBusy": 10,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 729,
+    "clip": 0.013,
+    "clip.mean": 0.008,
+    "clipFrames": 103,
+    "lum.mean": 13.01,
+    "lum.min": 12.91,
+    "lum.max": 13.06,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": false,
+    "t3maxErr": 0.00010706851140037796,
+    "t3hitMismatch": 0,
+    "t3ops": 68,
+    "t4": true,
+    "t5": "true",
+    "t5relErr": 0,
+    "t9": "true",
+    "t9diff": 0,
+    "t10": true,
+    "contrastMin": 3.09,
+    "ops": 68,
+    "opsLogged": 68,
+    "syncMaxMs": 19.95011337868391,
+    "drops": 1,
+    "pours": 1,
+    "breakdownDrops": 0,
+    "combs": 26,
+    "bakes": 0,
+    "bakeMs": 0,
+    "events": 8,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/build@1080p-1.png",
+    "stills/build@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "build@4k",
+   "variant": "build",
+   "base": "build",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "startBar": "9"
+   },
+   "url": "24-paint-pour.html?startBar=9",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 733,
+    "clip": 0.012,
+    "clip.mean": 0.008,
+    "clipFrames": 74,
+    "lum.mean": 12.99,
+    "lum.min": 12.91,
+    "lum.max": 13.05,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": false,
+    "t3maxErr": 0.0008658690437121742,
+    "t3hitMismatch": 0,
+    "t3ops": 68,
+    "t4": true,
+    "t5": "true",
+    "t5relErr": 0,
+    "t9": "true",
+    "t9diff": 0,
+    "t10": true,
+    "contrastMin": 3.09,
+    "ops": 68,
+    "opsLogged": 68,
+    "syncMaxMs": 60.176870748293254,
+    "drops": 1,
+    "pours": 1,
+    "breakdownDrops": 0,
+    "combs": 26,
+    "bakes": 0,
+    "bakeMs": 0,
+    "events": 7,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/build@4k-1.png",
+    "stills/build@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "breakdown@1080p",
+   "variant": "breakdown",
+   "base": "breakdown",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "startBar": "5"
+   },
+   "url": "24-paint-pour.html?startBar=5",
+   "metrics": {
+    "gpuBusy": 11,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 727,
+    "clip": 0.011,
+    "clip.mean": 0.004,
+    "clipFrames": 104,
+    "lum.mean": 9.18,
+    "lum.min": 4.54,
+    "lum.max": 13.06,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": false,
+    "t3maxErr": 0.00013460725147537201,
+    "t3hitMismatch": 0,
+    "t3ops": 63,
+    "t4": true,
+    "t5": "true",
+    "t5relErr": 0,
+    "t9": "false",
+    "t9diff": 63,
+    "t10": true,
+    "contrastMin": 3.09,
+    "ops": 63,
+    "opsLogged": 63,
+    "syncMaxMs": 20.31292517006733,
+    "drops": 1,
+    "pours": 1,
+    "breakdownDrops": 0,
+    "combs": 24,
+    "bakes": 0,
+    "bakeMs": 0,
+    "events": 8,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/breakdown@1080p-1.png",
+    "stills/breakdown@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "breakdown@4k",
+   "variant": "breakdown",
+   "base": "breakdown",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "startBar": "5"
+   },
+   "url": "24-paint-pour.html?startBar=5",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 720,
+    "clip": 0.01,
+    "clip.mean": 0.004,
+    "clipFrames": 77,
+    "lum.mean": 8.93,
+    "lum.min": 4.48,
+    "lum.max": 13.05,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": true,
+    "t3maxErr": 0.000046644508644634606,
+    "t3hitMismatch": 0,
+    "t3ops": 61,
+    "t4": true,
+    "t5": "true",
+    "t5relErr": 0,
+    "t9": "false",
+    "t9diff": 61,
+    "t10": true,
+    "contrastMin": 3.09,
+    "ops": 63,
+    "opsLogged": 63,
+    "syncMaxMs": 79.08843537414967,
+    "drops": 1,
+    "pours": 1,
+    "breakdownDrops": 0,
+    "combs": 24,
+    "bakes": 0,
+    "bakeMs": 0,
+    "events": 7,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/breakdown@4k-1.png",
+    "stills/breakdown@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "bake@1080p",
+   "variant": "bake",
+   "base": "bake",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "opsMax": "40",
+    "startBar": "1"
+   },
+   "url": "24-paint-pour.html?opsMax=40&startBar=1",
+   "metrics": {
+    "gpuBusy": 8,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 727,
+    "clip": 0.032,
+    "clip.mean": 0.001,
+    "clipFrames": 104,
+    "lum.mean": 4.26,
+    "lum.min": 3.51,
+    "lum.max": 6.31,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": true,
+    "t3maxErr": 0.000001356606583087343,
+    "t3hitMismatch": 0,
+    "t3ops": 13,
+    "t4": true,
+    "t5": "true",
+    "t5relErr": 0,
+    "t9": "false",
+    "t9diff": 21,
+    "t10": true,
+    "contrastMin": 3.09,
+    "ops": 13,
+    "opsLogged": 56,
+    "syncMaxMs": 10.56235827664409,
+    "drops": 0,
+    "pours": 1,
+    "breakdownDrops": 0,
+    "combs": 24,
+    "bakes": 3,
+    "bakeMs": 116.70000000000073,
+    "events": 7,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/bake@1080p-1.png",
+    "stills/bake@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "bake@4k",
+   "variant": "bake",
+   "base": "bake",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "opsMax": "40",
+    "startBar": "1"
+   },
+   "url": "24-paint-pour.html?opsMax=40&startBar=1",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 721,
+    "clip": 0.001,
+    "clip.mean": 0,
+    "clipFrames": 84,
+    "lum.mean": 4.24,
+    "lum.min": 3.51,
+    "lum.max": 6.25,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": true,
+    "t3maxErr": 0.0000012830367806202988,
+    "t3hitMismatch": 0,
+    "t3ops": 11,
+    "t4": true,
+    "t5": "true",
+    "t5relErr": 0,
+    "t9": "false",
+    "t9diff": 19,
+    "t10": true,
+    "contrastMin": 3.09,
+    "ops": 13,
+    "opsLogged": 56,
+    "syncMaxMs": 79.08843537414967,
+    "drops": 0,
+    "pours": 1,
+    "breakdownDrops": 0,
+    "combs": 24,
+    "bakes": 3,
+    "bakeMs": 133.3000000000029,
+    "events": 7,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/bake@4k-1.png",
+    "stills/bake@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "psych60s@1080p",
+   "variant": "psych60s",
+   "base": "psych60s",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "palette": "psych60s",
+    "veinColour": "yellow"
+   },
+   "url": "24-paint-pour.html?palette=psych60s&veinColour=yellow",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 734,
+    "clip": 0.054,
+    "clip.mean": 0.007,
+    "clipFrames": 104,
+    "lum.mean": 13.36,
+    "lum.min": 13.14,
+    "lum.max": 13.9,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": true,
+    "t3maxErr": 0.00007003558955095214,
+    "t3hitMismatch": 0,
+    "t3ops": 64,
+    "t4": true,
+    "t5": "true",
+    "t5relErr": 0,
+    "t9": "false",
+    "t9diff": 64,
+    "t10": false,
+    "contrastMin": 1.78,
+    "ops": 64,
+    "opsLogged": 64,
+    "syncMaxMs": 20.31292517006733,
+    "drops": 1,
+    "pours": 1,
+    "breakdownDrops": 0,
+    "combs": 24,
+    "bakes": 0,
+    "bakeMs": 0,
+    "events": 7,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/psych60s@1080p-1.png",
+    "stills/psych60s@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "psych60s@4k",
+   "variant": "psych60s",
+   "base": "psych60s",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "palette": "psych60s",
+    "veinColour": "yellow"
+   },
+   "url": "24-paint-pour.html?palette=psych60s&veinColour=yellow",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 720,
+    "clip": 0.013,
+    "clip.mean": 0.007,
+    "clipFrames": 71,
+    "lum.mean": 13.35,
+    "lum.min": 13.15,
+    "lum.max": 13.9,
+    "errors": 0
+   },
+   "values": {
+    "truths": false,
+    "t1": false,
+    "t1comb": 5.0031270681927253e-8,
+    "t1vortex": 0.000010157210636130287,
+    "t1drop": 0.000003257058352801323,
+    "t3": true,
+    "t3maxErr": 0.00005456229302780353,
+    "t3hitMismatch": 0,
+    "t3ops": 62,
+    "t4": true,
+    "t5": "true",
+    "t5relErr": 0,
+    "t9": "false",
+    "t9diff": 62,
+    "t10": false,
+    "contrastMin": 1.78,
+    "ops": 64,
+    "opsLogged": 64,
+    "syncMaxMs": 99.40589569160707,
+    "drops": 1,
+    "pours": 1,
+    "breakdownDrops": 0,
+    "combs": 24,
+    "bakes": 0,
+    "bakeMs": 0,
+    "events": 7,
+    "clockPlaying": true,
+    "forceDrop": "function"
+   },
+   "stills": [
+    "stills/psych60s@4k-1.png",
+    "stills/psych60s@4k-2.png"
+   ],
+   "errors": []
+  }
+ ],
+ "checks": [],
+ "swipe": null,
+ "gates": [
+  {
+   "name": "truth 1: every op is area-preserving, max |det J - 1| < 1e-5 (float64)",
+   "ok": false,
+   "value": "fails on default@1080p, default@4k · default@1080p false · default@4k false"
+  },
+  {
+   "name": "truth 3: the shader's trace matches the float64 trace (max error < 1e-4, same drop away from boundaries)",
+   "ok": false,
+   "value": "fails on default@4k, build@1080p, build@4k, breakdown@1080p · default@1080p true · default@4k false · flat@1080p true · flat@4k true · drop@1080p true · drop@4k true · build@1080p false · build@4k false · breakdown@1080p false · breakdown@4k true · bake@1080p true · bake@4k true · psych60s@1080p true · psych60s@4k true"
+  },
+  {
+   "name": "truth 4: a stroke then the same stroke reversed is the identity (< 1e-6)",
+   "ok": true,
+   "value": "default@1080p true · default@4k true"
+  },
+  {
+   "name": "truth 5: the pour law r = sqrt(rate t / pi), within 0.5 %",
+   "ok": true,
+   "value": "build@1080p \"true\" · build@4k \"true\""
+  },
+  {
+   "name": "truth 9: the op log replays from the seed and the beat clock alone",
+   "ok": false,
+   "value": "fails on default@1080p, default@4k, flat@1080p, flat@4k, drop@1080p, drop@4k, breakdown@1080p, breakdown@4k, bake@1080p, bake@4k, psych60s@1080p, psych60s@4k · default@1080p \"false\" · default@4k \"false\" · flat@1080p \"false\" · flat@4k \"false\" · drop@1080p \"false\" · drop@4k \"false\" · build@1080p \"true\" · build@4k \"true\" · breakdown@1080p \"false\" · breakdown@4k \"false\" · bake@1080p \"false\" · bake@4k \"false\" · psych60s@1080p \"false\" · psych60s@4k \"false\""
+  },
+  {
+   "name": "truth 10: canada colours >= 3:1 against the ground, no big drop above L 0.75",
+   "ok": true,
+   "value": "default@1080p true · default@4k true"
+  },
+  {
+   "name": "truth 8: every op goes live within 40 ms of its beat",
+   "ok": false,
+   "value": "fails on default@4k, flat@4k, drop@4k, build@4k, breakdown@4k, bake@4k, psych60s@4k · default@1080p 20.313 · default@4k 50.517 · flat@1080p 20.313 · flat@4k 119.723 · drop@1080p 10.562 · drop@4k 168.295 · build@1080p 19.95 · build@4k 60.177 · breakdown@1080p 20.313 · breakdown@4k 79.088 · bake@1080p 10.562 · bake@4k 79.088 · psych60s@1080p 20.313 · psych60s@4k 99.406"
+  },
+  {
+   "name": "the shared clock is playing (Play pressed)",
+   "ok": true,
+   "value": "default@1080p true · default@4k true · flat@1080p true · flat@4k true · drop@1080p true · drop@4k true · build@1080p true · build@4k true · breakdown@1080p true · breakdown@4k true · bake@1080p true · bake@4k true · psych60s@1080p true · psych60s@4k true"
+  },
+  {
+   "name": "the drop at bar 16 fired",
+   "ok": true,
+   "value": "drop@1080p 1 · drop@4k 1"
+  },
+  {
+   "name": "the build's pour started at bar 12",
+   "ok": true,
+   "value": "build@1080p 1 · build@4k 1"
+  },
+  {
+   "name": "no big drops in the breakdown (bars 8-11)",
+   "ok": true,
+   "value": "default@1080p 0 · default@4k 0 · flat@1080p 0 · flat@4k 0 · drop@1080p 0 · drop@4k 0 · build@1080p 0 · build@4k 0 · breakdown@1080p 0 · breakdown@4k 0 · bake@1080p 0 · bake@4k 0 · psych60s@1080p 0 · psych60s@4k 0"
+  },
+  {
+   "name": "combs on the kick (groove) and feathers (breakdown)",
+   "ok": true,
+   "value": "default@1080p 24 · default@4k 24 · breakdown@1080p 24 · breakdown@4k 24"
+  },
+  {
+   "name": "opsMax 40: at least one tiled bake in the window",
+   "ok": true,
+   "value": "bake@1080p 3 · bake@4k 3"
+  },
+  {
+   "name": "#88 forceDrop hook",
+   "ok": true,
+   "value": "default@1080p \"function\" · default@4k \"function\" · flat@1080p \"function\" · flat@4k \"function\" · drop@1080p \"function\" · drop@4k \"function\" · build@1080p \"function\" · build@4k \"function\" · breakdown@1080p \"function\" · breakdown@4k \"function\" · bake@1080p \"function\" · bake@4k \"function\" · psych60s@1080p \"function\" · psych60s@4k \"function\""
+  },
+  {
+   "name": "fps.p05 ≥ 55",
+   "ok": true,
+   "value": "default@1080p 59.52 · default@4k 59.88 · flat@1080p 59.88 · flat@4k 59.88 · drop@1080p 59.88 · drop@4k 59.88 · build@1080p 59.88 · build@4k 59.52 · breakdown@1080p 59.88 · breakdown@4k 59.88 · bake@1080p 59.88 · bake@4k 59.52 · psych60s@1080p 59.52 · psych60s@4k 59.88"
+  },
+  {
+   "name": "longFrames ≤ 0.5",
+   "ok": true,
+   "value": "default@1080p 0 · default@4k 0 · flat@1080p 0 · flat@4k 0 · drop@1080p 0 · drop@4k 0 · build@1080p 0 · build@4k 0 · breakdown@1080p 0 · breakdown@4k 0 · bake@1080p 0 · bake@4k 0 · psych60s@1080p 0 · psych60s@4k 0"
+  },
+  {
+   "name": "errors ≤ 0",
+   "ok": true,
+   "value": "default@1080p 0 · default@4k 0 · flat@1080p 0 · flat@4k 0 · drop@1080p 0 · drop@4k 0 · build@1080p 0 · build@4k 0 · breakdown@1080p 0 · breakdown@4k 0 · bake@1080p 0 · bake@4k 0 · psych60s@1080p 0 · psych60s@4k 0"
+  },
+  {
+   "name": "gpuBusy ≤ 10",
+   "ok": false,
+   "value": "fails on breakdown@1080p · default@1080p 0 · default@4k 2 · flat@1080p 9 · flat@4k 2 · drop@1080p 9 · drop@4k 2 · build@1080p 10 · build@4k 2 · breakdown@1080p 11 · breakdown@4k 2 · bake@1080p 8 · bake@4k 0 · psych60s@1080p 2 · psych60s@4k 2"
+  },
+  {
+   "name": "no white blobs: <= 1 % pixels clipped",
+   "ok": true,
+   "value": "default@1080p 0.009 · default@4k 0.009 · flat@1080p 0 · flat@4k 0 · drop@1080p 0.008 · drop@4k 0.008 · build@1080p 0.013 · build@4k 0.012 · breakdown@1080p 0.011 · breakdown@4k 0.01 · bake@1080p 0.032 · bake@4k 0.001 · psych60s@1080p 0.054 · psych60s@4k 0.013"
+  }
+ ],
+ "notes": [],
+ "tracks": []
+}
