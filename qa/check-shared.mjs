@@ -193,6 +193,8 @@ void main(){ ivec2 sz = textureSize(src,0); vec2 b = floor(gl_FragCoord.xy)*scal
 // the worker: per-pixel transition state machines, flash rings, windows, comfort
 const WORKER = `
 let AW, AH, N, ww, wh, st, nx, ny, A, B, D, tc, ring, ri, rU, rV, rR, rOk, rtc, rring, rri, IL, IM, IR, hist = [], R;
+// trace (report-only): the worst general-flash window's mean L and flashing share per frame, from 1 s before to 1 s after its worst frame
+let trHist = [], trW = -1, trEnd = -1;
 const nwin = () => nx * ny;
 onmessage = e => {
   const m = e.data;
@@ -238,14 +240,14 @@ onmessage = e => {
       IL[o + x + 1] = IL[op + x + 1] + rowL; IM[o + x + 1] = IM[op + x + 1] + rowM; IR[o + x + 1] = IR[op + x + 1] + rowR;
     }
   }
-  const area = ww * wh, means = new Float32Array(nwin());
-  let fMax = 0, fAt = null, rMax = 0, rAt = null, wMax = 0, wAt = null;
+  const area = ww * wh, means = new Float32Array(nwin()), fs = new Float32Array(nwin());
+  let fMax = 0, fAt = null, fW = -1, rMax = 0, rAt = null, wMax = 0, wAt = null;
   for (let wy = 0; wy < ny; wy++) for (let wx = 0; wx < nx; wx++) {
     const x0 = wx * st, y0 = wy * st, x1 = x0 + ww, y1 = y0 + wh;
     const box = I => I[y1 * (AW + 1) + x1] - I[y0 * (AW + 1) + x1] - I[y1 * (AW + 1) + x0] + I[y0 * (AW + 1) + x0];
     const f = box(IM) / area, r = box(IR) / area, mL = box(IL) / area;
-    means[wy * nx + wx] = mL;
-    if (f > fMax) { fMax = f; fAt = [x0, y0]; } if (r > rMax) { rMax = r; rAt = [x0, y0]; } if (mL > wMax) { wMax = mL; wAt = [x0, y0]; }
+    means[wy * nx + wx] = mL; fs[wy * nx + wx] = f;
+    if (f > fMax) { fMax = f; fAt = [x0, y0]; fW = wy * nx + wx; } if (r > rMax) { rMax = r; rAt = [x0, y0]; } if (mL > wMax) { wMax = mL; wAt = [x0, y0]; }
   }
   // rise within 100 ms: current window mean minus the lowest of that window over the last 100 ms
   hist.push([t, means]); while (hist.length && hist[0][0] < t - 100) hist.shift();
@@ -255,6 +257,10 @@ onmessage = e => {
   R.whiteRun = wf > 0.05 ? R.whiteRun + 1 : 0;
   const ts = +((t - R.t0) / 1000).toFixed(2), at = p => p && [p[0] * 4, p[1] * 4];   // window corner in 1440p pixels
   const note = (key, v, extra) => { if (v > R.worst[key].v) R.worst[key] = { v: +v.toFixed(4), t: ts, ...extra }; };
+  trHist.push([ts, means, fs]); while (trHist.length && trHist[0][0] < ts - 1) trHist.shift();
+  const tp = (h, w) => [+(h[0] - R.trace.t).toFixed(3), +h[1][w].toFixed(3), +h[2][w].toFixed(3)];
+  if (fMax > 0 && fMax > R.worst.flash.v) { R.trace = { t: ts, at: at(fAt), pts: [] }; trW = fW; trEnd = ts + 1; R.trace.pts = trHist.map(h => tp(h, trW)); }
+  else if (R.trace && ts <= trEnd) R.trace.pts.push(tp([ts, means, fs], trW));
   if (fMax > 0.25) R.flashFail++; if (rMax > 0.25) R.redFail++; if (mean > 0.60) R.meanFail++; if (wMax > 0.80) R.winFail++; if (rise > 0.25) R.riseFail++; if (R.whiteRun > 3) R.whiteFail++;
   note('flash', fMax, { at: at(fAt) }); note('red', rMax, { at: at(rAt) }); note('mean', mean); note('win', wMax, { at: at(wAt) }); note('rise', rise, { at: at(riseAt) });
   if (wf > R.worst.white.v || R.whiteRun > R.worst.white.run) R.worst.white = { v: +Math.max(wf, R.worst.white.v).toFixed(4), t: ts, run: Math.max(R.whiteRun, R.worst.white.run) };
@@ -427,6 +433,15 @@ if (res.flash) {
     g('10° window mean L ≤ 0.80', f.winFail, `max ${w.win.v}${w.win.at ? ` at ${w.win.at} (t ${w.win.t} s)` : ''}`);
     g('window mean rises ≤ 0.25 in 100 ms', f.riseFail, `max ${w.rise.v}${w.rise.at ? ` at ${w.rise.at} (t ${w.rise.t} s)` : ''}`);
     g('L ≥ 0.9 on ≤ 5 % of the frame, or ≤ 3 frames in a row', f.whiteFail, `max ${(100 * w.white.v).toFixed(1)} % · longest run over 5 %: ${w.white.run} frames`);
+    if (f.trace && f.trace.pts.length) {
+      // report-only: how the worst flash window behaves ±1 s around its worst frame (full per-frame trace in check.json, flash.trace.pts = [dt s, mean L, flashing share])
+      const P = f.trace.pts, Ls = P.map(p => p[1]), Fs = P.map(p => p[2]);
+      let swings = 0, dir = 0, ref = Ls[0];
+      for (const L of Ls) { if (dir >= 0 && L <= ref - 0.02) { if (dir > 0) swings++; dir = -1; ref = L; } else if (dir <= 0 && L >= ref + 0.02) { if (dir < 0) swings++; dir = 1; ref = L; } else if ((dir > 0 && L > ref) || (dir < 0 && L < ref)) ref = L; }
+      const span = P.at(-1)[0] - P[0][0], above = Fs.filter(x => x > 0.25).length;
+      const ser = P.filter((_, i) => i % 3 === 0).map(p => p[1].toFixed(2)).join(' ');
+      add('worst flash window trace ±1 s (report-only)', null, `${f.trace.at} at t ${f.trace.t} s · ${P.length} frames over ${span.toFixed(2)} s · window mean L ${Math.min(...Ls).toFixed(2)}–${Math.max(...Ls).toFixed(2)}, ${swings} swings ≥ 0.02 (${(swings / Math.max(span, 1e-3) / 2).toFixed(1)} Hz) · flashing share > 25 % on ${above} frames, peak ${(100 * Math.max(...Fs)).toFixed(0)} % · mean L every 3rd frame: ${ser}`);
+    }
     if (f.mash) {
       const m = f.mash, slots = [...new Set(m.stages.flatMap(s => s.slots))].sort((a, b) => a - b);
       const at = t => { if (t == null) return '–'; const ms = f.t0 + t * 1000, s = m.stages.find(x => ms >= x.start && ms < x.end); return s ? (s.slots.length > 1 ? 'all together' : 'slot ' + s.slots[0]) : 'outside the mash'; };
