@@ -455,7 +455,10 @@ void main() {
   float g2 = dot(g, g);
   float K = (g.x * g.x * A11 + g.y * g.y * A22 + g.z * g.z * A33 + 2.0 * (g.x * g.y * A12 + g.x * g.z * A13 + g.y * g.z * A23)) / (g2 * g2 + 1e-12);
   vec3 n = normalize(g), v = -rd, l = normalize(vec3(0.6, 0.8, 0.4));
-  float kt = K / (abs(K) + 4.0);                                        // −1 … 1
+  // |K| far above any smooth part's (creases: the surgery cut at the drop, smin/smax seams) is finite-difference noise
+  // whose sign flips frame to frame, so the curvature colour flickered there; it fades out above |K| 25 (#127: 23's
+  // flash sat at t 17.0 s, the bar-14 drop, through every camera change)
+  float kt = K / (abs(K) + 4.0) * (1.0 - smoothstep(25.0, 100.0, abs(K)));   // −1 … 1
   vec3 curv = kt > 0.0 ? mix(vec3(0.9, 0.85, 0.8), vec3(1.0, 0.45, 0.15), kt) : mix(vec3(0.9, 0.85, 0.8), vec3(0.15, 0.45, 1.0), -kt);
   // soft shadow and ambient occlusion
   float sh = 1.0, st = 0.02;

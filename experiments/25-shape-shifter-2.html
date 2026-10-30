@@ -684,7 +684,9 @@ void main() {
     if (i >= uSteps) break;
     p = ro + rd * t; float d = sdf(p), r = d * uStepK;
     if (relaxed && r + rPrev < t - tPrev) { t = tPrev + rPrev; om = 1.0; relaxed = false; continue; }
-    if (d < 0.0006 * t + 0.0004) { hit = true; break; }
+    // the hit tolerance grows on long rays (after 40 steps, +15 % a step): the rays that ran to the step cap were the
+    // ones grazing the surface in close-ups (#127: 20 ms frames at bars 10.80–10.96, march-bound, not shading-bound)
+    if (d < (0.0006 * t + 0.0004) * (1.0 + 0.15 * float(max(i - 40, 0)))) { hit = true; break; }
     dLast = d; tPrev = t; rPrev = r;
     relaxed = d <= 0.3 && om > 1.0;
     t += d > 0.3 ? max(d - 2.0 * uWave.x, r) : r * om;
@@ -712,7 +714,9 @@ void main() {
     K = (g.x * g.x * A11 + g.y * g.y * A22 + g.z * g.z * A33 + 2.0 * (g.x * g.y * A12 + g.x * g.z * A13 + g.y * g.z * A23)) / (g2 * g2 + 1e-12);
   }
   vec3 n = normalize(g), v = -rd, l = normalize(vec3(0.6, 0.8, 0.4));
-  float kt = K / (abs(K) + 4.0) * (1.0 - lod);
+  // |K| far above any smooth part's (creases: the surgery cut, smin/smax seams) is finite-difference noise whose sign
+  // flips frame to frame, so the curvature colour flickered there; it fades out above |K| 25 (#127)
+  float kt = K / (abs(K) + 4.0) * (1.0 - lod) * (1.0 - smoothstep(25.0, 100.0, abs(K)));
   vec3 curv = kt > 0.0 ? mix(vec3(0.9, 0.85, 0.8), vec3(1.0, 0.45, 0.15), kt) : mix(vec3(0.9, 0.85, 0.8), vec3(0.15, 0.45, 1.0), -kt);
   float sh = 1.0, st = 0.02;
   if (dot(n, l) <= 0.0) sh = 0.0;   // facing away from the light: no shadow march (diffuse and specular are 0 there)
@@ -935,10 +939,7 @@ function rawLook(i) {   // the aim at grid point i: a direction near the shape's
   return r;
 }
 function lookAt(bars) {   // the Hann-weighted mean of the raw aims within ±LOOK_W bars (weights reach 0 at the ends, so it is continuous)
-  // inside a dive the window widens to ±1.5·LOOK_W, following the window's ramps so it stays continuous: the view
-  // turns slower there (#104 follow-up: 25's flash at t 77.9 s sat in a dive turning at up to 274°/s)
-  const win = threadWindow(bars), plan = win && threadPlan(win), wide = LOOK_W * (1 + 0.5 * threadWeight(bars, win, plan));
-  const x = bars / LOOK_G, n = wide / LOOK_G, i0 = Math.ceil(x - n), i1 = Math.floor(x + n);
+  const x = bars / LOOK_G, n = LOOK_W / LOOK_G, i0 = Math.ceil(x - n), i1 = Math.floor(x + n);
   let s = [0, 0, 0], roll = 0, wsum = 0;
   for (let i = i0; i <= i1; i++) {
     const w = 0.5 + 0.5 * Math.cos(Math.PI * (i - x) / n);
