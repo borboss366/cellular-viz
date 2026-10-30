@@ -71,5 +71,5 @@
     { "metric": "clip", "max": 1, "name": "no white blobs: <= 1 % pixels clipped" }
   ],
   "record": { "stills": 2 },
-  "debug": { "console": true, "screenshotAt": [2, 8] }
+  "debug": { "console": true }
 }
