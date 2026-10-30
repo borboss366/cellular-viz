@@ -15,7 +15,9 @@
 
 import * as K from './24-marble.mjs';
 
-const MAXOPS = 128, BAKE_TILES = 8, BAKE_HEADROOM = 24, HISTORY_MAX = 4096;
+// 16 bake tiles (was 8) and a bake at opsMax − 16 live ops, opsMax 64 (was 96): the GPU p95 grew with the live op
+// count (viz-134-2: p95 8.72 ms at 1440p, limit 7), and each bake frame costs 1/16 of a base pass
+const MAXOPS = 128, BAKE_TILES = 16, BAKE_HEADROOM = 16, HISTORY_MAX = 4096;
 const BASE_RECT = [-1.3, -0.85, 2.6, 1.7];   // world rect the base layer covers (the camera's whole range + margin)
 const BASE_DIST_K = 0.04;                     // world units per unit of the base's alpha (distance to a boundary)
 
@@ -32,10 +34,11 @@ uniform vec3 uPal[16];
 // the backward trace: q the traced point, gHit the drop that holds it, gD the signed distance to the nearest
 // boundary passed (world units at that op's stage, capped): negative inside the newer drop of that boundary, so it
 // crosses 0 at every boundary and its screen derivative is smooth there
-float gD; int gHit;
+// gV: the fastest the paint at this pixel is moving (stage units a second), from the ops still running
+float gD, gV; int gHit;
 void cand(float s) { if (abs(s) < abs(gD)) gD = s; }
 vec2 traceOps(vec2 q) {
-  gD = 0.05; gHit = -1;
+  gD = 0.05; gV = 0.0; gHit = -1;
   for (int i = uN - 1; i >= 0; i--) {
     vec4 a = uOp[3 * i]; int ty = int(a.x + 0.5);
     if (ty == 1) {
@@ -43,18 +46,22 @@ vec2 traceOps(vec2 q) {
       vec2 dv = q - a.yz; float h2 = dot(dv, dv), h = sqrt(h2);
       if (h < r) { gHit = i; cand(h - r); break; }
       cand(h - r);
-      q = a.yz + dv * sqrt(max(0.0, 1.0 - r * r / h2));
+      gV = max(gV, uOp[3 * i + 1].y / h);
+      q = a.yz + dv * (sqrt(max(0.0, (h - r) * (h + r))) / h);   // (h−r)(h+r): no cancellation at the rim
     } else if (ty == 2) {
       vec4 b = uOp[3 * i + 1], c = uOp[3 * i + 2];
       vec2 M = vec2(a.w, b.x);
       float p = dot(q - a.yz, vec2(-M.y, M.x)), hf = (c.y - 1.0) * c.x * 0.5;
       float j = clamp(floor((p + hf) / c.x + 0.5), 0.0, c.y - 1.0), d = abs(p - (j * c.x - hf));
-      q -= b.y * pow(b.z, d / b.w) * M;
+      if (d > 40.0 * b.w) continue;                          // u^(d/λ) < 1e-9: no move
+      float f = pow(b.z, d / b.w);
+      q -= b.y * f * M; gV = max(gV, c.z * f);
     } else if (ty == 3) {
       vec4 b = uOp[3 * i + 1], c = uOp[3 * i + 2];
       vec2 dv = q - a.yz; float h = length(dv), e = c.x > 0.5 ? abs(h - b.y) : h - b.y;
-      float ang = -a.w * pow(b.x, e / b.z) / max(h, b.w), cs = cos(ang), sn = sin(ang);
-      q = a.yz + vec2(cs * dv.x - sn * dv.y, sn * dv.x + cs * dv.y);
+      if (e > c.y) continue;                                 // beyond the swirl's reach: moves < 1e-7
+      float f = pow(b.x, e / b.z), hm = max(h, b.w), ang = -a.w * f / hm, cs = cos(ang), sn = sin(ang);
+      q = a.yz + vec2(cs * dv.x - sn * dv.y, sn * dv.x + cs * dv.y); gV = max(gV, c.z * f * h / hm);
     }
   }
   return q;
@@ -73,7 +80,7 @@ vec3 colourOf(vec2 q) {
 `;
 const RENDER_FS = TRACE + `
 uniform vec2 uRes; uniform vec3 uCam;            // camera x, y (world), zoom (world units per screen height)
-uniform float uFlat, uVeinOn, uVeinW, uBevel, uHeight, uGloss, uKick;
+uniform float uFlat, uVeinOn, uVeinW, uBevel, uHeight, uGloss, uKick, uV0, uV1;
 uniform vec3 uVein;
 uniform vec4 uStr[2]; uniform vec3 uStrCol; uniform float uStrOn;   // strings: pour point (px), top x (px), sag (px)
 out vec4 o;
@@ -85,13 +92,17 @@ void main() {
   vec2 g = vec2(dFdx(d), dFdy(d)); float gn = max(length(g), 1e-12);
   float dpx = abs(d) / gn;                     // distance to the nearest boundary, in screen pixels
   vec2 nd = sign(d) * g / gn;                  // pointing away from that boundary
-  if (uVeinOn > 0.5) col = mix(col, uVein, 1.0 - smoothstep(uVeinW - 0.5, uVeinW + 0.5, dpx));
+  // motion damping (flash safety, viz-134-2): where the paint moves fast (around a growing drop, under a stroke)
+  // fine stripes sweep past each pixel many times a second; there the veins fade and the paint eases to a dark mid tone
+  float mv = smoothstep(uV0, uV1, gV);
+  if (uVeinOn > 0.5) col = mix(col, uVein, (1.0 - smoothstep(uVeinW - 0.5, uVeinW + 0.5, dpx)) * (1.0 - smoothstep(0.3 * uV0, uV0, gV)));
+  col = mix(col, vec3(0.035), 0.8 * mv);
   if (uFlat < 0.5) {
     float x = clamp(dpx / uBevel, 0.0, 1.0), h = x * x * (3.0 - 2.0 * x), slope = uHeight * 6.0 * x * (1.0 - x);
     vec3 n = normalize(vec3(-slope * nd, 1.0));
     vec3 L = normalize(vec3(-0.45, 0.55, 0.70)), Hh = normalize(L + vec3(0.0, 0.0, 1.0));
     float diff = max(dot(n, L), 0.0), ao = mix(0.72, 1.0, h);
-    float spec = uGloss * (1.0 + 0.1 * uKick) * pow(max(dot(n, Hh), 0.0), 140.0);
+    float spec = uGloss * (1.0 + 0.1 * uKick) * (1.0 - mv) * pow(max(dot(n, Hh), 0.0), 140.0);
     col = col * (0.82 + 0.55 * (diff - 0.70)) * ao + vec3(spec);
     // paint strings: thin glossy threads from the pour point up out of the frame
     if (uStrOn > 0.5) for (int k = 0; k < 2; k++) {
@@ -203,13 +214,13 @@ export function createScene() {
     while (st.pending.length > 512) st.pending.shift();
   }
   const paramsOf = op => { const p = {}; for (const [k, v] of Object.entries(op)) if (!['cause', 'created', 'perfStart', 'syncMs', 'role'].includes(k)) p[k] = typeof v === 'number' ? +v.toPrecision(12) : v; return p; };
-  function pack(ops, beats) {
+  function pack(ops, beats, bpm = st.bpm || 120) {
     opData.fill(0);
     ops.forEach((op, i) => {
-      const e = K.effective(op, beats), o = i * 12;
-      if (e.type === K.DROP) opData.set([1, e.cx, e.cy, e.r, e.colour, 0, 0, 0], o);
-      else if (e.type === K.COMB) opData.set([2, e.bx, e.by, e.mx, e.my, e.z, e.u, e.lam, e.sp, e.n, 0, 0], o);
-      else opData.set([3, e.cx, e.cy, e.z, e.u, e.r0, e.lam, e.hmin, e.ring, 0, 0, 0], o);
+      const e = K.effective(op, beats), o = i * 12, v = K.rateOf(op, beats, bpm);
+      if (e.type === K.DROP) opData.set([1, e.cx, e.cy, e.r, e.colour, v, 0, 0], o);
+      else if (e.type === K.COMB) opData.set([2, e.bx, e.by, e.mx, e.my, e.z, e.u, e.lam, e.sp, e.n, v, 0], o);
+      else opData.set([3, e.cx, e.cy, e.z, e.u, e.r0, e.lam, e.hmin, e.ring, K.swirlReach(e), v, 0], o);
     });
     gl.bindBuffer(gl.UNIFORM_BUFFER, ubo); gl.bufferSubData(gl.UNIFORM_BUFFER, 0, opData); gl.bindBuffer(gl.UNIFORM_BUFFER, null);
   }
@@ -244,10 +255,13 @@ export function createScene() {
     const inp = inputsOf(ctl), ev = { bpb, bpm };
     // --- the song and the drums since the last frame (the clock jumped back or far ahead: start from here)
     // (a jump of more than a bar, as forceDrop makes, starts at the current beat, so a drop it lands on still fires)
-    if (st.lastBeat === null || beats < st.lastBeat - 1e-6 || beats - st.lastBeat > bpb) {
+    // A small step back (the clock's output latency settling: up to 168 ms at 4K in viz-134-2) is not a seek: hold,
+    // fire nothing until the clock passes the last beat seen again. Resetting there re-fired the current beat's ops
+    // late (truth 8) and split the op log (truth 9).
+    if (st.lastBeat === null || beats < st.lastBeat - 0.5 || beats - st.lastBeat > bpb) {
       st.lastBeat = Math.floor(beats + 1e-9) - 1e-6;
       st.pending = []; st.epoch = st.lastBeat; st.epochId = (st.epochId || 0) + 1;
-    }
+    } else if (beats < st.lastBeat) st.backSteps = (st.backSteps || 0) + 1;
     st.inp = inp; st.bpb = bpb; st.bpm = bpm; st.pat = ctl.pattern || null;
     for (const e of K.eventsIn(st.lastBeat, beats, bpb, hits)) {
       if (e.kind === 'kick') st.kickBeat = e.beat;
@@ -322,6 +336,7 @@ export function createScene() {
     const vein = ctl.veinColour === 'none' ? -1 : (st.pal.veins[ctl.veinColour] ?? st.pal.veins.lime);
     gl.uniform1f(u.uFlat, ctl.flat ? 1 : 0); gl.uniform1f(u.uVeinOn, vein >= 0 ? 1 : 0); gl.uniform1f(u.uVeinW, ctl.veinWidth * fh / 1440);
     gl.uniform3fv(u.uVein, vein >= 0 ? K.rgb(st.pal.colours[vein]).map(K.linear) : [0, 0, 0]);
+    gl.uniform1f(u.uV0, 0.12); gl.uniform1f(u.uV1, 0.4);   // screen heights a second: 170 → 580 px/s at 1440p
     gl.uniform1f(u.uBevel, ctl.bevelWidth * fh / 1440); gl.uniform1f(u.uHeight, ctl.paintHeight); gl.uniform1f(u.uGloss, ctl.gloss); gl.uniform1f(u.uKick, kick);
     gl.uniform4fv(u.uStr, str); gl.uniform3fv(u.uStrCol, strCol); gl.uniform1f(u.uStrOn, strOn);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -403,13 +418,17 @@ export function createScene() {
     const cam = st.view ? st.view.cam : { x: 0, y: 0, zoom: 1 }, pts = [];
     for (let k = 0; k < 2048; k++) pts.push([cam.x + U() * 0.9 * cam.zoom, cam.y + U() * 0.5 * cam.zoom]);
     const G = traceGPU(pts), C = traceCPU(pts);
-    let maxErr = 0, mism = 0, near = 0;
+    // Points within 1e-3 of a boundary are left out of both counts (the spec's rule for the hit): the inverse drop
+    // √(h² − r²) is ill-conditioned at a rim, so float32 rounding there grows without bound in the traced point
+    // (viz-134-2: 8.7e-4 during the pour). maxErrAll keeps every point, for the report.
+    let maxErr = 0, maxErrAll = 0, mism = 0, near = 0;
     if (G) pts.forEach((_, i) => {
       const c = C[i], g = G[i], nearB = Math.abs(c.d) < 1e-3 || Math.abs(g.d) < 1e-3;
-      if (c.hit !== g.hit) { if (nearB) near++; else mism++; return; }
-      maxErr = Math.max(maxErr, Math.hypot(c.x - g.x, c.y - g.y));
+      if (nearB) near++;
+      if (c.hit !== g.hit) { if (!nearB) mism++; return; }
+      const e = Math.hypot(c.x - g.x, c.y - g.y); maxErrAll = Math.max(maxErrAll, e); if (!nearB) maxErr = Math.max(maxErr, e);
     });
-    out.t3 = { points: pts.length, ops: st.live.length, maxErr, hitMismatch: mism, nearBoundary: near, ok: !!G && maxErr < 1e-4 && mism === 0 };
+    out.t3 = { points: pts.length, ops: st.live.length, maxErr, maxErrAll, hitMismatch: mism, nearBoundary: near, ok: !!G && maxErr < 1e-4 && mism === 0 };
     // 4: a stroke then the same stroke reversed (N then S) is the identity
     let w4 = 0;
     for (let k = 0; k < 200; k++) {
@@ -426,8 +445,13 @@ export function createScene() {
       for (const e of K.eventsIn(a, b, st.bpb, K.patternHits(a, b, st.bpb, st.pat))) for (const op of K.songOps(e, inp, st.pal, st.bpb, st.bpm)) if (op.start <= b + 1e-9) rep.push(op);
       const key = o => `${o.tBeat ?? o.start}|${o.role}|${JSON.stringify(o.params ?? paramsOf(o))}`;
       const logged = st.opLog.filter(o => o.epoch === st.epochId && !/^trigger/.test(o.cause)).map(key).sort(), replay = rep.map(o => key({ ...o, params: paramsOf(o) })).sort();
-      let diff = Math.abs(logged.length - replay.length); for (let i = 0; i < Math.min(logged.length, replay.length); i++) if (logged[i] !== replay[i]) diff++;
-      out.t9 = { from: a, to: b, logged: logged.length, replayed: replay.length, diff, ok: diff === 0 };
+      // multiset difference (a sorted zip counted every entry after the first gap as different)
+      const count = new Map(); for (const k of replay) count.set(k, (count.get(k) || 0) + 1);
+      const onlyLogged = []; for (const k of logged) { const n = count.get(k) || 0; if (n > 0) count.set(k, n - 1); else onlyLogged.push(k); }
+      const onlyReplay = []; for (const [k, n] of count) for (let j = 0; j < n; j++) onlyReplay.push(k);
+      const diff = onlyLogged.length + onlyReplay.length;
+      out.t9 = { from: a, to: b, epochs: st.epochId, backSteps: st.backSteps || 0, logged: logged.length, replayed: replay.length, diff,
+        onlyLogged: onlyLogged.slice(0, 3), onlyReplay: onlyReplay.slice(0, 3), ok: diff === 0 };
     } else out.t9 = { ok: null, note: 'no beats yet' };
     // 10: contrast against the ground ≥ 3:1 for every colour of the palette
     const ratios = Object.fromEntries(st.pal.colours.slice(1).map(h => [h, +K.contrast(h, K.GROUND).toFixed(2)]));
@@ -467,7 +491,7 @@ export const DETAIL = [
   { name: 'palette', type: 'long', values: K.PALETTE_NAMES, default: 'canada' },
   { name: 'veinColour', type: 'long', values: ['lime', 'yellow', 'black', 'none'], default: 'lime' },
   { name: 'seed', type: 'long', default: 1, min: 1, max: 1e6 },
-  { name: 'opsMax', type: 'long', default: 96, min: 32, max: 128 },
+  { name: 'opsMax', type: 'long', default: 64, min: 32, max: 128 },
   { name: 'dropScale', type: 'float', default: 1, min: 0.4, max: 1.4 },
   { name: 'cellsPerDrop', type: 'float', default: 0.5, min: 0, max: 1 },
   { name: 'blackShare', type: 'float', default: 0.3, min: 0, max: 0.6 },

@@ -76,8 +76,8 @@ export function trace(ops, x, y) {
 }
 // the inverse of fwd: where the paint now at Q came from; null when Q lies in a drop (no paint was there before)
 export function inv(ops, x, y) { const t = trace(ops, x, y); return t.hit >= 0 ? null : [t.x, t.y]; }
-// det of the Jacobian by central differences
-export function jacobianDet(f, x, y, h = 1e-5) {
+// det of the Jacobian by central differences (h 2e-6: at 1e-5 the truncation error near a vortex core reached 2e-5)
+export function jacobianDet(f, x, y, h = 2e-6) {
   const [ax1, ay1] = f(x + h, y), [ax0, ay0] = f(x - h, y), [bx1, by1] = f(x, y + h), [bx0, by0] = f(x, y - h);
   const a = (ax1 - ax0) / (2 * h), c = (ay1 - ay0) / (2 * h), b = (bx1 - bx0) / (2 * h), d = (by1 - by0) / (2 * h);
   return a * d - b * c;
@@ -93,6 +93,19 @@ export function effective(op, b) {
     return { ...op, r, s };
   }
   return { ...op, z: op.z * smooth(s), s };
+}
+// How fast an op moves the paint right now (for the shader's motion damping), per second at bpm:
+//   drop: g = (dA/dt)/2π, so paint at distance h outside it moves at g/h; comb, swirl: dz/dt (world or world·rad per s)
+export function rateOf(op, b, bpm) {
+  const s = progress(op, b), secs = op.dur * 60 / bpm;
+  if (s <= 0 || s >= 1 || !(secs > 0)) return 0;
+  if (op.type === DROP) return (op.pour ? op.pour * bpm / 60 : Math.PI * op.r * op.r / secs) / (2 * Math.PI);
+  return Math.abs(op.z) * 6 * s * (1 - s) / secs;
+}
+// a swirl's reach: beyond it (|h − r0| for a ring, h − r0 for a vortex) it moves paint by less than 1e-7
+export function swirlReach(o) {
+  if (Math.abs(o.z) < 1e-12) return -1e9;
+  return o.lam * Math.max(0, Math.log(1e-7 / Math.abs(o.z)) / Math.log(o.u));
 }
 
 // ---------------------------------------------------------------- colour
@@ -126,10 +139,13 @@ export function palette(name = 'canada') {
 //   ¼ of the width × ⅓ of the height, area A_w = 0.148 H²) gains at most ΔL·(dA/dt)·0.1 s / A_w while the drop is
 //   inside it, so dA/dt ≤ 2·A_w/ΔL and T_gov = π r² ΔL / (2 A_w). Precomputed per drop, so the op log stays a
 //   function of the seed and the beat clock.
-export const WINDOW_AREA = (16 / 9 / 4) * (1 / 3);
+// T_move (QA box, viz-134-2: general flash after each drop): a growing drop pushes all the paint around it outward
+//   at (dA/dt)/(2πρ), and fine stripes sweeping past at that speed flash. dA/dt ≤ A_MOVE (screen heights² a second)
+//   keeps that push slow; the scene also damps contrast where paint still moves fast (shader, uV0/uV1).
+export const WINDOW_AREA = (16 / 9 / 4) * (1 / 3), A_MOVE = 0.15;
 export function growSeconds(rScreen, dL, beatSec) {
-  const d = Math.max(0, dL), tMin = 0.7 * (rScreen / 0.35) ** 2 * (d / 0.675), tGov = Math.PI * rScreen * rScreen * d / (2 * WINDOW_AREA);
-  return Math.max(beatSec, tMin, tGov);
+  const d = Math.max(0, dL), a = Math.PI * rScreen * rScreen, tMin = 0.7 * (rScreen / 0.35) ** 2 * (d / 0.675), tGov = a * d / (2 * WINDOW_AREA);
+  return Math.max(beatSec, tMin, tGov, a / A_MOVE);
 }
 
 // ---------------------------------------------------------------- deterministic randomness
@@ -200,10 +216,11 @@ export function opsFor(ev, o, pal) {
     out.push({ type: COMB, start: beat, dur: 0.5, bx: cam.x + (r() - 0.5) * 0.6 * cam.zoom, by: cam.y + (r() - 0.5) * 0.6 * cam.zoom, mx: dir[0], my: dir[1],
       z: (0.02 + 0.03 * r()) * o.tineDepth * cam.zoom, u: 0.3 + 0.3 * r(), lam: 0.02 * (1.5 - o.tineSharp) * cam.zoom, sp: (0.08 + 0.07 * r()) * cam.zoom, n, role: 'comb' });
   } else if (ev.kind === 'snare' && o.vortexOn) {
-    // a small vortex: a quarter turn at its radius over ¼ beat
+    // a small vortex: an eighth of a turn at its radius over ½ beat, at most a quarter turn at its centre (hmin = r0)
+    // (was a quarter turn over ¼ beat with 10 rad at the core: fast swirls of fine stripes flash, viz-134-2)
     const r0 = (0.06 + 0.06 * r()) * cam.zoom, sg = r() < 0.5 ? -1 : 1;
-    out.push({ type: SWIRL, start: beat, dur: 0.25, cx: cam.x + (r() - 0.5) * 1.2 * cam.zoom, cy: cam.y + (r() - 0.5) * 0.7 * cam.zoom,
-      z: sg * Math.PI / 2 * r0, u: 0.35, r0, lam: r0, hmin: 0.3 * r0, ring: 0, role: 'vortex' });
+    out.push({ type: SWIRL, start: beat, dur: 0.5, cx: cam.x + (r() - 0.5) * 1.2 * cam.zoom, cy: cam.y + (r() - 0.5) * 0.7 * cam.zoom,
+      z: sg * Math.PI / 4 * r0, u: 0.5, r0, lam: r0, hmin: r0, ring: 0, role: 'vortex' });
   } else if (ev.kind === 'bar') {
     const ph = phaseOf(bar);
     if (ph === 'breakdown') {   // one slow alternating N/S feather comb a bar

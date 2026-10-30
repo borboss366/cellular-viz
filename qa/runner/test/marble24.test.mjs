@@ -32,6 +32,26 @@ test('truth 1: every op is area-preserving, max |det J − 1| < 1e-5 on 10⁴ po
   console.table(rows);
 });
 
+test('the shader\'s skips are exact to 1e-7: a swirl beyond its reach, a comb beyond 40 λ', () => {
+  for (let k = 0; k < 200; k++) {
+    const o = R() < 0.5 ? mk.vortex() : mk.ring(), reach = K.swirlReach(o);
+    for (let j = 0; j < 50; j++) {
+      const x = 3 * U(), y = 3 * U(), h = Math.hypot(x - o.cx, y - o.cy), e = o.ring ? Math.abs(h - o.r0) : h - o.r0;
+      if (e <= reach) continue;
+      const p = K.fwdOp(o, x, y); assert.ok(Math.hypot(p[0] - x, p[1] - y) < 1e-7, `swirl moved ${Math.hypot(p[0] - x, p[1] - y)} beyond its reach`);
+    }
+  }
+  const c = mk.comb(); assert.ok(c.z * Math.pow(c.u, 40) < 1e-7);
+  assert.equal(K.swirlReach({ ...mk.vortex(), z: 0 }), -1e9);
+});
+
+test('motion rates: a drop grows at ≤ A_MOVE, strokes report dz/dt only while running', () => {
+  const d = { type: K.DROP, start: 0, dur: K.growSeconds(0.35, 0.6, 0.5) / 0.5, r: 0.35 };
+  assert.ok(K.rateOf(d, d.dur / 2, 120) * 2 * Math.PI <= K.A_MOVE + 1e-12);
+  assert.equal(K.rateOf(d, -1, 120), 0); assert.equal(K.rateOf(d, d.dur + 1, 120), 0);
+  const c = { ...mk.comb(), start: 0, dur: 0.5 }; assert.ok(Math.abs(K.rateOf(c, 0.25, 120) - c.z * 1.5 / 0.25) < 1e-12);
+});
+
 test('truth 3 (float64 half): the inverse is exact, round trip after 96 ops < 1e-9', () => {
   const ops = randomOps(96);
   let w = 0, n = 0;
