@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROBES, readExpr } from './probes.mjs';
+import { TRACKS } from './audio.mjs';
 export { readExpr };
 
 export const VERSION = 1;
@@ -112,7 +113,8 @@ export function validate(raw) {
   else gates.forEach((g, i) => {
     const w = `gates[${i}]`;
     if (!isObj(g)) return errs.push(`${w}: must be an object like {"metric": "fps.p05", "min": 60}`);
-    for (const k of Object.keys(g)) if (!['metric', 'min', 'max', 'equals', 'variant', 'resolution', 'name'].includes(k)) errs.push(`${w}: unknown field "${k}"`);
+    for (const k of Object.keys(g)) if (!['metric', 'min', 'max', 'equals', 'variant', 'resolution', 'name', 'track'].includes(k)) errs.push(`${w}: unknown field "${k}"`);
+    if (g.track !== undefined && !TRACKS.includes(g.track)) errs.push(`${w}.track: one of ${TRACKS.join(', ')} (a real track in QA_AUDIO_DIR; the gate is skipped when it is missing)`);
     const m = g.metric;
     const known = typeof m === 'string' && (METRICS[m] || (m.startsWith('value.') && isObj(values) && m.slice(6) in values));
     if (!known) errs.push(`${w}: metric "${m}" is not measured (${Object.keys(METRICS).join(', ')}, or value.<name> from values)`);
@@ -196,13 +198,20 @@ export const query = params => new URLSearchParams(Object.entries(params).map(([
 /** metric value of one run result ({metrics, values}) */
 export function metricOf(run, m) { return m.startsWith('value.') ? run.values?.[m.slice(6)] : run.metrics?.[m]; }
 
-/** gates against measured runs: [{name, ok, value}] (value: the worst run) */
-export function evalGates(exp, runs) {
+/**
+ * gates against measured runs: [{name, ok, value}] (value: the worst run). missing: track names absent from
+ * QA_AUDIO_DIR. A gate with a missing track, or whose runs were all skipped for one, is {ok: null, skipped: true}:
+ * a report-only row, never a fail.
+ */
+export function evalGates(exp, runs, { missing = [] } = {}) {
   return exp.gates.map(g => {
     const vs = g.variant === undefined ? null : list(g.variant), rs = g.resolution === undefined ? null : list(g.resolution).map(r => size(r).name);
-    const mine = runs.filter(r => (!vs || vs.includes(r.variant) || vs.includes(r.base)) && (!rs || rs.includes(r.size.name)));
+    const matched = runs.filter(r => (!vs || vs.includes(r.variant) || vs.includes(r.base)) && (!rs || rs.includes(r.size.name)));
+    const mine = matched.filter(r => !r.skipped);
     const bar = [g.min !== undefined && `≥ ${g.min}`, g.max !== undefined && `≤ ${g.max}`, g.equals !== undefined && `= ${g.equals}`].filter(Boolean).join(' ');
     const name = g.name || `${g.metric} ${bar}${vs ? ` (${vs.join(', ')})` : ''}${rs ? ` @${rs.join(', ')}` : ''}`;
+    if (g.track && missing.includes(g.track)) return { name, ok: null, skipped: true, value: `skipped: track missing (${g.track})` };
+    if (!mine.length && matched.length) return { name, ok: null, skipped: true, value: `skipped: track missing (${[...new Set(matched.map(r => r.skipped))].join(', ')})` };
     if (!mine.length) return { name, ok: false, value: 'no run matches this gate' };
     const fails = [], seen = [];
     for (const r of mine) {
@@ -231,7 +240,7 @@ const cell = s => String(s ?? '').replace(/[|\n\r]/g, ' ').slice(0, 280);
 /** check.md that qa/builds.mjs finish reads: | gate | ✅/❌ | detail |, ℹ️ rows are notes */
 export function checkMd(title, gates, notes = []) {
   return `# ${title}\n\n| gate | result | detail |\n|---|---|---|\n`
-    + gates.map(g => `| ${cell(g.name)} | ${g.ok ? '✅' : '❌'} | ${cell(g.value)} |`).join('\n')
+    + gates.map(g => `| ${cell(g.name)} | ${g.skipped ? 'ℹ️' : g.ok ? '✅' : '❌'} | ${cell(g.value)} |`).join('\n')
     + (notes.length ? '\n' + notes.map(([k, v]) => `| ${cell(k)} | ℹ️ | ${cell(v)} |`).join('\n') : '') + '\n';
 }
 

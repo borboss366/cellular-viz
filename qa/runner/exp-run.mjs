@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Runs one experiment file in headless Chromium. The runner calls it for a qa-ready PR; nobody types it.
 //   node qa/runner/exp-run.mjs --file <exp.json> --experiments <PR pages> --qa <tree>/qa --out <result dir>
-//                              [--experiments-old <older pages> --vs <sha>] [--pr N] [--sha <sha>]
+//                              [--experiments-old <older pages> --vs <sha>] [--pr N] [--sha <sha>] [--audio-dir <dir>]
+// The real tracks (audio.mjs, #95 truth (b)) are served from --audio-dir / $QA_AUDIO_DIR under /qa-audio/<name> on this
+// 127.0.0.1 server only; runs and gates on a missing track are skipped, and reports keep only file names and sha256.
 // Writes into --out: results.json, check.md (the gates, read by qa/builds.mjs finish), report.md, stills/, debug/, checks/<script>/.
 // With "swipe" it also records the old and new pages through qa/run.mjs into one run folder for the grading page,
 // and names it in results.json (swipe.dir). Prints the --out folder as its last line.
@@ -14,6 +16,7 @@ import { spawn } from 'node:child_process';
 import { loadFile, expand, query, evalGates, gatesFromMd, checkMd, readExpr, METRICS } from './experiment.mjs';
 import { PROBES } from './probes.mjs';
 import { readGpuBusy } from './gpu.mjs';
+import { audioDir, serveAudio, tracksUsed, trackInfo, describe } from './audio.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 && i + 1 < process.argv.length ? process.argv[i + 1] : d; };
 const FILE = arg('file'), EXP_DIR = path.resolve(arg('experiments', '')), OLD_DIR = arg('experiments-old') ? path.resolve(arg('experiments-old')) : null;
@@ -27,10 +30,16 @@ const notes = [];
 const note = s => { notes.push(s); console.error(s); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const safe = s => String(s).replace(/[^\w.@-]+/g, '-');
+const AUDIO_DIR = audioDir(arg('audio-dir'));
+process.env.QA_AUDIO_DIR = AUDIO_DIR;   // the check scripts below inherit it
+const tracks = await Promise.all(tracksUsed(exp).map(n => trackInfo(n, AUDIO_DIR)));
+const missing = tracks.filter(t => t.missing).map(t => t.name);
+if (tracks.length) note(`tracks: ${describe(tracks)}`);
 
 // ---- static server: the PR's experiments/ folder (or the old one under /old/) ----
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.glsl': 'text/plain' };
 const server = http.createServer((req, res) => {
+  if (serveAudio(req, res, AUDIO_DIR)) return;   // /qa-audio/<name>: the fixed track names only
   const rel = decodeURIComponent(new URL(req.url, 'http://x').pathname).replace(/^\/+/, '');
   const p = path.resolve(EXP_DIR, rel);
   if (!p.startsWith(EXP_DIR + path.sep) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.writeHead(404); return res.end(); }
@@ -148,7 +157,14 @@ const lastLine = s => (s.trim().split('\n').pop() || '').trim();
 const runs = [];
 if (exp.seconds > 0) {
   const browser = await chromium.launch({ args: flags, env });
-  for (const run of expand(exp)) { console.error(`run ${run.label}`); runs.push(await measure(browser, run)); }
+  for (const run of expand(exp)) {
+    if (missing.includes(run.params.track)) {   // never a fail: the user hasn't copied that track to the box yet
+      note(`${run.label}: skipped, track missing (${run.params.track})`);
+      runs.push({ label: run.label, variant: run.variant, base: run.base, size: run.size, params: run.params, skipped: run.params.track, metrics: {}, values: {}, stills: [], errors: [] });
+      continue;
+    }
+    console.error(`run ${run.label}`); runs.push(await measure(browser, run));
+  }
   await browser.close();
 }
 server.close();
@@ -207,19 +223,20 @@ if (exp.swipe) {
 }
 
 // ---- 4. results ----
-const gates = [...evalGates(exp, runs), ...checks.flatMap(c => c.gates)];
+const gates = [...evalGates(exp, runs, { missing }), ...checks.flatMap(c => c.gates)];
 if (exp.swipe && !swipe) gates.push({ name: 'swipe run recorded', ok: false, value: notes.filter(n => n.startsWith('swipe')).join(' / ') || 'failed' });
 if (!gates.length) gates.push({ name: 'the experiment ran', ok: runs.length > 0 || checks.length > 0, value: `${runs.length} runs` });
 const info = [['PR', `#${PR} @${SHA.slice(0, 7)}`], ['GPU', hasGpu ? `${renderNode} (ANGLE gl-egl)` : 'none: software GL, fps not comparable'],
   ...runs.filter(r => r.errors.length).map(r => [`errors ${r.label}`, r.errors.slice(0, 3).join(' / ')]), ...notes.map(n => ['note', n])];
 fs.writeFileSync(path.join(OUT, 'check.md'), checkMd(`${exp.id} · experiment for #${PR} @${SHA.slice(0, 7)}`, gates, info));
 fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ id: exp.id, page: exp.page, pr: +PR || null, sha: SHA, vs: VS || null, at: new Date().toISOString(),
-  host: os.hostname(), hasGpu, runs, checks: checks.map(({ gates, ...c }) => ({ ...c, gates })), swipe, gates, notes }, null, 1));
+  host: os.hostname(), hasGpu, runs, checks: checks.map(({ gates, ...c }) => ({ ...c, gates })), swipe, gates, notes,
+  tracks: tracks.map(({ path: _p, ...t }) => t) }, null, 1));   // file names and sha256 only, never the folder or the audio
 const keys = Object.keys(METRICS).filter(k => runs.some(r => r.metrics[k] !== undefined && r.metrics[k] !== null));
 const vkeys = Object.keys(exp.values);
 fs.writeFileSync(path.join(OUT, 'report.md'), `# ${exp.id} · #${PR} @${SHA.slice(0, 7)}\n\n${exp.note ? exp.note + '\n\n' : ''}`
-  + `${gates.filter(g => g.ok).length}/${gates.length} gates pass · warm-up ${exp.warmup} s · ${exp.seconds} s per run${swipe ? ` · swipe run \`qa/${swipe.dir}\`` : ''}\n\n`
+  + `${gates.filter(g => g.ok).length}/${gates.filter(g => !g.skipped).length} gates pass${gates.some(g => g.skipped) ? ` (${gates.filter(g => g.skipped).length} skipped)` : ''} · warm-up ${exp.warmup} s · ${exp.seconds} s per run${swipe ? ` · swipe run \`qa/${swipe.dir}\`` : ''}\n\n`
   + (runs.length ? `| run | ${[...keys, ...vkeys.map(k => 'value.' + k)].join(' | ')} |\n|---|${[...keys, ...vkeys].map(() => '---').join('|')}|\n`
     + runs.map(r => `| ${r.label} | ${[...keys.map(k => r.metrics[k] ?? '—'), ...vkeys.map(k => (JSON.stringify(r.values[k], (_, v) => (typeof v === 'number' ? +v.toPrecision(6) : v)) ?? '—').slice(0, 60))].join(' | ')} |`).join('\n') + '\n\n' : '')
-  + gates.map(g => `- ${g.ok ? '✅' : '❌'} ${g.name}${g.value ? ` · ${g.value}` : ''}`).join('\n') + '\n');
+  + gates.map(g => `- ${g.skipped ? 'ℹ️' : g.ok ? '✅' : '❌'} ${g.name}${g.value ? ` · ${g.value}` : ''}`).join('\n') + '\n');
 console.log(OUT);

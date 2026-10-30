@@ -31,6 +31,7 @@ import { historyEntry, commitPaths, reportFiles, buildDirs, messageFor } from '.
 import { sync as boardSync } from './board.mjs';
 import { runShared } from './shared.mjs';
 import { addTodo } from './todo.mjs';
+import { audioDir, scanTracks } from './audio.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -51,6 +52,7 @@ const CFG = {
   board: env('RUNNER_BOARD', '1') !== '0',     // after each build and merge: move the board cards (gh, the box's login)
   shared: env('SHARED_CHECKS', '1') !== '0',   // after each page's own check: qa/check-shared.mjs (flash + GPU gates, #88)
   sharedMin: Math.max(1, +env('SHARED_TIMEOUT_MIN', '12') || 12),
+  audioDir: audioDir(flag('audio-dir', '')),   // QA_AUDIO_DIR: the real tracks (#95 truth (b)); never in git or a run folder
   once: argv.includes('--once'),
 };
 if (!/^[\w.-]+\/[\w.-]+$/.test(CFG.repo)) throw new Error('bad repo ' + CFG.repo);
@@ -61,7 +63,7 @@ const WORK = path.join(CFG.state, 'repo');
 const STATE_FILE = path.join(CFG.state, 'state.json');
 const LOG_FILE = path.join(CFG.state, 'runner.log');
 const PAGE_RE = /^experiments\/(\d\d-[a-z0-9-]+)\.html$/;
-const EXP_FILES = ['experiment.mjs', 'probes.mjs', 'gpu.mjs', 'exp-run.mjs'];   // the measuring code: always this runner's own copy
+const EXP_FILES = ['experiment.mjs', 'probes.mjs', 'gpu.mjs', 'exp-run.mjs', 'audio.mjs'];   // the measuring code: always this runner's own copy
 fs.mkdirSync(CFG.state, { recursive: true });
 
 // ---------- log ----------
@@ -285,7 +287,8 @@ async function runExperiment(job, gate) {
     for (const f of EXP_FILES) fs.copyFileSync(path.join(here, f), path.join(tree, 'qa', 'runner', f));
     const nm = path.join(CFG.qaHome, 'qa', 'node_modules');
     if (fs.existsSync(nm) && !fs.existsSync(path.join(tree, 'qa', 'node_modules'))) fs.symlinkSync(nm, path.join(tree, 'qa', 'node_modules'), 'dir');
-    const args = ['--file', file, '--experiments', path.join(tree, 'experiments'), '--qa', path.join(tree, 'qa'), '--pr', String(job.pr), '--sha', job.sha];
+    const args = ['--file', file, '--experiments', path.join(tree, 'experiments'), '--qa', path.join(tree, 'qa'), '--pr', String(job.pr), '--sha', job.sha,
+      '--audio-dir', CFG.audioDir];
     if (exp.swipe && exp.swipe.vs) {
       const r = exp.swipe.vs === 'base'
         ? await run('git', ['-C', WORK, 'merge-base', 'refs/runner/main', job.sha], { quiet: true })
@@ -534,7 +537,7 @@ if (!CFG.once) fs.writeFileSync(PID_FILE, String(process.pid));
 // folder, so qa/run-next.sh inside the container runs with the same QA_HOME, checks ref and GPU gate.
 if (!CFG.once) {
   const vals = { RUNNER_REPO: CFG.repo, QA_HOME: CFG.qaHome, CHECKS_REF: CFG.checksRef, RUNNER_AUTHORS: CFG.authors.join(','), RUNNER_POLL: CFG.poll,
-    RUNNER_TIMEOUT_MIN: CFG.timeoutMin, RUNNER_STATE: CFG.state, RUNNER_LABEL: CFG.label, RUNNER_COMMIT: CFG.commit ? 1 : 0, RUNNER_BOARD: CFG.board ? 1 : 0,
+    RUNNER_TIMEOUT_MIN: CFG.timeoutMin, RUNNER_STATE: CFG.state, QA_AUDIO_DIR: CFG.audioDir, RUNNER_LABEL: CFG.label, RUNNER_COMMIT: CFG.commit ? 1 : 0, RUNNER_BOARD: CFG.board ? 1 : 0,
     GPU_BUSY_FILE: GPU.file, GPU_IDLE_MAX: GPU.idleMax, GPU_IDLE_SECS: GPU.idleSecs, GPU_WAIT_MIN: GPU.waitMin, GPU_LOCK: GPU.lock };
   const q = v => `'${String(v).replace(/'/g, `'\\''`)}'`;
   try { fs.writeFileSync(path.join(CFG.state, 'runner.env'), '# written by the runner service at start; qa/run-next.sh reads it\n' + Object.entries(vals).map(([k, v]) => `${k}=${q(v)}`).join('\n') + '\n'); }
@@ -542,5 +545,6 @@ if (!CFG.once) {
 }
 if (!fs.existsSync(BUILDS_CLI)) log(`warning: ${BUILDS_CLI} not found; set QA_HOME to QA box's working copy`);
 log(`runner up: ${CFG.repo}, checks from ${CFG.checksRef}, authors ${CFG.authors.join(',')}, label ${CFG.label}, every ${CFG.poll} s, state ${CFG.state}, GPU idle ≤ ${GPU.idleMax} % (${GPU.file})`);
+{ const a = scanTracks(CFG.audioDir); log(`tracks (QA_AUDIO_DIR ${CFG.audioDir}): ${a.present.length}/4 present${a.missing.length ? `, missing ${a.missing.join(', ')} (their gates are skipped)` : ''}`); }
 if (state.queue.length) log(`resuming ${state.queue.length} queued build(s)`);
 tick();
