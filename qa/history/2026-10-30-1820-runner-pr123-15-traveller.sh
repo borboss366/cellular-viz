@@ -1,0 +1,16 @@
+#!/bin/sh
+# 2026-10-30-1820-runner-pr123-15-traveller: runner build viz-123-2, #123 15-traveller @70fa722, checks from main; result: viz-123-2 ready 27/27
+# The commands as the QA runner ran them, in order (no shell; temp folders were removed after the build).
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo fetch -q --force origin +refs/pull/123/head:refs/runner/pr-123 +refs/heads/main:refs/runner/checks +refs/heads/main:refs/runner/main
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo fetch -q --force origin +refs/pull/123/head:refs/runner/pr-123 +refs/heads/main:refs/runner/checks +refs/heads/main:refs/runner/main
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo cat-file -e 70fa722425e94c8d0825a0cd2e09a1b23cac1d0d:qa/experiments/123.json
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo show 70fa722425e94c8d0825a0cd2e09a1b23cac1d0d:qa/experiments/123.json
+node /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/builds.mjs start --page 15-traveller --pr 123 --commit 70fa722
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo archive -o /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-4RQ5zF/tree-qa.tar refs/runner/checks qa
+tar -xf /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-4RQ5zF/tree-qa.tar -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-4RQ5zF/tree
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo archive -o /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-4RQ5zF/tree-experiments.tar 70fa722425e94c8d0825a0cd2e09a1b23cac1d0d experiments
+tar -xf /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-4RQ5zF/tree-experiments.tar -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-4RQ5zF/tree
+node /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/builds.mjs set --id viz-123-2 --status running
+node /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-4RQ5zF/tree/qa/runner/exp-run.mjs --file /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-4RQ5zF/experiment.json --experiments /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-4RQ5zF/tree/experiments --qa /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-4RQ5zF/tree/qa --pr 123 --sha 70fa722425e94c8d0825a0cd2e09a1b23cac1d0d --audio-dir /home/puggie/pi-durable-worker/data/qa-audio/tracks --out /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-4RQ5zF/tree/qa/15-traveller/runs/2026-10-30-1807-pr123
+node /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-4RQ5zF/tree/qa/check-shared.mjs --experiments /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-4RQ5zF/tree/experiments --page 15-traveller.html --out /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/15-traveller/runs/2026-10-30-1807-pr123/shared
+node /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/builds.mjs finish --id viz-123-2 --check /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/15-traveller/runs/2026-10-30-1807-pr123 --swipe /run/15-traveller/2026-10-30-1807-pr123-swipe/compare

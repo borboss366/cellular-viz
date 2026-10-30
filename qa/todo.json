@@ -568,5 +568,24 @@
    }
   ],
   "done": "2026-10-29T09:19:33.584Z"
+ },
+ {
+  "id": "15-traveller-pr123-70fa722",
+  "from": "QA runner",
+  "pr": 123,
+  "build": "viz-123-2",
+  "title": "15-traveller (PR #123): 15a the traveller: pulsing salesman (2-opt on the beat, drop snap, ants, Held–Karp verify)",
+  "note": "viz-123-2 @70fa722: gates 27/27 passed. 2 clips: pick the ones you like in ⇄ compare.",
+  "links": [
+   {
+    "label": "⇄ compare",
+    "href": "/run/15-traveller/2026-10-30-1807-pr123-swipe/compare"
+   },
+   {
+    "label": "▶ watch",
+    "href": "/run/15-traveller/2026-10-30-1807-pr123-swipe"
+   }
+  ],
+  "at": "2026-10-30T18:20:24.670Z"
  }
 ]
