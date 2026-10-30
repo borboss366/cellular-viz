@@ -32,7 +32,7 @@ test('truth 1: every op is area-preserving, max |det J − 1| < 1e-5 on 10⁴ po
   console.table(rows);
 });
 
-test('the shader\'s skips are exact to 1e-7: a swirl beyond its reach, a comb beyond 40 λ', () => {
+test('the shader\'s skips are exact: a swirl beyond its reach (< 1e-7), a comb beyond 20 λ (< 1e-5)', () => {
   for (let k = 0; k < 200; k++) {
     const o = R() < 0.5 ? mk.vortex() : mk.ring(), reach = K.swirlReach(o);
     for (let j = 0; j < 50; j++) {
@@ -41,7 +41,7 @@ test('the shader\'s skips are exact to 1e-7: a swirl beyond its reach, a comb be
       const p = K.fwdOp(o, x, y); assert.ok(Math.hypot(p[0] - x, p[1] - y) < 1e-7, `swirl moved ${Math.hypot(p[0] - x, p[1] - y)} beyond its reach`);
     }
   }
-  const c = mk.comb(); assert.ok(c.z * Math.pow(c.u, 40) < 1e-7);
+  for (let k = 0; k < 100; k++) { const c = mk.comb(); assert.ok(c.z * Math.pow(c.u, 20) < 1e-5); }
   assert.equal(K.swirlReach({ ...mk.vortex(), z: 0 }), -1e9);
 });
 

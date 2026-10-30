@@ -142,7 +142,7 @@ export function palette(name = 'canada') {
 // T_move (QA box, viz-134-2: general flash after each drop): a growing drop pushes all the paint around it outward
 //   at (dA/dt)/(2πρ), and fine stripes sweeping past at that speed flash. dA/dt ≤ A_MOVE (screen heights² a second)
 //   keeps that push slow; the scene also damps contrast where paint still moves fast (shader, uV0/uV1).
-export const WINDOW_AREA = (16 / 9 / 4) * (1 / 3), A_MOVE = 0.15;
+export const WINDOW_AREA = (16 / 9 / 4) * (1 / 3), A_MOVE = 0.11;   // 0.15 left one window at 26 % (viz-134-4)
 export function growSeconds(rScreen, dL, beatSec) {
   const d = Math.max(0, dL), a = Math.PI * rScreen * rScreen, tMin = 0.7 * (rScreen / 0.35) ** 2 * (d / 0.675), tGov = a * d / (2 * WINDOW_AREA);
   return Math.max(beatSec, tMin, tGov, a / A_MOVE);

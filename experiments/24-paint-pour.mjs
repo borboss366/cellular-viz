@@ -17,7 +17,9 @@ import * as K from './24-marble.mjs';
 
 // 16 bake tiles (was 8) and a bake at opsMax − 16 live ops, opsMax 64 (was 96): the GPU p95 grew with the live op
 // count (viz-134-2: p95 8.72 ms at 1440p, limit 7), and each bake frame costs 1/16 of a base pass
-const MAXOPS = 128, BAKE_TILES = 16, BAKE_HEADROOM = 16, HISTORY_MAX = 4096;
+// viz-134-4: still p95 9.5 ms. Now 32 tiles a bake and opsMax 40 (bake from 24 live ops): fewer ops per frame on
+// average and half the extra cost on each bake frame
+const MAXOPS = 128, BAKE_TILES = 32, BAKE_HEADROOM = 16, HISTORY_MAX = 4096;
 const BASE_RECT = [-1.3, -0.85, 2.6, 1.7];   // world rect the base layer covers (the camera's whole range + margin)
 const BASE_DIST_K = 0.04;                     // world units per unit of the base's alpha (distance to a boundary)
 
@@ -53,7 +55,7 @@ vec2 traceOps(vec2 q) {
       vec2 M = vec2(a.w, b.x);
       float p = dot(q - a.yz, vec2(-M.y, M.x)), hf = (c.y - 1.0) * c.x * 0.5;
       float j = clamp(floor((p + hf) / c.x + 0.5), 0.0, c.y - 1.0), d = abs(p - (j * c.x - hf));
-      if (d > 40.0 * b.w) continue;                          // u^(d/λ) < 1e-9: no move
+      if (d > 20.0 * b.w) continue;                          // u^(d/λ) ≤ 0.6²⁰ = 4e-5: moves < 3e-6 (truth 3: 1e-4)
       float f = pow(b.z, d / b.w);
       q -= b.y * f * M; gV = max(gV, c.z * f);
     } else if (ty == 3) {
@@ -206,7 +208,8 @@ export function createScene() {
       const pi = st.live.findIndex(o => o.role === 'pour' && beats < o.start + o.dur);
       if (pi >= 0 && op.role !== 'pour') st.live.splice(pi, 0, op); else st.live.push(op);
       st.history.push(op); if (st.history.length > HISTORY_MAX) st.history.shift();
-      st.opLog.push({ tBeat: op.start, type: K.TYPE_NAMES[op.type], role: op.role, cause: op.cause, epoch: st.epochId, syncMs: op.syncMs, params: paramsOf(op) });
+      st.opLog.push({ tBeat: op.start, type: K.TYPE_NAMES[op.type], role: op.role, cause: op.cause, epoch: st.epochId, syncMs: op.syncMs,
+        frame: st.frames, baking: !!st.bake, queuedMs: now - op.created, params: paramsOf(op) });
       if (st.opLog.length > HISTORY_MAX) st.opLog.shift();
       if (op.role === 'pour') st.pour = op;
       if (op.role === 'drop') st.lastDropColour = op.colour;
@@ -321,6 +324,7 @@ export function createScene() {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.disable(gl.SCISSOR_TEST);
       b.tile++;
+      (st.bakeFrames = st.bakeFrames || []).push(now); if (st.bakeFrames.length > 1024) st.bakeFrames.shift();   // for splitting GPU times
       if (b.tile >= BAKE_TILES) {   // swap: the new base holds exactly what the baked ops drew
         base.cur = b.dst; st.live.splice(0, b.n0);
         st.bakes.push({ t: now, beat: b.beat, ops: b.n0, frames: BAKE_TILES, ms: now - b.t0, forced: b.forced }); if (st.bakes.length > 64) st.bakes.shift();
@@ -347,7 +351,7 @@ export function createScene() {
     const vein = ctl.veinColour === 'none' ? -1 : (st.pal.veins[ctl.veinColour] ?? st.pal.veins.lime);
     gl.uniform1f(u.uFlat, ctl.flat ? 1 : 0); gl.uniform1f(u.uVeinOn, vein >= 0 ? 1 : 0); gl.uniform1f(u.uVeinW, ctl.veinWidth * fh / 1440);
     gl.uniform3fv(u.uVein, vein >= 0 ? K.rgb(st.pal.colours[vein]).map(K.linear) : [0, 0, 0]);
-    gl.uniform1f(u.uV0, 0.12); gl.uniform1f(u.uV1, 0.4);   // screen heights a second: 170 → 580 px/s at 1440p
+    gl.uniform1f(u.uV0, 0.10); gl.uniform1f(u.uV1, 0.35);   // screen heights a second: 145 → 500 px/s at 1440p
     gl.uniform1f(u.uBevel, ctl.bevelWidth * fh / 1440); gl.uniform1f(u.uHeight, ctl.paintHeight); gl.uniform1f(u.uGloss, ctl.gloss); gl.uniform1f(u.uKick, kick);
     gl.uniform4fv(u.uStr, str); gl.uniform3fv(u.uStrCol, strCol); gl.uniform1f(u.uStrOn, strOn);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -479,7 +483,7 @@ export function createScene() {
     init, resize, frame, dispose, press, reset,
     trigger(name) { const i = ['drop', 'cells', 'vortex', 'comb'].indexOf(name); return i >= 0 ? press(i + 1) : false; },
     qa: { get view() { return st.view; }, get metrics() { return st.metrics; }, get ops() { return opsView(); }, get opLog() { return st.opLog; },
-      get bakes() { return st.bakes; }, get pour() { return pourView(); }, get palette() { return st.pal; },
+      get bakes() { return st.bakes; }, get bakeFrames() { return st.bakeFrames || []; }, get pour() { return pourView(); }, get palette() { return st.pal; },
       get triggerLog() { return st.triggerLog; }, get triggerEnv() { return st.triggerEnv; },
       forceBake() { st.forceBake = true; return true; }, traceGPU, traceCPU, colourAt, colourGrid, fwd: fwdAll, inv: invAll, check },
   };
@@ -502,7 +506,7 @@ export const DETAIL = [
   { name: 'palette', type: 'long', values: K.PALETTE_NAMES, default: 'canada' },
   { name: 'veinColour', type: 'long', values: ['lime', 'yellow', 'black', 'none'], default: 'lime' },
   { name: 'seed', type: 'long', default: 1, min: 1, max: 1e6 },
-  { name: 'opsMax', type: 'long', default: 56, min: 32, max: 128 },
+  { name: 'opsMax', type: 'long', default: 40, min: 32, max: 128 },
   { name: 'dropScale', type: 'float', default: 1, min: 0.4, max: 1.4 },
   { name: 'cellsPerDrop', type: 'float', default: 0.5, min: 0, max: 1 },
   { name: 'blackShare', type: 'float', default: 0.3, min: 0, max: 0.6 },

@@ -195,6 +195,9 @@ function frame(now) {
 }
 function draw(now) {
   resize();
+  // book the metronome's next steps from the frame too: its own 25 ms timer can fall behind when frames are heavy
+  // (4K), and steps booked late play late and jump the beat count (truth 8 at 4K, viz-134-4: up to 328 ms)
+  if (clock.playing && clock.ctx) clock.schedule();
   const c = clockRead(now);
   window.__qaNowBars = c.beats / c.bpb;
   scene.frame({ target: null, t: now / 1000, beats: c.beats, bpb: c.bpb, bpm: params.bpm, hits: c.hits, controls: controls(), now });
@@ -221,7 +224,7 @@ expose({
   errors, setMacro, pressTrigger, triggers: TRIGGERS, events: () => Clock.qaEvents(clock), clock,
   get macros() { return MACROS.map((m, i) => ({ slot: m.slot, name: m.name, label: m.label, value: params.macro[i], default: m.default, shown: macroText(i) })); },
   get triggerLog() { return S.triggerLog; }, get triggerEnv() { return S.triggerEnv; },
-  get ops() { return S.ops; }, get opLog() { return S.opLog; }, get bakes() { return S.bakes; }, get pour() { return S.pour; }, get palette() { return S.palette; },
+  get ops() { return S.ops; }, get opLog() { return S.opLog; }, get bakes() { return S.bakes; }, get bakeFrames() { return S.bakeFrames; }, get pour() { return S.pour; }, get palette() { return S.palette; },
   check, fwd: (x, y) => S.fwd(x, y), inv: (x, y) => S.inv(x, y), traceGPU: p => S.traceGPU(p), traceCPU: p => S.traceCPU(p),
   colourAt: (x, y) => S.colourAt(x, y), colourGrid: (x0, y0, x1, y1, n) => S.colourGrid(x0, y0, x1, y1, n), forceBake: () => S.forceBake(),
 });

@@ -11,7 +11,7 @@
     { "name": "drop", "params": { "startBar": "13" } },
     { "name": "build", "params": { "startBar": "9" } },
     { "name": "breakdown", "params": { "startBar": "5" } },
-    { "name": "bake", "params": { "opsMax": "40", "startBar": "1" } },
+    { "name": "bake", "params": { "opsMax": "32", "startBar": "1" } },
     { "name": "psych60s", "params": { "palette": "psych60s", "veinColour": "yellow" } }
   ],
   "values": {
@@ -32,6 +32,8 @@
     "t9detail": "JSON.stringify({ onlyLogged: __qa.check().t9.onlyLogged, onlyReplay: __qa.check().t9.onlyReplay, backSteps: __qa.check().t9.backSteps, epochs: __qa.check().t9.epochs })",
     "t3maxErrAll": "__qa.check().t3.maxErrAll",
     "bakeOps": "__qa.bakes.map(b => b.ops).join(',')",
+    "worstSync": "(o => o ? JSON.stringify({ tBeat: o.tBeat, role: o.role, cause: o.cause, syncMs: Math.round(o.syncMs * 10) / 10, queuedMs: Math.round(o.queuedMs), frame: o.frame, baking: o.baking }) : 'none')(__qa.opLog.reduce((w, o) => (!w || Math.abs(o.syncMs) > Math.abs(w.syncMs) ? o : w), null))",
+    "lateOps": "__qa.opLog.filter(o => Math.abs(o.syncMs) > 40).length",
     "t10": "__qa.check().t10.ok",
     "contrastMin": "__qa.check().t10.min",
     "ops": "__qa.view.live",
@@ -60,7 +62,7 @@
     { "metric": "value.pours", "min": 1, "variant": "build", "name": "the build's pour started at bar 12" },
     { "metric": "value.breakdownDrops", "max": 0, "name": "no big drops in the breakdown (bars 8-11)" },
     { "metric": "value.combs", "min": 1, "variant": ["default", "breakdown"], "name": "combs on the kick (groove) and feathers (breakdown)" },
-    { "metric": "value.bakes", "min": 1, "variant": "bake", "name": "opsMax 40: at least one tiled bake in the window" },
+    { "metric": "value.bakes", "min": 1, "variant": "bake", "name": "opsMax 32: at least one tiled bake in the window" },
     { "metric": "value.forceDrop", "equals": "function", "name": "#88 forceDrop hook" },
     { "metric": "fps.p05", "min": 55 },
     { "metric": "longFrames", "max": 0.5 },
