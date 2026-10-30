@@ -15,8 +15,10 @@
 // One AudioContext (the clock's) and one AnalyserNode. Sources:
 //   'clock' (default)  the clock's own output (the synth metronome today). Lanes and level are the clock's numbers;
 //                      bands are measured from the clicks on the analyser (the clock reports 0) and so is wave.
-//   'mic' / 'line'     getUserMedia (line: the laptop's line-in, e.g. BlackHole; today the default input device),
-//                      not routed to the speakers. Lanes are band-onset envelopes (sub+kick → kick, mid → snare,
+//   'mic' / 'line'     getUserMedia with deviceId exact and no echo cancellation, noise suppression or gain control,
+//                      not routed to the speakers. The input is picked by label: ?audio=line&device=blackhole
+//                      (case-insensitive substring of the audioinput label, remembered in localStorage; ?device=default
+//                      forgets it). No match: a warning banner on the page, __qa.audioIn.warning, the default input. Lanes are band-onset envelopes (sub+kick → kick, mid → snare,
 //                      air → hat) with the clock's TAU decay, so the pages' mappings read the same.
 //   'file:<url>'       a decoded file, looped through the speakers and the analyser; lanes as for 'mic'.
 // Anything else falls back to 'clock' and says so in .fallback (as the clock does). Analysis runs once per read();
@@ -72,13 +74,28 @@
     const source = /^(clock|mic|line|file:.+)$/.test(requested) ? requested : 'clock';
     const fallback = source === requested ? null : `unknown audio source ${requested}; reading the clock`;
     if (fallback && root.console) root.console.warn('[audio-in] ' + fallback);
-    const gum = opts.getUserMedia || (() => root.navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }));
+    const md = () => root.navigator && root.navigator.mediaDevices;
+    const gum = opts.getUserMedia || (c => md().getUserMedia(c));
+    const enumerate = opts.enumerateDevices || (() => (md() && md().enumerateDevices ? md().enumerateDevices() : Promise.resolve([])));
     const fetchFn = opts.fetch || (u => root.fetch(u));
+    // the input device, by label (#95 comment 6481085928): ?device=blackhole is a case-insensitive substring of an
+    // audioinput label, remembered in localStorage; ?device=default forgets it. Without a match: warn, default input.
+    const storage = opts.storage !== undefined ? opts.storage : (() => { try { return root.localStorage || null; } catch (e) { return null; } })();
+    const urlDevice = opts.device !== undefined ? opts.device : (() => { try { return new URLSearchParams(root.location.search).get('device'); } catch (e) { return null; } })();
+    const DEVICE_KEY = 'cellular-viz.audioIn.device';
+    let wantDevice = null;
+    try {
+      if (urlDevice !== null && urlDevice !== undefined) {
+        if (urlDevice === '' || urlDevice.toLowerCase() === 'default') { if (storage) storage.removeItem(DEVICE_KEY); }
+        else { wantDevice = urlDevice; if (storage) storage.setItem(DEVICE_KEY, urlDevice); }
+      } else if (storage) wantDevice = storage.getItem(DEVICE_KEY) || null;
+    } catch (e) { wantDevice = urlDevice || null; }
+    const CLEAN = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
     const ZERO = () => { const o = {}; for (const b of BANDS) o[b] = 0; return o; };
 
     const a = {
       source, requested, fallback, clock, ctx: null, analyser: null, input: null, db: null, wave: null,
-      status: 'idle', error: null, running: false,
+      status: 'idle', error: null, running: false, warning: null, device: null,
       lanes: { kick: onsetLane('kick'), snare: onsetLane('snare'), hat: onsetLane('hat') },
       beatLog: [], beatLanes: null, frame: 0, t: null, dt: 0,
       // start() / stop(): reading is on between them; start() before the clock exists is fine (attached on read)
@@ -104,7 +121,7 @@
         if (source === 'clock') { if (clock.master) clock.master.connect(this.analyser); this.status = 'clock'; }
         else if (source === 'mic' || source === 'line') {
           this.status = 'asking';
-          Promise.resolve().then(gum).then(stream => { this.input = ctx.createMediaStreamSource(stream); this.input.connect(this.analyser); this.status = source; },
+          this.openInput().then(stream => { this.input = ctx.createMediaStreamSource(stream); this.input.connect(this.analyser); this.status = source; },
             e => { this.error = String(e && e.message || e); this.status = 'error'; });
         } else {
           this.status = 'loading';
@@ -114,6 +131,38 @@
           }, e => { this.error = String(e && e.message || e); this.status = 'error'; });
         }
         return true;
+      },
+      // pick the input by label, then open it with deviceId exact and no browser processing (raw line-in)
+      async openInput() {
+        const inputs = async () => (await enumerate()).filter(d => d.kind === 'audioinput');
+        let devs = await inputs(), pick = null;
+        if (wantDevice) {
+          if (devs.length && devs.every(d => !d.label)) {   // labels stay empty until the page has mic permission once
+            const s = await gum({ audio: CLEAN }); try { s.getTracks().forEach(t => t.stop()); } catch (e) {}
+            devs = await inputs();
+          }
+          const w = wantDevice.toLowerCase();
+          pick = devs.find(d => (d.label || '').toLowerCase().includes(w)) || null;
+          if (!pick) this.warn(`no audio input matches "${wantDevice}" (inputs: ${devs.map(d => d.label || '?').join(', ') || 'none'}); using the default input`);
+        }
+        if (!pick) pick = devs.find(d => d.deviceId === 'default') || devs[0] || null;
+        this.device = pick ? { label: pick.label, deviceId: pick.deviceId, wanted: wantDevice } : { label: null, deviceId: null, wanted: wantDevice };
+        return gum({ audio: pick ? { deviceId: { exact: pick.deviceId }, ...CLEAN } : CLEAN });
+      },
+      // a warning for the person at the laptop: console, __qa.audioIn.warning, and a small banner on the page
+      warn(msg) {
+        this.warning = msg;
+        if (root.console) root.console.warn('[audio-in] ' + msg);
+        try {
+          const doc = root.document; if (!doc || !doc.body) return;
+          let el = doc.getElementById('audio-in-warning');
+          if (!el) {
+            el = doc.createElement('div'); el.id = 'audio-in-warning'; el.title = 'click to hide';
+            el.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:99999;max-width:60ch;padding:6px 10px;font:12px/1.4 system-ui,sans-serif;background:#3a2a00;color:#ffd27a;border:1px solid #a87a1a;border-radius:4px;cursor:pointer';
+            el.onclick = () => el.remove(); doc.body.appendChild(el);
+          }
+          el.textContent = 'audio: ' + msg;
+        } catch (e) {}
       },
       // the top of each rAF callback, before drawing: the frame counter and this frame's time (nowMs: rAF's argument)
       frameStart(nowMs) {
@@ -170,6 +219,7 @@
     def('beatLanes', () => a.beatLanes);
     def('events', () => (root.Clock && root.Clock.qaEvents ? root.Clock.qaEvents(a.clock) : [...(a.clock.hitLog || a.clock.events || [])]));
     def('audioIn', () => ({ source: a.source, requested: a.requested, fallback: a.fallback, status: a.status, error: a.error,
+      warning: a.warning, device: a.device,
       now: a.clock.ctx && a.clock.now ? a.clock.now() : null, playing: !!a.clock.playing }));
     return target;
   }

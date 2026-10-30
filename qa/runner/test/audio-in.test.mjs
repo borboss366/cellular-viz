@@ -35,7 +35,7 @@ function setBand(ctx, lo, hi, db) { for (let k = hzBin(lo); k <= hzBin(hi); k++)
 function rig(source = 'clock', extra = {}) {
   const ctx = fakeContext();
   const clock = Clock.create({ bpm: 120, bpb: 4, audioContext: () => ctx, timers: false });
-  const audio = AudioIn.create({ clock, source, ...extra }).start();
+  const audio = AudioIn.create({ clock, source, storage: null, device: null, ...extra }).start();
   clock.start();
   let ms = 0;
   // one rAF frame: time moves, the clock books ahead, the page starts its frame, reads audio and responds to hits
@@ -118,7 +118,7 @@ test('an unknown source falls back to the clock and says so', () => {
 });
 
 test("'mic' source: kick-band bursts become kick onsets with the clock's decay", async () => {
-  const { ctx, audio, frame } = rig('mic', { getUserMedia: async () => ({}) });
+  const { ctx, audio, frame } = rig('mic', { getUserMedia: async () => ({}), storage: null, device: null });
   frame(); await new Promise(r => setImmediate(r));
   assert.equal(audio.status, 'mic');
   let peaks = 0, last = 0;
@@ -132,4 +132,54 @@ test("'mic' source: kick-band bursts become kick onsets with the clock's decay",
   }
   assert.ok(peaks >= 6 && peaks <= 9, `${peaks} kick peaks for 8 bursts`);
   assert.ok(audio.events.length > 0 && audio.events.every(e => e.lane === 'kick'));
+});
+
+// ---------- the input device by label (#95 comment 6481085928) ----------
+function memStore() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), m }; }
+const DEVICES = [
+  { kind: 'audioinput', deviceId: 'default', label: 'Default - MacBook Pro Microphone' },
+  { kind: 'audioinput', deviceId: 'mbp', label: 'MacBook Pro Microphone (Built-in)' },
+  { kind: 'audioinput', deviceId: 'bh2', label: 'BlackHole 2ch (Virtual)' },
+  { kind: 'audiooutput', deviceId: 'spk', label: 'BlackHole 2ch (Virtual)' },
+];
+async function lineRig(device, storage, devices = DEVICES) {
+  const asked = [];
+  const r = rig('line', { device, storage, enumerateDevices: async () => devices, getUserMedia: async c => { asked.push(c); return { getTracks: () => [] }; } });
+  r.frame(); await new Promise(res => setImmediate(res));
+  return { ...r, asked };
+}
+
+test('?device=blackhole picks the BlackHole input by label, exact deviceId, no browser processing, and remembers it', async () => {
+  const store = memStore();
+  const { audio, asked } = await lineRig('BLACKHOLE', store);
+  assert.equal(audio.status, 'line');
+  const c = asked[asked.length - 1].audio;
+  assert.deepEqual(c.deviceId, { exact: 'bh2' });   // the input, never the output with the same label
+  assert.equal(c.echoCancellation, false); assert.equal(c.noiseSuppression, false); assert.equal(c.autoGainControl, false);
+  assert.equal(audio.device.label, 'BlackHole 2ch (Virtual)'); assert.equal(audio.warning, null);
+  assert.equal(store.getItem('cellular-viz.audioIn.device'), 'BLACKHOLE');
+  const again = await lineRig(null, store);         // no ?device= next time: the stored choice
+  assert.deepEqual(again.asked[again.asked.length - 1].audio.deviceId, { exact: 'bh2' });
+});
+
+test('no matching label: a warning and the default input; ?device=default forgets the stored choice', async () => {
+  const store = memStore();
+  const { audio, asked } = await lineRig('loopback', store);
+  assert.match(audio.warning, /no audio input matches "loopback"/);
+  assert.deepEqual(asked[asked.length - 1].audio.deviceId, { exact: 'default' });
+  assert.equal(audio.status, 'line');
+  await lineRig('default', store);
+  assert.equal(store.getItem('cellular-viz.audioIn.device'), null);
+});
+
+test('labels hidden before permission: one plain getUserMedia first, then the match', async () => {
+  let granted = false;
+  const hidden = () => DEVICES.map(d => ({ ...d, label: granted ? d.label : '' }));
+  const asked = [];
+  const r = rig('line', { device: 'blackhole', storage: memStore(), enumerateDevices: async () => hidden(),
+    getUserMedia: async c => { asked.push(c); granted = true; return { getTracks: () => [{ stop() {} }] }; } });
+  r.frame(); await new Promise(res => setImmediate(res));
+  assert.equal(asked.length, 2);
+  assert.equal(asked[0].audio.deviceId, undefined);
+  assert.deepEqual(asked[1].audio.deviceId, { exact: 'bh2' });
 });
