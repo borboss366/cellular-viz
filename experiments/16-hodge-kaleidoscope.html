@@ -1,0 +1,818 @@
+<!doctype html>
+<!--
+  16b · Hodge Kaleidoscope, "Lucy in the Sky with Hodge Diamonds"   (Millennium track #37, Hodge;
+  spec: VIZ research, #37 comment 6444942841). The intro and overlay scene of the 16 Hodge set.
+
+  The Hodge diamond is the kaleidoscope's fundamental cell. Cell (p,q) sits at x = (q−p)·s,
+  y = (p+q)·s (a square turned 45°); each cell is a faceted gem whose radius goes as log(1+h^{p,q}),
+  with the number engraved on it. The middle column (p = q, where Hodge classes live) is gold.
+
+  Mirrors, honestly labelled:
+    true symmetries of the numbers (inner mirrors): left↔right is Hodge symmetry h^{p,q} = h^{q,p};
+    a 180° turn about the centre is Serre duality h^{p,q} = h^{n−p,n−q}; top↔bottom is the two together.
+    art (outer mirrors): reflecting the cell across its four edges tiles the plane (p4m). Decoration.
+
+  Audio: row k = p+q is tied to frequency band k (7 log bands of what is playing). Cell glow is
+  h^{p,q}·L_k, so a row's total glow is b_k·L_k with b_k the Betti number. The glow layer is a
+  truncated Gaussian of the same shape in every cell, so its integral is exactly ∝ h^{p,q}·L_k.
+  Presets: genus-g curve (g 0–6), K3, quintic 3-fold, mirror quintic (for 16e), abelian surface (16d).
+  Motion: the tiling turns once per 32 bars, breathes (1 ± 0.02 per bar) and leaves oil trails
+  (previous frame × 0.96, zoom 1.002, turn 0.1°).
+  Shape rate (round 2, #84 comment 6481396559): each shape is held 8 · 4 · 2 · 1 · ½ bars (shapeRate 0–1
+  snaps to these; default ½ bar, the user's pick in the round-2 grades: "I like the fastest one"), counted in clock beats. The morph is min(1 bar, hold/2), starts on a beat
+  (a downbeat when the hold is ≥ 1 bar), old gems shrink as the new ones grow, the numbers crossfade, and
+  the gems pop +6 % on the beat with a 140 ms tail. trigger() jumps to the next shape on the next beat.
+  auto walks a 15-step cycle that changes dimension every step (no repeats, no two curves in a row).
+  Keys: [ slower, ] faster, T or Z (LIVE button 1) trigger. Controller (#85): macro1 shape rate, macro2 spin, macro3 tiles,
+  macro4 trails; gold sits in the detail panel. 60s poster palette, no strobes:
+  every flash has an exponential tail of ≥ 120 ms. Max-channel tone map, so colour never clips to white.
+
+  window.__qa: presets, hodge(name, g), table, check() {tableOk, symmetric, bettiOk, eulerOk, details},
+  measureRowGlow() (renders the glow layer of the cell with every L_k = 1 into a float buffer before
+  tone mapping and integrates it per row: {rows, ratios, expected, maxRelErr, zeroLeak}),
+  check({settled:true}) also re-checks truths 1–5 on every preset that has settled after a morph (settledOk),
+  trigger(), press(1), setMacro(1..4, v) / macros, setShapeRate(v), simulate({hold, bpm, seconds, fps, triggers}), rateTruths() (6, 8, 9, 10 on
+  the scheduler, every step), morphs (live log), morphSync() (truth 7, ms), autoOrder(n),
+  preset, genus, morph, bands (the 7 L_k), rowGlow, events (kick/snare/hat/morph with
+  tBeat/tHeard/perfHeard/perfDrawn), errors.
+  ?preset=auto|curve|k3|quintic|mirror|abelian (or ?variant=), ?genus=0..6, ?bands=audio|flat, ?bpm,
+  ?shapeRate=0..1 or ?hold=8|4|2|1|0.5 (bars), ?macro1..4=0..1, ?autoTrigger=N (trigger on every N-th kick, for grading),
+  ?spin, ?tileRadius, ?goldBoost, ?trail, ?labels=0, ?muted=1.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>16b · Hodge Kaleidoscope</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #06071a; color: #f1e9ff;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 16 / 9;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #ov { pointer-events: none; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #c7b6e8; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 92px; flex: none; color: #c7b6e8; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 58px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #3b2a5c; border-radius: 8px;
+    background: #191233; color: inherit; font: inherit; }
+  button.on { background: #5b2a6b; border-color: #ff1f8e; }
+  button.wide { flex-basis: 100%; }
+  a { color: #ffc83d; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(62vw, calc(100vh * 16 / 9)); margin: 0; position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <canvas id="ov"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="mic">Mic in</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Macros</h3>
+  <div class="row"><label for="shapeRate">1 shape rate [ ]</label><input id="shapeRate" type="range" min="0" max="1" step="0.01"><output id="shapeRateOut"></output></div>
+  <div class="row"><label for="spin">2 spin</label><input id="spin" type="range" min="-2" max="2" step="0.05"><output id="spinOut"></output></div>
+  <div class="row"><label for="tileRadius">3 tiles</label><input id="tileRadius" type="range" min="0.6" max="4" step="0.05"><output id="tileRadiusOut"></output></div>
+  <div class="row"><label for="trail">4 oil trails</label><input id="trail" type="range" min="0" max="0.98" step="0.01"><output id="trailOut"></output></div>
+  <div class="buttons"><button id="trigger" class="wide">Next shape (T)</button></div>
+  <h3>Preset</h3>
+  <div class="buttons" id="presets"></div>
+  <div class="row"><label for="genus">genus g</label><input id="genus" type="range" min="0" max="6" step="1"><output id="genusOut"></output></div>
+  <div class="row"><label for="goldBoost">gold</label><input id="goldBoost" type="range" min="0" max="2" step="0.05"><output id="goldBoostOut"></output></div>
+  <div class="row"><label for="floor">glow floor</label><input id="floor" type="range" min="0" max="1" step="0.05"><output id="floorOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <h3>Band gains (row k ↔ band k, low → high)</h3>
+  <div id="bandRows"></div>
+  <div class="buttons"><button id="labels">Labels</button><button id="flat">Flat bands (L = 1)</button></div>
+  <div class="buttons"><button id="copy" class="wide">Copy setup</button></div>
+  <a href="../index.html">← all experiments</a>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const query = new URLSearchParams(location.search);
+const PRESET_NAMES = ['curve', 'k3', 'quintic', 'mirror', 'abelian'];
+// auto: dimension changes every step, never the same preset twice in a row, never two curves in a row.
+// The first 8 are the spec's order; the second pass brings in curve g0, g3, g5 and ends on a non-curve,
+// so the wrap back to curve g1 keeps the rules (the spec's literal 8-step repeat would put g6 next to g1).
+const AUTO = [['curve', 1], ['k3', 0], ['curve', 4], ['quintic', 0], ['abelian', 0], ['curve', 2], ['mirror', 0], ['curve', 6],
+  ['k3', 0], ['curve', 0], ['quintic', 0], ['curve', 3], ['abelian', 0], ['curve', 5], ['mirror', 0]];
+const HOLDS = [8, 4, 2, 1, 0.5];   // bars per shape; shapeRate 0 → 8 bars … 1 → ½ bar
+const holdOf = rate => HOLDS[Math.max(0, Math.min(4, Math.round(rate * 4)))];
+const params = { preset: 'auto', genus: 2, bpm: 120, bpb: 4, shapeRate: 1, autoTrigger: 0, spin: 1, tileRadius: 1.6, goldBoost: 1,
+  trail: 0.96, floor: 0.3, bands: 'audio', labels: true, muted: false, bandGains: [1, 1, 1, 1, 1, 1, 1],
+  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+
+// ================================================================================================
+// The numbers. Two independent write-ups: the Hodge numbers h^{p,q} by (p,q), and the spec's table
+// (diamond rows bottom → top, left → right). QA checks they agree, plus both symmetries, Betti, Euler.
+// ================================================================================================
+function hodge(name, g = 2) {   // h[p][q] = h^{p,q}
+  switch (name) {
+    case 'curve':   return { n: 1, h: [[1, g], [g, 1]] };
+    case 'k3':      return { n: 2, h: [[1, 0, 1], [0, 20, 0], [1, 0, 1]] };
+    case 'quintic': return { n: 3, h: [[1, 0, 0, 1], [0, 1, 101, 0], [0, 101, 1, 0], [1, 0, 0, 1]] };
+    case 'mirror':  return { n: 3, h: [[1, 0, 0, 1], [0, 101, 1, 0], [0, 1, 101, 0], [1, 0, 0, 1]] };
+    case 'abelian': return { n: 2, h: [[1, 2, 1], [2, 4, 2], [1, 2, 1]] };
+  }
+  throw new Error('no preset ' + name);
+}
+const TITLE = { curve: g => `genus-${g} curve`, k3: () => 'K3 surface', quintic: () => 'quintic 3-fold',
+  mirror: () => 'mirror quintic', abelian: () => 'abelian surface' };
+// from the spec (#37 comment 6444942841), as written there
+const TABLE = { curve: g => `1 / ${g} ${g} / 1`, k3: () => '1 / 0 0 / 1 20 1 / 0 0 / 1',
+  quintic: () => '1 / 0 0 / 0 1 0 / 1 101 101 1 / 0 1 0 / 0 0 / 1',
+  mirror: () => '1 / 0 0 / 0 101 0 / 1 1 1 1 / 0 101 0 / 0 0 / 1', abelian: () => '1 / 2 2 / 1 4 1 / 2 2 / 1' };
+const BETTI = { curve: g => [1, 2 * g, 1], k3: () => [1, 0, 22, 0, 1], quintic: () => [1, 0, 1, 204, 1, 0, 1],
+  mirror: () => [1, 0, 101, 4, 101, 0, 1], abelian: () => [1, 4, 6, 4, 1] };
+const EULER = { curve: g => 2 - 2 * g, k3: () => 24, quintic: () => -200, mirror: () => 200, abelian: () => 0 };
+// the cells of diamond row k, left → right on screen (x = (q−p)s grows to the right, so p falls)
+function rowCells(n, k) { const out = []; for (let p = Math.min(k, n); p >= Math.max(0, k - n); p--) out.push([p, k - p]); return out; }
+const rowSums = ({ n, h }) => Array.from({ length: 2 * n + 1 }, (_, k) => rowCells(n, k).reduce((s, [p, q]) => s + h[p][q], 0));
+function check(opts = {}) {
+  const details = [];
+  let tableOk = true, symmetric = true, bettiOk = true, eulerOk = true;
+  const cases = [...[0, 1, 2, 3, 4, 5, 6].map(g => ['curve', g]), ['k3', 0], ['quintic', 0], ['mirror', 0], ['abelian', 0]];
+  for (const [name, g] of cases) {
+    const d = hodge(name, g), { n, h } = d, rows = TABLE[name](g).split('/').map(r => r.trim().split(/\s+/).map(Number));
+    let t = rows.length === 2 * n + 1;
+    if (t) rows.forEach((r, k) => { const cells = rowCells(n, k); if (r.length !== cells.length || cells.some(([p, q], j) => h[p][q] !== r[j])) t = false; });
+    let sym = true;
+    for (let p = 0; p <= n; p++) for (let q = 0; q <= n; q++) if (h[p][q] !== h[q][p] || h[p][q] !== h[n - p][n - q]) sym = false;
+    const b = rowSums(d), be = BETTI[name](g), bOk = b.length === be.length && b.every((x, i) => x === be[i]);
+    const chi = b.reduce((s, x, k) => s + (k % 2 ? -x : x), 0), eOk = chi === EULER[name](g);
+    tableOk = tableOk && t; symmetric = symmetric && sym; bettiOk = bettiOk && bOk; eulerOk = eulerOk && eOk;
+    details.push({ preset: name, genus: name === 'curve' ? g : undefined, table: t, symmetric: sym, betti: b, bettiOk: bOk, euler: chi, eulerOk: eOk });
+  }
+  const out = { tableOk, symmetric, bettiOk, eulerOk, details };
+  if (opts.settled) {   // truth 11: every preset that has settled after a morph, re-checked (glow cached per preset)
+    const presets = [...settledSeen].map(key => {
+      const [name, g] = key.split(':');
+      if (!glowCache.has(key)) glowCache.set(key, measureRowGlow(name, Number(g)).maxRelErr);
+      return { preset: name, genus: Number(g), glowErr: glowCache.get(key) };
+    });
+    const glowErr = presets.reduce((m, x) => Math.max(m, x.glowErr), 0);
+    out.settled = { presets, glowErr, nowSettled: st.prev === null };
+    out.settledOk = presets.length > 0 && tableOk && symmetric && bettiOk && eulerOk && glowErr < 0.01;
+  }
+  return out;
+}
+const settledSeen = new Set(), glowCache = new Map();
+
+// ================================================================================================
+// metronome (as 14/19) + a 7-band analyser on what is heard (clicks, or the mic)
+// ================================================================================================
+const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
+const LANES = ['kick', 'snare', 'hat'];
+const metronome = {
+  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [], analyser: null, mic: null,
+  ensure() {
+    if (this.ctx) return;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
+    this.analyser = ctx.createAnalyser(); this.analyser.fftSize = 2048; this.analyser.smoothingTimeConstant = 0;
+    this.master.connect(this.analyser);
+    this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  },
+  start() {
+    this.ensure();
+    this.ctx.resume(); this.master.gain.value = params.muted ? 0 : 0.35;
+    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+    this.playing = true; this.timer = setInterval(() => this.schedule(), 25); this.schedule();
+  },
+  stop() { clearInterval(this.timer); this.playing = false; },
+  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
+  async useMic() {
+    this.ensure(); this.ctx.resume();
+    const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    this.mic = this.ctx.createMediaStreamSource(s); this.mic.connect(this.analyser);
+  },
+  schedule() {
+    while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / params.bpm / 4; this.step++; }
+    const old = this.ctx.currentTime - 1;
+    this.hits = this.hits.filter(h => h.time > old);
+    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
+  },
+  queueStep(step, time) {
+    const inBar = step % (params.bpb * 4); this.steps.push({ time, step });
+    for (const lane of LANES) { if (params[lane][inBar % 16] !== 'x') continue; const vel = inBar === 0 ? 1 : 0.7; this.hits.push({ lane, time, vel }); this.click(lane, time, vel); }
+  },
+  click(lane, t, vel) {
+    const ctx = this.ctx, g = ctx.createGain(); g.connect(this.master);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    let src;
+    if (lane === 'kick') { src = ctx.createOscillator(); src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08); src.connect(g); }
+    else { src = ctx.createBufferSource(); src.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = lane === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = lane === 'snare' ? 1800 : 8000; src.connect(f); f.connect(g); }
+    const end = t + TAU[lane] * 4; g.gain.exponentialRampToValueAtTime(0.001, end); src.start(t); src.stop(end + 0.01);
+  },
+  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
+  read() {
+    const out = { kick: 0, snare: 0, hat: 0, beats: -1 };
+    if (!this.ctx) return out;
+    const now = this.ctx.currentTime - this.latency();
+    for (const h of this.hits) { const dt = now - h.time; if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane])); }
+    let last = null; for (const s of this.steps) if (s.time <= now) last = s;
+    if (last) out.beats = (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / 4;
+    return out;
+  },
+};
+// 7 log bands, 40 Hz – 16 kHz; level from dB, attack 30 ms, release 180 ms (no strobe: tails ≥ 120 ms)
+const BAND_EDGES = Array.from({ length: 8 }, (_, i) => 40 * Math.pow(16000 / 40, i / 7));
+const bandLevel = new Float32Array(7);
+let fbuf = null;
+function readBands(dt) {
+  const A = metronome.analyser;
+  const raw = new Float32Array(7);
+  if (A && (metronome.playing || metronome.mic)) {
+    if (!fbuf) fbuf = new Float32Array(A.frequencyBinCount);
+    A.getFloatFrequencyData(fbuf);
+    const hz = metronome.ctx.sampleRate / A.fftSize;
+    for (let b = 0; b < 7; b++) {
+      const i0 = Math.max(1, Math.floor(BAND_EDGES[b] / hz)), i1 = Math.max(i0 + 1, Math.ceil(BAND_EDGES[b + 1] / hz));
+      let p = 0; for (let i = i0; i < i1 && i < fbuf.length; i++) p += Math.pow(10, fbuf[i] / 10);
+      const db = 10 * Math.log10(p / (i1 - i0) + 1e-12);
+      raw[b] = Math.min(1, Math.max(0, (db + 80) / 50));
+    }
+  }
+  for (let b = 0; b < 7; b++) {
+    const tau = raw[b] > bandLevel[b] ? 0.03 : 0.18;
+    bandLevel[b] += (raw[b] - bandLevel[b]) * (1 - Math.exp(-dt / tau));
+  }
+}
+
+// ================================================================================================
+// WebGL2: scene → HDR, oil feedback (max of the new frame and the old one, zoomed and turned), tone map
+// ================================================================================================
+const canvas = $('c'), ov = $('ov'), octx = ov.getContext('2d'), hud = $('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false });
+if (!gl) throw new Error('WebGL2 needed');
+const floatOk = !!gl.getExtension('EXT_color_buffer_float');
+gl.getExtension('OES_texture_float_linear');
+const VS = `#version 300 es
+void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+const SCENE_FS = `#version 300 es
+precision highp float;
+uniform vec2 uRes; uniform float uZoom, uAng, uBreath, uTime, uMode, uGold, uKick, uSnare, uLabels;
+uniform float uNA, uNB, uAA, uAB; uniform float uRA[16], uRB[16], uWA[16], uWB[16];
+out vec4 o;
+const float SIG = 0.15, CUT = 0.45, PI = 3.14159265;
+const vec3 GOLD = vec3(1.0, 0.784, 0.239), MAG = vec3(1.0, 0.122, 0.557), TAN = vec3(1.0, 0.549, 0.102),
+           ACID = vec3(0.714, 1.0, 0.102), COB = vec3(0.122, 0.294, 1.0);
+vec3 film(float d) { vec3 lam = vec3(650.0, 532.0, 450.0); return 0.5 - 0.5 * cos(4.0 * PI * 1.33 * d / lam); }
+vec3 hue(float p, float q) { float k = abs(p - q); return k < 0.5 ? GOLD : k < 1.5 ? MAG : k < 2.5 ? TAN : ACID; }
+float sdOct(vec2 p, float r) { const vec3 k = vec3(-0.9238795, 0.3826834, 0.4142135); p = abs(p);
+  p -= 2.0 * min(dot(k.xy, p), 0.0) * k.xy; p -= 2.0 * min(dot(vec2(-k.x, k.y), p), 0.0) * vec2(-k.x, k.y);
+  p -= vec2(clamp(p.x, -k.z * r, k.z * r), r); return length(p) * sign(p.y); }
+// one diamond (size n, gem radii R in units of s, glow weights W) at cell-local point loc (tile half-diagonal 1)
+void diamond(vec2 loc, float n, float R[16], float W[16], float alpha, inout vec3 col, inout float glow) {
+  if (n < 0.5) return;
+  float s = 1.0 / (n + 0.7);
+  float fp = (loc.y / s + n - loc.x / s) * 0.5, fq = (loc.y / s + n + loc.x / s) * 0.5;
+  float p = floor(fp + 0.5), q = floor(fq + 0.5);
+  if (p < 0.0 || q < 0.0 || p > n || q > n) return;
+  vec2 c = vec2((q - p) * s, (p + q - n) * s), d = (loc - c) / s;
+  int i = int(p) * 4 + int(q);
+  float r = length(d), w = W[i], rad = R[i];
+  if (r < CUT) glow += w * exp(-r * r / (2.0 * SIG * SIG));
+  if (uMode > 0.5) return;
+  vec3 base = hue(p, q) * (abs(p - q) < 0.5 ? (0.7 + 0.5 * uGold) : 1.0);
+  // the glow, coloured
+  if (r < CUT) col += base * w * exp(-r * r / (2.0 * SIG * SIG)) * 1.2;
+  // a faint ring marks every cell of the diamond, so the zeros are visible
+  col += base * 0.10 * alpha * smoothstep(0.012, 0.0, abs(r - 0.13));
+  if (rad > 0.002) {
+    float sd = sdOct(d, rad);
+    if (sd < 0.0) {
+      float a = atan(d.y, d.x), facet = floor(a / (2.0 * PI) * 8.0 + 0.5), rr = r / rad;
+      float th = 320.0 + 220.0 * sin(facet * 1.7 + uTime * 0.3 + p * 1.3 + q * 0.7) + 260.0 * rr + 90.0 * uSnare;
+      float table = smoothstep(0.42, 0.38, rr);
+      vec3 f = film(th);
+      float light = mix(0.55 + 0.45 * cos(facet * 0.785 - uTime * 0.2), 0.95, table);
+      vec3 g = base * (0.30 + 0.70 * f) * light * (1.0 + 0.35 * uKick);
+      float edge = smoothstep(-0.03, 0.0, sd);
+      col = mix(g, base * 1.6, edge * 0.6);
+    } else {
+      col += base * 0.35 * exp(-sd * 40.0);   // rim light
+    }
+  }
+}
+void main() {
+  vec2 p = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y * 2.0 * uZoom;
+  vec3 col = vec3(0.0); float glow = 0.0;
+  vec2 loc;
+  float tile = 0.0;
+  if (uMode > 0.5) { loc = p; }
+  else {
+    float ca = cos(uAng), sa = sin(uAng);
+    p = mat2(ca, sa, -sa, ca) * p / uBreath;
+    // p4m: rotate 45°, fold across the square cell's edges (half-side a), rotate back
+    const float a = 0.70710678;
+    vec2 uv = vec2(p.x + p.y, p.y - p.x) * 0.70710678;
+    vec2 cell = floor((uv + a) / (2.0 * a));
+    tile = max(abs(cell.x), abs(cell.y));
+    vec2 f = abs(mod(uv - a, 4.0 * a) - 2.0 * a) - a;
+    loc = vec2(f.x - f.y, f.x + f.y) * 0.70710678;
+    // background: deep cobalt-violet with slow marbling
+    float m = sin(3.0 * p.x + 1.7 * sin(2.3 * p.y + uTime * 0.21)) * sin(2.6 * p.y - 1.3 * sin(1.9 * p.x - uTime * 0.17));
+    col = mix(vec3(0.020, 0.025, 0.11), vec3(0.09, 0.02, 0.14), 0.5 + 0.5 * m);
+    // outer mirrors (decoration): the cell edges
+    float e = min(abs(abs(f.x) - a), abs(abs(f.y) - a));
+    col += COB * 0.25 * smoothstep(0.012, 0.0, e);
+    // inner mirrors, only in the fundamental cell: Hodge (x = 0), both (y = 0), Serre (the centre point)
+    if (tile < 0.5 && uLabels > 0.5) {
+      col += GOLD * 0.18 * smoothstep(0.006, 0.0, abs(loc.x)) * step(0.5, fract(loc.y * 12.0));
+      col += GOLD * 0.12 * smoothstep(0.006, 0.0, abs(loc.y)) * step(0.5, fract(loc.x * 12.0));
+      col += GOLD * 0.5 * smoothstep(0.03, 0.015, length(loc));
+    }
+  }
+  diamond(loc, uNA, uRA, uWA, uAA, col, glow);
+  diamond(loc, uNB, uRB, uWB, uAB, col, glow);
+  o = uMode > 0.5 ? vec4(glow, 0.0, 0.0, 1.0) : vec4(col, 1.0);
+}`;
+const FB_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uCur, uPrev; uniform vec2 uRes; uniform float uDecay, uZoomFb, uTurn;
+out vec4 o;
+void main() {
+  vec2 uv = gl_FragCoord.xy / uRes, c = uv - 0.5; c.x *= uRes.x / uRes.y;
+  float ca = cos(uTurn), sa = sin(uTurn);
+  c = mat2(ca, -sa, sa, ca) * c / uZoomFb; c.x *= uRes.y / uRes.x;
+  vec3 prev = texture(uPrev, c + 0.5).rgb * uDecay, cur = texture(uCur, uv).rgb;
+  o = vec4(max(cur, prev), 1.0);
+}`;
+const SHOW_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uSrc; uniform vec2 uRes;
+out vec4 o;
+void main() {
+  vec3 c = texture(uSrc, gl_FragCoord.xy / uRes).rgb;
+  float m = max(max(c.r, c.g), c.b);
+  if (m > 0.0) c *= min(0.97, 1.25 * m / (1.0 + m)) / m;   // max-channel tone map: hue and saturation kept, never above 0.97
+  o = vec4(pow(c, vec3(1.0 / 2.2)), 1.0);
+}`;
+function prog(fs) {
+  const p = gl.createProgram();
+  for (const [type, src] of [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, fs]]) {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    gl.attachShader(p, s);
+  }
+  gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}; const nu = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < nu; i++) { const info = gl.getActiveUniform(p, i), name = info.name.replace(/\[0\]$/, ''); u[name] = gl.getUniformLocation(p, info.name); }
+  return { p, u };
+}
+const sceneProg = prog(SCENE_FS), fbProg = prog(FB_FS), showProg = prog(SHOW_FS);
+const vao = gl.createVertexArray();
+const HDR = floatOk ? { ifmt: gl.RGBA16F, type: gl.HALF_FLOAT } : { ifmt: gl.RGBA8, type: gl.UNSIGNED_BYTE };
+function target(w, h, ifmt = HDR.ifmt, type = HDR.type) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, ifmt, w, h, 0, gl.RGBA, type, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  return { t, f, w, h };
+}
+let T = null;
+function targets(w, h) {
+  if (T && T.w === w && T.h === h) return;
+  if (T) for (const x of [T.cur, T.a, T.b]) { gl.deleteTexture(x.t); gl.deleteFramebuffer(x.f); }
+  T = { w, h, cur: target(w, h), a: target(w, h), b: target(w, h) };
+}
+
+// ================================================================================================
+// state: preset morphs, uniforms
+// ================================================================================================
+const LOG_MAX = Math.log(102);   // gem radius = 0.48·log(1+h)/log(102) cells: h = 101 fills its cell
+const radiusOf = h => 0.48 * Math.log(1 + h) / LOG_MAX;
+function cellArrays(d, scale, levels, flat) {   // R and W, indexed p·4+q
+  const R = new Float32Array(16), W = new Float32Array(16);
+  if (!d) return { R, W };
+  let wmax = 0;
+  for (let p = 0; p <= d.n; p++) for (let q = 0; q <= d.n; q++) {
+    const k = p + q, L = flat ? 1 : params.bandGains[k] * (params.floor + (1 - params.floor) * levels[k]);
+    R[p * 4 + q] = radiusOf(d.h[p][q]) * scale; W[p * 4 + q] = d.h[p][q] * L; wmax = Math.max(wmax, d.h[p][q]);
+  }
+  // one shared scale for the glow: the biggest Hodge number of the diamond glows at ≈ 1
+  const norm = wmax > 0 ? 1 / wmax : 0;
+  for (let i = 0; i < 16; i++) W[i] *= norm * scale;
+  return { R, W };
+}
+const st = { cur: null, prev: null, morphStart: -1e9, morphBeats: 4, morph: 1, lastStep: -1, kickEnv: 0, snareEnv: 0,
+  popEnv: 0, idx: 0, kicks: 0, rec: null };
+function presetFor(k) {
+  if (params.preset !== 'auto') return [params.preset, params.preset === 'curve' ? params.genus : 0];
+  return AUTO[((k % AUTO.length) + AUTO.length) % AUTO.length];
+}
+const autoOrder = (n = 32) => Array.from({ length: n }, (_, i) => AUTO[i % AUTO.length]);
+
+// The shape clock. Pure (state in s), so QA runs the very same code on synthetic 60 fps frames
+// (simulate) as on the live clock. Beats are clock beats; holds and the grid are in beats.
+const newSched = () => ({ next: null, last: null, hold: null, pending: false, cause: 'auto' });
+const gridOf = (holdBeats, bpb) => holdBeats >= bpb ? bpb : 1;     // hold ≥ 1 bar: downbeats, else beats
+const alignUp = (x, g) => Math.ceil(x / g - 1e-6) * g;
+// trigger: min(1 bar, hold/2) capped at 1 beat, so hits in a row never stack half-finished morphs
+const morphLen = (holdBeats, bpb, cause) => Math.min(bpb, holdBeats / 2, cause === 'trigger' ? 1 : Infinity);
+function schedStep(s, beats, holdBeats, bpb) {
+  const g = gridOf(holdBeats, bpb);
+  if (s.next === null || beats < s.last - 1e-6) {   // first frame, or the clock jumped back: a virtual change on the grid
+    s.hold = holdBeats; s.cause = 'auto'; s.last = Math.floor(beats / g + 1e-6) * g; s.next = alignUp(s.last + holdBeats, g);
+  }
+  if (s.pending !== false) {   // trigger(): the next beat after the press
+    const pressed = s.pending === true ? beats : s.pending;
+    s.pending = false; s.next = Math.floor(pressed + 1e-6) + 1; s.cause = 'trigger';
+  }
+  if (holdBeats !== s.hold) {   // the rate moved: keep the grid, never land in the past
+    s.hold = holdBeats;
+    if (s.cause === 'auto') { s.next = alignUp(s.last + holdBeats, g); if (s.next < beats - 1e-6) s.next = alignUp(beats, g); }
+  }
+  if (beats + 1e-6 < s.next) return null;
+  const ev = { beat: s.next, at: beats, cause: s.cause, hold: holdBeats, morphBeats: morphLen(holdBeats, bpb, s.cause) };
+  s.last = s.next; s.next = alignUp(s.last + holdBeats, g); s.cause = 'auto';
+  return ev;
+}
+const sched = newSched();
+function simulate({ hold = 2, bpm = 120, bpb = 4, seconds = 60, fps = 60, triggers = [], rates = [] } = {}) {
+  const s = newSched(), out = [], tq = triggers.slice().sort((a, b) => a - b), rq = rates.slice().sort((a, b) => a.beat - b.beat);
+  let h = hold * bpb;
+  for (let f = 0; f <= seconds * fps; f++) {
+    const beats = f / fps * bpm / 60;
+    while (rq.length && rq[0].beat <= beats) h = rq.shift().hold * bpb;
+    if (tq.length && tq[0] <= beats) { s.pending = tq.shift(); while (tq.length && tq[0] <= beats) tq.shift(); }
+    const ev = schedStep(s, beats, h, bpb); if (ev) out.push(ev);
+  }
+  return out;
+}
+// truths 6, 8, 9, 10 on the scheduler, at every step, frame-exact (±1 frame = bpm/60/fps beats)
+function rateTruths(bpm = 120, fps = 60) {
+  const bpb = params.bpb, fb = bpm / 60 / fps + 1e-9, rows = [];
+  let holdOk = true, gridOk = true, morphOk = true;
+  for (const hold of HOLDS) {
+    const ev = simulate({ hold, bpm, bpb, fps, seconds: hold * bpb * 6 * 60 / bpm + 1 });
+    const gaps = ev.slice(1).map((e, i) => e.beat - ev[i].beat);
+    const late = ev.reduce((m, e) => Math.max(m, e.at - e.beat), 0);
+    const g = gridOf(hold * bpb, bpb);
+    const hOk = gaps.length >= 4 && gaps.every(x => Math.abs(x - hold * bpb) < 1e-6) && late <= fb;
+    const gOk = ev.every(e => Math.abs(e.beat / g - Math.round(e.beat / g)) < 1e-6);
+    const mOk = ev.every(e => Math.abs(e.morphBeats - Math.min(bpb, hold * bpb / 2)) < 1e-9);
+    holdOk = holdOk && hOk; gridOk = gridOk && gOk; morphOk = morphOk && mOk;
+    rows.push({ hold, changes: ev.length, gaps: [...new Set(gaps)], lateFrames: late / (fb - 1e-9), morphBeats: ev[0] && ev[0].morphBeats, holdOk: hOk, gridOk: gOk, morphOk: mOk });
+  }
+  // trigger: 20 presses at uneven times, hold 8 bars so auto never fires in between
+  let seed = 7; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+  const presses = []; for (let t = 3.3, i = 0; i < 20; i++) { presses.push(t); t += 1.5 + 3 * rnd(); }
+  const tev = simulate({ hold: 8, bpm, bpb, fps, seconds: (presses[19] + 4) * 60 / bpm, triggers: presses }).filter(e => e.cause === 'trigger');
+  const triggerOk = tev.length === presses.length && tev.every((e, i) => e.beat === Math.floor(presses[i] + 1e-6) + 1 && e.at - e.beat <= fb);
+  // order: 32 changes, no preset twice in a row, no two curves next to each other, dimension changes every step
+  const ord = autoOrder(33);
+  const orderOk = ord.slice(1).every((x, i) => { const y = ord[i]; return x[0] !== y[0] && !(x[0] === 'curve' && y[0] === 'curve') && hodge(x[0], x[1]).n !== hodge(y[0], y[1]).n; });
+  return { holdOk, gridOk, morphOk, triggerOk, orderOk, rows, triggers: tev.map((e, i) => ({ pressed: presses[i], beat: e.beat, at: e.at })) };
+}
+
+// live: the morph log (truths 6–9 on the real clock) and the change itself
+const morphs = [];
+function setPreset([name, g], ev, now) {
+  const d = hodge(name, g); d.name = name; d.genus = g;
+  if (!st.cur) { st.cur = d; settledSeen.add(`${name}:${g}`); return; }
+  if (st.cur.name === name && st.cur.genus === g) return;
+  st.prev = st.cur; st.cur = d; st.morphStart = ev.beat; st.morphBeats = ev.morphBeats; st.popEnv = 1;
+  st.rec = { beat: ev.beat, at: ev.at, cause: ev.cause, hold: ev.hold, morphBeats: ev.morphBeats, to: name, genus: g, from: st.prev.name, end: null, perf: now, epoch: liveClock.epoch };
+  morphs.push(st.rec); if (morphs.length > 128) morphs.shift();
+  logAt('morph', ev.beat / params.bpb, { to: name, genus: g, from: st.prev.name, cause: ev.cause, hold: ev.hold, morphBeats: ev.morphBeats, epoch: liveClock.epoch, settled: now - liveClock.since >= SETTLE_MS }, now);
+}
+// A clock epoch starts on the first frame and whenever the clock jumps back (▶ Play restarts the beats at 0).
+// QA #84 round 4: a change on the free-running clock before Play and the first one after it were compared as
+// one hold (gap 0 at 140 bpm → holdErr 2 beats), so the live truths compare changes within one epoch only.
+const liveClock = { epoch: 0, since: 0 }, SETTLE_MS = 1000;
+function morphSync() {   // truth 7: |drawn − heard| of each morph event, ms (settled: 1 s after the clock (re)started)
+  const all = events.filter(e => e.type === 'morph'), ms = all.filter(e => e.settled !== false).map(e => Math.abs(e.perfDrawn - e.perfHeard));
+  const msAll = all.map(e => Math.abs(e.perfDrawn - e.perfHeard));
+  return { n: ms.length, maxMs: ms.length ? Math.max(...ms) : null, nAll: msAll.length, maxMsAll: msAll.length ? Math.max(...msAll) : null };
+}
+function liveTruths() {   // the same truths on the real clock: holds between auto changes, lateness and morph length in frames
+  const bpf = params.bpm / 60 / Math.max(30, fps || 60), auto = morphs.filter(r => r.cause === 'auto');
+  const gaps = [];
+  for (let i = 1; i < auto.length; i++) {
+    const a = auto[i - 1], b = auto[i];
+    if (a.hold === b.hold && a.epoch === b.epoch && !morphs.some(x => x.cause === 'trigger' && x.beat > a.beat && x.beat <= b.beat)) gaps.push(b.beat - a.beat - b.hold);
+  }
+  const late = morphs.reduce((m, r) => Math.max(m, (r.at - r.beat) / bpf), 0);
+  const lens = morphs.filter(r => r.end !== null).map(r => Math.abs(r.end - r.beat - r.morphBeats) / bpf);
+  return { changes: morphs.length, holdErrBeats: gaps.length ? Math.max(...gaps.map(Math.abs)) : null, lateFrames: late, morphErrFrames: lens.length ? Math.max(...lens) : null };
+}
+const ease = x => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+
+// ================================================================================================
+// QA: the glow layer of the fundamental cell with every L_k = 1, rendered into a float buffer
+// (before tone mapping) and integrated per row; ratios against the Betti numbers.
+// ================================================================================================
+function measureRowGlow(name, genus) {
+  const which = name || (st.cur && st.cur.name) || 'k3';
+  const d = hodge(which, genus === undefined ? (st.cur && st.cur.name === which ? st.cur.genus : params.genus) : genus);
+  if (!floatOk) return { error: 'no float colour buffer (EXT_color_buffer_float)', maxRelErr: 1 };
+  const N = 768, zoom = 1.05;
+  const t = target(N, N, gl.RGBA32F, gl.FLOAT);
+  const { R, W } = cellArrays(d, 1, null, true), Z = new Float32Array(16);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, t.f); gl.viewport(0, 0, N, N);
+  gl.useProgram(sceneProg.p); const u = sceneProg.u;
+  gl.uniform2f(u.uRes, N, N); gl.uniform1f(u.uZoom, zoom); gl.uniform1f(u.uAng, 0); gl.uniform1f(u.uBreath, 1);
+  gl.uniform1f(u.uTime, 0); gl.uniform1f(u.uMode, 1); gl.uniform1f(u.uGold, 1); gl.uniform1f(u.uKick, 0); gl.uniform1f(u.uSnare, 0); gl.uniform1f(u.uLabels, 0);
+  gl.uniform1f(u.uNA, d.n); gl.uniform1f(u.uNB, 0); gl.uniform1f(u.uAA, 1); gl.uniform1f(u.uAB, 0);
+  gl.uniform1fv(u.uRA, R); gl.uniform1fv(u.uWA, W); gl.uniform1fv(u.uRB, Z); gl.uniform1fv(u.uWB, Z);
+  gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  const px = new Float32Array(N * N * 4); gl.readPixels(0, 0, N, N, gl.RGBA, gl.FLOAT, px);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.deleteTexture(t.t); gl.deleteFramebuffer(t.f);
+  const s = 1 / (d.n + 0.7), rows = new Array(2 * d.n + 1).fill(0);
+  for (let y = 0; y < N; y++) {
+    const wy = (y + 0.5 - N / 2) / N * 2 * zoom, k = Math.round(wy / s + d.n);
+    if (k < 0 || k > 2 * d.n) continue;
+    for (let x = 0; x < N; x++) rows[k] += px[(y * N + x) * 4];
+  }
+  const b = rowSums(d), sb = b.reduce((a, x) => a + x, 0), sm = rows.reduce((a, x) => a + x, 0);
+  const ratios = rows.map(x => x / sm), expected = b.map(x => x / sb);
+  let maxRelErr = 0, zeroLeak = 0;
+  expected.forEach((e, k) => { if (e > 0) maxRelErr = Math.max(maxRelErr, Math.abs(ratios[k] - e) / e); else zeroLeak = Math.max(zeroLeak, ratios[k]); });
+  maxRelErr = Math.max(maxRelErr, zeroLeak * 100);   // a row that should be dark must stay below 1 % of the total
+  return { preset: which, rows, ratios, expected, betti: b, maxRelErr, zeroLeak };
+}
+
+// ================================================================================================
+// UI
+// ================================================================================================
+for (const name of ['auto', ...PRESET_NAMES]) {
+  const b = document.createElement('button'); b.textContent = name;
+  b.onclick = () => { params.preset = name; sched.pending = true; sync(); };   // lands on the next beat
+  $('presets').appendChild(b);
+}
+for (let k = 0; k < 7; k++) {
+  const r = document.createElement('div'); r.className = 'row';
+  r.innerHTML = `<label for="band${k}">row ${k}</label><input id="band${k}" type="range" min="0" max="2" step="0.05"><output id="band${k}Out"></output>`;
+  $('bandRows').appendChild(r);
+  r.querySelector('input').addEventListener('input', e => { params.bandGains[k] = parseFloat(e.target.value); r.querySelector('output').textContent = params.bandGains[k].toFixed(2); });
+}
+const SLIDERS = { genus: 0, tileRadius: 2, spin: 2, goldBoost: 2, trail: 2, floor: 2, shapeRate: 2, bpm: 0 };
+const fmt = (name, dec) => name === 'shapeRate' ? `${holdOf(params.shapeRate)} bar${holdOf(params.shapeRate) === 1 ? '' : 's'}` : Number(params[name]).toFixed(dec);
+for (const [name, dec] of Object.entries(SLIDERS)) $(name).addEventListener('input', e => {
+  params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = fmt(name, dec);
+  if (name === 'genus' && params.preset === 'curve') sched.pending = true;
+});
+// shape rate one step slower / faster, and trigger: the keyboard stand-in for macro1 and the trigger pad
+function stepRate(d) { params.shapeRate = Math.max(0, Math.min(4, Math.round(params.shapeRate * 4) + d)) / 4; sync(); }
+const triggerLog = [];
+function trigger() { sched.pending = true; triggerLog.push({ slot: 1, perf: performance.now() }); if (triggerLog.length > 128) triggerLog.shift(); }
+$('trigger').onclick = trigger;
+window.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target && (e.target.tagName === 'TEXTAREA' || (e.target.tagName === 'INPUT' && e.target.type === 'text'))) return;
+  if (e.key === '[') { e.preventDefault(); stepRate(-1); }
+  else if (e.key === ']') { e.preventDefault(); stepRate(1); }
+  else if (e.key === 't' || e.key === 'T' || e.key === 'z' || e.key === 'Z') { e.preventDefault(); trigger(); }   // Z: LIVE button 1
+});
+// #85 macros (soft takeover is the host's job): macro1 shape rate, macro2 spin, macro3 tiles, macro4 trails
+const MACROS = { macro1: ['shapeRate', 0, 1], macro2: ['spin', -2, 2], macro3: ['tileRadius', 0.6, 4], macro4: ['trail', 0, 0.98] };
+// setMacro(1..4 or 'macro1'..'macro4', v 0–1) → the param's new value (the #85 knob QA hook)
+function setMacro(m, v) {
+  const key = typeof m === 'number' ? `macro${m}` : m; if (!MACROS[key]) return null;
+  const [name, lo, hi] = MACROS[key]; params[name] = lo + (hi - lo) * Math.max(0, Math.min(1, v)); sync(); return params[name];
+}
+const macroValue = key => { const [name, lo, hi] = MACROS[key]; return (params[name] - lo) / (hi - lo); };
+function sync() {
+  for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = fmt(name, dec); }
+  for (let k = 0; k < 7; k++) { $('band' + k).value = params.bandGains[k]; $('band' + k + 'Out').textContent = params.bandGains[k].toFixed(2); }
+  $('mute').classList.toggle('on', params.muted); $('labels').classList.toggle('on', params.labels); $('flat').classList.toggle('on', params.bands === 'flat');
+  for (const b of $('presets').children) b.classList.toggle('on', b.textContent === params.preset);
+}
+$('play').onclick = () => { if (metronome.playing) { metronome.stop(); $('play').textContent = '▶ Play'; } else { metronome.start(); clockStart = performance.now(); $('play').textContent = '■ Stop'; } };
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('mic').onclick = async () => { try { await metronome.useMic(); $('mic').classList.add('on'); } catch (e) { $('mic').textContent = 'mic: ' + e.message; } };
+$('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen()).catch(() => {}); };
+$('labels').onclick = () => { params.labels = !params.labels; sync(); };
+$('flat').onclick = () => { params.bands = params.bands === 'flat' ? 'audio' : 'flat'; sync(); };
+$('copy').onclick = async e => {
+  const q = new URLSearchParams({ preset: params.preset, genus: params.genus, tileRadius: params.tileRadius, spin: params.spin, goldBoost: params.goldBoost,
+    trail: params.trail, floor: params.floor, shapeRate: params.shapeRate, bpm: params.bpm, bands: params.bands, bandGains: params.bandGains.join(',') });
+  const text = `16b · Hodge Kaleidoscope · ${params.preset}\n${location.origin + location.pathname}?${q}`;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }
+  if (!ok) { prompt('Copy this:', text); return; }
+  e.target.textContent = 'Copied ✓'; setTimeout(() => { e.target.textContent = 'Copy setup'; }, 1500);
+};
+window.__modules = { 'hodge-kaleidoscope': {
+  macros: { macro1: 'shapeRate', macro2: 'spin', macro3: 'tileRadius', macro4: 'trail' },
+  actions: { trigger: 'next shape on the next beat' },
+  inputs: [
+    { name: 'shapeRate', type: 'float', default: 1, min: 0, max: 1, snap: HOLDS.map((h, i) => ({ value: i / 4, holdBars: h })) },
+    { name: 'spin', type: 'float', default: 1, min: -2, max: 2 },
+    { name: 'tileRadius', type: 'float', default: 1.6, min: 0.6, max: 4 },
+    { name: 'trail', type: 'float', default: 0.96, min: 0, max: 0.98 },
+    // detail panel
+    { name: 'variant', type: 'long', values: ['auto', ...PRESET_NAMES], default: 'auto' },
+    { name: 'genus', type: 'long', default: 2, min: 0, max: 6 },
+    { name: 'goldBoost', type: 'float', default: 1, min: 0, max: 2 },
+    { name: 'bandGains', type: 'float[7]', default: [1, 1, 1, 1, 1, 1, 1], min: 0, max: 2 },
+  ] } };
+
+// ================================================================================================
+// main loop
+// ================================================================================================
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(3840, Math.round(canvas.clientWidth * dpr)), h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  // the numbers overlay is redrawn every frame: at most 1920 px wide (CSS scales it), a 4K 2D canvas cost slow frames
+  const os = Math.min(Math.min(dpr, 1.5), 1920 / Math.max(1, canvas.clientWidth));
+  const ow = Math.round(canvas.clientWidth * os), oh = Math.round(canvas.clientHeight * os);
+  if (ov.width !== ow || ov.height !== oh) { ov.width = ow; ov.height = oh; }
+}
+let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, lastNow = 0;
+const errors = [], events = [];
+function logEvent(e, now) {
+  if (!metronome.playing) return;
+  e.tHeard = e.tBeat + metronome.latency();
+  e.perfHeard = performance.now() + (e.tHeard - metronome.ctx.currentTime) * 1000;
+  e.perfDrawn = now;
+  events.push(e); if (events.length > 256) events.shift();
+}
+const stepTime = step => { const s = metronome.playing && metronome.steps.find(x => x.step === step); return s ? s.time : null; };
+function logAt(type, bar, extra, now) { const t = stepTime(Math.round(bar * params.bpb * 4)); if (t !== null) logEvent({ type, bar, ...extra, tBeat: t }, now); }
+function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
+}
+let pingA = true;
+function draw(now) {
+  resize();
+  const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
+  const L = metronome.read();
+  const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * params.bpm / 60);
+  const bars = beats / params.bpb;
+  readBands(dt);
+
+  // drum hits of the heard step: events and soft envelopes (≥ 120 ms tails)
+  const step = Math.floor(beats * 4);
+  if (metronome.playing && step !== st.lastStep) {
+    st.lastStep = step;
+    const inBar = step % (params.bpb * 4);
+    for (const lane of LANES) if (params[lane][inBar % 16] === 'x') {
+      logAt(lane, step / (params.bpb * 4), {}, now);
+      if (lane === 'kick') { st.kickEnv = 1; st.kicks++; if (params.autoTrigger > 0 && st.kicks % params.autoTrigger === 0) trigger(); }
+      if (lane === 'snare') st.snareEnv = 1;
+    }
+  }
+  st.kickEnv *= Math.exp(-dt / 0.15); st.snareEnv *= Math.exp(-dt / 0.14); st.popEnv *= Math.exp(-dt / 0.14);
+
+  // shapes: held shapeRate's hold on the beat grid, morph min(1 bar, hold/2) from the beat, +6 % pop
+  if (!st.cur) setPreset(presetFor(st.idx), null, now);
+  // read the shape clock half a frame ahead, so a change is drawn within ±½ frame of its beat instead of 0–1 frame
+  // late (a 4K frame is ~17–20 ms; QA box measured 41 ms against the 40 ms limit)
+  const ahead = beats + 0.5 * Math.min(dt || 1 / 60, 1 / 30) * params.bpm / 60;
+  if (sched.next === null || ahead < sched.last - 1e-6) { liveClock.epoch++; liveClock.since = now; }   // the same test schedStep resets on
+  const ev = schedStep(sched, ahead, holdOf(params.shapeRate) * params.bpb, params.bpb);
+  if (ev) { if (params.preset === 'auto') st.idx++; setPreset(presetFor(st.idx), ev, now); }
+  if (st.prev && beats < st.morphStart - 0.5 && !ev) st.prev = null;   // the clock jumped back mid-morph: finish it (not the ½-frame look-ahead)
+  const m = st.prev ? ease((beats - st.morphStart) / st.morphBeats) : 1;
+  if (st.prev && m >= 1) {
+    if (st.rec) st.rec.end = beats;
+    settledSeen.add(`${st.cur.name}:${st.cur.genus}`); st.prev = null;
+  }
+  st.morph = m;
+  const pop = 1 + 0.06 * st.popEnv;
+  const flat = params.bands === 'flat';
+  const levels = Array.from(bandLevel);
+  const A = cellArrays(st.cur, m * (1 + 0.03 * st.kickEnv) * pop, levels, flat);
+  const B = cellArrays(st.prev, (1 - m) * (1 + 0.03 * st.kickEnv) * pop, levels, flat);
+  const ang = params.spin * 2 * Math.PI * bars / 32, breath = 1 + 0.02 * Math.sin(2 * Math.PI * bars);
+  const zoom = params.tileRadius;
+
+  const W = canvas.width, H = canvas.height;
+  targets(W, H);
+  gl.bindVertexArray(vao);
+  // scene → T.cur
+  gl.bindFramebuffer(gl.FRAMEBUFFER, T.cur.f); gl.viewport(0, 0, W, H);
+  gl.useProgram(sceneProg.p); const u = sceneProg.u;
+  gl.uniform2f(u.uRes, W, H); gl.uniform1f(u.uZoom, zoom); gl.uniform1f(u.uAng, ang); gl.uniform1f(u.uBreath, breath);
+  gl.uniform1f(u.uTime, now / 1000); gl.uniform1f(u.uMode, 0); gl.uniform1f(u.uGold, params.goldBoost);
+  gl.uniform1f(u.uKick, st.kickEnv); gl.uniform1f(u.uSnare, st.snareEnv); gl.uniform1f(u.uLabels, params.labels ? 1 : 0);
+  gl.uniform1f(u.uNA, st.cur.n); gl.uniform1f(u.uNB, st.prev ? st.prev.n : 0); gl.uniform1f(u.uAA, m); gl.uniform1f(u.uAB, 1 - m);
+  gl.uniform1fv(u.uRA, A.R); gl.uniform1fv(u.uWA, A.W); gl.uniform1fv(u.uRB, B.R); gl.uniform1fv(u.uWB, B.W);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  // oil feedback: max(new, old × decay), the old one zoomed 1.002 and turned 0.1°
+  const src = pingA ? T.a : T.b, dst = pingA ? T.b : T.a; pingA = !pingA;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, dst.f);
+  gl.useProgram(fbProg.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T.cur.t); gl.uniform1i(fbProg.u.uCur, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, src.t); gl.uniform1i(fbProg.u.uPrev, 1);
+  gl.uniform2f(fbProg.u.uRes, W, H); gl.uniform1f(fbProg.u.uDecay, params.trail); gl.uniform1f(fbProg.u.uZoomFb, 1.002); gl.uniform1f(fbProg.u.uTurn, 0.1 * Math.PI / 180);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  // tone map to the screen
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H);
+  gl.useProgram(showProg.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dst.t); gl.uniform1i(showProg.u.uSrc, 0); gl.uniform2f(showProg.u.uRes, W, H);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  overlay(zoom, ang, breath, m);
+  const rowGlow = rowSums(st.cur).map((b, kk) => b * (flat ? 1 : params.bandGains[kk] * (params.floor + (1 - params.floor) * levels[kk])));
+  Object.assign(window.__qa, { preset: st.cur.name, genus: st.cur.genus, n: st.cur.n, morph: m, from: st.prev ? st.prev.name : null,
+    bands: levels, flat, rowGlow, betti: rowSums(st.cur), bars, beats, floatOk, hold: holdOf(params.shapeRate), shapeRate: params.shapeRate,
+    morphBeats: st.morphBeats, pop: st.popEnv, idx: st.idx });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    const s = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    hud.textContent = `Hodge Kaleidoscope · ${TITLE[st.cur.name](st.cur.genus)} · ${params.bpm} bpm · hold ${holdOf(params.shapeRate)} bar · ${s}\n${W}×${H} · ${fps} fps${floatOk ? '' : ' · no float buffers'}`;
+  }
+}
+// numbers engraved on the fundamental cell, the corner label and the mirror labels
+function overlay(zoom, ang, breath, m) {
+  const c = octx, OW = ov.width, OH = ov.height;
+  c.clearRect(0, 0, OW, OH);
+  const toScreen = (x, y) => {   // cell-local → overlay pixels (inverse of the shader's mapping)
+    const ca = Math.cos(ang), sa = Math.sin(ang), wx = x * breath, wy = y * breath;
+    const px = ca * wx + sa * wy, py = -sa * wx + ca * wy;   // the shader turned the screen by +ang (mat2(ca, sa, -sa, ca)), so turn back
+    return [OW / 2 + px / (2 * zoom) * OH, OH / 2 - py / (2 * zoom) * OH];
+  };
+  const drawNums = (d, alpha) => {
+    if (!d || alpha <= 0.01) return;
+    const s = 1 / (d.n + 0.7);
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    for (let p = 0; p <= d.n; p++) for (let q = 0; q <= d.n; q++) {
+      const [x, y] = toScreen((q - p) * s, (p + q - d.n) * s), h = d.h[p][q];
+      const size = Math.max(10, OH / zoom * s * (h > 9 ? 0.16 : 0.2));
+      c.font = `700 ${Math.round(size)}px ui-monospace, Menlo, monospace`;
+      c.fillStyle = p === q ? `rgba(40,20,0,${0.85 * alpha})` : `rgba(255,248,235,${0.85 * alpha})`;
+      if (h === 0) c.fillStyle = `rgba(230,220,255,${0.35 * alpha})`;
+      c.fillText(String(h), x, y);
+    }
+  };
+  drawNums(st.cur, m);
+  drawNums(st.prev, 1 - m);
+  const d = st.cur, b = rowSums(d), chi = b.reduce((s, x, k) => s + (k % 2 ? -x : x), 0);
+  c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+  c.font = `600 ${Math.round(OH / 30)}px ui-monospace, Menlo, monospace`; c.fillStyle = 'rgba(255,200,61,0.9)';
+  c.fillText('16b · Hodge Kaleidoscope', OW * 0.03, OH * 0.07);
+  c.font = `500 ${Math.round(OH / 44)}px ui-monospace, Menlo, monospace`; c.fillStyle = 'rgba(241,233,255,0.75)';
+  c.fillText(`${TITLE[d.name](d.genus)} · Betti ${b.join(' ')} · χ = ${chi}`, OW * 0.03, OH * 0.115);
+  c.textAlign = 'right'; c.fillStyle = 'rgba(182,255,26,0.8)'; c.fillText('exact', OW * 0.97, OH * 0.07);
+  if (params.labels) {
+    c.font = `500 ${Math.round(OH / 56)}px ui-monospace, Menlo, monospace`; c.fillStyle = 'rgba(255,200,61,0.7)';
+    c.textAlign = 'center';
+    let [x, y] = toScreen(0, 0.86); c.fillText('↔ Hodge symmetry  h^{p,q} = h^{q,p}', x, y);
+    [x, y] = toScreen(0, -0.06); c.fillText('· 180° Serre duality  h^{p,q} = h^{n−p,n−q}', x, y + OH / 40);
+    [x, y] = toScreen(0.74, 0.03); c.fillText('↕ both', x, y);
+    c.fillStyle = 'rgba(120,150,255,0.6)'; [x, y] = toScreen(0, -0.86); c.fillText('outer mirrors: decoration (p4m tiling)', x, y);
+  }
+}
+
+window.__qa = { errors, events, presets: PRESET_NAMES, hodge, table: TABLE, betti: BETTI, euler: EULER, check, measureRowGlow, rowSums,
+  holds: HOLDS, auto: AUTO, autoOrder, trigger, setShapeRate: v => { params.shapeRate = Math.max(0, Math.min(1, v)); sync(); return holdOf(params.shapeRate); },
+  setMacro, setKnob: setMacro,
+  get macros() { return Object.fromEntries(Object.entries(MACROS).map(([m, [name, lo, hi]]) => [m, { name, min: lo, max: hi, value: macroValue(m), param: params[name] }])); },
+  get knobs() { return this.macros; },
+  press: b => { if (b === 1 || b === 'button1' || b === 'trigger') { trigger(); return true; } return false; },
+  // #85 buttons (comment 6481677687): trigger1 = bottom 1 / Z is "next shape"; 2–4 are free
+  triggers: [{ slot: 1, name: 'next shape', key: 'Z', does: 'next shape on the next beat' }], triggerLog,
+  pressTrigger: (i, holdMs = 0) => { if (i !== 1) return false; trigger(); return true; },
+  simulate, rateTruths, morphs, morphSync, liveTruths };
+const q = k => query.get(k);
+const pick = q('variant') || q('preset');
+if (pick && (pick === 'auto' || PRESET_NAMES.includes(pick))) params.preset = pick;
+if (HOLDS.includes(parseFloat(q('hold')))) params.shapeRate = HOLDS.indexOf(parseFloat(q('hold'))) / 4;
+if (parseInt(q('autoTrigger'), 10) > 0) params.autoTrigger = parseInt(q('autoTrigger'), 10);
+for (const key of Object.keys(MACROS)) { const v = parseFloat(q(key)); if (Number.isFinite(v)) { const [name, lo, hi] = MACROS[key]; params[name] = lo + (hi - lo) * Math.max(0, Math.min(1, v)); } }   // ?macro1=0..1
+for (const key of Object.keys(SLIDERS)) { const v = parseFloat(q(key)); if (Number.isFinite(v)) params[key] = v; }
+params.genus = Math.max(0, Math.min(6, Math.round(params.genus)));
+if (q('bands') === 'flat') params.bands = 'flat';
+if (q('labels') === '0') params.labels = false;
+if (q('bandGains')) { const g = q('bandGains').split(',').map(Number); if (g.length === 7 && g.every(Number.isFinite)) params.bandGains = g; }
+params.muted = q('muted') === '1';
+sync();
+requestAnimationFrame(frame);
+</script>
+<script src="panic.js"></script>
+</body>
+</html>
