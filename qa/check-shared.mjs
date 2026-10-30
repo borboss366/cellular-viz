@@ -59,8 +59,11 @@ fs.mkdirSync(out, { recursive: true });
 // When the forceDrop hook PR merges, drop the pages it covers from LEGACY so a lost hook fails again.
 const LEGACY = new Set(['01-gray-scott', '02-lenia', '03-lenia-audio', '04-lenia-metronome', '05-flow-lenia', '06-lenia-effects', '07-particle-lenia',
   '08-blend', '09-riemann', '10-bsd', '11-riemann-show', '13-flow-lab', '17-bsd-skater', '19-skate-park',
-  '23-shape-shifter', '25-shape-shifter-2']);   // 12, 14, 18 left with #94 (29c3e9c, 29 Oct): they have __qa.forceDrop
-const legacy = LEGACY.has(id) || id.startsWith('16-');   // 16 Hodge (#84) was in flight before #88
+  '23-shape-shifter', '25-shape-shifter-2',
+  '16-hodge-kaleidoscope']);   // 12, 14, 18 left with #94 (29c3e9c, 29 Oct): they have __qa.forceDrop
+// by file name only (VIZ research's ruling on #124): 16b (#84) was in flight before #88; 16-neon-lines (16c) and every
+// later page are new scenes, so their flash and GPU rows are hard gates (❌), never ⚠️
+const legacy = LEGACY.has(id);
 // if this check itself breaks, say so in check.md: ⚠️ on pages from before #88 (never blocks them), ❌ on new scenes
 const crash = e => {
   try { fs.writeFileSync(path.join(out, 'check.md'), `# Shared gates (#88) · ${pageName} · ${stamp}\n\n| gate | result | detail |\n|---|---|---|\n` +
