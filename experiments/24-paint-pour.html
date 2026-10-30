@@ -1,0 +1,234 @@
+<!doctype html>
+<!--
+  24 · Paint Pour   (spec: VIZ research, #87; the look: CANADA's video for Tame Impala's "The Less I Know The Better")
+
+  Poured acrylic, exact: Mathematical Marbling (Lu, Jaffer, Jin et al. 2012). Every drop, tine comb and vortex is a
+  closed-form map of the plane, traced backwards per pixel in one fragment pass, so edges stay crisp and every op is
+  invertible. A thick-paint pass on top: bevelled blobs from the distance to the nearest boundary, a glossy key light,
+  coloured veins, paint strings during the pour.
+  The song (16-bar sections): bar 0 the drop (a big drop, rings, a burst of cells); bars 0–7 groove (kick → tine comb,
+  N → E → S → W bar by bar; snare → vortex; a bass swirl a bar); 8–11 breakdown (slow N/S feather combs, no drops);
+  12–15 build (a slow pour with strings). The scene is a #85 module (24-paint-pour.mjs) on the shared clock (clock.js).
+
+  Controls (#85): macro1 bass swirl, macro2 tine depth, macro3 thick paint (0 = flat marbling), macro4 camera drift.
+  Triggers: 1 big drop (beat), 2 cells (now), 3 vortex (beat), 4 comb (beat); keys Z X C V.
+  window.__qa: check() (truths 1, 3 on the GPU, 4, 5, 9, 10), ops, opLog, fwd(x,y), inv(x,y), traceGPU(points),
+  traceCPU(points), colourAt(x,y), colourGrid(x0,y0,x1,y1,n), forceDrop() (panic.js), forceBake(), bakes, pour, view,
+  palette, events() (the clock's hits and jumps), setMacro(i,v), macros, pressTrigger(i,holdMs), triggers, triggerLog,
+  triggerEnv, bars, beats, bpm, errors.
+  ?macro1..4=0..1, ?palette=canada|psych60s|psych70s, ?veinColour=lime|yellow|black|none, ?seed=, ?opsMax=, ?dropScale=,
+  ?cellsPerDrop=, ?blackShare=, ?tines=, ?tineSharp=, ?vortexOn=0, ?pourRate=, ?strings=, ?veinWidth=, ?bevelWidth=,
+  ?bakeScale=, ?traceScale=, ?qa=flat, ?freeze=1, ?startBar=, ?bpm=, ?muted=1, ?clock=metronome, ?labels=0.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>24 · Paint Pour</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #030207; color: #f3ece2;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 16 / 9;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #e0cc34; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 104px; flex: none; color: #d9cfc2; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 64px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #3a2c22; border-radius: 8px;
+    background: #17110d; color: inherit; font: inherit; }
+  button.on { background: #5a1a16; border-color: #df4798; }
+  a { color: #5ad6e7; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(62vw, calc(100vh * 16 / 9)); margin: 0; position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Macros</h3>
+  <div class="row"><label for="m1">1 bass swirl</label><input id="m1" type="range" min="0" max="1" step="0.01"><output id="m1Out"></output></div>
+  <div class="row"><label for="m2">2 tine depth</label><input id="m2" type="range" min="0" max="1" step="0.01"><output id="m2Out"></output></div>
+  <div class="row"><label for="m3">3 thick paint</label><input id="m3" type="range" min="0" max="1" step="0.01"><output id="m3Out"></output></div>
+  <div class="row"><label for="m4">4 camera drift</label><input id="m4" type="range" min="0" max="1" step="0.01"><output id="m4Out"></output></div>
+  <h3>Triggers</h3>
+  <div class="buttons">
+    <button id="t1">Z big drop</button><button id="t2">X cells</button><button id="t3">C vortex</button><button id="t4">V comb</button>
+  </div>
+  <h3>Detail</h3>
+  <div class="buttons"><button id="palette">palette: canada</button><button id="vein">veins: lime</button><button id="flat">flat</button><button id="bake">bake now</button></div>
+  <div class="row"><label for="dropScale">drop size</label><input id="dropScale" type="range" min="0.4" max="1.4" step="0.01"><output id="dropScaleOut"></output></div>
+  <div class="row"><label for="cellsPerDrop">cells</label><input id="cellsPerDrop" type="range" min="0" max="1" step="0.01"><output id="cellsPerDropOut"></output></div>
+  <div class="row"><label for="blackShare">black drops</label><input id="blackShare" type="range" min="0" max="0.6" step="0.01"><output id="blackShareOut"></output></div>
+  <div class="row"><label for="tines">tine density</label><input id="tines" type="range" min="0" max="1" step="0.01"><output id="tinesOut"></output></div>
+  <div class="row"><label for="pourRate">pour rate</label><input id="pourRate" type="range" min="0" max="0.02" step="0.0005"><output id="pourRateOut"></output></div>
+  <div class="row"><label for="veinWidth">vein px</label><input id="veinWidth" type="range" min="0.4" max="3" step="0.05"><output id="veinWidthOut"></output></div>
+  <div class="row"><label for="bevelWidth">bevel px</label><input id="bevelWidth" type="range" min="4" max="30" step="0.5"><output id="bevelWidthOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <a href="../index.html">← all experiments</a>
+</div>
+<script>
+  // #88 drop hook, before panic.js so its forceDrop attaches at once: the drop is bar 0 of each 16-bar section
+  window.__qaNextDrop = b => window.__qaSectionDrop(b, 16, 0);
+  window.__qa = window.__qa || {};
+</script>
+<script src="panic.js"></script>
+<script src="clock.js"></script>
+<script type="module">
+import scene, { MACROS, TRIGGERS, DETAIL, macroInputs } from './24-paint-pour.mjs';
+import * as K from './24-marble.mjs';
+const $ = id => document.getElementById(id);
+const query = new URLSearchParams(location.search);
+const def = Object.fromEntries(DETAIL.map(d => [d.name, d.default]));
+// the live settings object: the clock reads bpm, bpb, muted and the drum patterns from it at every step
+const params = { bpm: 120, bpb: 4, muted: false, startBar: 0, labels: true, flat: false, freeze: false, traceScale: 1,
+  macro: MACROS.map(m => m.default), ...def,
+  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+
+// ---------- URL settings ----------
+const q = k => query.get(k), num = (k, lo, hi) => { const v = parseFloat(q(k)); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null; };
+for (let i = 1; i <= 4; i++) { const v = num('macro' + i, 0, 1); if (v !== null) params.macro[i - 1] = v; }
+for (const d of DETAIL) {
+  if (d.type === 'float' || (d.type === 'long' && !d.values)) { const v = num(d.name, d.min, d.max); if (v !== null) params[d.name] = d.type === 'long' ? Math.round(v) : v; }
+  else if (d.values && d.values.includes(q(d.name))) params[d.name] = q(d.name);
+}
+if (q('vortexOn') === '0') params.vortexOn = false;
+for (const [k, lo, hi] of [['bpm', 60, 180], ['startBar', 0, 4096], ['traceScale', 0.5, 1]]) { const v = num(k, lo, hi); if (v !== null) params[k] = v; }
+params.flat = q('qa') === 'flat'; params.freeze = q('freeze') === '1'; params.labels = q('labels') !== '0'; params.muted = q('muted') === '1';
+
+// ---------- the shared clock (#95): the metronome until a page asks for another source ----------
+const clock = Clock.create({ source: q('clock') || 'metronome', settings: params });
+let clockStart = performance.now();
+// the clock as the scene reads it: beats (at visual time), the drum hits since the last frame as beat positions.
+// Not playing: beats from performance.now and the hits from the patterns (the same op log either way, truth 9).
+// startBar is a QA offset, __qaShift (bars) is #88's forceDrop.
+function clockRead(now) {
+  const shift = (params.startBar + (window.__qaShift || 0)) * params.bpb;
+  if (clock.playing) {
+    const r = clock.read();
+    if (r.beats >= 0) {
+      const beats = r.beats + shift, tNow = clock.now(), bps = params.bpm / 60, hits = [];
+      for (const h of clock.events) if (h.time <= tNow && tNow - h.time < 1) hits.push({ lane: h.lane, beat: Math.round((beats - (tNow - h.time) * bps) * 4) / 4 });
+      return { beats, bpb: params.bpb, hits, read: r };
+    }
+  }
+  const beats = (now - clockStart) / 1000 * params.bpm / 60 + shift;
+  return { beats, bpb: params.bpb, hits: K.patternHits(beats - 1, beats, params.bpb, params), read: null };
+}
+
+// ---------- controls (#85 contract) ----------
+const macroText = i => params.macro[i].toFixed(2);
+function setMacro(i, v) { if (!(i >= 1 && i <= 4)) return null; params.macro[i - 1] = Math.max(0, Math.min(1, +v)); sync(); return params.macro[i - 1]; }
+for (let i = 1; i <= 4; i++) $('m' + i).addEventListener('input', e => setMacro(i, parseFloat(e.target.value)));
+function pressTrigger(i, holdMs = 0) { if (!(i >= 1 && i <= 4)) return false; return scene.press(i, holdMs, performance.now()); }
+for (let i = 1; i <= 4; i++) $('t' + i).onclick = () => pressTrigger(i);
+window.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target && (e.target.tagName === 'TEXTAREA' || (e.target.tagName === 'INPUT' && e.target.type === 'text'))) return;
+  const k = 'zxcv'.indexOf(e.key.toLowerCase());
+  if (k >= 0) { e.preventDefault(); pressTrigger(k + 1); }
+});
+const SLIDERS = { dropScale: 2, cellsPerDrop: 2, blackShare: 2, tines: 2, pourRate: 4, veinWidth: 2, bevelWidth: 1, bpm: 0 };
+for (const name of Object.keys(SLIDERS)) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); sync(); });
+const VEINS = ['lime', 'yellow', 'black', 'none'];
+$('palette').onclick = () => { params.palette = K.PALETTE_NAMES[(K.PALETTE_NAMES.indexOf(params.palette) + 1) % K.PALETTE_NAMES.length]; sync(); };
+$('vein').onclick = () => { params.veinColour = VEINS[(VEINS.indexOf(params.veinColour) + 1) % VEINS.length]; sync(); };
+$('flat').onclick = () => { params.flat = !params.flat; sync(); };
+$('bake').onclick = () => scene.qa.forceBake();
+function sync() {
+  for (let i = 1; i <= 4; i++) { $('m' + i).value = params.macro[i - 1]; $('m' + i + 'Out').textContent = macroText(i - 1); }
+  for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
+  $('mute').classList.toggle('on', params.muted); $('flat').classList.toggle('on', params.flat);
+  $('palette').textContent = `palette: ${params.palette}`; $('vein').textContent = `veins: ${params.veinColour}`;
+}
+$('play').onclick = () => {
+  if (clock.playing) { clock.stop(); $('play').textContent = '▶ Play'; }
+  else { clock.start(); clockStart = performance.now(); $('play').textContent = '■ Stop'; }
+};
+$('mute').onclick = () => { params.muted = !params.muted; clock.setMuted(params.muted); sync(); };
+$('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen()).catch(() => {}); };
+const controls = () => ({
+  macro: params.macro, ...macroInputs(params.macro), seed: params.seed, palette: params.palette, veinColour: params.veinColour, opsMax: params.opsMax,
+  dropScale: params.dropScale, cellsPerDrop: params.cellsPerDrop, blackShare: params.blackShare, tines: params.tines, tineSharp: params.tineSharp,
+  vortexOn: params.vortexOn, pourRate: params.pourRate, strings: params.strings, veinWidth: params.veinWidth, bevelWidth: params.bevelWidth,
+  bakeScale: params.bakeScale, flat: params.flat, freeze: params.freeze, pattern: { kick: params.kick, snare: params.snare, hat: params.hat },
+});
+window.__modules = { '24-paint-pour': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
+
+// ---------- canvas, scene ----------
+const canvas = $('c'), hud = $('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false });
+const errors = [];
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2) * params.traceScale;
+  const w = Math.min(3840, Math.round(canvas.clientWidth * dpr)), h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; scene.resize(w, h); }
+}
+let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; if (window.__panicError) window.__panicError(); }
+}
+function draw(now) {
+  resize();
+  const c = clockRead(now);
+  window.__qaNowBars = c.beats / c.bpb;
+  scene.frame({ target: null, t: now / 1000, beats: c.beats, bpb: c.bpb, bpm: params.bpm, hits: c.hits, controls: controls(), now });
+  const v = scene.qa.view;
+  Object.assign(window.__qa, { beats: c.beats, bars: c.beats / c.bpb, bpm: params.bpm, view: v, metrics: scene.qa.metrics });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200 && params.labels) {
+    lastHud = now;
+    const s = clock.playing ? '▶' : (clock.ctx ? '■' : 'tap ▶ Play');
+    const bar = ((Math.floor(v.bars) % 16) + 16) % 16;
+    hud.textContent = `24 paint pour · ${v.phase} · bar ${bar}/16 · ${v.live} ops${v.baking ? ' · baking' : ''} · ${v.bases} bakes · ${params.palette} · ${params.bpm} bpm · ${s}\n${canvas.width}×${canvas.height} · ${fps} fps`;
+  }
+}
+
+// ---------- QA ----------
+// getters stay getters on window.__qa (Object.assign would copy their values once)
+const expose = o => { for (const [k, d] of Object.entries(Object.getOwnPropertyDescriptors(o))) Object.defineProperty(window.__qa, k, { ...d, configurable: true, enumerable: true }); };
+const S = scene.qa;
+// check() runs the truths once a second at most (the runner reads several values from it at the end of a run)
+let checked = null;
+const check = (fresh = false) => { const t = performance.now(); if (fresh || !checked || t - checked.t > 1000) checked = { t, r: S.check() }; return checked.r; };
+expose({
+  errors, setMacro, pressTrigger, triggers: TRIGGERS, events: () => Clock.qaEvents(clock), clock,
+  get macros() { return MACROS.map((m, i) => ({ slot: m.slot, name: m.name, label: m.label, value: params.macro[i], default: m.default, shown: macroText(i) })); },
+  get triggerLog() { return S.triggerLog; }, get triggerEnv() { return S.triggerEnv; },
+  get ops() { return S.ops; }, get opLog() { return S.opLog; }, get bakes() { return S.bakes; }, get pour() { return S.pour; }, get palette() { return S.palette; },
+  check, fwd: (x, y) => S.fwd(x, y), inv: (x, y) => S.inv(x, y), traceGPU: p => S.traceGPU(p), traceCPU: p => S.traceCPU(p),
+  colourAt: (x, y) => S.colourAt(x, y), colourGrid: (x0, y0, x1, y1, n) => S.colourGrid(x0, y0, x1, y1, n), forceBake: () => S.forceBake(),
+});
+if (!gl) { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2'); }
+else {
+  try { resize(); scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed }); }
+  catch (e) { errors.push(String(e && e.stack || e)); hud.textContent = 'init error: ' + e.message; }
+  sync();
+  requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>
