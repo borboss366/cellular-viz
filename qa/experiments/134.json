@@ -33,6 +33,7 @@
     "t3maxErrAll": "__qa.check().t3.maxErrAll",
     "bakeOps": "__qa.bakes.map(b => b.ops).join(',')",
     "worstSync": "(o => o ? JSON.stringify({ tBeat: o.tBeat, role: o.role, cause: o.cause, syncMs: Math.round(o.syncMs * 10) / 10, queuedMs: Math.round(o.queuedMs), frame: o.frame, baking: o.baking }) : 'none')(__qa.opLog.reduce((w, o) => (!w || Math.abs(o.syncMs) > Math.abs(w.syncMs) ? o : w), null))",
+    "clockAheadMaxMs": "Math.round(__qa.clockSmooth.maxAhead * 60000 / __qa.bpm)",
     "lateOps": "__qa.opLog.filter(o => Math.abs(o.syncMs) > 40).length",
     "t10": "__qa.check().t10.ok",
     "contrastMin": "__qa.check().t10.min",

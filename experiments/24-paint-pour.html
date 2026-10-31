@@ -123,15 +123,29 @@ let clockStart = performance.now();
 // the clock as the scene reads it: beats (at visual time), the drum hits since the last frame as beat positions.
 // Not playing: beats from performance.now and the hits from the patterns (the same op log either way, truth 9).
 // startBar is a QA offset, __qaShift (bars) is #88's forceDrop.
+// Smoothing: under heavy load (4K in viz-134-6) the AudioContext clock can stand still for ~70 ms and then jump, so
+// an op whose beat fell inside the stall went live 3–4 frames late. Between audio updates the beats run on from the
+// last reading at the frame clock: never behind the audio clock, at most ¼ beat ahead of a stalled one, and reset by
+// any step back (a hand command or Stop).
+const smooth = { beats: null, raw: null, t: 0, ahead: 0, maxAhead: 0 };
+function smoothBeats(raw, now, bps) {
+  if (smooth.beats === null || raw < smooth.raw - 1e-3) smooth.beats = raw;
+  else smooth.beats = Math.max(raw, Math.min(smooth.beats + (now - smooth.t) / 1000 * bps, raw + 0.25));
+  smooth.raw = raw; smooth.t = now; smooth.ahead = smooth.beats - raw; smooth.maxAhead = Math.max(smooth.maxAhead, smooth.ahead);
+  return smooth.beats;
+}
 function clockRead(now) {
   const shift = (params.startBar + (window.__qaShift || 0)) * params.bpb;
   if (clock.playing) {
     const r = clock.read();
     if (r.beats >= 0) {
-      const beats = r.beats + shift, tNow = clock.now(), bps = params.bpm / 60, hits = [];
-      for (const h of clock.events) if (h.time <= tNow && tNow - h.time < 1) hits.push({ lane: h.lane, beat: Math.round((beats - (tNow - h.time) * bps) * 4) / 4 });
+      const bps = params.bpm / 60, raw = r.beats + shift, beats = smoothBeats(raw, now, bps);
+      // hit beats from the audio reading itself (raw, tNow are one consistent pair); "heard" uses the smoothed time
+      const tNow = clock.now(), tHeard = tNow + smooth.ahead / bps, hits = [];
+      for (const h of clock.events) if (h.time <= tHeard && tHeard - h.time < 1) hits.push({ lane: h.lane, beat: Math.round((raw - (tNow - h.time) * bps) * 4) / 4 });
       return { beats, bpb: params.bpb, hits, read: r };
     }
+    smooth.beats = null;
     // Play pressed, first click not heard yet: hold at the start, with that first step's hits (once the click is heard
     // its beat is no longer after the last beat seen, so the kick on beat 1 was lost: truth 9's one-op diff, viz-134-3)
     return { beats: shift, bpb: params.bpb, hits: K.patternHits(shift - 0.25, shift, params.bpb, params), read: r };
@@ -221,7 +235,7 @@ const S = scene.qa;
 let checked = null;
 const check = (fresh = false) => { const t = performance.now(); if (fresh || !checked || t - checked.t > 1000) checked = { t, r: S.check() }; return checked.r; };
 expose({
-  errors, setMacro, pressTrigger, triggers: TRIGGERS, events: () => Clock.qaEvents(clock), clock,
+  errors, setMacro, pressTrigger, triggers: TRIGGERS, events: () => Clock.qaEvents(clock), clock, get clockSmooth() { return { ...smooth }; },
   get macros() { return MACROS.map((m, i) => ({ slot: m.slot, name: m.name, label: m.label, value: params.macro[i], default: m.default, shown: macroText(i) })); },
   get triggerLog() { return S.triggerLog; }, get triggerEnv() { return S.triggerEnv; },
   get ops() { return S.ops; }, get opLog() { return S.opLog; }, get bakes() { return S.bakes; }, get bakeFrames() { return S.bakeFrames; }, get pour() { return S.pour; }, get palette() { return S.palette; },
