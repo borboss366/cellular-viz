@@ -23,6 +23,7 @@ function fakeContext(outputLatency = 0.02) {
   };
 }
 const SETTINGS = () => ({ bpm: 128, bpb: 4, muted: false, kick: 'x---x---x---x---', snare: '----x-------x---', hat: '--x---x---x---x-' });
+const QA = { origin: 'qa' };   // #95 beat authority: tests move the clock as QA
 
 // ---------- the old copies, verbatim (13 with `settings`, 11 with `params`), for parity ----------
 function old13(settings, ctx) {
@@ -220,22 +221,22 @@ test('hand commands are visible on the next read and logged as jumps, never as h
   drive([c], ctx, 4.01, () => {});
   const r0 = c.read();
   // nudge: +20 ms moves the clock ahead by 20 ms of beats at once
-  const j1 = c.fix('nudge', 20), r1 = c.read();
+  const j1 = c.fix('nudge', 20, QA), r1 = c.read();
   assert.ok(Math.abs(r1.beats - r0.beats - 0.020 * 128 / 60) < 1e-9);
   assert.equal(j1.kind, 'nudge'); assert.ok(Math.abs(j1.toBeats - j1.fromBeats - 0.020 * 128 / 60) < 1e-9);
   // setOne: relabels bar and beatInBar only
-  const j2 = c.fix('setOne'), r2 = c.read();
+  const j2 = c.fix('setOne', QA), r2 = c.read();
   assert.equal(r2.beats, r1.beats); assert.equal(j2.fromBeats, j2.toBeats);
   assert.equal(r2.beatInBar, Math.floor(r2.beats) - Math.round(r2.beats) + 1 || 4);
   // x2 / half: the rate doubles and halves from now, clamped 30 … 300
-  c.fix('x2'); assert.equal(s.bpm, 256); c.fix('x2'); assert.equal(s.bpm, 300);
-  c.fix('half'); assert.equal(s.bpm, 150); s.bpm = 128;
+  c.fix('x2', QA); assert.equal(s.bpm, 256); c.fix('x2', QA); assert.equal(s.bpm, 300);
+  c.fix('half', QA); assert.equal(s.bpm, 150); s.bpm = 128;
   // reset: the current beat becomes beat 0 of bar 0, with the phase kept
-  const before = c.read().phase, j5 = c.fix('reset'), r5 = c.read();
+  const before = c.read().phase, j5 = c.fix('reset', QA), r5 = c.read();
   assert.ok(r5.beats >= 0 && r5.beats < 1); assert.ok(Math.abs(r5.phase - before) < 1e-9);
   assert.equal(r5.bar, 0); assert.equal(r5.beatInBar, 1); assert.equal(j5.kind, 'reset');
-  assert.equal(c.fix('seek', 10), null, 'seek and cue belong to file sources');
-  assert.equal(c.fix('bogus'), null);
+  assert.equal(c.fix('seek', 10, QA), null, 'seek and cue belong to file sources');
+  assert.equal(c.fix('bogus', QA), null);
   // logs: jumps only in .jumps, hits only in .events, and the QA view merges them by time
   assert.deepEqual(c.jumps.map(j => j.kind), ['nudge', 'setOne', 'x2', 'x2', 'half', 'reset']);
   assert.ok(c.events.every(e => e.type === 'hit' && 'lane' in e));
@@ -249,8 +250,8 @@ test('beats keep running forward after x2 and half (no backwards step)', () => {
   ctx.currentTime = 0.3; c.start();
   let last = -1, n = 0;
   drive([c], ctx, 12, f => {
-    if (f === 200) c.fix('x2');
-    if (f === 400) c.fix('half');
+    if (f === 200) c.fix('x2', QA);
+    if (f === 400) c.fix('half', QA);
     const b = c.read().beats; if (b < 0) return;
     assert.ok(b >= last - 1e-12, `frame ${f}: ${last} → ${b}`); last = b; n++;
   });
@@ -320,3 +321,114 @@ test('#95: schedule() runs at most once per frame (read() then hitsDue() in the 
   for (let f = 1; f <= 20; f++) { wall = f * 16; ctx.currentTime = 0.3 + f * 0.016; c.read(); c.hitsDue(); c.read({ raw: true }); }
   assert.equal(c.gaps.length, 19);
 });
+
+// ---------- #95 beat authority (the user's decision, 31 Oct) ----------
+function lcg(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+function pumped(bpm = 128, ctxFn = () => fakeContext(0)) {
+  const ctx = ctxFn(), s = SETTINGS(); s.bpm = bpm;
+  let wall = 0;
+  const c = Clock.create({ settings: s, audioContext: () => ctx, timers: false, pump: true, now: () => wall });
+  ctx.currentTime = 0.3; c.start();
+  return { c, ctx, s, at: (sec, ms) => { ctx.currentTime = sec; wall = ms; } };
+}
+
+test('#95 truth 1: ~500 gesture, macro and trigger events never move the beat (0 jumps, raw beats as without input)', () => {
+  const A = pumped(), B = pumped(), rnd = lcg(95);
+  const origins = ['gesture:leap', 'gesture:flow', 'wave', 'macro:2', 'trigger:1', 'trigger:3'], kinds = ['nudge', 'x2', 'half', 'tap', 'setOne', 'reset'];
+  let events = 0, fixes = 0;
+  for (let f = 1; f <= 60 * 60; f++) {
+    const sec = 0.3 + f / 60, ms = f * 1000 / 60;
+    A.at(sec, ms); B.at(sec, ms);
+    if (rnd() < (f % 600 < 60 ? 8 / 60 : 0.11)) {   // a mash at ~8/s for 1 s every 10 s, ~6.6/s sparse otherwise
+      events++;
+      const r = rnd();
+      if (r < 0.25) B.c.read(); else if (r < 0.4) B.c.nextBeatAt(); else if (r < 0.55) B.c.nextBarAt();
+      else { fixes++; assert.equal(B.c.fix(kinds[Math.floor(rnd() * kinds.length)], 30, { origin: origins[Math.floor(rnd() * origins.length)] }), null); }
+    }
+    const a = A.c.read({ raw: true }).beats, b = B.c.read({ raw: true }).beats;
+    assert.ok(Math.abs(a - b) < 1e-9, `frame ${f}: ${a} vs ${b}`);
+  }
+  assert.ok(events >= 320 && events <= 600, `${events} events (about 500 wanted)`);
+  assert.equal(B.c.jumps.length, 0);
+  assert.equal(B.c.fixRejected.length, Math.min(fixes, 256));
+  assert.equal(A.c.lateStats.late + B.c.lateStats.late, 0);
+});
+
+test('#95 truth 2: a fix() from a non-fix origin changes nothing and logs one fixRejected entry', () => {
+  const { c, at } = pumped();
+  for (let f = 1; f <= 120; f++) { at(0.3 + f / 60, f * 1000 / 60); c.read(); }
+  const before = c.read({ raw: true }).beats;
+  assert.equal(c.fix('nudge', 30, { origin: 'gesture:leap' }), null);
+  assert.equal(c.fixRejected.length, 1);
+  assert.deepEqual([c.fixRejected[0].kind, c.fixRejected[0].origin], ['nudge', 'gesture:leap']);
+  assert.equal(c.jumps.length, 0);
+  assert.equal(c.read({ raw: true }).beats, before);
+  assert.equal(c.fix('x2'), null, 'no origin at all is rejected too');
+  assert.equal(c.fixRejected.length, 2);
+});
+
+test('#95 truth 3: the Shift guard: a hand-fix key without Shift gives 0 jumps, with Shift exactly 1 of its kind', () => {
+  const { c, at, s } = pumped();
+  for (let f = 1; f <= 120; f++) { at(0.3 + f / 60, f * 1000 / 60); c.read(); }
+  for (const code of ['KeyA', 'KeyH', 'KeyD', 'Digit1', 'Comma', 'Period', 'Digit0']) assert.equal(c.handFixKey({ code, shiftKey: false }), null, code);
+  assert.equal(c.jumps.length, 0); assert.equal(s.bpm, 128);
+  assert.equal(c.handFixKey({ code: 'KeyX', shiftKey: true }), null, 'not a hand-fix key');
+  assert.equal(c.handFixKey({ code: 'KeyD', shiftKey: true, ctrlKey: true }), null, 'Ctrl+Shift is not the guard');
+  const j = c.handFixKey({ code: 'KeyD', shiftKey: true });
+  assert.equal(c.jumps.length, 1); assert.equal(j.kind, 'x2'); assert.equal(j.origin, 'fix:key'); assert.equal(s.bpm, 256);
+  const k = c.fix('setOne', { origin: 'fix:controller' });
+  assert.equal(k.kind, 'setOne'); assert.equal(c.jumps.length, 2);
+});
+
+test('#95: nextBeatAt / nextBarAt are read-only and land on the next beat and bar line', () => {
+  const { c, at } = pumped();
+  for (let f = 1; f <= 200; f++) { at(0.3 + f / 60, f * 1000 / 60); c.read(); }
+  const nb = c.nextBeatAt(), nbar = c.nextBarAt(), now = c.now(), beats = c.read().beats;
+  assert.ok(nb > now && nb - now <= 60 / 128 + 1e-9);
+  assert.ok(Math.abs((beats + (nb - now) * 128 / 60) % 1) < 1e-9 || Math.abs((beats + (nb - now) * 128 / 60) % 1 - 1) < 1e-9);
+  const atBar = beats + (nbar - now) * 128 / 60;
+  assert.ok(Math.abs(atBar / 4 - Math.round(atBar / 4)) < 1e-9 && nbar >= nb - 1e-9);
+  assert.equal(c.jumps.length, 0); assert.equal(c.fixRejected.length, 0);
+});
+
+// a fake AudioContext that records every click source: its start time and whether it was stopped before it began
+function recordingContext() {
+  const srcs = [];
+  const param = () => ({ value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} });
+  const node = x => ({ connect() {}, disconnect() {}, ...x });
+  const src = () => node({ frequency: param(), buffer: null, start(t) { this.t = t; srcs.push(this); }, stop(w) { if (this.t !== undefined && w < this.t) this.cancelled = true; } });
+  return { srcs, currentTime: 0, sampleRate: 48000, outputLatency: 0.02, baseLatency: 0.005, destination: {}, resume() {},
+    createGain: () => node({ gain: param() }), createOscillator: src, createBufferSource: src,
+    createBiquadFilter: () => node({ type: '', frequency: { value: 0 } }), createAnalyser: () => node({}),
+    createBuffer: (ch, len) => ({ getChannelData: () => new Float32Array(len) }) };
+}
+
+for (const cmd of ['tap', 'nudge', 'x2']) {
+  test(`#95 truth 4 (${cmd}): 174 bpm, 150 ms frames: no old-grid click after the command, new clicks on the new grid, no doubles, late 0`, () => {
+    const ctx = recordingContext(), s = SETTINGS(); s.bpm = 174; s.hat = 'xxxxxxxxxxxxxxxx';   // a click on every sixteenth
+    let wall = 0;
+    const c = Clock.create({ settings: s, audioContext: () => ctx, timers: false, pump: true, now: () => wall });
+    ctx.currentTime = 0.3; c.start();
+    let f = 0;
+    const frame = () => { f++; ctx.currentTime = 0.3 + f * 0.15; wall = f * 150; c.read(); c.hitsDue(); };
+    for (let i = 0; i < 20; i++) frame();
+    assert.equal(c.lateStats.lookAheadMs, 250, 'look-ahead at its maximum');
+    let jump;
+    if (cmd === 'tap') { c.fix('tap', QA); for (let i = 0; i < 3; i++) frame(); c.fix('tap', QA); for (let i = 0; i < 3; i++) frame(); jump = c.fix('tap', QA); assert.ok(Math.abs(s.bpm - 60 / 0.45) < 1e-6, `tap tempo ${s.bpm}`); }
+    else if (cmd === 'nudge') jump = c.fix('nudge', 30, QA);
+    else { jump = c.fix('x2', QA); assert.equal(s.bpm, 300); }
+    const ct = ctx.currentTime, sixteenth = 60 / s.bpm / 4;
+    for (let i = 0; i < 14; i++) frame();
+    const onsets = ctx.srcs.filter(x => !x.cancelled).map(x => x.t).sort((a, b) => a - b);
+    const after = onsets.filter(t => t > ct + 128 / 48000);
+    assert.ok(after.length > 10, `${after.length} clicks after the command`);
+    for (const t of after) {
+      const n = (t - jump.at) / sixteenth + 4 * jump.toBeats;
+      assert.ok(Math.abs(n - Math.round(n)) * sixteenth < 0.001, `click at ${t.toFixed(4)} is ${(Math.abs(n - Math.round(n)) * sixteenth * 1000).toFixed(2)} ms off the new grid`);
+    }
+    for (let i = 1; i < onsets.length; i++) { const d = onsets[i] - onsets[i - 1]; assert.ok(d < 1e-9 || d >= 0.020, `double click ${(d * 1000).toFixed(1)} ms apart at ${onsets[i].toFixed(4)}`); }
+    assert.ok(ctx.srcs.some(x => x.cancelled), 'booked old-grid clicks were stopped');
+    assert.ok(c.hitLog.every((h, i) => i === 0 || c.hitLog[i - 1].time <= h.time));
+    assert.equal(c.lateStats.late, 0);
+  });
+}
