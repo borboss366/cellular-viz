@@ -89,6 +89,8 @@
   <a href="../index.html">← all experiments</a>
 </div>
 
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
 <script>
 'use strict';
 
@@ -189,84 +191,24 @@ function integralPoints(a, b, lo, hi) {
 }
 const INTEGRAL_17 = integralPoints(0, 17, -2, 5234);
 
-// ---------- Metronome (same as 04, reduced) ----------
+// ---------- Clock (experiments/clock.js, #132) ----------
+// Beats and BPM come from the shared clock (?clock=…, default: its metronome, the same clicks as before); the lane levels from audio-in.
 const params = { bpm: 120, bpb: 4, pmax: 1500, dust: true, paused: false, muted: false,
                  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
-const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
-const LANES = ['kick', 'snare', 'hat'];
-const metronome = {
-  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [],
-  start() {
-    if (!this.ctx) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
-      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-      const d = this.noise.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    }
-    this.ctx.resume();
-    this.master.gain.value = params.muted ? 0 : 0.35;
-    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
-    this.playing = true;
-    this.timer = setInterval(() => this.schedule(), 25);
-    this.schedule();
-  },
-  stop() { clearInterval(this.timer); this.playing = false; },
-  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
-  schedule() {
-    while (this.nextTime < this.ctx.currentTime + 0.1) {
-      this.queueStep(this.step, this.nextTime);
-      this.nextTime += 60 / params.bpm / 4; this.step++;
-    }
-    const old = this.ctx.currentTime - 1;
-    this.hits = this.hits.filter(h => h.time > old);
-    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
-  },
-  queueStep(step, time) {
-    const inBar = step % (params.bpb * 4);
-    this.steps.push({ time, step });
-    for (const lane of LANES) {
-      if (params[lane][inBar % 16] !== 'x') continue;
-      const vel = inBar === 0 ? 1.0 : 0.7;
-      this.hits.push({ lane, time, vel });
-      this.click(lane, time, vel);
-    }
-  },
-  click(lane, t, vel) {
-    const ctx = this.ctx, g = ctx.createGain();
-    g.connect(this.master);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
-    let src;
-    if (lane === 'kick') {
-      src = ctx.createOscillator();
-      src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08);
-      src.connect(g);
-    } else {
-      src = ctx.createBufferSource(); src.buffer = this.noise;
-      const f = ctx.createBiquadFilter();
-      f.type = lane === 'snare' ? 'bandpass' : 'highpass';
-      f.frequency.value = lane === 'snare' ? 1800 : 8000;
-      src.connect(f); f.connect(g);
-    }
-    const end = t + TAU[lane] * 4;
-    g.gain.exponentialRampToValueAtTime(0.001, end);
-    src.start(t); src.stop(end + 0.01);
-  },
-  // Levels plus the beat count so far (whole beats since Play), from the audio clock.
+const metronome = Clock.create({ source: query.get('clock') || 'metronome', settings: params });
+// Levels (audio-in) plus the beat count so far (whole beats since Play, the clock).
+const lanes = {
   read() {
-    const out = { kick: 0, snare: 0, hat: 0, beats: -1 };
-    if (!this.ctx) return out;
-    const now = this.ctx.currentTime - Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0);
-    for (const h of this.hits) {
-      const dt = now - h.time;
-      if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane]));
-    }
-    let last = null;
-    for (const s of this.steps) if (s.time <= now) last = s;
-    if (last) out.beats = Math.floor(last.step / 4);
-    return out;
+    const C = metronome.read(), A = audio.read();   // beats and phase from the clock, lanes from audio-in
+    return { kick: A.kick, snare: A.snare, hat: A.hat, beats: C.beats >= 0 ? Math.floor(C.beats) : -1, clock: C };
   },
 };
+const BEAT_LANES = ['kick', 'snare', 'hat'];   // kick → glow, snare → band light, hat → dust sparkle
+// ---------- audio and __qa hooks (experiments/audio-in.js; clock port contract: #95 comment 6533515449) ----------
+// The lane levels come from the shared audio input (?audio=…, default 'clock': the clock's own clicks, the same
+// numbers as clock.read()); beats, bars, BPM and phase stay on the clock. Each frame: audio.frameStart(now) first,
+// then audio.due(BEAT_LANES) right after the read, which logs each hit the visuals just reached in __qa.beatLog.
+const audio = AudioIn.create({ clock: metronome, source: query.get('audio') || 'clock' }).start();
 
 // ---------- State ----------
 const st = { P: null, G: null, P0: null, hops: 0, flashes: 0, flash: 0,
@@ -319,6 +261,7 @@ function publish() {
     p: st.p, count: st.count, ap: st.ap, hasse: st.hasse.slice(), product: st.product,
     hops: st.hops, flashes: st.flashes, integral: INTEGRAL_17, countPoints,
   };
+  AudioIn.qa(audio, window.__qa);   // the clock-port hooks (beatLog, frame, beatLanes, events, audioIn) survive the rebuild
 }
 
 // ---------- Drawing ----------
@@ -497,11 +440,13 @@ function resize() {
 }
 let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
 function frame(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt (clock port)
   resize();
-  const L = metronome.read();
-  // Beats from the metronome while it plays, else from a clock at the same tempo.
+  const L = lanes.read();
+  audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
+  // Beats from the clock while it plays, else counted at the clock's tempo.
   let beats = L.beats;
-  if (!metronome.playing) beats = Math.floor((now - st.clockStart) / (60000 / params.bpm));
+  if (!metronome.playing) beats = Math.floor((now - st.clockStart) / (60000 / L.clock.bpm));
   if (!params.paused && beats > st.beat) {
     for (let b = st.beat + 1; b <= beats && b <= st.beat + 4; b++) {
       if (b % params.bpb === 0) { nextPrime(); hop(true); }   // downbeat: new prime, double

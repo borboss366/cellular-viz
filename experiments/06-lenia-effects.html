@@ -179,6 +179,8 @@
   <a href="../index.html">← all experiments</a>
 </div>
 
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
 <script>
 'use strict';
 
@@ -260,133 +262,34 @@ const auto = { on: true, sigma: 0.015, mass: 0, cover: 0, coverSmooth: 0, activi
 const maps = { mKickMu: false, mKickBlob: true, mSnareFlash: true,
                mHatShimmer: true, mPadHue: true, mPadSigma: false };   // which mappings are on
 
-// ---------- Metronome: the lane source ----------
-// Everything the visuals need comes from metronome.read(); swap it for an analyser later.
-const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };   // decay per lane, seconds
-const LANES = ['kick', 'snare', 'hat'];
-
-const metronome = {
-  ctx: null, master: null, noise: null, timer: 0, playing: false,
-  nextTime: 0,   // grid time of the next 16th to schedule
-  step: 0,       // index of that 16th since Play
-  hits: [],      // {lane, time, vel}: scheduled hits, for the envelopes
-  steps: [],     // {time, step}: grid times of scheduled 16ths, for the phases
-
-  // Must run inside a tap: phones only let an AudioContext start from a user gesture.
-  start() {
-    if (!this.ctx) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      this.ctx = ctx;
-      this.master = ctx.createGain();
-      this.master.connect(ctx.destination);
-      // One second of white noise, reused by snare and hat clicks.
-      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-      const d = this.noise.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    }
-    this.ctx.resume();
-    this.master.gain.value = params.muted ? 0 : 0.35;
-    this.nextTime = this.ctx.currentTime + 0.05;
-    this.step = 0;
-    this.hits = []; this.steps = [];
-    this.playing = true;
-    this.timer = setInterval(() => this.schedule(), 25);
-    this.schedule();
-  },
-
-  stop() {
-    clearInterval(this.timer);
-    this.playing = false;
-  },
-
-  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
-
-  // Queue every 16th that starts within the next 100 ms.
-  schedule() {
-    const ctx = this.ctx;
-    while (this.nextTime < ctx.currentTime + 0.1) {
-      this.queueStep(this.step, this.nextTime);
-      this.nextTime += 60 / params.bpm / 4;
-      this.step++;
-    }
-    const old = ctx.currentTime - 1;   // forget what is long past
-    this.hits = this.hits.filter(h => h.time > old);
-    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
-  },
-
-  queueStep(step, gridTime) {
-    const sixteenth = 60 / params.bpm / 4;
-    const stepsPerBar = params.bpb * 4;
-    const inBar = step % stepsPerBar;
-    const swung = gridTime + (step % 2 === 1 ? params.swing * sixteenth : 0);
-    this.steps.push({ time: gridTime, step });
-    for (const lane of LANES) {
-      if (params[lane][inBar % 16] !== 'x') continue;
-      const time = Math.max(this.ctx.currentTime,
-                            swung + (Math.random() * 2 - 1) * params.human / 1000);
-      const vel = inBar === 0 ? 1.0 : 0.7;
-      this.hits.push({ lane, time, vel });
-      this.click(lane, time, vel);
-    }
-  },
-
-  // Quiet clicks. Phone speakers barely play 60 Hz, so the kick sweeps 150 → 60 Hz.
-  click(lane, t, vel) {
-    const ctx = this.ctx, g = ctx.createGain();
-    g.connect(this.master);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(vel, t + 0.003);
-    let src;
-    if (lane === 'kick') {
-      src = ctx.createOscillator();
-      src.frequency.setValueAtTime(150, t);
-      src.frequency.exponentialRampToValueAtTime(60, t + 0.08);
-      src.connect(g);
-    } else {
-      src = ctx.createBufferSource();
-      src.buffer = this.noise;
-      const f = ctx.createBiquadFilter();
-      f.type = lane === 'snare' ? 'bandpass' : 'highpass';
-      f.frequency.value = lane === 'snare' ? 1800 : 8000;
-      src.connect(f); f.connect(g);
-    }
-    const end = t + TAU[lane] * 4;
-    g.gain.exponentialRampToValueAtTime(0.001, end);
-    src.start(t);
-    src.stop(end + 0.01);
-  },
-
-  // Lane levels and phases at the moment the listener hears.
+// ---------- Clock: the lane source (experiments/clock.js, #132) ----------
+// Beats, bars, BPM and phase come from the shared clock (?clock=…, default: its metronome); the lane levels from audio-in.
+// The groove's swing and humanize (params.swing, params.human) are booked by clock.js from the same settings object,
+// so the clicks and hits are the same as before.
+const LANES = Clock.LANES;   // kick, snare, hat, as before
+const metronome = Clock.create({ source: query.get('clock') || 'metronome', settings: params });
+// What the visuals read: lane levels (audio-in), beat and bar phase and the pad LFO over padBars bars (the clock).
+const lanes = {
   read() {
-    const out = { kick: 0, snare: 0, hat: 0, pad: 0, beatPhase: 0, barPhase: 0 };
-    if (!this.ctx) return out;
-    const latency = Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0);
-    const now = this.ctx.currentTime - latency;
-
-    for (const h of this.hits) {
-      const dt = now - h.time;
-      if (dt < 0) continue;
-      const env = h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane]);
-      out[h.lane] = Math.max(out[h.lane], env);
-    }
-
-    // Phases from the latest 16th that has started.
-    let last = null;
-    for (const s of this.steps) if (s.time <= now) last = s;
-    if (last) {
-      const sixteenth = 60 / params.bpm / 4;
-      const frac = Math.min(1, (now - last.time) / sixteenth);
-      const stepsPerBar = params.bpb * 4;
-      const inBar = last.step % stepsPerBar;
-      out.beatPhase = ((inBar % 4) + frac) / 4;
-      out.barPhase = (inBar + frac) / stepsPerBar;
-      const bar = Math.floor(last.step / stepsPerBar) % params.padBars;
+    const C = metronome.read(), A = audio.read();   // beats and phase from the clock, lanes from audio-in
+    const out = { kick: A.kick, snare: A.snare, hat: A.hat, pad: 0, beatPhase: 0, barPhase: 0, clock: C };
+    if (C.beats >= 0) {
+      out.beatPhase = C.phase;
+      out.barPhase = C.bars - Math.floor(C.bars);
+      const bar = Math.floor(C.bars) % params.padBars;
       out.pad = 0.5 - 0.5 * Math.cos(2 * Math.PI * (bar + out.barPhase) / params.padBars);
     }
     return out;
   },
 };
-const lanes = metronome;   // the visuals read lanes.read(); replace with an analyser later
+
+const BEAT_LANES = ['kick', 'snare', 'hat'];   // kick → μ and blobs, snare → flash and light, hat → shimmer
+// ---------- audio and __qa hooks (experiments/audio-in.js; clock port contract: #95 comment 6533515449) ----------
+// The lane levels come from the shared audio input (?audio=…, default 'clock': the clock's own clicks, the same
+// numbers as clock.read()); beats, bars, BPM and phase stay on the clock. Each frame: audio.frameStart(now) first,
+// then audio.due(BEAT_LANES) right after the read, which logs each hit the visuals just reached in __qa.beatLog.
+const audio = AudioIn.create({ clock: metronome, source: query.get('audio') || 'clock' }).start();
+window.__qa = AudioIn.qa(audio, window.__qa || {});   // __qa.beatLog, frame, beatLanes, events (Clock.qaEvents), audioIn
 
 // ---------- WebGL setup ----------
 const canvas = document.getElementById('c');
@@ -1180,8 +1083,10 @@ const bar = v => '█'.repeat(Math.round(v * 8)).padEnd(8, '·');   // HUD level
 let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
 let prevKick = 0, blobs = 0, autoFrame = 0, prevBarPhase = 0, barCount = 0;
 function frame(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt (clock port)
   resize();
   const L = lanes.read();   // the only place the visuals learn about the music
+  audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
 
   // Mappings: lane levels → rule tweaks and shader inputs.
   const muEff = params.mu + (maps.mKickMu ? 0.005 * L.kick : 0);
