@@ -111,6 +111,8 @@
   <a href="../index.html">← all experiments</a>
 </div>
 
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
 <script>
 'use strict';
 
@@ -181,53 +183,15 @@ window.__modules = { 'flow-lab': { inputs: [
   { name: 'morphBars', type: 'long', default: 8, min: 1, max: 32 },
 ] } };
 
-// ---------- metronome (as 11/19) ----------
-const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
-const LANES = ['kick', 'snare', 'hat'];
-const metronome = {
-  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [],
-  start() {
-    if (!this.ctx) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
-      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-      const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    }
-    this.ctx.resume(); this.master.gain.value = settings.muted ? 0 : 0.35;
-    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
-    this.playing = true; this.timer = setInterval(() => this.schedule(), 25); this.schedule();
-  },
-  stop() { clearInterval(this.timer); this.playing = false; },
-  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
-  schedule() {
-    while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / settings.bpm / 4; this.step++; }
-    const old = this.ctx.currentTime - 1;
-    this.hits = this.hits.filter(h => h.time > old);
-    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
-  },
-  queueStep(step, time) {
-    const inBar = step % (settings.bpb * 4); this.steps.push({ time, step });
-    for (const lane of LANES) { if (settings[lane][inBar % 16] !== 'x') continue; const vel = inBar === 0 ? 1 : 0.7; this.hits.push({ lane, time, vel, step }); this.click(lane, time, vel); }
-  },
-  click(lane, t, vel) {
-    const ctx = this.ctx, g = ctx.createGain(); g.connect(this.master);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
-    let src;
-    if (lane === 'kick') { src = ctx.createOscillator(); src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08); src.connect(g); }
-    else { src = ctx.createBufferSource(); src.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = lane === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = lane === 'snare' ? 1800 : 8000; src.connect(f); f.connect(g); }
-    const end = t + TAU[lane] * 4; g.gain.exponentialRampToValueAtTime(0.001, end); src.start(t); src.stop(end + 0.01);
-  },
-  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
-  read() {
-    const out = { kick: 0, snare: 0, hat: 0, beats: -1 };
-    if (!this.ctx) return out;
-    const now = this.ctx.currentTime - this.latency();
-    for (const h of this.hits) { const dt = now - h.time; if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane])); }
-    let last = null; for (const s of this.steps) if (s.time <= now) last = s;
-    if (last) out.beats = (last.step + Math.min(1, (now - last.time) / (60 / settings.bpm / 4))) / 4;
-    return out;
-  },
-};
+// ---------- clock (experiments/clock.js, #132) and audio-in (batch A, #135) ----------
+// The copied metronome is gone: beats, bars, BPM and phase come from the shared clock (?clock=…, default: its
+// metronome, the same clicks as before), and the kick/snare/hat levels from audio-in (?audio=…, default 'clock':
+// the clock's own clicks, the same numbers as clock.read()). metronome.hits, .steps, .ctx and .latency() are
+// unchanged, so the page's sync log reads them as before. Each frame: audio.frameStart(now) first, then
+// audio.due(BEAT_LANES) right after the read, which logs each hit the visuals reached in __qa.beatLog.
+const metronome = Clock.create({ source: query.get('clock') || 'metronome', settings: settings });
+const BEAT_LANES = ['kick', 'snare', 'hat'];   // every hit reaches onHit and the event log; kick and hat also drive the display pass
+const audio = AudioIn.create({ clock: metronome, source: query.get('audio') || 'clock' }).start();
 
 // ---------- WebGL ----------
 const canvas = document.getElementById('c');
@@ -914,13 +878,15 @@ function logEvent(e, now) {
   events.push(e); if (events.length > 256) events.shift();
 }
 function frame(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt (clock port)
   requestAnimationFrame(frame);
   try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
 }
 function draw(now) {
   resize();
   const dt = Math.min(1 / 30, Math.max(1 / 240, (now - (lastNow || now - 16)) / 1000)); lastNow = now;
-  const L = metronome.read();
+  const L = Object.assign(metronome.read(), audio.read());   // bars and bpm from the clock, kick/snare/hat from audio-in
+  audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
   const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * settings.bpm / 60);
   curBars = beats / settings.bpb; st.beats = beats;
   const eff = effective(curBars);
@@ -998,6 +964,10 @@ window.__qa = {
   // shedding per sim-second, so the street then lands on the beat without forcing
   calibrate() { const ts = sheddingHz('ts'); if (!ts) return null; settings.fNat = +ts.toFixed(4); return { fNat: settings.fNat, St: strouhal().St }; },
 };
+// clock port: the shared hooks (beatLog, frame, beatLanes, audioIn); __qa.events stays this page's sync log
+// (perfHeard/perfDrawn, check-events) followed by the clock's hits and jumps for the shared beat-match row
+AudioIn.qa(audio, window.__qa);
+Object.defineProperty(window.__qa, 'events', { get: () => [...events, ...Clock.qaEvents(metronome)], configurable: true, enumerable: true });
 const q = k => query.get(k);
 presetButtons();
 if (q('preset') && PRESETS[q('preset')]) st.cur = clone(PRESETS[q('preset')]);

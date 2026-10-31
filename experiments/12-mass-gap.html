@@ -90,6 +90,8 @@
   <a href="../index.html">← all experiments</a>
 </div>
 
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
 <script>
 'use strict';
 
@@ -98,86 +100,15 @@ const SCENES = ['field', 'tube', 'glueball', 'lava'];
 const params = { scene: 'auto', bars: 8, gap: 0.35, bpm: 120, bpb: 4, muted: false,
                  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
 
-// ---------- Metronome (as 04) with an analyser ----------
-const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
-const LANES = ['kick', 'snare', 'hat'];
-const metronome = {
-  ctx: null, master: null, bus: null, analyser: null, noise: null, timer: 0, playing: false,
-  nextTime: 0, step: 0, hits: [], steps: [], fft: new Float32Array(1024),
-  start() {
-    if (!this.ctx) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      this.ctx = ctx;
-      this.bus = ctx.createGain(); this.master = ctx.createGain(); this.analyser = ctx.createAnalyser();
-      this.analyser.fftSize = 2048;
-      this.bus.connect(this.master); this.bus.connect(this.analyser); this.master.connect(ctx.destination);
-      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-      const d = this.noise.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    }
-    this.ctx.resume();
-    this.master.gain.value = params.muted ? 0 : 0.35;
-    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
-    this.playing = true;
-    this.timer = setInterval(() => this.schedule(), 25);
-    this.schedule();
-  },
-  stop() { clearInterval(this.timer); this.playing = false; },
-  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
-  schedule() {
-    while (this.nextTime < this.ctx.currentTime + 0.1) {
-      this.queueStep(this.step, this.nextTime);
-      this.nextTime += 60 / params.bpm / 4; this.step++;
-    }
-    const old = this.ctx.currentTime - 1;
-    this.hits = this.hits.filter(h => h.time > old);
-    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
-  },
-  queueStep(step, time) {
-    const inBar = step % (params.bpb * 4);
-    this.steps.push({ time, step });
-    for (const lane of LANES) {
-      if (params[lane][inBar % 16] !== 'x') continue;
-      const vel = inBar === 0 ? 1.0 : 0.7;
-      this.hits.push({ lane, time, vel });
-      this.click(lane, time, vel);
-    }
-  },
-  click(lane, t, vel) {
-    const ctx = this.ctx, g = ctx.createGain();
-    g.connect(this.bus);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
-    let src;
-    if (lane === 'kick') {
-      src = ctx.createOscillator();
-      src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08);
-      src.connect(g);
-    } else {
-      src = ctx.createBufferSource(); src.buffer = this.noise;
-      const f = ctx.createBiquadFilter();
-      f.type = lane === 'snare' ? 'bandpass' : 'highpass';
-      f.frequency.value = lane === 'snare' ? 1800 : 8000;
-      src.connect(f); f.connect(g);
-    }
-    const end = t + TAU[lane] * 4;
-    g.gain.exponentialRampToValueAtTime(0.001, end);
-    src.start(t); src.stop(end + 0.01);
-  },
-  read() {
-    const out = { kick: 0, snare: 0, hat: 0, bars: -1 };
-    if (!this.ctx) return out;
-    const now = this.ctx.currentTime - Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0);
-    for (const h of this.hits) {
-      const dt = now - h.time;
-      if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane]));
-    }
-    let last = null;
-    for (const s of this.steps) if (s.time <= now) last = s;
-    if (last) out.bars = (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / (params.bpb * 4);
-    if (this.analyser) this.analyser.getFloatFrequencyData(this.fft);
-    return out;
-  },
-};
+// ---------- clock (experiments/clock.js, #132) and audio-in (batch A, #135) ----------
+// The copied metronome is gone: beats, bars, BPM and phase come from the shared clock (?clock=…, default: its
+// metronome, the same clicks as before), and the kick/snare/hat levels from audio-in (?audio=…, default 'clock':
+// the clock's own clicks, the same numbers as clock.read()). metronome.hits, .steps, .ctx and .latency() are
+// unchanged, so the page's sync log reads them as before. Each frame: audio.frameStart(now) first, then
+// audio.due(BEAT_LANES) right after the read, which logs each hit the visuals reached in __qa.beatLog.
+const metronome = Clock.create({ source: query.get('clock') || 'metronome', settings: params, hitStep: false });
+const BEAT_LANES = ['kick', 'snare', 'hat'];   // kick → field, tube and lava; snare → the scene edge; all three → the level bars
+const audio = AudioIn.create({ clock: metronome, source: query.get('audio') || 'clock' }).start();
 
 // ---------- WebGL basics ----------
 const canvas = document.getElementById('c');
@@ -656,13 +587,15 @@ let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performan
 let lastBeat = -1, lastSnare = 0;
 const errors = [];
 function frame(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt (clock port)
   requestAnimationFrame(frame);
   try { draw(now); }
   catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
 }
 function draw(now) {
   resize();
-  const L = metronome.read();
+  const L = Object.assign(metronome.read(), audio.read());   // bars and bpm from the clock, kick/snare/hat from audio-in
+  audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
   const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb) + (window.__qaShift || 0);   // __qaShift: forceDrop moves the clock (QA, #88)
   window.__qaNowBars = bars;
   const beat = Math.floor(bars * params.bpb);
@@ -715,6 +648,7 @@ window.__qa = {
   setAuto(on) { field.auto = !!on; }, setMass(m) { PIN.m = m; }, setCoupling(k) { PIN.k = k; },
   glueballs: GLUEBALLS.map(g => ({ ...g })), gapTop: GAP_TOP, sigma: SIGMA,
 };
+AudioIn.qa(audio, window.__qa);   // clock port: __qa.beatLog, frame, beatLanes, events (the clock's hits and jumps), audioIn
 const q = k => query.get(k);
 if (q('scene') && (q('scene') === 'auto' || SCENES.includes(q('scene')))) params.scene = q('scene');
 for (const k of ['bars', 'gap', 'bpm']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
