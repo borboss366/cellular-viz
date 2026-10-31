@@ -104,7 +104,9 @@ void main() {
   // thick wet paint: a height field in screen pixels, lit by one soft key light, with no extra pass and no extra texture
   // except a 128² ripple field (2 fetches)
   if (uFlat < 0.5) {
-    float calm = 1.0 - mv;                       // everything that adds light or shade fades where the paint moves fast
+    // everything this adds (sheen, glint, ripples, shadow) fades with motion as early as the veins do: gone by uV0
+    // (0.10 screen heights a second); with 1 - mv it lasted to uV1 and swept across the paint after a drop (viz-140-1)
+    float calm = 1.0 - smoothstep(0.3 * uV0, uV0, gV);
     // the newer paint of a boundary is the upper layer: a rounded lip (steep at the edge, 1.6 bevels wide); the older
     // paint dips into a soft crease. Heights in px: lip uHeight·1.6·uBevel, crease 0.6·uHeight·uBevel
     bool upper = d < 0.0;
@@ -130,7 +132,9 @@ void main() {
     float reach = uHeight * 1.6 * uBevel * length(L.xy) / max(L.z, 0.2), sh = face * (1.0 - smoothstep(0.0, reach, dpx));
     float ao = upper ? mix(0.88, 1.0, h) : mix(0.72, 1.0, h), nh = max(dot(n, Hh), 0.0);
     float spec = uGloss * (1.0 + 0.1 * uKick) * calm * (0.22 * pow(nh, 32.0) + 0.85 * pow(nh, 160.0));
-    vec3 flatCol = col, lit = col * (1.0 + 0.6 * min(diff, 0.25)) * ao * (1.0 - 0.4 * sh * calm) + spec * vec3(1.0, 0.97, 0.92);
+    // flat paint at 0.82 of its colour, as on #134 (the first view): that leaves every colour room for the highlight;
+    // at 1.0 the psych palettes' full channels sat at 255 and clipped (viz-140-1)
+    vec3 flatCol = 0.82 * col, lit = flatCol * (1.0 + 0.6 * min(diff, 0.25)) * ao * (1.0 - 0.4 * sh * calm) + spec * vec3(1.0, 0.97, 0.92);
     // light added above the flat colour rolls off into the headroom below 0.97, so highlights never clip (clip gate)
     vec3 hd = max(vec3(0.97) - flatCol, vec3(1e-3));
     col = min(lit, flatCol) + hd * (1.0 - exp(-max(lit - flatCol, vec3(0.0)) / hd));
