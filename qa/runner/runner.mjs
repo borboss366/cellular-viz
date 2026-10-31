@@ -24,7 +24,7 @@ import os from 'node:os';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { gpuGate, unlock as gpuUnlock, GPU } from './gpu.mjs';
+import { gpuGate, unlock as gpuUnlock, GPU, renderHolders, watchForeign, closeTail } from './gpu.mjs';
 import { putJob, superseded } from './queue.mjs';
 import { loadFile } from './experiment.mjs';
 import { historyEntry, commitPaths, reportFiles, buildDirs, messageFor } from './post.mjs';
@@ -81,7 +81,7 @@ const tail = n => { try { return fs.readFileSync(LOG_FILE, 'utf8').trimEnd().spl
 let state = { seen: {}, etag: null, queue: [], recent: [], expDone: {} };
 try { state = { ...state, ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) }; } catch {}
 const save = () => { const t = STATE_FILE + '.tmp'; fs.writeFileSync(t, JSON.stringify(state, null, 1)); fs.renameSync(t, STATE_FILE); };
-const status = { started: new Date().toISOString(), lastPoll: null, lastError: null, rate: null, running: null };
+const status = { started: new Date().toISOString(), lastPoll: null, lastError: null, rate: null, running: null, waiting: null };   // waiting: the job at the GPU gate (#144)
 
 // ---------- processes (no shell; argument arrays only) ----------
 let child = null;
@@ -212,6 +212,18 @@ function failCheck(dir, rows, mark = '❌') {   // a check.md the builds log can
   fs.mkdirSync(dir, { recursive: true });
   const clean = s => String(s).replace(/[|\n\r]/g, ' ').slice(0, 280);
   fs.writeFileSync(path.join(dir, 'check.md'), `# runner\n\n| gate | result | detail |\n|---|---|---|\n` + rows.map(([g, d]) => `| ${clean(g)} | ${mark} | ${clean(d)} |`).join('\n') + '\n');
+}
+// #144: one ℹ️ row per build with the wait before it, the tail after it and any requeue (appended after the build;
+// ℹ️ rows are report-only, so the result builds.mjs recorded doesn't change)
+function gpuRow(rec, gate, tail, job, contended) {
+  try {
+    if (!rec.report) return;
+    const md = path.join(CFG.qaHome, rec.report);
+    const req = job.requeues || 0;
+    const why = contended ? `run discarded, GPU contended by ${contended}` : (job.contended ? `earlier runs contended by ${job.contended}` : '');
+    fs.appendFileSync(md, `| GPU: wait, tail, requeues (#144) | ℹ️ | waited ${gate ? gate.waitedS : '?'} s before start, tail ${tail ? tail.tailMs : '?'} ms` +
+      `${tail && tail.killed.length ? ` (killed ${tail.killed.join(', ')})` : ''}, requeues ${contended ? req + 1 : req}${why ? ` (${why})` : ''} |\n`);
+  } catch (e) { log(`could not write the GPU row: ${e.message}`); }
 }
 // the GPU readings taken before the build go with its result: gpu-gate.json and an ℹ️ row in check.md
 function saveGate(dir, gate) {
@@ -471,20 +483,37 @@ async function work() {
         polling = poll().then(() => { status.lastError = null; }, e => { status.lastError = e.message; log(`poll: ${e.message}`); }).finally(() => { polling = null; });
       }, CFG.poll * 1000);
       let gate;
-      try { gate = await gpuGate({ what: `runner #${job.pr} ${job.page}`, log, shouldStop: () => stopping || gone() }); }
+      const onWait = w => { status.waiting = { pr: job.pr, page: job.page, sha: job.sha.slice(0, 7), since: status.waiting && status.waiting.pr === job.pr && status.waiting.page === job.page ? status.waiting.since : new Date().toISOString(),
+        busy: w.busy ?? null, holders: (w.holders || []).map(h => `${h.pid} ${h.comm}`), lock: w.lock || null }; };
+      try { gate = await gpuGate({ what: `runner #${job.pr} ${job.page}`, log, shouldStop: () => stopping || gone(), onWait }); }
       finally { clearInterval(pollTimer); if (polling) await polling; }
       status.gpu = gate;
+      if (gate.ok) status.waiting = null;
       if (!stopping && gone()) {
         if (gate.ok) gpuUnlock();
         log(`#${job.pr} ${job.page} @${job.sha.slice(0, 7)} left the queue while waiting for the GPU (newer commit or label); next job`);
         continue;
       }
-      if (!gate.ok) { log(`not starting #${job.pr} ${job.page}: ${gate.why}`); break; }
+      if (!gate.ok) { log(`not starting #${job.pr} ${job.page}: ${gate.why}`); break; }   // still queued, nothing written (#144)
       trace = [];
       const before = (state.recent || [])[0];
+      // #144: a foreign render-node holder during the run makes it invalid: stop it, discard it, requeue (at most 2 times)
+      const baseline = new Set(renderHolders().map(h => h.pid));
+      let contended = null, tail = null;
+      const stopWatch = watchForeign({ onForeign: hs => {
+        contended = hs.map(h => `${h.pid} ${h.comm}`).join(', ');
+        log(`GPU contended during #${job.pr} ${job.page}: ${contended}; stopping the run, it will be discarded`);
+        try { if (child) process.kill(-child.pid, 'SIGKILL'); } catch {}
+      } });
       try { await (job.kind === 'experiment' ? runExperiment(job, gate) : runBuild(job, gate)); }
       catch (e) { log(`build for #${job.pr} ${job.page} could not start: ${e.message}`); status.running = null; }
-      finally { gpuUnlock(); }
+      finally {
+        stopWatch();
+        // #144: the GPU is free only when this job's processes have let go of the render node
+        try { tail = await closeTail({ baseline, log }); } catch (e) { log(`GPU tail: ${e.message}`); }
+        if (tail) log(`GPU tail of #${job.pr} ${job.page}: ${tail.tailMs} ms${tail.killed.length ? `, killed ${tail.killed.join(', ')}` : ''}`);
+        gpuUnlock();
+      }
       const tr = trace; trace = null;
       if (job.retry) {   // a network failure: keep the job, try again in 2, 4, 8 … up to 10 minutes
         job.tries = (job.tries || 0) + 1; job.lastError = job.retry; delete job.retry;
@@ -493,7 +522,20 @@ async function work() {
         break;
       }
       const rec = (state.recent || [])[0];
-      if (rec && rec !== before) await afterBuild(rec, gate, tr);
+      const fresh = rec && rec !== before;
+      if (fresh) gpuRow(rec, gate, tail, job, contended);
+      if (contended && fresh) {
+        job.requeues = (job.requeues || 0) + 1; job.contended = contended;
+        const again = job.requeues <= 2;
+        try { if (rec.id) await builds('set', '--id', rec.id, '--status', again ? 'discarded' : 'contended', '--waiting', 'qa-box'); }
+        catch (e) { log(`could not mark ${rec.id}: ${e.message}`); }
+        log(again ? `#${job.pr} ${job.page}: run discarded (GPU contended: ${contended}); requeued ${job.requeues}/2`
+          : `#${job.pr} ${job.page}: GPU contended on 3 runs in a row (${contended}); not requeued, retry by hand`);
+        if (!again) state.queue = state.queue.filter(j => j !== job);
+        save();
+        continue;
+      }
+      if (fresh) await afterBuild(rec, gate, tr);
       state.queue = state.queue.filter(j => j !== job && !(j.pr === job.pr && j.page === job.page && j.sha === job.sha));
       save();
     }
