@@ -356,6 +356,9 @@ if (only !== 'flash') {
       hits: ev.filter(e => e && e.type === 'hit').map(h => ({ time: h.time, lane: h.lane })),
       lanes: Array.isArray(qa.beatLanes) ? qa.beatLanes : null, now: ai && Number.isFinite(ai.now) ? ai.now : null, audioIn: ai };
   }).catch(e => ({ err: String(e && e.message || e) }));
+  // clock booking (#148): steps booked after their own time (should be 0), worst frame gap, look-ahead in force
+  res.clockLate = await page.evaluate(() => { const c = window.__qa && window.__qa.clockLate; return c ? JSON.parse(JSON.stringify(c)) : null; })
+    .catch(e => ({ err: String(e && e.message || e) }));
   await page.close();
 }
 
@@ -502,6 +505,14 @@ if (res.flash) {
       ` · missing ${missing} · twice ${dup} · early ${early} · late ${late}${late ? ` (worst ${worst.toFixed(1)} ms past its frame)` : ''}` +
       ` · lag p50 ${q(lags, 0.5) ?? '–'} · max ${lags.length ? Math.max(...lags).toFixed(1) : '–'} ms${src}`);
   }
+}
+// clock booking row (report-only, #148): late should stay 0; look-ahead is clamp(2 × p95 frame gap, 100, 250) ms
+{
+  const c = res.clockLate;
+  add('clock booking under long frames (__qa.clockLate, #148, report-only)', null, c === undefined ? 'not measured (flash-only run)'
+    : c === null ? 'no __qa.clockLate (page not on clock.js, or clock.js from before #148)'
+    : c.err ? `could not read __qa.clockLate: ${c.err}`
+    : `late ${c.late}${c.late ? ` (worst ${c.lateMaxMs} ms)` : ''} · max frame gap ${c.maxGapMs} ms · look-ahead ${c.lookAheadMs} ms`);
 }
 add('#88 gating for this page', null, gated ? (legacy ? 'gated: page from before #88 that has __qa.forceDrop' : 'gated: new scene') : 'report-only: page from before #88 without __qa.forceDrop');
 add('page errors', errors.length === 0, errors.length ? errors.slice(0, 3).join(' / ') : 'none');
