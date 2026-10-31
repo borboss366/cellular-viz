@@ -1,0 +1,16 @@
+#!/bin/sh
+# 2026-10-31-2046-runner-pr151-16-hodge-kaleidoscope: runner build viz-151-1, #151 16-hodge-kaleidoscope @cf683dc, checks from main; result: viz-151-1 running 31/31
+# The commands as the QA runner ran them, in order (no shell; temp folders were removed after the build).
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo fetch -q --force origin +refs/pull/151/head:refs/runner/pr-151 +refs/heads/main:refs/runner/checks +refs/heads/main:refs/runner/main
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo fetch -q --force origin +refs/pull/151/head:refs/runner/pr-151 +refs/heads/main:refs/runner/checks +refs/heads/main:refs/runner/main
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo cat-file -e cf683dca7b35a671a0a86f598695c76e81bee0c3:qa/experiments/151.json
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo show cf683dca7b35a671a0a86f598695c76e81bee0c3:qa/experiments/151.json
+node /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/builds.mjs start --page 16-hodge-kaleidoscope --pr 151 --commit cf683dc
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo archive -o /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-OUjLvM/tree-qa.tar refs/runner/checks qa
+tar -xf /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-OUjLvM/tree-qa.tar -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-OUjLvM/tree
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo archive -o /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-OUjLvM/tree-experiments.tar cf683dca7b35a671a0a86f598695c76e81bee0c3 experiments
+tar -xf /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-OUjLvM/tree-experiments.tar -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-OUjLvM/tree
+node /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/builds.mjs set --id viz-151-1 --status running
+node /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-OUjLvM/tree/qa/runner/exp-run.mjs --file /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-OUjLvM/experiment.json --experiments /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-OUjLvM/tree/experiments --qa /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-OUjLvM/tree/qa --pr 151 --sha cf683dca7b35a671a0a86f598695c76e81bee0c3 --audio-dir /home/puggie/pi-durable-worker/data/qa-audio/tracks --out /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-OUjLvM/tree/qa/16-hodge-kaleidoscope/runs/2026-10-31-2030-pr151
+node /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-OUjLvM/tree/qa/check-shared.mjs --experiments /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/exp-OUjLvM/tree/experiments --page 16-hodge-kaleidoscope.html --out /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/16-hodge-kaleidoscope/runs/2026-10-31-2030-pr151/shared
+node /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/builds.mjs finish --id viz-151-1 --check /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/16-hodge-kaleidoscope/runs/2026-10-31-2030-pr151

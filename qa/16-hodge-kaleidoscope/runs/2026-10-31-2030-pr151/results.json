@@ -1,0 +1,8282 @@
+{
+ "id": "16-hodge-kaleidoscope",
+ "page": "16-hodge-kaleidoscope",
+ "pr": 151,
+ "sha": "cf683dca7b35a671a0a86f598695c76e81bee0c3",
+ "vs": null,
+ "at": "2026-10-31T20:42:04.114Z",
+ "host": "3adc2b2ec197",
+ "hasGpu": true,
+ "runs": [
+  {
+   "label": "auto@1080p",
+   "variant": "auto",
+   "base": "auto",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {},
+   "url": "16-hodge-kaleidoscope.html?",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 732,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 29.25,
+    "lum.min": 27.62,
+    "lum.max": 31.3,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 1.5436122546841347e-8,
+    "preset": "curve",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 28,
+    "morphSyncMs": 3.6721090342721254,
+    "morphSyncAllMs": 3.6721090342721254,
+    "morphLog": [
+     {
+      "beat": 2,
+      "at": 2.012155782312925,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 3.0403537414965984,
+      "perf": 2055.9,
+      "epoch": 1
+     },
+     {
+      "beat": 4,
+      "at": 4.014876870748299,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 5.037269841269842,
+      "perf": 3055.9,
+      "epoch": 1
+     },
+     {
+      "beat": 6,
+      "at": 6.0174979591836735,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 7.0399909297052154,
+      "perf": 4055.8,
+      "epoch": 1
+     },
+     {
+      "beat": 8,
+      "at": 8.014414058956916,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": 9.036907029478458,
+      "perf": 5055.8,
+      "epoch": 1
+     },
+     {
+      "beat": 10,
+      "at": 10.017235147392292,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": 11.039628117913834,
+      "perf": 6055.8,
+      "epoch": 1
+     },
+     {
+      "beat": 12,
+      "at": 12.014051247165533,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 13.036544217687076,
+      "perf": 7055.7,
+      "epoch": 1
+     },
+     {
+      "beat": 14,
+      "at": 14.016772335600907,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "end": 15.03926530612245,
+      "perf": 8055.7,
+      "epoch": 1
+     },
+     {
+      "beat": 16,
+      "at": 16.01378843537415,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 17.036181405895693,
+      "perf": 9055.7,
+      "epoch": 1
+     },
+     {
+      "beat": 18,
+      "at": 18.016509523809525,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "end": 19.038902494331065,
+      "perf": 10055.6,
+      "epoch": 1
+     },
+     {
+      "beat": 20,
+      "at": 20.013425623582766,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 21.00098866213152,
+      "perf": 11055.6,
+      "epoch": 1
+     },
+     {
+      "beat": 22,
+      "at": 22.01614671201814,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "end": 23.03853968253968,
+      "perf": 12055.6,
+      "epoch": 1
+     },
+     {
+      "beat": 24,
+      "at": 24.013062811791386,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "end": 25.000625850340136,
+      "perf": 13055.5,
+      "epoch": 1
+     },
+     {
+      "beat": 26,
+      "at": 26.015783900226758,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "end": 27.0381768707483,
+      "perf": 14055.5,
+      "epoch": 1
+     },
+     {
+      "beat": 28,
+      "at": 28.012600000000003,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 29.000263038548752,
+      "perf": 15055.4,
+      "epoch": 1
+     },
+     {
+      "beat": 30,
+      "at": 30.015421088435374,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "end": 31.03781405895692,
+      "perf": 16055.4,
+      "epoch": 1
+     },
+     {
+      "beat": 32,
+      "at": 32.012237188208616,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 33.04053514739229,
+      "perf": 17055.3,
+      "epoch": 1
+     },
+     {
+      "beat": 34,
+      "at": 34.01505827664399,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 35.03745124716553,
+      "perf": 18055.3,
+      "epoch": 1
+     },
+     {
+      "beat": 36,
+      "at": 36.01767936507937,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 37.04017233560091,
+      "perf": 19055.2,
+      "epoch": 1
+     },
+     {
+      "beat": 38,
+      "at": 38.014795464852604,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": 39.037088435374145,
+      "perf": 20055.3,
+      "epoch": 1
+     },
+     {
+      "beat": 40,
+      "at": 40.01731655328798,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": 41.039809523809524,
+      "perf": 21055.2,
+      "epoch": 1
+     },
+     {
+      "beat": 42,
+      "at": 42.01423265306122,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 43.03672562358276,
+      "perf": 22055.1,
+      "epoch": 1
+     },
+     {
+      "beat": 44,
+      "at": 44.017053741496596,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "end": 45.03944671201814,
+      "perf": 23055.1,
+      "epoch": 1
+     },
+     {
+      "beat": 46,
+      "at": 46.01386984126984,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 47.03636281179138,
+      "perf": 24055,
+      "epoch": 1
+     },
+     {
+      "beat": 48,
+      "at": 48.01669092970521,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "end": 49.03908390022676,
+      "perf": 25055,
+      "epoch": 1
+     },
+     {
+      "beat": 50,
+      "at": 50.01360702947846,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 51.035999999999994,
+      "perf": 26055,
+      "epoch": 1
+     },
+     {
+      "beat": 52,
+      "at": 52.01632811791383,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "end": 53.03872108843537,
+      "perf": 27055,
+      "epoch": 1
+     },
+     {
+      "beat": 54,
+      "at": 54.013244217687074,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "end": 55.000807256235824,
+      "perf": 28054.9,
+      "epoch": 1
+     },
+     {
+      "beat": 56,
+      "at": 56.01586530612244,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "end": null,
+      "perf": 29054.8,
+      "epoch": 1
+     }
+    ],
+    "morphEvents": [
+     {
+      "type": "morph",
+      "bar": 0.5,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 1.0703174603174603,
+      "tHeard": 1.1023174603174604,
+      "perfHeard": 2059.572109034272,
+      "perfDrawn": 2055.9
+     },
+     {
+      "type": "morph",
+      "bar": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 2.0703174603174603,
+      "tHeard": 2.1023174603174604,
+      "perfHeard": 3057.811564721218,
+      "perfDrawn": 3055.9
+     },
+     {
+      "type": "morph",
+      "bar": 1.5,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 3.0703174603174603,
+      "tHeard": 3.1023174603174604,
+      "perfHeard": 4056.451020503531,
+      "perfDrawn": 4055.8
+     },
+     {
+      "type": "morph",
+      "bar": 2,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 4.07031746031746,
+      "tHeard": 4.10231746031746,
+      "perfHeard": 5057.892970712276,
+      "perfDrawn": 5055.8
+     },
+     {
+      "type": "morph",
+      "bar": 2.5,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 5.07031746031746,
+      "tHeard": 5.10231746031746,
+      "perfHeard": 6056.832426208487,
+      "perfDrawn": 6055.8
+     },
+     {
+      "type": "morph",
+      "bar": 3,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 6.07031746031746,
+      "tHeard": 6.10231746031746,
+      "perfHeard": 7058.274376417233,
+      "perfDrawn": 7055.7
+     },
+     {
+      "type": "morph",
+      "bar": 3.5,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 7.07031746031746,
+      "tHeard": 7.10231746031746,
+      "perfHeard": 8056.8138322949135,
+      "perfDrawn": 8055.7
+     },
+     {
+      "type": "morph",
+      "bar": 4,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 8.07031746031746,
+      "tHeard": 8.10231746031746,
+      "perfHeard": 9057.65578212219,
+      "perfDrawn": 9055.7
+     },
+     {
+      "type": "morph",
+      "bar": 4.5,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 9.07031746031746,
+      "tHeard": 9.10231746031746,
+      "perfHeard": 10056.495238190606,
+      "perfDrawn": 10055.6
+     },
+     {
+      "type": "morph",
+      "bar": 5,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 10.07031746031746,
+      "tHeard": 10.10231746031746,
+      "perfHeard": 11057.837188017882,
+      "perfDrawn": 11055.6
+     },
+     {
+      "type": "morph",
+      "bar": 5.5,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 11.07031746031746,
+      "tHeard": 11.10231746031746,
+      "perfHeard": 12056.976643800195,
+      "perfDrawn": 12055.6
+     },
+     {
+      "type": "morph",
+      "bar": 6,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 12.07031746031746,
+      "tHeard": 12.10231746031746,
+      "perfHeard": 13058.41859400894,
+      "perfDrawn": 13055.5
+     },
+     {
+      "type": "morph",
+      "bar": 6.5,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 13.07031746031746,
+      "tHeard": 13.10231746031746,
+      "perfHeard": 14057.058049791254,
+      "perfDrawn": 14055.5
+     },
+     {
+      "type": "morph",
+      "bar": 7,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 14.07031746031746,
+      "tHeard": 14.10231746031746,
+      "perfHeard": 15058.59999990463,
+      "perfDrawn": 15055.4
+     },
+     {
+      "type": "morph",
+      "bar": 7.5,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 15.07031746031746,
+      "tHeard": 15.10231746031746,
+      "perfHeard": 16057.239455686946,
+      "perfDrawn": 16055.4
+     },
+     {
+      "type": "morph",
+      "bar": 8,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 16.07031746031746,
+      "tHeard": 16.10231746031746,
+      "perfHeard": 17058.681405895695,
+      "perfDrawn": 17055.3
+     },
+     {
+      "type": "morph",
+      "bar": 8.5,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 17.07031746031746,
+      "tHeard": 17.10231746031746,
+      "perfHeard": 18057.020861487268,
+      "perfDrawn": 18055.3
+     },
+     {
+      "type": "morph",
+      "bar": 9,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 18.07031746031746,
+      "tHeard": 18.10231746031746,
+      "perfHeard": 19056.260317651053,
+      "perfDrawn": 19055.2
+     },
+     {
+      "type": "morph",
+      "bar": 9.5,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 19.07031746031746,
+      "tHeard": 19.10231746031746,
+      "perfHeard": 20057.002267573695,
+      "perfDrawn": 20055.3
+     },
+     {
+      "type": "morph",
+      "bar": 10,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 20.07031746031746,
+      "tHeard": 20.10231746031746,
+      "perfHeard": 21055.741723260642,
+      "perfDrawn": 21055.2
+     },
+     {
+      "type": "morph",
+      "bar": 10.5,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 21.07031746031746,
+      "tHeard": 21.10231746031746,
+      "perfHeard": 22057.483673660125,
+      "perfDrawn": 22055.1
+     },
+     {
+      "type": "morph",
+      "bar": 11,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 22.07031746031746,
+      "tHeard": 22.10231746031746,
+      "perfHeard": 23055.8231292517,
+      "perfDrawn": 23055.1
+     },
+     {
+      "type": "morph",
+      "bar": 11.5,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 23.07031746031746,
+      "tHeard": 23.10231746031746,
+      "perfHeard": 24057.465079269714,
+      "perfDrawn": 24055
+     },
+     {
+      "type": "morph",
+      "bar": 12,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 24.07031746031746,
+      "tHeard": 24.10231746031746,
+      "perfHeard": 25056.004535147393,
+      "perfDrawn": 25055
+     },
+     {
+      "type": "morph",
+      "bar": 12.5,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 25.07031746031746,
+      "tHeard": 25.10231746031746,
+      "perfHeard": 26057.44648535614,
+      "perfDrawn": 26055
+     },
+     {
+      "type": "morph",
+      "bar": 13,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 26.07031746031746,
+      "tHeard": 26.10231746031746,
+      "perfHeard": 27056.08594113845,
+      "perfDrawn": 27055
+     },
+     {
+      "type": "morph",
+      "bar": 13.5,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 27.07031746031746,
+      "tHeard": 27.10231746031746,
+      "perfHeard": 28057.5278913472,
+      "perfDrawn": 28054.9
+     },
+     {
+      "type": "morph",
+      "bar": 14,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 28.07031746031746,
+      "tHeard": 28.10231746031746,
+      "perfHeard": 29056.16734712951,
+      "perfDrawn": 29054.8
+     }
+    ],
+    "live": {
+     "changes": 28,
+     "holdErrBeats": 0,
+     "lateFrames": 0.5303809523810088,
+     "morphErrFrames": 1.2160544217687175
+    },
+    "liveHoldErr": 0,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "curve",
+       "genus": 1,
+       "glowErr": 7.457848782976839e-10
+      },
+      {
+       "preset": "k3",
+       "genus": 0,
+       "glowErr": 0.000006999624315329189
+      },
+      {
+       "preset": "curve",
+       "genus": 4,
+       "glowErr": 1.1932557719696035e-9
+      },
+      {
+       "preset": "quintic",
+       "genus": 0,
+       "glowErr": 0.000032862783555395736
+      },
+      {
+       "preset": "abelian",
+       "genus": 0,
+       "glowErr": 0.00003939386014883972
+      },
+      {
+       "preset": "curve",
+       "genus": 2,
+       "glowErr": 9.943799117451135e-10
+      },
+      {
+       "preset": "mirror",
+       "genus": 0,
+       "glowErr": 0.00003285856713071411
+      },
+      {
+       "preset": "curve",
+       "genus": 6,
+       "glowErr": 2.6620861459658585e-8
+      },
+      {
+       "preset": "curve",
+       "genus": 0,
+       "glowErr": 0
+      },
+      {
+       "preset": "curve",
+       "genus": 3,
+       "glowErr": 2.3293253548217763e-8
+      },
+      {
+       "preset": "curve",
+       "genus": 5,
+       "glowErr": 1.5436122546841347e-8
+      }
+     ],
+     "glowErr": 0.00003939386014883972,
+     "nowSettled": false
+    }
+   },
+   "stills": [
+    "stills/auto@1080p-1.png",
+    "stills/auto@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "auto@4k",
+   "variant": "auto",
+   "base": "auto",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {},
+   "url": "16-hodge-kaleidoscope.html?",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 731,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 90,
+    "lum.mean": 29.45,
+    "lum.min": 27.82,
+    "lum.max": 31.37,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 1.5436122546841347e-8,
+    "preset": "curve",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 28,
+    "morphSyncMs": 9.535601288499493,
+    "morphSyncAllMs": 9.535601288499493,
+    "morphLog": [
+     {
+      "beat": 2,
+      "at": 2.035275736961451,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 3.0055238095238095,
+      "perf": 1983.2,
+      "epoch": 1
+     },
+     {
+      "beat": 4,
+      "at": 4.032191836734693,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 5.019854875283446,
+      "perf": 2983.2,
+      "epoch": 1
+     },
+     {
+      "beat": 6,
+      "at": 6.035012925170068,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 7.016770975056689,
+      "perf": 3983.2,
+      "epoch": 1
+     },
+     {
+      "beat": 8,
+      "at": 8.037734013605442,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": 9.019492063492065,
+      "perf": 4983.2,
+      "epoch": 1
+     },
+     {
+      "beat": 10,
+      "at": 10.034550113378685,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": 11.016408163265307,
+      "perf": 5983.1,
+      "epoch": 1
+     },
+     {
+      "beat": 12,
+      "at": 12.014151247165534,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 13.036544217687076,
+      "perf": 6983.1,
+      "epoch": 1
+     },
+     {
+      "beat": 14,
+      "at": 14.034187301587302,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "end": 15.004435374149661,
+      "perf": 7983,
+      "epoch": 1
+     },
+     {
+      "beat": 16,
+      "at": 16.01378843537415,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 17.036181405895693,
+      "perf": 8983,
+      "epoch": 1
+     },
+     {
+      "beat": 18,
+      "at": 18.016409523809525,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "end": 19.038902494331065,
+      "perf": 9982.9,
+      "epoch": 1
+     },
+     {
+      "beat": 20,
+      "at": 20.013425623582766,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 21.00098866213152,
+      "perf": 10982.9,
+      "epoch": 1
+     },
+     {
+      "beat": 22,
+      "at": 22.033561678004535,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "end": 23.03853968253968,
+      "perf": 11982.9,
+      "epoch": 1
+     },
+     {
+      "beat": 24,
+      "at": 24.012962811791382,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "end": 25.000625850340136,
+      "perf": 12982.8,
+      "epoch": 1
+     },
+     {
+      "beat": 26,
+      "at": 26.015683900226755,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "end": 27.0381768707483,
+      "perf": 13982.8,
+      "epoch": 1
+     },
+     {
+      "beat": 28,
+      "at": 28.035919954648527,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 29.000263038548752,
+      "perf": 14982.7,
+      "epoch": 1
+     },
+     {
+      "beat": 30,
+      "at": 30.015421088435374,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "end": 31.03781405895692,
+      "perf": 15982.7,
+      "epoch": 1
+     },
+     {
+      "beat": 32,
+      "at": 32.01233718820862,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 33.07536507936508,
+      "perf": 16982.7,
+      "epoch": 1
+     },
+     {
+      "beat": 34,
+      "at": 34.01505827664399,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 35.03745124716553,
+      "perf": 17982.6,
+      "epoch": 1
+     },
+     {
+      "beat": 36,
+      "at": 36.05179433106576,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 37.08080725623582,
+      "perf": 18982.6,
+      "epoch": 1
+     },
+     {
+      "beat": 38,
+      "at": 38.014595464852604,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": 39.037088435374145,
+      "perf": 19982.5,
+      "epoch": 1
+     },
+     {
+      "beat": 40,
+      "at": 40.051431519274374,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": 41.08044444444444,
+      "perf": 20982.5,
+      "epoch": 1
+     },
+     {
+      "beat": 42,
+      "at": 42.014332653061224,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 43.03672562358276,
+      "perf": 21982.5,
+      "epoch": 1
+     },
+     {
+      "beat": 44,
+      "at": 44.051102040816325,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "end": 45.080081632653055,
+      "perf": 22982.4,
+      "epoch": 1
+     },
+     {
+      "beat": 46,
+      "at": 46.01396984126984,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 47.03636281179138,
+      "perf": 23982.4,
+      "epoch": 1
+     },
+     {
+      "beat": 48,
+      "at": 48.05070589569161,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "end": 49.07971882086167,
+      "perf": 24982.3,
+      "epoch": 1
+     },
+     {
+      "beat": 50,
+      "at": 50.013507029478454,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 51.035999999999994,
+      "perf": 25982.3,
+      "epoch": 1
+     },
+     {
+      "beat": 52,
+      "at": 52.05034308390022,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "end": 53.079356009070295,
+      "perf": 26982.2,
+      "epoch": 1
+     },
+     {
+      "beat": 54,
+      "at": 54.013244217687074,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "end": 55.000807256235824,
+      "perf": 27982.3,
+      "epoch": 1
+     },
+     {
+      "beat": 56,
+      "at": 56.050013605442174,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "end": null,
+      "perf": 28982.2,
+      "epoch": 1
+     }
+    ],
+    "morphEvents": [
+     {
+      "type": "morph",
+      "bar": 0.5,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 1.0703174603174603,
+      "tHeard": 1.1023174603174604,
+      "perfHeard": 1975.4621312331722,
+      "perfDrawn": 1983.2
+     },
+     {
+      "type": "morph",
+      "bar": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 2.0703174603174603,
+      "tHeard": 2.1023174603174604,
+      "perfHeard": 2976.5040813465507,
+      "perfDrawn": 2983.2
+     },
+     {
+      "type": "morph",
+      "bar": 1.5,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 3.0703174603174603,
+      "tHeard": 3.1023174603174604,
+      "perfHeard": 3975.3435374149662,
+      "perfDrawn": 3983.2
+     },
+     {
+      "type": "morph",
+      "bar": 2,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 4.07031746031746,
+      "tHeard": 4.10231746031746,
+      "perfHeard": 4973.882992815809,
+      "perfDrawn": 4983.2
+     },
+     {
+      "type": "morph",
+      "bar": 2.5,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 5.07031746031746,
+      "tHeard": 5.10231746031746,
+      "perfHeard": 5975.524943310657,
+      "perfDrawn": 5983.1
+     },
+     {
+      "type": "morph",
+      "bar": 3,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 6.07031746031746,
+      "tHeard": 6.10231746031746,
+      "perfHeard": 6973.564398711501,
+      "perfDrawn": 6983.1
+     },
+     {
+      "type": "morph",
+      "bar": 3.5,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 7.07031746031746,
+      "tHeard": 7.10231746031746,
+      "perfHeard": 7975.506348920247,
+      "perfDrawn": 7983
+     },
+     {
+      "type": "morph",
+      "bar": 4,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 8.07031746031746,
+      "tHeard": 8.10231746031746,
+      "perfHeard": 8974.045804797926,
+      "perfDrawn": 8983
+     },
+     {
+      "type": "morph",
+      "bar": 4.5,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 9.07031746031746,
+      "tHeard": 9.10231746031746,
+      "perfHeard": 9975.487755006674,
+      "perfDrawn": 9982.9
+     },
+     {
+      "type": "morph",
+      "bar": 5,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 10.07031746031746,
+      "tHeard": 10.10231746031746,
+      "perfHeard": 10985.337188017882,
+      "perfDrawn": 10982.9
+     },
+     {
+      "type": "morph",
+      "bar": 5.5,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 11.07031746031746,
+      "tHeard": 11.10231746031746,
+      "perfHeard": 11975.86916071163,
+      "perfDrawn": 11982.9
+     },
+     {
+      "type": "morph",
+      "bar": 6,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 12.07031746031746,
+      "tHeard": 12.10231746031746,
+      "perfHeard": 12985.318594104307,
+      "perfDrawn": 12982.8
+     },
+     {
+      "type": "morph",
+      "bar": 6.5,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 13.07031746031746,
+      "tHeard": 13.10231746031746,
+      "perfHeard": 13981.455555174085,
+      "perfDrawn": 13982.8
+     },
+     {
+      "type": "morph",
+      "bar": 7,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 14.07031746031746,
+      "tHeard": 14.10231746031746,
+      "perfHeard": 14974.790022294266,
+      "perfDrawn": 14982.7
+     },
+     {
+      "type": "morph",
+      "bar": 7.5,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 15.07031746031746,
+      "tHeard": 15.10231746031746,
+      "perfHeard": 15975.831972407646,
+      "perfDrawn": 15982.7
+     },
+     {
+      "type": "morph",
+      "bar": 8,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 16.07031746031746,
+      "tHeard": 16.10231746031746,
+      "perfHeard": 16980.27641685209,
+      "perfDrawn": 16982.7
+     },
+     {
+      "type": "morph",
+      "bar": 8.5,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 17.07031746031746,
+      "tHeard": 17.10231746031746,
+      "perfHeard": 17984.520861487268,
+      "perfDrawn": 17982.6
+     },
+     {
+      "type": "morph",
+      "bar": 9,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 18.07031746031746,
+      "tHeard": 18.10231746031746,
+      "perfHeard": 18976.85283437175,
+      "perfDrawn": 18982.6
+     },
+     {
+      "type": "morph",
+      "bar": 9.5,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 19.07031746031746,
+      "tHeard": 19.10231746031746,
+      "perfHeard": 19984.70226738296,
+      "perfDrawn": 19982.5
+     },
+     {
+      "type": "morph",
+      "bar": 10,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 20.07031746031746,
+      "tHeard": 20.10231746031746,
+      "perfHeard": 20976.73424007671,
+      "perfDrawn": 20982.5
+     },
+     {
+      "type": "morph",
+      "bar": 10.5,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 21.07031746031746,
+      "tHeard": 21.10231746031746,
+      "perfHeard": 21984.783673374022,
+      "perfDrawn": 21982.5
+     },
+     {
+      "type": "morph",
+      "bar": 11,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 22.07031746031746,
+      "tHeard": 22.10231746031746,
+      "perfHeard": 22976.215646163135,
+      "perfDrawn": 22982.4
+     },
+     {
+      "type": "morph",
+      "bar": 11.5,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 23.07031746031746,
+      "tHeard": 23.10231746031746,
+      "perfHeard": 23984.965079269714,
+      "perfDrawn": 23982.4
+     },
+     {
+      "type": "morph",
+      "bar": 12,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 24.07031746031746,
+      "tHeard": 24.10231746031746,
+      "perfHeard": 24976.297052154194,
+      "perfDrawn": 24982.3
+     },
+     {
+      "type": "morph",
+      "bar": 12.5,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 25.07031746031746,
+      "tHeard": 25.10231746031746,
+      "perfHeard": 25984.946484879303,
+      "perfDrawn": 25982.3
+     },
+     {
+      "type": "morph",
+      "bar": 13,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 26.07031746031746,
+      "tHeard": 26.10231746031746,
+      "perfHeard": 26978.278457763783,
+      "perfDrawn": 26982.2
+     },
+     {
+      "type": "morph",
+      "bar": 13.5,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 27.07031746031746,
+      "tHeard": 27.10231746031746,
+      "perfHeard": 27985.027890870362,
+      "perfDrawn": 27982.3
+     },
+     {
+      "type": "morph",
+      "bar": 14,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 28.07031746031746,
+      "tHeard": 28.10231746031746,
+      "perfHeard": 28977.559863564107,
+      "perfDrawn": 28982.2
+     }
+    ],
+    "live": {
+     "changes": 28,
+     "holdErrBeats": 0,
+     "lateFrames": 1.3725497732425644,
+     "morphErrFrames": 2.141392290249282
+    },
+    "liveHoldErr": 0,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "curve",
+       "genus": 1,
+       "glowErr": 7.457848782976839e-10
+      },
+      {
+       "preset": "k3",
+       "genus": 0,
+       "glowErr": 0.000006999624315329189
+      },
+      {
+       "preset": "curve",
+       "genus": 4,
+       "glowErr": 1.1932557719696035e-9
+      },
+      {
+       "preset": "quintic",
+       "genus": 0,
+       "glowErr": 0.000032862783555395736
+      },
+      {
+       "preset": "abelian",
+       "genus": 0,
+       "glowErr": 0.00003939386014883972
+      },
+      {
+       "preset": "curve",
+       "genus": 2,
+       "glowErr": 9.943799117451135e-10
+      },
+      {
+       "preset": "mirror",
+       "genus": 0,
+       "glowErr": 0.00003285856713071411
+      },
+      {
+       "preset": "curve",
+       "genus": 6,
+       "glowErr": 2.6620861459658585e-8
+      },
+      {
+       "preset": "curve",
+       "genus": 0,
+       "glowErr": 0
+      },
+      {
+       "preset": "curve",
+       "genus": 3,
+       "glowErr": 2.3293253548217763e-8
+      },
+      {
+       "preset": "curve",
+       "genus": 5,
+       "glowErr": 1.5436122546841347e-8
+      }
+     ],
+     "glowErr": 0.00003939386014883972,
+     "nowSettled": false
+    }
+   },
+   "stills": [
+    "stills/auto@4k-1.png",
+    "stills/auto@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "hold2@1080p",
+   "variant": "hold2",
+   "base": "hold2",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "hold": 2
+   },
+   "url": "16-hodge-kaleidoscope.html?hold=2",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 729,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 29.57,
+    "lum.min": 27.35,
+    "lum.max": 31.78,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 2.6620861459658585e-8,
+    "preset": "curve",
+    "hold": 2,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 7,
+    "morphSyncMs": 9.417006993456198,
+    "morphSyncAllMs": 9.417006993456198,
+    "morphLog": [
+     {
+      "beat": 8,
+      "at": 8.037734013605442,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 12.020671201814059,
+      "perf": 4974.1,
+      "epoch": 1
+     },
+     {
+      "beat": 16,
+      "at": 16.036908390022678,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 20.019945578231294,
+      "perf": 8973.9,
+      "epoch": 1
+     },
+     {
+      "beat": 24,
+      "at": 24.03628276643991,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 28.019219954648527,
+      "perf": 12973.8,
+      "epoch": 1
+     },
+     {
+      "beat": 32,
+      "at": 32.03545714285714,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": 36.01849433106576,
+      "perf": 16973.6,
+      "epoch": 1
+     },
+     {
+      "beat": 40,
+      "at": 40.03483151927438,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": 44.01776870748299,
+      "perf": 20973.5,
+      "epoch": 1
+     },
+     {
+      "beat": 48,
+      "at": 48.03410589569161,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 52.01704308390023,
+      "perf": 24973.3,
+      "epoch": 1
+     },
+     {
+      "beat": 56,
+      "at": 56.03328027210884,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "end": null,
+      "perf": 28973.1,
+      "epoch": 1
+     }
+    ],
+    "morphEvents": [
+     {
+      "type": "morph",
+      "bar": 2,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 4.07031746031746,
+      "tHeard": 4.10231746031746,
+      "perfHeard": 4964.682993006544,
+      "perfDrawn": 4974.1
+     },
+     {
+      "type": "morph",
+      "bar": 4,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 8.07031746031746,
+      "tHeard": 8.10231746031746,
+      "perfHeard": 8964.745804607192,
+      "perfDrawn": 8973.9
+     },
+     {
+      "type": "morph",
+      "bar": 6,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 12.07031746031746,
+      "tHeard": 12.10231746031746,
+      "perfHeard": 12964.90861658931,
+      "perfDrawn": 12973.8
+     },
+     {
+      "type": "morph",
+      "bar": 8,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 16.07031746031746,
+      "tHeard": 16.10231746031746,
+      "perfHeard": 16965.271428380693,
+      "perfDrawn": 16973.6
+     },
+     {
+      "type": "morph",
+      "bar": 10,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 20.07031746031746,
+      "tHeard": 20.10231746031746,
+      "perfHeard": 20965.23424007671,
+      "perfDrawn": 20973.5
+     },
+     {
+      "type": "morph",
+      "bar": 12,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 24.07031746031746,
+      "tHeard": 24.10231746031746,
+      "perfHeard": 24965.697051772724,
+      "perfDrawn": 24973.3
+     },
+     {
+      "type": "morph",
+      "bar": 14,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 28.07031746031746,
+      "tHeard": 28.10231746031746,
+      "perfHeard": 28967.25986385021,
+      "perfDrawn": 28973.1
+     }
+    ],
+    "live": {
+     "changes": 7,
+     "holdErrBeats": 0,
+     "lateFrames": 1.1320204081632745,
+     "morphErrFrames": 0.6201360544217671
+    },
+    "liveHoldErr": 0,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "curve",
+       "genus": 1,
+       "glowErr": 7.457848782976839e-10
+      },
+      {
+       "preset": "k3",
+       "genus": 0,
+       "glowErr": 0.000006999624315329189
+      },
+      {
+       "preset": "curve",
+       "genus": 4,
+       "glowErr": 1.1932557719696035e-9
+      },
+      {
+       "preset": "quintic",
+       "genus": 0,
+       "glowErr": 0.000032862783555395736
+      },
+      {
+       "preset": "abelian",
+       "genus": 0,
+       "glowErr": 0.00003939386014883972
+      },
+      {
+       "preset": "curve",
+       "genus": 2,
+       "glowErr": 9.943799117451135e-10
+      },
+      {
+       "preset": "mirror",
+       "genus": 0,
+       "glowErr": 0.00003285856713071411
+      }
+     ],
+     "glowErr": 0.00003939386014883972,
+     "nowSettled": false
+    }
+   },
+   "stills": [
+    "stills/hold2@1080p-1.png",
+    "stills/hold2@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "hold2@4k",
+   "variant": "hold2",
+   "base": "hold2",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "hold": 2
+   },
+   "url": "16-hodge-kaleidoscope.html?hold=2",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 728,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 91,
+    "lum.mean": 29.79,
+    "lum.min": 27.36,
+    "lum.max": 32.02,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 2.6620861459658585e-8,
+    "preset": "curve",
+    "hold": 2,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 7,
+    "morphSyncMs": 9.117006802721335,
+    "morphSyncAllMs": 9.117006802721335,
+    "morphLog": [
+     {
+      "beat": 8,
+      "at": 8.037734013605442,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 12.020671201814059,
+      "perf": 4969.6,
+      "epoch": 1
+     },
+     {
+      "beat": 16,
+      "at": 16.037008390022674,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 20.037360544217684,
+      "perf": 8969.4,
+      "epoch": 1
+     },
+     {
+      "beat": 24,
+      "at": 24.012962811791382,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 28.03663492063492,
+      "perf": 12969.2,
+      "epoch": 1
+     },
+     {
+      "beat": 32,
+      "at": 32.01814217687075,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": 36.00107936507936,
+      "perf": 16969.1,
+      "epoch": 1
+     },
+     {
+      "beat": 40,
+      "at": 40.01731655328798,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": 44.000353741496596,
+      "perf": 20968.9,
+      "epoch": 1
+     },
+     {
+      "beat": 48,
+      "at": 48.01669092970521,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 52.04026303854875,
+      "perf": 24968.8,
+      "epoch": 1
+     },
+     {
+      "beat": 56,
+      "at": 56.01586530612244,
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "end": null,
+      "perf": 28968.6,
+      "epoch": 1
+     }
+    ],
+    "morphEvents": [
+     {
+      "type": "morph",
+      "bar": 2,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 4.05,
+      "tHeard": 4.082,
+      "perfHeard": 4960.482993197279,
+      "perfDrawn": 4969.6
+     },
+     {
+      "type": "morph",
+      "bar": 4,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 8.05,
+      "tHeard": 8.082,
+      "perfHeard": 8960.745804607193,
+      "perfDrawn": 8969.4
+     },
+     {
+      "type": "morph",
+      "bar": 6,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 12.05,
+      "tHeard": 12.082,
+      "perfHeard": 12960.608616398576,
+      "perfDrawn": 12969.2
+     },
+     {
+      "type": "morph",
+      "bar": 8,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 16.05,
+      "tHeard": 16.082,
+      "perfHeard": 16969.37891146926,
+      "perfDrawn": 16969.1
+     },
+     {
+      "type": "morph",
+      "bar": 10,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 20.05,
+      "tHeard": 20.082,
+      "perfHeard": 20969.54172297454,
+      "perfDrawn": 20968.9
+     },
+     {
+      "type": "morph",
+      "bar": 12,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 24.05,
+      "tHeard": 24.082,
+      "perfHeard": 24969.904534765923,
+      "perfDrawn": 24968.8
+     },
+     {
+      "type": "morph",
+      "bar": 14,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 8,
+      "morphBeats": 4,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 28.05,
+      "tHeard": 28.082,
+      "perfHeard": 28970.367346938776,
+      "perfDrawn": 28968.6
+     }
+    ],
+    "live": {
+     "changes": 7,
+     "holdErrBeats": 0,
+     "lateFrames": 0.9999513605442258,
+     "morphErrFrames": 1.0669705215419079
+    },
+    "liveHoldErr": 0,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "curve",
+       "genus": 1,
+       "glowErr": 7.457848782976839e-10
+      },
+      {
+       "preset": "k3",
+       "genus": 0,
+       "glowErr": 0.000006999624315329189
+      },
+      {
+       "preset": "curve",
+       "genus": 4,
+       "glowErr": 1.1932557719696035e-9
+      },
+      {
+       "preset": "quintic",
+       "genus": 0,
+       "glowErr": 0.000032862783555395736
+      },
+      {
+       "preset": "abelian",
+       "genus": 0,
+       "glowErr": 0.00003939386014883972
+      },
+      {
+       "preset": "curve",
+       "genus": 2,
+       "glowErr": 9.943799117451135e-10
+      },
+      {
+       "preset": "mirror",
+       "genus": 0,
+       "glowErr": 0.00003285856713071411
+      }
+     ],
+     "glowErr": 0.00003939386014883972,
+     "nowSettled": false
+    }
+   },
+   "stills": [
+    "stills/hold2@4k-1.png",
+    "stills/hold2@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "fastest@1080p",
+   "variant": "fastest",
+   "base": "fastest",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "hold": 0.5,
+    "bpm": 140
+   },
+   "url": "16-hodge-kaleidoscope.html?hold=0.5&bpm=140",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 731,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 30.05,
+    "lum.min": 27.87,
+    "lum.max": 34.1,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 0.000032862783555395736,
+    "preset": "quintic",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 31,
+    "morphSyncMs": 10.72403656723327,
+    "morphSyncAllMs": 10.72403656723327,
+    "morphLog": [
+     {
+      "beat": 2,
+      "at": 2.011100000890096,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": null,
+      "perf": 878,
+      "epoch": 1
+     },
+     {
+      "beat": 2,
+      "at": 2.0224357142857143,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 3.005280423280423,
+      "perf": 1844.6,
+      "epoch": 2
+     },
+     {
+      "beat": 4,
+      "at": 4.0067743386243375,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 5.037026455026454,
+      "perf": 2694.6,
+      "epoch": 2
+     },
+     {
+      "beat": 6,
+      "at": 6.038403703703702,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": 7.021365079365077,
+      "perf": 3561.2,
+      "epoch": 2
+     },
+     {
+      "beat": 8,
+      "at": 8.009314021164018,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": 9.0057037037037,
+      "perf": 4411.2,
+      "epoch": 2
+     },
+     {
+      "beat": 10,
+      "at": 10.027398412698412,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 11.023904761904763,
+      "perf": 5277.8,
+      "epoch": 2
+     },
+     {
+      "beat": 12,
+      "at": 12.01185370370371,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "end": 13.04210582010583,
+      "perf": 6127.8,
+      "epoch": 2
+     },
+     {
+      "beat": 14,
+      "at": 14.043599735449748,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 15.026444444444461,
+      "perf": 6994.4,
+      "epoch": 2
+     },
+     {
+      "beat": 16,
+      "at": 16.021049206349225,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "end": 17.01078306878309,
+      "perf": 7844.4,
+      "epoch": 2
+     },
+     {
+      "beat": 18,
+      "at": 18.005621164021193,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 19.03575661375664,
+      "perf": 8694.4,
+      "epoch": 2
+     },
+     {
+      "beat": 20,
+      "at": 20.01693306878309,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "end": 21.020095238095255,
+      "perf": 9561,
+      "epoch": 2
+     },
+     {
+      "beat": 22,
+      "at": 22.04178994708996,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "end": 23.00443386243387,
+      "perf": 10427.6,
+      "epoch": 2
+     },
+     {
+      "beat": 24,
+      "at": 24.026245238095242,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "end": 25.009089947089944,
+      "perf": 11277.6,
+      "epoch": 2
+     },
+     {
+      "beat": 26,
+      "at": 26.010583862433855,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 27.04083597883597,
+      "perf": 12127.6,
+      "epoch": 2
+     },
+     {
+      "beat": 28,
+      "at": 28.042213227513212,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "end": 29.02517460317458,
+      "perf": 12994.1,
+      "epoch": 2
+     },
+     {
+      "beat": 30,
+      "at": 30.026551851851828,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 31.009513227513196,
+      "perf": 13844.1,
+      "epoch": 2
+     },
+     {
+      "beat": 32,
+      "at": 32.004117989417956,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 33.04125925925922,
+      "perf": 14694.1,
+      "epoch": 2
+     },
+     {
+      "beat": 34,
+      "at": 34.01554656084652,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 35.01882539682535,
+      "perf": 15560.7,
+      "epoch": 2
+     },
+     {
+      "beat": 36,
+      "at": 36.0000018518518,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": 37.00316402116396,
+      "perf": 16410.7,
+      "epoch": 2
+     },
+     {
+      "beat": 38,
+      "at": 38.02497539682534,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": 39.01459259259253,
+      "perf": 17277.4,
+      "epoch": 2
+     },
+     {
+      "beat": 40,
+      "at": 40.00919735449728,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 41.03956613756606,
+      "perf": 18127.3,
+      "epoch": 2
+     },
+     {
+      "beat": 42,
+      "at": 42.04094338624331,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "end": 43.023904761904674,
+      "perf": 18993.9,
+      "epoch": 2
+     },
+     {
+      "beat": 44,
+      "at": 44.02539867724859,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 45.008243386243294,
+      "perf": 19843.9,
+      "epoch": 2
+     },
+     {
+      "beat": 46,
+      "at": 46.0097373015872,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "end": 47.03998941798932,
+      "perf": 20693.9,
+      "epoch": 2
+     },
+     {
+      "beat": 48,
+      "at": 48.014393386243285,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 49.02432804232793,
+      "perf": 21560.5,
+      "epoch": 2
+     },
+     {
+      "beat": 50,
+      "at": 50.046139417989295,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "end": 51.00189417989406,
+      "perf": 22427.1,
+      "epoch": 2
+     },
+     {
+      "beat": 52,
+      "at": 52.03047804232792,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "end": 53.01332275132262,
+      "perf": 23277.2,
+      "epoch": 2
+     },
+     {
+      "beat": 54,
+      "at": 54.00804417989404,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "end": 55.03829629629615,
+      "perf": 24127.1,
+      "epoch": 2
+     },
+     {
+      "beat": 56,
+      "at": 56.039790211640074,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 57.02263492063477,
+      "perf": 24993.7,
+      "epoch": 2
+     },
+     {
+      "beat": 58,
+      "at": 58.024012169312016,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "end": 59.006973544973384,
+      "perf": 25843.6,
+      "epoch": 2
+     },
+     {
+      "beat": 60,
+      "at": 60.00846746031729,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 61.03871957671941,
+      "perf": 26693.6,
+      "epoch": 2
+     },
+     {
+      "beat": 62,
+      "at": 62.013123544973375,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 63.02305820105802,
+      "perf": 27560.3,
+      "epoch": 2
+     },
+     {
+      "beat": 64,
+      "at": 64.04475291005274,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 65.00739682539664,
+      "perf": 28426.9,
+      "epoch": 2
+     }
+    ],
+    "morphEvents": [
+     {
+      "type": "morph",
+      "bar": 0.5,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": false,
+      "tBeat": 0.9274603174603173,
+      "tHeard": 0.9594603174603173,
+      "perfHeard": 1844.7346938775509,
+      "perfDrawn": 1844.6
+     },
+     {
+      "type": "morph",
+      "bar": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 1.784603174603175,
+      "tHeard": 1.816603174603175,
+      "perfHeard": 2701.246711732039,
+      "perfDrawn": 2694.6
+     },
+     {
+      "type": "morph",
+      "bar": 1.5,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 2.6417460317460324,
+      "tHeard": 2.6737460317460324,
+      "perfHeard": 3554.341269841271,
+      "perfDrawn": 3561.2
+     },
+     {
+      "type": "morph",
+      "bar": 2,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 3.49888888888889,
+      "tHeard": 3.53088888888889,
+      "perfHeard": 4410.9532876003905,
+      "perfDrawn": 4411.2
+     },
+     {
+      "type": "morph",
+      "bar": 2.5,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 4.356031746031746,
+      "tHeard": 4.388031746031746,
+      "perfHeard": 5275.257822938517,
+      "perfDrawn": 5277.8
+     },
+     {
+      "type": "morph",
+      "bar": 3,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 5.2131746031746005,
+      "tHeard": 5.2451746031746005,
+      "perfHeard": 6131.869841174471,
+      "perfDrawn": 6127.8
+     },
+     {
+      "type": "morph",
+      "bar": 3.5,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 6.070317460317455,
+      "tHeard": 6.102317460317455,
+      "perfHeard": 6984.764398997598,
+      "perfDrawn": 6994.4
+     },
+     {
+      "type": "morph",
+      "bar": 4,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 6.927460317460309,
+      "tHeard": 6.959460317460309,
+      "perfHeard": 7844.9789113738825,
+      "perfDrawn": 7844.4
+     },
+     {
+      "type": "morph",
+      "bar": 4.5,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 7.784603174603163,
+      "tHeard": 7.816603174603163,
+      "perfHeard": 8701.490929705204,
+      "perfDrawn": 8694.4
+     },
+     {
+      "type": "morph",
+      "bar": 5,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 8.641746031746022,
+      "tHeard": 8.673746031746022,
+      "perfHeard": 9554.5854873376,
+      "perfDrawn": 9561
+     },
+     {
+      "type": "morph",
+      "bar": 5.5,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 9.498888888888883,
+      "tHeard": 9.530888888888883,
+      "perfHeard": 10418.89002267573,
+      "perfDrawn": 10427.6
+     },
+     {
+      "type": "morph",
+      "bar": 6,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 10.356031746031745,
+      "tHeard": 10.388031746031745,
+      "perfHeard": 11275.602040816324,
+      "perfDrawn": 11277.6
+     },
+     {
+      "type": "morph",
+      "bar": 6.5,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 11.213174603174606,
+      "tHeard": 11.245174603174606,
+      "perfHeard": 12132.21405857545,
+      "perfDrawn": 12127.6
+     },
+     {
+      "type": "morph",
+      "bar": 7,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 12.070317460317467,
+      "tHeard": 12.102317460317467,
+      "perfHeard": 12985.608616398582,
+      "perfDrawn": 12994.1
+     },
+     {
+      "type": "morph",
+      "bar": 7.5,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 12.927460317460328,
+      "tHeard": 12.959460317460328,
+      "perfHeard": 13842.720634634543,
+      "perfDrawn": 13844.1
+     },
+     {
+      "type": "morph",
+      "bar": 8,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 13.78460317460319,
+      "tHeard": 13.81660317460319,
+      "perfHeard": 14702.035147392306,
+      "perfDrawn": 14694.1
+     },
+     {
+      "type": "morph",
+      "bar": 8.5,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 14.64174603174605,
+      "tHeard": 14.67374603174605,
+      "perfHeard": 15563.3371880179,
+      "perfDrawn": 15560.7
+     },
+     {
+      "type": "morph",
+      "bar": 9,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 15.498888888888912,
+      "tHeard": 15.530888888888912,
+      "perfHeard": 16417.44671201816,
+      "perfDrawn": 16410.7
+     },
+     {
+      "type": "morph",
+      "bar": 9.5,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 16.35603174603177,
+      "tHeard": 16.38803174603177,
+      "perfHeard": 17275.446258217326,
+      "perfDrawn": 17277.4
+     },
+     {
+      "type": "morph",
+      "bar": 10,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 17.213174603174632,
+      "tHeard": 17.245174603174632,
+      "perfHeard": 18132.75827626255,
+      "perfDrawn": 18127.3
+     },
+     {
+      "type": "morph",
+      "bar": 10.5,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 18.070317460317494,
+      "tHeard": 18.102317460317494,
+      "perfHeard": 18985.852834371784,
+      "perfDrawn": 18993.9
+     },
+     {
+      "type": "morph",
+      "bar": 11,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 18.927460317460355,
+      "tHeard": 18.959460317460355,
+      "perfHeard": 19841.864852226277,
+      "perfDrawn": 19843.9
+     },
+     {
+      "type": "morph",
+      "bar": 11.5,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 19.784603174603216,
+      "tHeard": 19.816603174603216,
+      "perfHeard": 20699.076870366873,
+      "perfDrawn": 20693.9
+     },
+     {
+      "type": "morph",
+      "bar": 12,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 20.641746031746077,
+      "tHeard": 20.673746031746077,
+      "perfHeard": 21563.581405514265,
+      "perfDrawn": 21560.5
+     },
+     {
+      "type": "morph",
+      "bar": 12.5,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 21.49888888888894,
+      "tHeard": 21.53088888888894,
+      "perfHeard": 22416.375963432765,
+      "perfDrawn": 22427.1
+     },
+     {
+      "type": "morph",
+      "bar": 13,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 22.3560317460318,
+      "tHeard": 22.3880317460318,
+      "perfHeard": 23273.08798157336,
+      "perfDrawn": 23277.2
+     },
+     {
+      "type": "morph",
+      "bar": 13.5,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 23.21317460317466,
+      "tHeard": 23.24517460317466,
+      "perfHeard": 24132.902494331123,
+      "perfDrawn": 24127.1
+     },
+     {
+      "type": "morph",
+      "bar": 14,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 24.070317460317522,
+      "tHeard": 24.102317460317522,
+      "perfHeard": 24986.097051868153,
+      "perfDrawn": 24993.7
+     },
+     {
+      "type": "morph",
+      "bar": 14.5,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 24.927460317460383,
+      "tHeard": 24.959460317460383,
+      "perfHeard": 25842.809070008745,
+      "perfDrawn": 25843.6
+     },
+     {
+      "type": "morph",
+      "bar": 15,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 25.784603174603244,
+      "tHeard": 25.816603174603244,
+      "perfHeard": 26699.42108824471,
+      "perfDrawn": 26693.6
+     },
+     {
+      "type": "morph",
+      "bar": 15.5,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 26.641746031746106,
+      "tHeard": 26.673746031746106,
+      "perfHeard": 27564.22562358284,
+      "perfDrawn": 27560.3
+     },
+     {
+      "type": "morph",
+      "bar": 16,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 27.498888888888967,
+      "tHeard": 27.530888888888967,
+      "perfHeard": 28417.0201810245,
+      "perfDrawn": 28426.9
+     }
+    ],
+    "live": {
+     "changes": 33,
+     "holdErrBeats": 0,
+     "lateFrames": 1.1864421768675828,
+     "morphErrFrames": 1.0827210884356222
+    },
+    "liveHoldErr": 0,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "curve",
+       "genus": 1,
+       "glowErr": 7.457848782976839e-10
+      },
+      {
+       "preset": "curve",
+       "genus": 4,
+       "glowErr": 1.1932557719696035e-9
+      },
+      {
+       "preset": "quintic",
+       "genus": 0,
+       "glowErr": 0.000032862783555395736
+      },
+      {
+       "preset": "abelian",
+       "genus": 0,
+       "glowErr": 0.00003939386014883972
+      },
+      {
+       "preset": "curve",
+       "genus": 2,
+       "glowErr": 9.943799117451135e-10
+      },
+      {
+       "preset": "mirror",
+       "genus": 0,
+       "glowErr": 0.00003285856713071411
+      },
+      {
+       "preset": "curve",
+       "genus": 6,
+       "glowErr": 2.6620861459658585e-8
+      },
+      {
+       "preset": "k3",
+       "genus": 0,
+       "glowErr": 0.000006999624315329189
+      },
+      {
+       "preset": "curve",
+       "genus": 0,
+       "glowErr": 0
+      },
+      {
+       "preset": "curve",
+       "genus": 3,
+       "glowErr": 2.3293253548217763e-8
+      },
+      {
+       "preset": "curve",
+       "genus": 5,
+       "glowErr": 1.5436122546841347e-8
+      }
+     ],
+     "glowErr": 0.00003939386014883972,
+     "nowSettled": false
+    }
+   },
+   "stills": [
+    "stills/fastest@1080p-1.png",
+    "stills/fastest@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "fastest@4k",
+   "variant": "fastest",
+   "base": "fastest",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "hold": 0.5,
+    "bpm": 140
+   },
+   "url": "16-hodge-kaleidoscope.html?hold=0.5&bpm=140",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 734,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 91,
+    "lum.mean": 30.31,
+    "lum.min": 28.07,
+    "lum.max": 34.54,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 0.00003939386014883972,
+    "preset": "abelian",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 32,
+    "morphSyncMs": 17.112925170007657,
+    "morphSyncAllMs": 17.112925170007657,
+    "morphLog": [
+     {
+      "beat": 2,
+      "at": 2.027550000890096,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": null,
+      "perf": 894,
+      "epoch": 1
+     },
+     {
+      "beat": 2,
+      "at": 2.0020015873015873,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 3.005280423280423,
+      "perf": 1844,
+      "epoch": 2
+     },
+     {
+      "beat": 4,
+      "at": 4.0338642857142855,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 5.016708994708994,
+      "perf": 2710.7,
+      "epoch": 2
+     },
+     {
+      "beat": 6,
+      "at": 6.011430423280422,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": 7.0010476190476165,
+      "perf": 3560.6,
+      "epoch": 2
+     },
+     {
+      "beat": 8,
+      "at": 8.043059788359786,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": 9.026021164021161,
+      "perf": 4427.2,
+      "epoch": 2
+     },
+     {
+      "beat": 10,
+      "at": 10.027398412698412,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 11.010359788359791,
+      "perf": 5277.2,
+      "epoch": 2
+     },
+     {
+      "beat": 12,
+      "at": 12.01185370370371,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "end": 13.04210582010583,
+      "perf": 6127.2,
+      "epoch": 2
+     },
+     {
+      "beat": 14,
+      "at": 14.016509788359802,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 15.026444444444461,
+      "perf": 6993.8,
+      "epoch": 2
+     },
+     {
+      "beat": 16,
+      "at": 16.000731746031764,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "end": 17.01078306878309,
+      "perf": 7843.7,
+      "epoch": 2
+     },
+     {
+      "beat": 18,
+      "at": 18.032477777777803,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 19.01543915343918,
+      "perf": 8710.4,
+      "epoch": 2
+     },
+     {
+      "beat": 20,
+      "at": 20.016816402116422,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "end": 21.047185185185203,
+      "perf": 9560.3,
+      "epoch": 2
+     },
+     {
+      "beat": 22,
+      "at": 22.041906613756627,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "end": 23.024751322751328,
+      "perf": 10427,
+      "epoch": 2
+     },
+     {
+      "beat": 24,
+      "at": 24.026245238095242,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "end": 25.009089947089944,
+      "perf": 11277,
+      "epoch": 2
+     },
+     {
+      "beat": 26,
+      "at": 26.010467195767188,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 27.04083597883597,
+      "perf": 12126.9,
+      "epoch": 2
+     },
+     {
+      "beat": 28,
+      "at": 28.015123280423268,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "end": 29.02517460317458,
+      "perf": 12993.5,
+      "epoch": 2
+     },
+     {
+      "beat": 30,
+      "at": 30.046985978835956,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 31.009513227513196,
+      "perf": 13860.2,
+      "epoch": 2
+     },
+     {
+      "beat": 32,
+      "at": 32.03132460317457,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 33.01416931216927,
+      "perf": 14710.2,
+      "epoch": 2
+     },
+     {
+      "beat": 34,
+      "at": 34.01566322751319,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 35.0459153439153,
+      "perf": 15560.1,
+      "epoch": 2
+     },
+     {
+      "beat": 36,
+      "at": 36.00000185185179,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": 37.03025396825391,
+      "perf": 16410.1,
+      "epoch": 2
+     },
+     {
+      "beat": 38,
+      "at": 38.0443809523809,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": 39.01459259259253,
+      "perf": 17276.7,
+      "epoch": 2
+     },
+     {
+      "beat": 40,
+      "at": 40.00919735449728,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 41.03956613756606,
+      "perf": 18126.6,
+      "epoch": 2
+     },
+     {
+      "beat": 42,
+      "at": 42.0807441798941,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "end": 43.023904761904674,
+      "perf": 19010,
+      "epoch": 2
+     },
+     {
+      "beat": 44,
+      "at": 44.04559947089939,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 45.008243386243294,
+      "perf": 19859.9,
+      "epoch": 2
+     },
+     {
+      "beat": 46,
+      "at": 46.03017142857133,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "end": 47.03998941798932,
+      "perf": 20710,
+      "epoch": 2
+     },
+     {
+      "beat": 48,
+      "at": 48.01344259259248,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 49.04464550264539,
+      "perf": 21543.2,
+      "epoch": 2
+     },
+     {
+      "beat": 50,
+      "at": 50.046256084655965,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "end": 51.07639153439141,
+      "perf": 22426.6,
+      "epoch": 2
+     },
+     {
+      "beat": 52,
+      "at": 52.04988359788348,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "end": 53.01332275132262,
+      "perf": 23276.5,
+      "epoch": 2
+     },
+     {
+      "beat": 54,
+      "at": 54.00804417989405,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "end": 55.03829629629615,
+      "perf": 24126.5,
+      "epoch": 2
+     },
+     {
+      "beat": 56,
+      "at": 56.08624682539668,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 57.02263492063477,
+      "perf": 25009.8,
+      "epoch": 2
+     },
+     {
+      "beat": 58,
+      "at": 58.00381137566122,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "end": 59.006973544973384,
+      "perf": 25843,
+      "epoch": 2
+     },
+     {
+      "beat": 60,
+      "at": 60.028668253968085,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 61.03871957671941,
+      "perf": 26709.6,
+      "epoch": 2
+     },
+     {
+      "beat": 62,
+      "at": 62.01205608465591,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 63.043375661375485,
+      "perf": 27542.9,
+      "epoch": 2
+     },
+     {
+      "beat": 64,
+      "at": 64.04475291005274,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 65.0751216931215,
+      "perf": 28426.2,
+      "epoch": 2
+     },
+     {
+      "beat": 66,
+      "at": 66.04857486772468,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": null,
+      "perf": 29276.2,
+      "epoch": 2
+     }
+    ],
+    "morphEvents": [
+     {
+      "type": "morph",
+      "bar": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 1.784603174603175,
+      "tHeard": 1.816603174603175,
+      "perfHeard": 2706.036734503143,
+      "perfDrawn": 2710.7
+     },
+     {
+      "type": "morph",
+      "bar": 1.5,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 2.6417460317460324,
+      "tHeard": 2.6737460317460324,
+      "perfHeard": 3565.051247070166,
+      "perfDrawn": 3560.6
+     },
+     {
+      "type": "morph",
+      "bar": 2,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 3.49888888888889,
+      "tHeard": 3.53088888888889,
+      "perfHeard": 4418.045804797928,
+      "perfDrawn": 4427.2
+     },
+     {
+      "type": "morph",
+      "bar": 2.5,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 4.356031746031746,
+      "tHeard": 4.388031746031746,
+      "perfHeard": 5274.957822747782,
+      "perfDrawn": 5277.2
+     },
+     {
+      "type": "morph",
+      "bar": 3,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 5.2131746031746005,
+      "tHeard": 5.2451746031746005,
+      "perfHeard": 6131.569840983736,
+      "perfDrawn": 6127.2
+     },
+     {
+      "type": "morph",
+      "bar": 3.5,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 6.070317460317455,
+      "tHeard": 6.102317460317455,
+      "perfHeard": 6996.274376417227,
+      "perfDrawn": 6993.8
+     },
+     {
+      "type": "morph",
+      "bar": 4,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 6.927460317460309,
+      "tHeard": 6.959460317460309,
+      "perfHeard": 7852.9863945578145,
+      "perfDrawn": 7843.7
+     },
+     {
+      "type": "morph",
+      "bar": 4.5,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 7.784603174603163,
+      "tHeard": 7.816603174603163,
+      "perfHeard": 8706.080952190207,
+      "perfDrawn": 8710.4
+     },
+     {
+      "type": "morph",
+      "bar": 5,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 8.641746031746022,
+      "tHeard": 8.673746031746022,
+      "perfHeard": 9562.592970521533,
+      "perfDrawn": 9560.3
+     },
+     {
+      "type": "morph",
+      "bar": 5.5,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 9.498888888888883,
+      "tHeard": 9.530888888888883,
+      "perfHeard": 10418.490022580363,
+      "perfDrawn": 10427
+     },
+     {
+      "type": "morph",
+      "bar": 6,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 10.356031746031745,
+      "tHeard": 10.388031746031745,
+      "perfHeard": 11275.002040434854,
+      "perfDrawn": 11277
+     },
+     {
+      "type": "morph",
+      "bar": 6.5,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 11.213174603174606,
+      "tHeard": 11.245174603174606,
+      "perfHeard": 12131.914058861552,
+      "perfDrawn": 12126.9
+     },
+     {
+      "type": "morph",
+      "bar": 7,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 12.070317460317467,
+      "tHeard": 12.102317460317467,
+      "perfHeard": 12996.518593913579,
+      "perfDrawn": 12993.5
+     },
+     {
+      "type": "morph",
+      "bar": 7.5,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 12.927460317460328,
+      "tHeard": 12.959460317460328,
+      "perfHeard": 13849.513151641346,
+      "perfDrawn": 13860.2
+     },
+     {
+      "type": "morph",
+      "bar": 8,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 13.78460317460319,
+      "tHeard": 13.81660317460319,
+      "perfHeard": 14706.125169877307,
+      "perfDrawn": 14710.2
+     },
+     {
+      "type": "morph",
+      "bar": 8.5,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 14.64174603174605,
+      "tHeard": 14.67374603174605,
+      "perfHeard": 15562.937187922533,
+      "perfDrawn": 15560.1
+     },
+     {
+      "type": "morph",
+      "bar": 9,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 15.498888888888912,
+      "tHeard": 15.530888888888912,
+      "perfHeard": 16419.149206063128,
+      "perfDrawn": 16410.1
+     },
+     {
+      "type": "morph",
+      "bar": 9.5,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 16.35603174603177,
+      "tHeard": 16.38803174603177,
+      "perfHeard": 17282.046258121958,
+      "perfDrawn": 17276.7
+     },
+     {
+      "type": "morph",
+      "bar": 10,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 17.213174603174632,
+      "tHeard": 17.245174603174632,
+      "perfHeard": 18131.958276548652,
+      "perfDrawn": 18126.6
+     },
+     {
+      "type": "morph",
+      "bar": 10.5,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 18.070317460317494,
+      "tHeard": 18.102317460317494,
+      "perfHeard": 18994.945351092487,
+      "perfDrawn": 19010
+     },
+     {
+      "type": "morph",
+      "bar": 11,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 18.927460317460355,
+      "tHeard": 18.959460317460355,
+      "perfHeard": 19849.757369614552,
+      "perfDrawn": 19859.9
+     },
+     {
+      "type": "morph",
+      "bar": 11.5,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 19.784603174603216,
+      "tHeard": 19.816603174603216,
+      "perfHeard": 20706.26938746904,
+      "perfDrawn": 20710
+     },
+     {
+      "type": "morph",
+      "bar": 12,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 20.641746031746077,
+      "tHeard": 20.673746031746077,
+      "perfHeard": 21558.288888507464,
+      "perfDrawn": 21543.2
+     },
+     {
+      "type": "morph",
+      "bar": 12.5,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 21.49888888888894,
+      "tHeard": 21.53088888888894,
+      "perfHeard": 22416.1759636235,
+      "perfDrawn": 22426.6
+     },
+     {
+      "type": "morph",
+      "bar": 13,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 22.3560317460318,
+      "tHeard": 22.3880317460318,
+      "perfHeard": 23275.387981764095,
+      "perfDrawn": 23276.5
+     },
+     {
+      "type": "morph",
+      "bar": 13.5,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 23.21317460317466,
+      "tHeard": 23.24517460317466,
+      "perfHeard": 24132.402494331123,
+      "perfDrawn": 24126.5
+     },
+     {
+      "type": "morph",
+      "bar": 14,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 24.070317460317522,
+      "tHeard": 24.102317460317522,
+      "perfHeard": 24992.68707482999,
+      "perfDrawn": 25009.8
+     },
+     {
+      "type": "morph",
+      "bar": 14.5,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 24.927460317460383,
+      "tHeard": 24.959460317460383,
+      "perfHeard": 25850.91655309731,
+      "perfDrawn": 25843
+     },
+     {
+      "type": "morph",
+      "bar": 15,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 25.784603174603244,
+      "tHeard": 25.816603174603244,
+      "perfHeard": 26706.913605060778,
+      "perfDrawn": 26709.6
+     },
+     {
+      "type": "morph",
+      "bar": 15.5,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 26.641746031746106,
+      "tHeard": 26.673746031746106,
+      "perfHeard": 27557.633106385303,
+      "perfDrawn": 27542.9
+     },
+     {
+      "type": "morph",
+      "bar": 16,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 27.498888888888967,
+      "tHeard": 27.530888888888967,
+      "perfHeard": 28416.5201810245,
+      "perfDrawn": 28426.2
+     },
+     {
+      "type": "morph",
+      "bar": 16.5,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 2,
+      "settled": true,
+      "tBeat": 28.356031746031828,
+      "tHeard": 28.388031746031828,
+      "perfHeard": 29276.132199260464,
+      "perfDrawn": 29276.2
+     }
+    ],
+    "live": {
+     "changes": 34,
+     "holdErrBeats": 0,
+     "lateFrames": 1.9220721088402561,
+     "morphErrFrames": 1.702439909294327
+    },
+    "liveHoldErr": 0,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "curve",
+       "genus": 1,
+       "glowErr": 7.457848782976839e-10
+      },
+      {
+       "preset": "curve",
+       "genus": 4,
+       "glowErr": 1.1932557719696035e-9
+      },
+      {
+       "preset": "quintic",
+       "genus": 0,
+       "glowErr": 0.000032862783555395736
+      },
+      {
+       "preset": "abelian",
+       "genus": 0,
+       "glowErr": 0.00003939386014883972
+      },
+      {
+       "preset": "curve",
+       "genus": 2,
+       "glowErr": 9.943799117451135e-10
+      },
+      {
+       "preset": "mirror",
+       "genus": 0,
+       "glowErr": 0.00003285856713071411
+      },
+      {
+       "preset": "curve",
+       "genus": 6,
+       "glowErr": 2.6620861459658585e-8
+      },
+      {
+       "preset": "k3",
+       "genus": 0,
+       "glowErr": 0.000006999624315329189
+      },
+      {
+       "preset": "curve",
+       "genus": 0,
+       "glowErr": 0
+      },
+      {
+       "preset": "curve",
+       "genus": 3,
+       "glowErr": 2.3293253548217763e-8
+      },
+      {
+       "preset": "curve",
+       "genus": 5,
+       "glowErr": 1.5436122546841347e-8
+      }
+     ],
+     "glowErr": 0.00003939386014883972,
+     "nowSettled": false
+    }
+   },
+   "stills": [
+    "stills/fastest@4k-1.png",
+    "stills/fastest@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "trigger-kick@1080p",
+   "variant": "trigger-kick",
+   "base": "trigger-kick",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "autoTrigger": 3
+   },
+   "url": "16-hodge-kaleidoscope.html?autoTrigger=3",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 728,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 29.39,
+    "lum.min": 27.14,
+    "lum.max": 33.17,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 9.943799117451135e-10,
+    "preset": "curve",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 20,
+    "morphSyncMs": 9.835601002397198,
+    "morphSyncAllMs": 9.835601002397198,
+    "morphLog": [
+     {
+      "beat": 3,
+      "at": 3.0338337868480725,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 4.015591836734694,
+      "perf": 2495.3,
+      "epoch": 1
+     },
+     {
+      "beat": 6,
+      "at": 6.035012925170068,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 7.016770975056689,
+      "perf": 3995.2,
+      "epoch": 1
+     },
+     {
+      "beat": 9,
+      "at": 9.036192063492065,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 10.017950113378685,
+      "perf": 5495.1,
+      "epoch": 1
+     },
+     {
+      "beat": 12,
+      "at": 12.037371201814059,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": 13.019129251700681,
+      "perf": 6995.1,
+      "epoch": 1
+     },
+     {
+      "beat": 15,
+      "at": 15.032745351473924,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": 16.020308390022677,
+      "perf": 8495,
+      "epoch": 1
+     },
+     {
+      "beat": 18,
+      "at": 18.03382448979592,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 19.01568253968254,
+      "perf": 9994.9,
+      "epoch": 1
+     },
+     {
+      "beat": 21,
+      "at": 21.035103628117916,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "end": 22.016861678004535,
+      "perf": 11494.9,
+      "epoch": 1
+     },
+     {
+      "beat": 24,
+      "at": 24.036182766439907,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 25.018040816326533,
+      "perf": 12994.8,
+      "epoch": 1
+     },
+     {
+      "beat": 27,
+      "at": 27.037361904761905,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "end": 28.019219954648527,
+      "perf": 14494.7,
+      "epoch": 1
+     },
+     {
+      "beat": 30,
+      "at": 30.03273605442177,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 31.01459410430839,
+      "perf": 15994.7,
+      "epoch": 1
+     },
+     {
+      "beat": 33,
+      "at": 33.033915192743756,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "end": 34.00416326530612,
+      "perf": 17494.6,
+      "epoch": 1
+     },
+     {
+      "beat": 36,
+      "at": 36.02358435374149,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "end": 37.016952380952375,
+      "perf": 18994.6,
+      "epoch": 1
+     },
+     {
+      "beat": 39,
+      "at": 39.036373469387755,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "end": 40.01813151927438,
+      "perf": 20494.5,
+      "epoch": 1
+     },
+     {
+      "beat": 42,
+      "at": 42.03745260770975,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 43.013505668934236,
+      "perf": 21994.4,
+      "epoch": 1
+     },
+     {
+      "beat": 45,
+      "at": 45.03292675736961,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "end": 46.020489795918365,
+      "perf": 23494.4,
+      "epoch": 1
+     },
+     {
+      "beat": 48,
+      "at": 48.02820090702947,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 49.03908390022676,
+      "perf": 24994.3,
+      "epoch": 1
+     },
+     {
+      "beat": 51,
+      "at": 51.01206507936508,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 52.04026303854875,
+      "perf": 26494.3,
+      "epoch": 1
+     },
+     {
+      "beat": 53,
+      "at": 53.014686167800456,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": null,
+      "perf": 27494.2,
+      "epoch": 1
+     },
+     {
+      "beat": 54,
+      "at": 54.013244217687074,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": 55.000807256235824,
+      "perf": 27994.2,
+      "epoch": 1
+     },
+     {
+      "beat": 56,
+      "at": 56.015965306122446,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": null,
+      "perf": 28994.2,
+      "epoch": 1
+     }
+    ],
+    "morphEvents": [
+     {
+      "type": "morph",
+      "bar": 0.75,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 1.5703174603174603,
+      "tHeard": 1.6023174603174604,
+      "perfHeard": 2487.633106385229,
+      "perfDrawn": 2495.3
+     },
+     {
+      "type": "morph",
+      "bar": 1.5,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 3.0703174603174603,
+      "tHeard": 3.1023174603174604,
+      "perfHeard": 3986.8435374149662,
+      "perfDrawn": 3995.2
+     },
+     {
+      "type": "morph",
+      "bar": 2.25,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 4.57031746031746,
+      "tHeard": 4.60231746031746,
+      "perfHeard": 5486.253968253967,
+      "perfDrawn": 5495.1
+     },
+     {
+      "type": "morph",
+      "bar": 3,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 6.07031746031746,
+      "tHeard": 6.10231746031746,
+      "perfHeard": 6985.264398997603,
+      "perfDrawn": 6995.1
+     },
+     {
+      "type": "morph",
+      "bar": 3.75,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 7.57031746031746,
+      "tHeard": 7.60231746031746,
+      "perfHeard": 8487.977324263038,
+      "perfDrawn": 8495
+     },
+     {
+      "type": "morph",
+      "bar": 4.5,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 9.07031746031746,
+      "tHeard": 9.10231746031746,
+      "perfHeard": 9987.287755197409,
+      "perfDrawn": 9994.9
+     },
+     {
+      "type": "morph",
+      "bar": 5.25,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 10.57031746031746,
+      "tHeard": 10.60231746031746,
+      "perfHeard": 11486.698186036409,
+      "perfDrawn": 11494.9
+     },
+     {
+      "type": "morph",
+      "bar": 6,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 12.07031746031746,
+      "tHeard": 12.10231746031746,
+      "perfHeard": 12985.808616684677,
+      "perfDrawn": 12994.8
+     },
+     {
+      "type": "morph",
+      "bar": 6.75,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 13.57031746031746,
+      "tHeard": 13.60231746031746,
+      "perfHeard": 14485.519047714415,
+      "perfDrawn": 14494.7
+     },
+     {
+      "type": "morph",
+      "bar": 7.5,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 15.07031746031746,
+      "tHeard": 15.10231746031746,
+      "perfHeard": 15987.431972789116,
+      "perfDrawn": 15994.7
+     },
+     {
+      "type": "morph",
+      "bar": 8.25,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 16.57031746031746,
+      "tHeard": 16.60231746031746,
+      "perfHeard": 17487.042403437386,
+      "perfDrawn": 17494.6
+     },
+     {
+      "type": "morph",
+      "bar": 9,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 18.07031746031746,
+      "tHeard": 18.10231746031746,
+      "perfHeard": 18986.152834562487,
+      "perfDrawn": 18994.6
+     },
+     {
+      "type": "morph",
+      "bar": 9.75,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 19.57031746031746,
+      "tHeard": 19.60231746031746,
+      "perfHeard": 20485.36326511539,
+      "perfDrawn": 20494.5
+     },
+     {
+      "type": "morph",
+      "bar": 10.5,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 21.07031746031746,
+      "tHeard": 21.10231746031746,
+      "perfHeard": 21985.27369595439,
+      "perfDrawn": 21994.4
+     },
+     {
+      "type": "morph",
+      "bar": 11.25,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 22.57031746031746,
+      "tHeard": 22.60231746031746,
+      "perfHeard": 23487.386621315196,
+      "perfDrawn": 23494.4
+     },
+     {
+      "type": "morph",
+      "bar": 12,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 24.07031746031746,
+      "tHeard": 24.10231746031746,
+      "perfHeard": 24986.797052154194,
+      "perfDrawn": 24994.3
+     },
+     {
+      "type": "morph",
+      "bar": 12.75,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 25.57031746031746,
+      "tHeard": 25.60231746031746,
+      "perfHeard": 26485.907482802464,
+      "perfDrawn": 26494.3
+     },
+     {
+      "type": "morph",
+      "bar": 13.25,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 26.57031746031746,
+      "tHeard": 26.60231746031746,
+      "perfHeard": 27495.856916195142,
+      "perfDrawn": 27494.2
+     },
+     {
+      "type": "morph",
+      "bar": 13.5,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 27.07031746031746,
+      "tHeard": 27.10231746031746,
+      "perfHeard": 27985.417914022935,
+      "perfDrawn": 27994.2
+     },
+     {
+      "type": "morph",
+      "bar": 14,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 28.07031746031746,
+      "tHeard": 28.10231746031746,
+      "perfHeard": 28986.859863754842,
+      "perfDrawn": 28994.2
+     }
+    ],
+    "live": {
+     "changes": 20,
+     "holdErrBeats": null,
+     "lateFrames": 1.1235782312925835,
+     "morphErrFrames": 1.2078911564625372
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "curve",
+       "genus": 1,
+       "glowErr": 7.457848782976839e-10
+      },
+      {
+       "preset": "k3",
+       "genus": 0,
+       "glowErr": 0.000006999624315329189
+      },
+      {
+       "preset": "curve",
+       "genus": 4,
+       "glowErr": 1.1932557719696035e-9
+      },
+      {
+       "preset": "quintic",
+       "genus": 0,
+       "glowErr": 0.000032862783555395736
+      },
+      {
+       "preset": "abelian",
+       "genus": 0,
+       "glowErr": 0.00003939386014883972
+      },
+      {
+       "preset": "curve",
+       "genus": 2,
+       "glowErr": 9.943799117451135e-10
+      },
+      {
+       "preset": "mirror",
+       "genus": 0,
+       "glowErr": 0.00003285856713071411
+      },
+      {
+       "preset": "curve",
+       "genus": 6,
+       "glowErr": 2.6620861459658585e-8
+      },
+      {
+       "preset": "curve",
+       "genus": 0,
+       "glowErr": 0
+      },
+      {
+       "preset": "curve",
+       "genus": 3,
+       "glowErr": 2.3293253548217763e-8
+      },
+      {
+       "preset": "curve",
+       "genus": 5,
+       "glowErr": 1.5436122546841347e-8
+      }
+     ],
+     "glowErr": 0.00003939386014883972,
+     "nowSettled": false
+    }
+   },
+   "stills": [
+    "stills/trigger-kick@1080p-1.png",
+    "stills/trigger-kick@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "trigger-kick@4k",
+   "variant": "trigger-kick",
+   "base": "trigger-kick",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "autoTrigger": 3
+   },
+   "url": "16-hodge-kaleidoscope.html?autoTrigger=3",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 729,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 90,
+    "lum.mean": 29.56,
+    "lum.min": 27.3,
+    "lum.max": 33.24,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 9.943799117451135e-10,
+    "preset": "curve",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 20,
+    "morphSyncMs": 23.94126955516549,
+    "morphSyncAllMs": 23.94126955516549,
+    "morphLog": [
+     {
+      "beat": 3,
+      "at": 3.033833786848072,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 4.015591836734694,
+      "perf": 2497.5,
+      "epoch": 1
+     },
+     {
+      "beat": 6,
+      "at": 6.034912925170067,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 7.016770975056689,
+      "perf": 3997.4,
+      "epoch": 1
+     },
+     {
+      "beat": 9,
+      "at": 9.036092063492065,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 10.017950113378685,
+      "perf": 5497.3,
+      "epoch": 1
+     },
+     {
+      "beat": 12,
+      "at": 12.037371201814059,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": 13.019129251700681,
+      "perf": 6997.3,
+      "epoch": 1
+     },
+     {
+      "beat": 15,
+      "at": 15.032645351473924,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": 16.020308390022677,
+      "perf": 8497.2,
+      "epoch": 1
+     },
+     {
+      "beat": 18,
+      "at": 18.03392448979592,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": 19.01568253968254,
+      "perf": 9997.2,
+      "epoch": 1
+     },
+     {
+      "beat": 21,
+      "at": 21.035103628117916,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "end": 22.016861678004535,
+      "perf": 11497.1,
+      "epoch": 1
+     },
+     {
+      "beat": 24,
+      "at": 24.03628276643991,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 25.018040816326533,
+      "perf": 12997.1,
+      "epoch": 1
+     },
+     {
+      "beat": 27,
+      "at": 27.037261904761905,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "end": 28.019219954648527,
+      "perf": 14496.9,
+      "epoch": 1
+     },
+     {
+      "beat": 30,
+      "at": 30.03273605442177,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 31.02039909297052,
+      "perf": 15996.9,
+      "epoch": 1
+     },
+     {
+      "beat": 33,
+      "at": 33.00998027210884,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "end": 34.038993197278906,
+      "perf": 17480.2,
+      "epoch": 1
+     },
+     {
+      "beat": 36,
+      "at": 36.03519433106576,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "end": 37.016952380952375,
+      "perf": 18996.8,
+      "epoch": 1
+     },
+     {
+      "beat": 39,
+      "at": 39.036373469387755,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "end": 40.01813151927438,
+      "perf": 20496.8,
+      "epoch": 1
+     },
+     {
+      "beat": 41,
+      "at": 41.00928798185941,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "end": null,
+      "perf": 21480.1,
+      "epoch": 1
+     },
+     {
+      "beat": 42,
+      "at": 42.08898253968253,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "end": 43.01931065759637,
+      "perf": 22013.3,
+      "epoch": 1
+     },
+     {
+      "beat": 45,
+      "at": 45.0088918367347,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "end": 46.06112471655329,
+      "perf": 23479.9,
+      "epoch": 1
+     },
+     {
+      "beat": 48,
+      "at": 48.03410589569161,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "end": 49.015863945578225,
+      "perf": 24996.6,
+      "epoch": 1
+     },
+     {
+      "beat": 51,
+      "at": 51.0351850340136,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "end": 52.01704308390023,
+      "perf": 26496.5,
+      "epoch": 1
+     },
+     {
+      "beat": 53,
+      "at": 53.01397120181405,
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "end": null,
+      "perf": 27479.8,
+      "epoch": 1
+     },
+     {
+      "beat": 54,
+      "at": 54.07047913832199,
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "end": 55.01822222222222,
+      "perf": 28013.1,
+      "epoch": 1
+     }
+    ],
+    "morphEvents": [
+     {
+      "type": "morph",
+      "bar": 0.75,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 1.5703174603174603,
+      "tHeard": 1.6023174603174604,
+      "perfHeard": 2490.0331069574336,
+      "perfDrawn": 2497.5
+     },
+     {
+      "type": "morph",
+      "bar": 1.5,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 3.0703174603174603,
+      "tHeard": 3.1023174603174604,
+      "perfHeard": 3989.2435375103337,
+      "perfDrawn": 3997.4
+     },
+     {
+      "type": "morph",
+      "bar": 2.25,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 4.57031746031746,
+      "tHeard": 4.60231746031746,
+      "perfHeard": 5488.553968444702,
+      "perfDrawn": 5497.3
+     },
+     {
+      "type": "morph",
+      "bar": 3,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 6.07031746031746,
+      "tHeard": 6.10231746031746,
+      "perfHeard": 6987.664399092971,
+      "perfDrawn": 6997.3
+     },
+     {
+      "type": "morph",
+      "bar": 3.75,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 7.57031746031746,
+      "tHeard": 7.60231746031746,
+      "perfHeard": 8489.977324263038,
+      "perfDrawn": 8497.2
+     },
+     {
+      "type": "morph",
+      "bar": 4.5,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 9.07031746031746,
+      "tHeard": 9.10231746031746,
+      "perfHeard": 9989.487755483511,
+      "perfDrawn": 9997.2
+     },
+     {
+      "type": "morph",
+      "bar": 5.25,
+      "to": "curve",
+      "genus": 6,
+      "from": "mirror",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 10.57031746031746,
+      "tHeard": 10.60231746031746,
+      "perfHeard": 11488.89818632251,
+      "perfDrawn": 11497.1
+     },
+     {
+      "type": "morph",
+      "bar": 6,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 12.07031746031746,
+      "tHeard": 12.10231746031746,
+      "perfHeard": 12987.908617066147,
+      "perfDrawn": 12997.1
+     },
+     {
+      "type": "morph",
+      "bar": 6.75,
+      "to": "curve",
+      "genus": 0,
+      "from": "k3",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 13.57031746031746,
+      "tHeard": 13.60231746031746,
+      "perfHeard": 14487.619047619048,
+      "perfDrawn": 14496.9
+     },
+     {
+      "type": "morph",
+      "bar": 7.5,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 15.07031746031746,
+      "tHeard": 15.10231746031746,
+      "perfHeard": 15989.731972979851,
+      "perfDrawn": 15996.9
+     },
+     {
+      "type": "morph",
+      "bar": 8.25,
+      "to": "curve",
+      "genus": 3,
+      "from": "quintic",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 16.57031746031746,
+      "tHeard": 16.60231746031746,
+      "perfHeard": 17496.559864040944,
+      "perfDrawn": 17480.2
+     },
+     {
+      "type": "morph",
+      "bar": 9,
+      "to": "abelian",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 18.07031746031746,
+      "tHeard": 18.10231746031746,
+      "perfHeard": 18988.552834657854,
+      "perfDrawn": 18996.8
+     },
+     {
+      "type": "morph",
+      "bar": 9.75,
+      "to": "curve",
+      "genus": 5,
+      "from": "abelian",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 19.57031746031746,
+      "tHeard": 19.60231746031746,
+      "perfHeard": 20487.863265592227,
+      "perfDrawn": 20496.8
+     },
+     {
+      "type": "morph",
+      "bar": 10.25,
+      "to": "mirror",
+      "genus": 0,
+      "from": "curve",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 20.57031746031746,
+      "tHeard": 20.60231746031746,
+      "perfHeard": 21495.922675832328,
+      "perfDrawn": 21480.1
+     },
+     {
+      "type": "morph",
+      "bar": 10.5,
+      "to": "curve",
+      "genus": 1,
+      "from": "mirror",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 21.07031746031746,
+      "tHeard": 21.10231746031746,
+      "perfHeard": 21989.358730444834,
+      "perfDrawn": 22013.3
+     },
+     {
+      "type": "morph",
+      "bar": 11.25,
+      "to": "k3",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 22.57031746031746,
+      "tHeard": 22.60231746031746,
+      "perfHeard": 23495.904081918754,
+      "perfDrawn": 23479.9
+     },
+     {
+      "type": "morph",
+      "bar": 12,
+      "to": "curve",
+      "genus": 4,
+      "from": "k3",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 24.07031746031746,
+      "tHeard": 24.10231746031746,
+      "perfHeard": 24988.997052440296,
+      "perfDrawn": 24996.6
+     },
+     {
+      "type": "morph",
+      "bar": 12.75,
+      "to": "quintic",
+      "genus": 0,
+      "from": "curve",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 25.57031746031746,
+      "tHeard": 25.60231746031746,
+      "perfHeard": 26488.507483183934,
+      "perfDrawn": 26496.5
+     },
+     {
+      "type": "morph",
+      "bar": 13.25,
+      "to": "abelian",
+      "genus": 0,
+      "from": "quintic",
+      "cause": "auto",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 26.57031746031746,
+      "tHeard": 26.60231746031746,
+      "perfHeard": 27493.164399092973,
+      "perfDrawn": 27479.8
+     },
+     {
+      "type": "morph",
+      "bar": 13.5,
+      "to": "curve",
+      "genus": 2,
+      "from": "abelian",
+      "cause": "trigger",
+      "hold": 2,
+      "morphBeats": 1,
+      "epoch": 1,
+      "settled": true,
+      "tBeat": 27.07031746031746,
+      "tHeard": 27.10231746031746,
+      "perfHeard": 27997.910430839,
+      "perfDrawn": 28013.1
+     }
+    ],
+    "live": {
+     "changes": 20,
+     "holdErrBeats": null,
+     "lateFrames": 2.313546031745858,
+     "morphErrFrames": 1.5892426303854705
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "curve",
+       "genus": 1,
+       "glowErr": 7.457848782976839e-10
+      },
+      {
+       "preset": "k3",
+       "genus": 0,
+       "glowErr": 0.000006999624315329189
+      },
+      {
+       "preset": "curve",
+       "genus": 4,
+       "glowErr": 1.1932557719696035e-9
+      },
+      {
+       "preset": "quintic",
+       "genus": 0,
+       "glowErr": 0.000032862783555395736
+      },
+      {
+       "preset": "abelian",
+       "genus": 0,
+       "glowErr": 0.00003939386014883972
+      },
+      {
+       "preset": "curve",
+       "genus": 2,
+       "glowErr": 9.943799117451135e-10
+      },
+      {
+       "preset": "mirror",
+       "genus": 0,
+       "glowErr": 0.00003285856713071411
+      },
+      {
+       "preset": "curve",
+       "genus": 6,
+       "glowErr": 2.6620861459658585e-8
+      },
+      {
+       "preset": "curve",
+       "genus": 0,
+       "glowErr": 0
+      },
+      {
+       "preset": "curve",
+       "genus": 3,
+       "glowErr": 2.3293253548217763e-8
+      },
+      {
+       "preset": "curve",
+       "genus": 5,
+       "glowErr": 1.5436122546841347e-8
+      }
+     ],
+     "glowErr": 0.00003939386014883972,
+     "nowSettled": true
+    }
+   },
+   "stills": [
+    "stills/trigger-kick@4k-1.png",
+    "stills/trigger-kick@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "k3-flat@1080p",
+   "variant": "k3-flat",
+   "base": "k3-flat",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "preset": "k3",
+    "bands": "flat"
+   },
+   "url": "16-hodge-kaleidoscope.html?preset=k3&bands=flat",
+   "metrics": {
+    "gpuBusy": 2,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 725,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 28.32,
+    "lum.min": 27.4,
+    "lum.max": 29.03,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 0.000006999624315329189,
+    "preset": "k3",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 0,
+    "morphSyncMs": null,
+    "morphSyncAllMs": null,
+    "morphLog": [],
+    "morphEvents": [],
+    "live": {
+     "changes": 0,
+     "holdErrBeats": null,
+     "lateFrames": 0,
+     "morphErrFrames": null
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "k3",
+       "genus": 0,
+       "glowErr": 0.000006999624315329189
+      }
+     ],
+     "glowErr": 0.000006999624315329189,
+     "nowSettled": true
+    }
+   },
+   "stills": [
+    "stills/k3-flat@1080p-1.png",
+    "stills/k3-flat@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "k3-flat@4k",
+   "variant": "k3-flat",
+   "base": "k3-flat",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "preset": "k3",
+    "bands": "flat"
+   },
+   "url": "16-hodge-kaleidoscope.html?preset=k3&bands=flat",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 734,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 90,
+    "lum.mean": 28.49,
+    "lum.min": 27.41,
+    "lum.max": 29.16,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 0.000006999624315329189,
+    "preset": "k3",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 0,
+    "morphSyncMs": null,
+    "morphSyncAllMs": null,
+    "morphLog": [],
+    "morphEvents": [],
+    "live": {
+     "changes": 0,
+     "holdErrBeats": null,
+     "lateFrames": 0,
+     "morphErrFrames": null
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "k3",
+       "genus": 0,
+       "glowErr": 0.000006999624315329189
+      }
+     ],
+     "glowErr": 0.000006999624315329189,
+     "nowSettled": true
+    }
+   },
+   "stills": [
+    "stills/k3-flat@4k-1.png",
+    "stills/k3-flat@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "quintic-flat@1080p",
+   "variant": "quintic-flat",
+   "base": "quintic-flat",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "preset": "quintic",
+    "bands": "flat"
+   },
+   "url": "16-hodge-kaleidoscope.html?preset=quintic&bands=flat",
+   "metrics": {
+    "gpuBusy": 1,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 728,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 27.65,
+    "lum.min": 27.17,
+    "lum.max": 28.12,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 0.000032862783555395736,
+    "preset": "quintic",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 0,
+    "morphSyncMs": null,
+    "morphSyncAllMs": null,
+    "morphLog": [],
+    "morphEvents": [],
+    "live": {
+     "changes": 0,
+     "holdErrBeats": null,
+     "lateFrames": 0,
+     "morphErrFrames": null
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "quintic",
+       "genus": 0,
+       "glowErr": 0.000032862783555395736
+      }
+     ],
+     "glowErr": 0.000032862783555395736,
+     "nowSettled": true
+    }
+   },
+   "stills": [
+    "stills/quintic-flat@1080p-1.png",
+    "stills/quintic-flat@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "quintic-flat@4k",
+   "variant": "quintic-flat",
+   "base": "quintic-flat",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "preset": "quintic",
+    "bands": "flat"
+   },
+   "url": "16-hodge-kaleidoscope.html?preset=quintic&bands=flat",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 724,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 91,
+    "lum.mean": 27.8,
+    "lum.min": 27.31,
+    "lum.max": 28.25,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 0.000032862783555395736,
+    "preset": "quintic",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 0,
+    "morphSyncMs": null,
+    "morphSyncAllMs": null,
+    "morphLog": [],
+    "morphEvents": [],
+    "live": {
+     "changes": 0,
+     "holdErrBeats": null,
+     "lateFrames": 0,
+     "morphErrFrames": null
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "quintic",
+       "genus": 0,
+       "glowErr": 0.000032862783555395736
+      }
+     ],
+     "glowErr": 0.000032862783555395736,
+     "nowSettled": true
+    }
+   },
+   "stills": [
+    "stills/quintic-flat@4k-1.png",
+    "stills/quintic-flat@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "curve3-flat@1080p",
+   "variant": "curve3-flat",
+   "base": "curve3-flat",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "preset": "curve",
+    "genus": 3,
+    "bands": "flat"
+   },
+   "url": "16-hodge-kaleidoscope.html?preset=curve&genus=3&bands=flat",
+   "metrics": {
+    "gpuBusy": 1,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 729,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 30.04,
+    "lum.min": 29.38,
+    "lum.max": 30.79,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 2.3293253548217763e-8,
+    "preset": "curve",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 0,
+    "morphSyncMs": null,
+    "morphSyncAllMs": null,
+    "morphLog": [],
+    "morphEvents": [],
+    "live": {
+     "changes": 0,
+     "holdErrBeats": null,
+     "lateFrames": 0,
+     "morphErrFrames": null
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "curve",
+       "genus": 3,
+       "glowErr": 2.3293253548217763e-8
+      }
+     ],
+     "glowErr": 2.3293253548217763e-8,
+     "nowSettled": true
+    }
+   },
+   "stills": [
+    "stills/curve3-flat@1080p-1.png",
+    "stills/curve3-flat@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "curve3-flat@4k",
+   "variant": "curve3-flat",
+   "base": "curve3-flat",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "preset": "curve",
+    "genus": 3,
+    "bands": "flat"
+   },
+   "url": "16-hodge-kaleidoscope.html?preset=curve&genus=3&bands=flat",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 735,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 91,
+    "lum.mean": 30.2,
+    "lum.min": 29.46,
+    "lum.max": 30.93,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 2.3293253548217763e-8,
+    "preset": "curve",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 0,
+    "morphSyncMs": null,
+    "morphSyncAllMs": null,
+    "morphLog": [],
+    "morphEvents": [],
+    "live": {
+     "changes": 0,
+     "holdErrBeats": null,
+     "lateFrames": 0,
+     "morphErrFrames": null
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "curve",
+       "genus": 3,
+       "glowErr": 2.3293253548217763e-8
+      }
+     ],
+     "glowErr": 2.3293253548217763e-8,
+     "nowSettled": true
+    }
+   },
+   "stills": [
+    "stills/curve3-flat@4k-1.png",
+    "stills/curve3-flat@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "k3@1080p",
+   "variant": "k3",
+   "base": "k3",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "preset": "k3"
+   },
+   "url": "16-hodge-kaleidoscope.html?preset=k3",
+   "metrics": {
+    "gpuBusy": 1,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 725,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 105,
+    "lum.mean": 28.12,
+    "lum.min": 27.21,
+    "lum.max": 28.81,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 0.000006999624315329189,
+    "preset": "k3",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 0,
+    "morphSyncMs": null,
+    "morphSyncAllMs": null,
+    "morphLog": [],
+    "morphEvents": [],
+    "live": {
+     "changes": 0,
+     "holdErrBeats": null,
+     "lateFrames": 0,
+     "morphErrFrames": null
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "k3",
+       "genus": 0,
+       "glowErr": 0.000006999624315329189
+      }
+     ],
+     "glowErr": 0.000006999624315329189,
+     "nowSettled": true
+    }
+   },
+   "stills": [
+    "stills/k3@1080p-1.png",
+    "stills/k3@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "k3@4k",
+   "variant": "k3",
+   "base": "k3",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "preset": "k3"
+   },
+   "url": "16-hodge-kaleidoscope.html?preset=k3",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 731,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 90,
+    "lum.mean": 28.29,
+    "lum.min": 27.25,
+    "lum.max": 28.97,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 0.000006999624315329189,
+    "preset": "k3",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 0,
+    "morphSyncMs": null,
+    "morphSyncAllMs": null,
+    "morphLog": [],
+    "morphEvents": [],
+    "live": {
+     "changes": 0,
+     "holdErrBeats": null,
+     "lateFrames": 0,
+     "morphErrFrames": null
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "k3",
+       "genus": 0,
+       "glowErr": 0.000006999624315329189
+      }
+     ],
+     "glowErr": 0.000006999624315329189,
+     "nowSettled": true
+    }
+   },
+   "stills": [
+    "stills/k3@4k-1.png",
+    "stills/k3@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "quintic@1080p",
+   "variant": "quintic",
+   "base": "quintic",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "preset": "quintic"
+   },
+   "url": "16-hodge-kaleidoscope.html?preset=quintic",
+   "metrics": {
+    "gpuBusy": 1,
+    "fps": 60,
+    "fps.p05": 59.52,
+    "frameMs.p95": 16.8,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 727,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 27.62,
+    "lum.min": 27.13,
+    "lum.max": 28.09,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 0.000032862783555395736,
+    "preset": "quintic",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 0,
+    "morphSyncMs": null,
+    "morphSyncAllMs": null,
+    "morphLog": [],
+    "morphEvents": [],
+    "live": {
+     "changes": 0,
+     "holdErrBeats": null,
+     "lateFrames": 0,
+     "morphErrFrames": null
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "quintic",
+       "genus": 0,
+       "glowErr": 0.000032862783555395736
+      }
+     ],
+     "glowErr": 0.000032862783555395736,
+     "nowSettled": true
+    }
+   },
+   "stills": [
+    "stills/quintic@1080p-1.png",
+    "stills/quintic@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "quintic@4k",
+   "variant": "quintic",
+   "base": "quintic",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "preset": "quintic"
+   },
+   "url": "16-hodge-kaleidoscope.html?preset=quintic",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 723,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 90,
+    "lum.mean": 27.77,
+    "lum.min": 27.27,
+    "lum.max": 28.21,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 0.000032862783555395736,
+    "preset": "quintic",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 0,
+    "morphSyncMs": null,
+    "morphSyncAllMs": null,
+    "morphLog": [],
+    "morphEvents": [],
+    "live": {
+     "changes": 0,
+     "holdErrBeats": null,
+     "lateFrames": 0,
+     "morphErrFrames": null
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "quintic",
+       "genus": 0,
+       "glowErr": 0.000032862783555395736
+      }
+     ],
+     "glowErr": 0.000032862783555395736,
+     "nowSettled": true
+    }
+   },
+   "stills": [
+    "stills/quintic@4k-1.png",
+    "stills/quintic@4k-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "curve3@1080p",
+   "variant": "curve3",
+   "base": "curve3",
+   "size": {
+    "name": "1080p",
+    "w": 1920,
+    "h": 1080
+   },
+   "params": {
+    "preset": "curve",
+    "genus": 3
+   },
+   "url": "16-hodge-kaleidoscope.html?preset=curve&genus=3",
+   "metrics": {
+    "gpuBusy": 1,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 726,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 104,
+    "lum.mean": 28.91,
+    "lum.min": 28.03,
+    "lum.max": 29.66,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 2.3293253548217763e-8,
+    "preset": "curve",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 0,
+    "morphSyncMs": null,
+    "morphSyncAllMs": null,
+    "morphLog": [],
+    "morphEvents": [],
+    "live": {
+     "changes": 0,
+     "holdErrBeats": null,
+     "lateFrames": 0,
+     "morphErrFrames": null
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "curve",
+       "genus": 3,
+       "glowErr": 2.3293253548217763e-8
+      }
+     ],
+     "glowErr": 2.3293253548217763e-8,
+     "nowSettled": true
+    }
+   },
+   "stills": [
+    "stills/curve3@1080p-1.png",
+    "stills/curve3@1080p-2.png"
+   ],
+   "errors": []
+  },
+  {
+   "label": "curve3@4k",
+   "variant": "curve3",
+   "base": "curve3",
+   "size": {
+    "name": "4k",
+    "w": 3840,
+    "h": 2160
+   },
+   "params": {
+    "preset": "curve",
+    "genus": 3
+   },
+   "url": "16-hodge-kaleidoscope.html?preset=curve&genus=3",
+   "metrics": {
+    "gpuBusy": 0,
+    "fps": 60,
+    "fps.p05": 59.88,
+    "frameMs.p95": 16.7,
+    "frameMs.max": 16.8,
+    "longFrames": 0,
+    "frames": 728,
+    "clip": 0,
+    "clip.mean": 0,
+    "clipFrames": 90,
+    "lum.mean": 29.06,
+    "lum.min": 28.2,
+    "lum.max": 29.8,
+    "errors": 0
+   },
+   "values": {
+    "tableOk": true,
+    "symmetric": true,
+    "bettiOk": true,
+    "eulerOk": true,
+    "glowErr": 2.3293253548217763e-8,
+    "preset": "curve",
+    "hold": 0.5,
+    "holdOk": true,
+    "gridOk": true,
+    "morphOk": true,
+    "triggerOk": true,
+    "orderOk": true,
+    "rateRows": [
+     {
+      "hold": 8,
+      "changes": 6,
+      "gaps": [
+       32
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 4,
+      "changes": 6,
+      "gaps": [
+       16
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 2,
+      "changes": 6,
+      "gaps": [
+       8
+      ],
+      "lateFrames": 0,
+      "morphBeats": 4,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 1,
+      "changes": 6,
+      "gaps": [
+       4
+      ],
+      "lateFrames": 0,
+      "morphBeats": 2,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     },
+     {
+      "hold": 0.5,
+      "changes": 7,
+      "gaps": [
+       2
+      ],
+      "lateFrames": 0,
+      "morphBeats": 1,
+      "holdOk": true,
+      "gridOk": true,
+      "morphOk": true
+     }
+    ],
+    "morphN": 0,
+    "morphSyncMs": null,
+    "morphSyncAllMs": null,
+    "morphLog": [],
+    "morphEvents": [],
+    "live": {
+     "changes": 0,
+     "holdErrBeats": null,
+     "lateFrames": 0,
+     "morphErrFrames": null
+    },
+    "liveHoldErr": null,
+    "settledOk": true,
+    "settled": {
+     "presets": [
+      {
+       "preset": "curve",
+       "genus": 3,
+       "glowErr": 2.3293253548217763e-8
+      }
+     ],
+     "glowErr": 2.3293253548217763e-8,
+     "nowSettled": true
+    }
+   },
+   "stills": [
+    "stills/curve3@4k-1.png",
+    "stills/curve3@4k-2.png"
+   ],
+   "errors": []
+  }
+ ],
+ "checks": [],
+ "swipe": null,
+ "gates": [
+  {
+   "name": "QA 1: numbers equal the spec's table (all presets, curve g = 0–6)",
+   "ok": true,
+   "value": "auto@1080p true · auto@4k true · hold2@1080p true · hold2@4k true · fastest@1080p true · fastest@4k true · trigger-kick@1080p true · trigger-kick@4k true · k3-flat@1080p true · k3-flat@4k true · quintic-flat@1080p true · quintic-flat@4k true · curve3-flat@1080p true · curve3-flat@4k true · k3@1080p true · k3@4k true · quintic@1080p true · quintic@4k true · curve3@1080p true · curve3@4k true"
+  },
+  {
+   "name": "QA 2: h^{p,q} = h^{q,p} and h^{p,q} = h^{n−p,n−q}",
+   "ok": true,
+   "value": "auto@1080p true · auto@4k true · hold2@1080p true · hold2@4k true · fastest@1080p true · fastest@4k true · trigger-kick@1080p true · trigger-kick@4k true · k3-flat@1080p true · k3-flat@4k true · quintic-flat@1080p true · quintic-flat@4k true · curve3-flat@1080p true · curve3-flat@4k true · k3@1080p true · k3@4k true · quintic@1080p true · quintic@4k true · curve3@1080p true · curve3@4k true"
+  },
+  {
+   "name": "QA 3: row sums = Betti numbers",
+   "ok": true,
+   "value": "auto@1080p true · auto@4k true · hold2@1080p true · hold2@4k true · fastest@1080p true · fastest@4k true · trigger-kick@1080p true · trigger-kick@4k true · k3-flat@1080p true · k3-flat@4k true · quintic-flat@1080p true · quintic-flat@4k true · curve3-flat@1080p true · curve3-flat@4k true · k3@1080p true · k3@4k true · quintic@1080p true · quintic@4k true · curve3@1080p true · curve3@4k true"
+  },
+  {
+   "name": "QA 4: rendered row glow (linear, L_k = 1) ∝ Betti within 1 %",
+   "ok": true,
+   "value": "auto@1080p 0 · auto@4k 0 · hold2@1080p 0 · hold2@4k 0 · fastest@1080p 0 · fastest@4k 0 · trigger-kick@1080p 0 · trigger-kick@4k 0 · k3-flat@1080p 0 · k3-flat@4k 0 · quintic-flat@1080p 0 · quintic-flat@4k 0 · curve3-flat@1080p 0 · curve3-flat@4k 0 · k3@1080p 0 · k3@4k 0 · quintic@1080p 0 · quintic@4k 0 · curve3@1080p 0 · curve3@4k 0"
+  },
+  {
+   "name": "QA 5: Euler characteristic 2−2g / 24 / −200 / +200",
+   "ok": true,
+   "value": "auto@1080p true · auto@4k true · hold2@1080p true · hold2@4k true · fastest@1080p true · fastest@4k true · trigger-kick@1080p true · trigger-kick@4k true · k3-flat@1080p true · k3-flat@4k true · quintic-flat@1080p true · quintic-flat@4k true · curve3-flat@1080p true · curve3-flat@4k true · k3@1080p true · k3@4k true · quintic@1080p true · quintic@4k true · curve3@1080p true · curve3@4k true"
+  },
+  {
+   "name": "QA 6: beats between morph starts = hold at 8, 4, 2, 1, ½ bars, ±1 frame",
+   "ok": true,
+   "value": "auto@1080p true · auto@4k true · hold2@1080p true · hold2@4k true · fastest@1080p true · fastest@4k true · trigger-kick@1080p true · trigger-kick@4k true · k3-flat@1080p true · k3-flat@4k true · quintic-flat@1080p true · quintic-flat@4k true · curve3-flat@1080p true · curve3-flat@4k true · k3@1080p true · k3@4k true · quintic@1080p true · quintic@4k true · curve3@1080p true · curve3@4k true"
+  },
+  {
+   "name": "QA 6: changes on the grid (downbeats for holds ≥ 1 bar, beats below)",
+   "ok": true,
+   "value": "auto@1080p true · auto@4k true · hold2@1080p true · hold2@4k true · fastest@1080p true · fastest@4k true · trigger-kick@1080p true · trigger-kick@4k true · k3-flat@1080p true · k3-flat@4k true · quintic-flat@1080p true · quintic-flat@4k true · curve3-flat@1080p true · curve3-flat@4k true · k3@1080p true · k3@4k true · quintic@1080p true · quintic@4k true · curve3@1080p true · curve3@4k true"
+  },
+  {
+   "name": "QA 6 live: auto holds on the real clock",
+   "ok": true,
+   "value": "auto@1080p 0 · auto@4k 0 · fastest@1080p 0 · fastest@4k 0"
+  },
+  {
+   "name": "QA 7: morphs were logged",
+   "ok": true,
+   "value": "auto@1080p 28 · auto@4k 28 · fastest@1080p 31 · fastest@4k 32 · trigger-kick@1080p 20 · trigger-kick@4k 20"
+  },
+  {
+   "name": "QA 7: each morph ≤ 40 ms from its beat (from 1 s after the clock starts; maxMsAll reported)",
+   "ok": true,
+   "value": "auto@1080p 3.672 · auto@4k 9.536 · fastest@1080p 10.724 · fastest@4k 17.113 · trigger-kick@1080p 9.836 · trigger-kick@4k 23.941"
+  },
+  {
+   "name": "QA 8: morph = min(1 bar, hold/2)",
+   "ok": true,
+   "value": "auto@1080p true · auto@4k true · hold2@1080p true · hold2@4k true · fastest@1080p true · fastest@4k true · trigger-kick@1080p true · trigger-kick@4k true · k3-flat@1080p true · k3-flat@4k true · quintic-flat@1080p true · quintic-flat@4k true · curve3-flat@1080p true · curve3-flat@4k true · k3@1080p true · k3@4k true · quintic@1080p true · quintic@4k true · curve3@1080p true · curve3@4k true"
+  },
+  {
+   "name": "QA 9: trigger() starts the morph on the next beat",
+   "ok": true,
+   "value": "auto@1080p true · auto@4k true · hold2@1080p true · hold2@4k true · fastest@1080p true · fastest@4k true · trigger-kick@1080p true · trigger-kick@4k true · k3-flat@1080p true · k3-flat@4k true · quintic-flat@1080p true · quintic-flat@4k true · curve3-flat@1080p true · curve3-flat@4k true · k3@1080p true · k3@4k true · quintic@1080p true · quintic@4k true · curve3@1080p true · curve3@4k true"
+  },
+  {
+   "name": "QA 10: 32 changes, no back-to-back repeat, no two curves adjacent, dimension changes",
+   "ok": true,
+   "value": "auto@1080p true · auto@4k true · hold2@1080p true · hold2@4k true · fastest@1080p true · fastest@4k true · trigger-kick@1080p true · trigger-kick@4k true · k3-flat@1080p true · k3-flat@4k true · quintic-flat@1080p true · quintic-flat@4k true · curve3-flat@1080p true · curve3-flat@4k true · k3@1080p true · k3@4k true · quintic@1080p true · quintic@4k true · curve3@1080p true · curve3@4k true"
+  },
+  {
+   "name": "QA 11: truths 1–5 on every settled preset",
+   "ok": true,
+   "value": "auto@1080p true · auto@4k true · hold2@1080p true · hold2@4k true · fastest@1080p true · fastest@4k true · trigger-kick@1080p true · trigger-kick@4k true · k3-flat@1080p true · k3-flat@4k true · quintic-flat@1080p true · quintic-flat@4k true · curve3-flat@1080p true · curve3-flat@4k true · k3@1080p true · k3@4k true · quintic@1080p true · quintic@4k true · curve3@1080p true · curve3@4k true"
+  },
+  {
+   "name": "fps.p05 ≥ 55",
+   "ok": true,
+   "value": "auto@1080p 59.52 · auto@4k 59.88 · hold2@1080p 59.88 · hold2@4k 59.52 · fastest@1080p 59.52 · fastest@4k 59.88 · trigger-kick@1080p 59.52 · trigger-kick@4k 59.52 · k3-flat@1080p 59.88 · k3-flat@4k 59.88 · quintic-flat@1080p 59.88 · quintic-flat@4k 59.88 · curve3-flat@1080p 59.88 · curve3-flat@4k 59.52 · k3@1080p 59.88 · k3@4k 59.88 · quintic@1080p 59.52 · quintic@4k 59.88 · curve3@1080p 59.88 · curve3@4k 59.88"
+  },
+  {
+   "name": "longFrames ≤ 0.5",
+   "ok": true,
+   "value": "auto@1080p 0 · auto@4k 0 · hold2@1080p 0 · hold2@4k 0 · fastest@1080p 0 · fastest@4k 0 · trigger-kick@1080p 0 · trigger-kick@4k 0 · k3-flat@1080p 0 · k3-flat@4k 0 · quintic-flat@1080p 0 · quintic-flat@4k 0 · curve3-flat@1080p 0 · curve3-flat@4k 0 · k3@1080p 0 · k3@4k 0 · quintic@1080p 0 · quintic@4k 0 · curve3@1080p 0 · curve3@4k 0"
+  },
+  {
+   "name": "errors ≤ 0",
+   "ok": true,
+   "value": "auto@1080p 0 · auto@4k 0 · hold2@1080p 0 · hold2@4k 0 · fastest@1080p 0 · fastest@4k 0 · trigger-kick@1080p 0 · trigger-kick@4k 0 · k3-flat@1080p 0 · k3-flat@4k 0 · quintic-flat@1080p 0 · quintic-flat@4k 0 · curve3-flat@1080p 0 · curve3-flat@4k 0 · k3@1080p 0 · k3@4k 0 · quintic@1080p 0 · quintic@4k 0 · curve3@1080p 0 · curve3@4k 0"
+  },
+  {
+   "name": "gpuBusy ≤ 10",
+   "ok": true,
+   "value": "auto@1080p 0 · auto@4k 0 · hold2@1080p 2 · hold2@4k 0 · fastest@1080p 2 · fastest@4k 0 · trigger-kick@1080p 2 · trigger-kick@4k 0 · k3-flat@1080p 2 · k3-flat@4k 0 · quintic-flat@1080p 1 · quintic-flat@4k 0 · curve3-flat@1080p 1 · curve3-flat@4k 0 · k3@1080p 1 · k3@4k 0 · quintic@1080p 1 · quintic@4k 0 · curve3@1080p 1 · curve3@4k 0"
+  },
+  {
+   "name": "no white blobs: ≤ 1 % pixels clipped",
+   "ok": true,
+   "value": "auto@1080p 0 · auto@4k 0 · hold2@1080p 0 · hold2@4k 0 · fastest@1080p 0 · fastest@4k 0 · trigger-kick@1080p 0 · trigger-kick@4k 0 · k3-flat@1080p 0 · k3-flat@4k 0 · quintic-flat@1080p 0 · quintic-flat@4k 0 · curve3-flat@1080p 0 · curve3-flat@4k 0 · k3@1080p 0 · k3@4k 0 · quintic@1080p 0 · quintic@4k 0 · curve3@1080p 0 · curve3@4k 0"
+  }
+ ],
+ "notes": [],
+ "tracks": []
+}
