@@ -783,9 +783,12 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-// clock port: the shared hooks (beatLog, frame, beatLanes, events, audioIn). No beat lanes: the row is ℹ️ here.
+// clock port, wiring only (as 01, 02, 05): no __qa.beatLog, because this page has no beat grid, so check-shared's
+// beat-match row is ℹ️ (VIZ research's ruling on #146). The shared input's state is still exposed for QA.
 window.__qa = window.__qa || {};
-AudioIn.qa(micIn, window.__qa);
+Object.defineProperty(window.__qa, 'frame', { get: () => micIn.frame, configurable: true, enumerable: true });
+Object.defineProperty(window.__qa, 'audioIn', { get: () => ({ source: micIn.source, requested: micIn.requested, fallback: micIn.fallback,
+  status: micIn.status, error: micIn.error, warning: micIn.warning, device: micIn.device, wiringOnly: true }), configurable: true, enumerable: true });
 Object.defineProperty(window.__qa, 'beat', { get: () => ({ kind: audio.kind, E: audio.E, M: audio.M, beat: audio.beat, input: micIn.status }), configurable: true, enumerable: true });
 
 loadFromUrl();
