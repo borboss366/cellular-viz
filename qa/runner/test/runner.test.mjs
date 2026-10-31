@@ -13,6 +13,10 @@ process.env.GPU_BUSY_FILE = path.join(tmp, 'busy');
 process.env.GPU_LOCK = path.join(tmp, 'gpu.lock');
 process.env.GPU_IDLE_SECS = '2';
 process.env.GPU_WAIT_MIN = '0.05';
+process.env.GPU_SAMPLE_HZ = '1';                         // the first gate test reads once a second
+process.env.GPU_DRI = path.join(tmp, 'dri');             // render-node stubs (#144)
+process.env.GPU_PROC = path.join(tmp, 'proc');
+process.env.GPU_HOLDER_ALLOW = 'Xorg';
 const E = await import('../experiment.mjs');
 const G = await import('../gpu.mjs');
 const { PROBES } = await import('../probes.mjs');
@@ -146,13 +150,89 @@ test('GPU gate waits for idle readings and saves them', async () => {
   fs.writeFileSync(process.env.GPU_BUSY_FILE, '99\n');
   const busy = await G.gpuGate({});
   assert.equal(busy.ok, false);
-  assert.match(busy.why, /GPU busy/);
+  assert.match(busy.why, /waiting for GPU \(busy 99/); assert.equal(busy.waiting, true);   // #144: still queued, not a failure
   assert.equal(fs.existsSync(process.env.GPU_LOCK), false);  // let go when it gives up
   fs.rmSync(process.env.GPU_BUSY_FILE);
   const none = await G.gpuGate({});
   assert.equal(none.ok, true);
   assert.match(none.note, /no reading/);
   G.unlock();
+});
+
+// ---------- #144: GPU idle precondition, foreign render-node holders, the job's tail ----------
+const DRI = process.env.GPU_DRI, PROC = process.env.GPU_PROC, NODE = path.join(DRI, 'renderD128');
+fs.mkdirSync(DRI, { recursive: true }); fs.writeFileSync(NODE, '');
+function fakeProc(pid, comm, { ppid = 1, cmd = comm, holds = true } = {}) {   // a /proc/<pid> stub; holds: an fd linked to the render node
+  const d = path.join(PROC, String(pid));
+  fs.mkdirSync(path.join(d, 'fd'), { recursive: true });
+  fs.writeFileSync(path.join(d, 'comm'), comm + '\n');
+  fs.writeFileSync(path.join(d, 'stat'), `${pid} (${comm}) S ${ppid} ${pid} ${pid} 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 12345 0 0\n`);
+  fs.writeFileSync(path.join(d, 'cmdline'), cmd.split(' ').join('\0'));
+  if (holds) fs.symlinkSync(NODE, path.join(d, 'fd', '3'));
+  return () => fs.rmSync(d, { recursive: true, force: true });
+}
+const gpuTiming = over => { const keep = { ...G.GPU }; Object.assign(G.GPU, over); return () => Object.assign(G.GPU, keep); };
+
+test('#144 truth 1: a busy GPU holds the job (shown as waiting); it starts within 4 s of going idle', async () => {
+  const restore = gpuTiming({ hz: 4, idleSecs: 3, waitMin: 0.5 });
+  fs.writeFileSync(process.env.GPU_BUSY_FILE, '50\n');
+  const seen = [];
+  let done = null; const t = { at: 0 };
+  const p = G.gpuGate({ onWait: w => { if ('busy' in w) seen.push(w.busy); } }).then(g => { done = g; t.at = Date.now(); });
+  await new Promise(r => setTimeout(r, 1500));
+  assert.equal(done, null, 'not started while busy');
+  assert.ok(seen.includes(50), 'waiting state shows the busy reading');
+  const idleAt = Date.now(); fs.writeFileSync(process.env.GPU_BUSY_FILE, '0\n');
+  await p;
+  assert.equal(done.ok, true);
+  assert.ok(t.at - idleAt < 4000, `started ${t.at - idleAt} ms after idle`);
+  G.unlock(); restore();
+});
+
+test('#144: a foreign render-node holder holds the job; the compositor and the runner\'s own children do not', async () => {
+  const restore = gpuTiming({ hz: 4, idleSecs: 0.5, waitMin: 0.5 });
+  fs.writeFileSync(process.env.GPU_BUSY_FILE, '0\n');
+  const rmX = fakeProc(700, 'Xorg'), rmOwn = fakeProc(701, 'chrome', { ppid: process.pid }), rmML = fakeProc(4242, 'python3');
+  assert.deepEqual(G.renderHolders().map(h => h.pid).sort(), [4242, 700, 701]);
+  assert.deepEqual(G.foreignHolders().map(h => h.pid), [4242]);
+  let done = null, holder = [];
+  const p = G.gpuGate({ onWait: w => { if (w.holders) holder = w.holders.map(h => h.comm); } }).then(g => { done = g; });
+  await new Promise(r => setTimeout(r, 1200));
+  assert.equal(done, null, 'not started while python3 holds the render node');
+  assert.deepEqual(holder, ['python3']);
+  rmML();
+  await p;
+  assert.equal(done.ok, true);
+  G.unlock(); rmX(); rmOwn(); restore();
+});
+
+test('#144 truth 2: a foreign holder during the run is reported once (the runner then discards and requeues)', async () => {
+  const hits = [];
+  const stop = G.watchForeign({ everyMs: 50, onForeign: hs => hits.push(hs.map(h => h.comm)) });
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(hits.length, 0);
+  const rm = fakeProc(4343, 'blender');
+  await new Promise(r => setTimeout(r, 300));
+  stop(); rm();
+  assert.deepEqual(hits, [['blender']]);
+});
+
+test('#144 truth 3: the tail is closed: leftovers of the job let go or are killed before the lock is released', async () => {
+  const restore = gpuTiming({ tailSecs: 0.3 });
+  const rmX = fakeProc(700, 'Xorg'), rmOld = fakeProc(800, 'python3');   // both there before the job: never touched
+  const baseline = new Set(G.renderHolders().map(h => h.pid));
+  const rmGpu = fakeProc(5151, 'chrome', { cmd: '/opt/chromium/chrome --type=gpu-process' });   // a slow-exiting GPU process
+  const killed = [];
+  const tail = await G.closeTail({ baseline, kill: pid => { killed.push(pid); if (pid === 5151) rmGpu(); } });
+  assert.deepEqual(killed, [5151]);
+  assert.ok(tail.tailMs >= 300 && tail.tailMs < 2000, `tail ${tail.tailMs} ms`);
+  assert.deepEqual(tail.left, []);
+  assert.deepEqual(G.renderHolders().map(h => h.pid).sort(), [700, 800]);
+  const quick = fakeProc(5252, 'chrome', { cmd: 'chrome --type=renderer' });
+  setTimeout(quick, 100);                                                  // exits by itself: not killed
+  const t2 = await G.closeTail({ baseline, kill: pid => killed.push(pid) });
+  assert.equal(killed.length, 1); assert.ok(t2.tailMs < 300);
+  rmX(); rmOld(); restore();
 });
 
 // ---------- after-build steps: board moves, history entry, report commit ----------
