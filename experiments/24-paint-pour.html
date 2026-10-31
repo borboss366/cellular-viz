@@ -238,6 +238,10 @@ expose({
   errors, setMacro, pressTrigger, triggers: TRIGGERS, events: () => Clock.qaEvents(clock), clock, get clockSmooth() { return { ...smooth }; },
   get macros() { return MACROS.map((m, i) => ({ slot: m.slot, name: m.name, label: m.label, value: params.macro[i], default: m.default, shown: macroText(i) })); },
   get triggerLog() { return S.triggerLog; }, get triggerEnv() { return S.triggerEnv; },
+  // truth 8 counts only the ops admitted inside the runner's measured window (window.__qaFTon true): after it the
+  // runner's clip pass reads the whole canvas back every 90 ms, ~70 ms main-thread stalls at 4K (viz-134-7).
+  // Without a runner (__qaFTon never set) it is the whole log.
+  get syncLog() { return window.__qaFTon === undefined ? S.opLog : S.opLog.filter(o => o.measured); },
   get ops() { return S.ops; }, get opLog() { return S.opLog; }, get bakes() { return S.bakes; }, get bakeFrames() { return S.bakeFrames; }, get pour() { return S.pour; }, get palette() { return S.palette; },
   check, fwd: (x, y) => S.fwd(x, y), inv: (x, y) => S.inv(x, y), traceGPU: p => S.traceGPU(p), traceCPU: p => S.traceCPU(p),
   colourAt: (x, y) => S.colourAt(x, y), colourGrid: (x0, y0, x1, y1, n) => S.colourGrid(x0, y0, x1, y1, n), forceBake: () => S.forceBake(),

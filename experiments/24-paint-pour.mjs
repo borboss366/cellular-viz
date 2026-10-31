@@ -209,7 +209,7 @@ export function createScene() {
       if (pi >= 0 && op.role !== 'pour') st.live.splice(pi, 0, op); else st.live.push(op);
       st.history.push(op); if (st.history.length > HISTORY_MAX) st.history.shift();
       st.opLog.push({ tBeat: op.start, type: K.TYPE_NAMES[op.type], role: op.role, cause: op.cause, epoch: st.epochId, syncMs: op.syncMs,
-        frame: st.frames, baking: !!st.bake, queuedMs: now - op.created, params: paramsOf(op) });
+        frame: st.frames, baking: !!st.bake, queuedMs: now - op.created, measured: globalThis.__qaFTon === true, params: paramsOf(op) });
       if (st.opLog.length > HISTORY_MAX) st.opLog.shift();
       if (op.role === 'pour') st.pour = op;
       if (op.role === 'drop') st.lastDropColour = op.colour;
