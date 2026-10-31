@@ -120,6 +120,8 @@
   <a href="../index.html">← all experiments</a>
 </div>
 
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
 <script>
 'use strict';
 
@@ -231,50 +233,15 @@ const KEYS = [
 const KF = {}, LISTS = [[[], [], [], []], [[], [], [], []]];
 for (const [name, genus, variant, b, slots] of KEYS) { KF[name] = { name, genus, variant, body: b, slots: slots || [] }; LISTS[variant][genus].push(name); }
 
-// ---------- metronome (as 19) ----------
-const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
-const LANES = ['kick', 'snare', 'hat'];
-const metronome = {
-  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [],
-  start() {
-    if (!this.ctx) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
-      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-      const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    }
-    this.ctx.resume(); this.master.gain.value = params.muted ? 0 : 0.35;
-    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
-    this.playing = true; this.timer = setInterval(() => this.schedule(), 25); this.schedule();
-  },
-  stop() { clearInterval(this.timer); this.playing = false; },
-  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
-  schedule() {
-    while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / params.bpm / 4; this.step++; }
-    const old = this.ctx.currentTime - 1;
-    this.hits = this.hits.filter(h => h.time > old);
-    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
-  },
-  queueStep(step, time) {
-    const inBar = step % (params.bpb * 4); this.steps.push({ time, step });
-    for (const lane of LANES) { if (params[lane][inBar % 16] !== 'x') continue; const vel = inBar === 0 ? 1 : 0.7; this.hits.push({ lane, time, vel }); this.click(lane, time, vel); }
-  },
-  click(lane, t, vel) {
-    const ctx = this.ctx, g = ctx.createGain(); g.connect(this.master);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
-    let src;
-    if (lane === 'kick') { src = ctx.createOscillator(); src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08); src.connect(g); }
-    else { src = ctx.createBufferSource(); src.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = lane === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = lane === 'snare' ? 1800 : 8000; src.connect(f); f.connect(g); }
-    const end = t + TAU[lane] * 4; g.gain.exponentialRampToValueAtTime(0.001, end); src.start(t); src.stop(end + 0.01);
-  },
-  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
-  beats() {   // the beat position as heard
-    if (!this.ctx) return -1;
-    const now = this.ctx.currentTime - this.latency();
-    let last = null; for (const s of this.steps) if (s.time <= now) last = s;
-    return last ? (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / 4 : -1;
-  },
-};
+// ---------- clock (experiments/clock.js, #132) and audio-in (batch A, #135) ----------
+// The copied metronome is gone: beats come from the shared clock (?clock=…, default: its metronome, the same clicks
+// as before; metronome.read().beats is exactly the old metronome.beats()). metronome.hits, .steps, .ctx and
+// .latency() are unchanged, so the page's sync log reads them as before. audio-in (?audio=…, default 'clock') adds
+// the shared hooks: audio.frameStart(now) at the top of each frame, then audio.due(BEAT_LANES) right after the read,
+// which logs each hit the visuals reached in __qa.beatLog. This page reads no drum levels.
+const metronome = Clock.create({ source: query.get('clock') || 'metronome', settings: params, hitStep: false });
+const BEAT_LANES = ['kick', 'snare', 'hat'];   // every hit is logged in the page's own sync log on the frame it is heard
+const audio = AudioIn.create({ clock: metronome, source: query.get('audio') || 'clock' }).start();
 
 
 // ---------- small maths ----------
@@ -1154,6 +1121,7 @@ function logAt(type, bar, extra, now) {
   logEvent({ type, bar, ...extra, tBeat: stepTime(Math.round(bar * params.bpb * 4)) }, now);
 }
 function frame(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt (clock port)
   requestAnimationFrame(frame);
   try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
 }
@@ -1241,7 +1209,8 @@ function draw(now) {
   resize();
   const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
   dynRes(dt, now);
-  const mb = metronome.beats();
+  const mb = metronome.read().beats;   // the shared clock (same number as the old metronome.beats())
+  audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
   const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60) + (window.__qaShift || 0) * params.bpb;   // __qaShift (bars): forceDrop moves the clock (QA, #88)
   const bars = beats / params.bpb, cam = cameraAt(bars), st = cam.st;
   window.__qaNowBars = bars;
@@ -1350,6 +1319,10 @@ window.__qa = {
   camera: b => { const c = cameraAt(b ?? window.__qa.bars); return { eye: c.eye, fwd: c.fwd, up: c.up, mode: c.mode, sdf: c.sdf, pushes: c.pushes, fov: c.fov, roll: c.roll }; },
   thread: (b, N = 600) => threadCheck(b ?? window.__qa.bars, N),
 };
+// clock port: the shared hooks (beatLog, frame, beatLanes, audioIn); __qa.events stays this page's sync log
+// (perfHeard/perfDrawn, check-25) followed by the clock's hits and jumps for the shared beat-match row
+AudioIn.qa(audio, window.__qa);
+Object.defineProperty(window.__qa, 'events', { get: () => [...events, ...Clock.qaEvents(metronome)], configurable: true, enumerable: true });
 const q = k => query.get(k);
 if (q('pace') === 'auto') params.pace = 'auto'; else if (PACES.includes(parseFloat(q('pace')))) params.pace = parseFloat(q('pace'));
 if (['auto', 'orbit', 'skim', 'thread'].includes(q('camMode'))) params.camMode = q('camMode');
