@@ -1,0 +1,14 @@
+#!/bin/sh
+# 2026-10-31-1256-runner-pr142-23-shape-shifter: runner build viz-142-1, #142 23-shape-shifter @e17ff7f, checks from main; result: viz-142-1 running 22/22
+# The commands as the QA runner ran them, in order (no shell; temp folders were removed after the build).
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo fetch -q --force origin +refs/pull/142/head:refs/runner/pr-142 +refs/heads/main:refs/runner/checks +refs/heads/main:refs/runner/main
+node /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/builds.mjs start --page 23-shape-shifter --pr 142 --commit e17ff7f
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo fetch -q --force origin +refs/pull/142/head:refs/runner/pr-142 +refs/heads/main:refs/runner/checks +refs/heads/main:refs/runner/main
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo archive -o /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/build-t5FjHm/checks.tar refs/runner/checks qa
+git -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/repo archive -o /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/build-t5FjHm/pages.tar e17ff7f1eeddfd8f408a2e9c598b081a5e4ccb17 experiments
+tar -xf /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/build-t5FjHm/checks.tar -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/build-t5FjHm/tree
+tar -xf /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/build-t5FjHm/pages.tar -C /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/build-t5FjHm/tree
+node /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/builds.mjs set --id viz-142-1 --status running
+node /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/build-t5FjHm/tree/qa/check-23.mjs --experiments /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/build-t5FjHm/tree/experiments
+node /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/build-t5FjHm/tree/qa/check-shared.mjs --experiments /home/puggie/pi-durable-worker/home/.cache/cellular-viz-runner/build-t5FjHm/tree/experiments --page 23-shape-shifter.html --out /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/23-shape-shifter/checks/2026-10-31-1250/shared
+node /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/builds.mjs finish --id viz-142-1 --check /home/puggie/pi-durable-worker/data/scratch/c14/cellular-viz/qa/23-shape-shifter/checks/2026-10-31-1250
