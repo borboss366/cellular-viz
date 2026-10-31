@@ -82,6 +82,8 @@
   <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
   <a href="../index.html">← all experiments</a>
 </div>
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
 <script src="15-tsp-core.js"></script>
 <script>
 'use strict';
@@ -98,50 +100,15 @@ const citiesOf = v => v <= 0.2 ? 8 + Math.round(5 * Math.max(0, v) / 0.2) : Math
 const movesOf = v => Math.max(1, Math.round(Math.pow(16, v)));
 const heatOf = v => 0.02 * v * v;   // Metropolis temperature in unit-square length
 
-// ---------- metronome (as 23) ----------
-const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
-const LANES = ['kick', 'snare', 'hat'];
-const metronome = {
-  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [],
-  start() {
-    if (!this.ctx) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
-      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-      const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    }
-    this.ctx.resume(); this.master.gain.value = params.muted ? 0 : 0.35;
-    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
-    this.playing = true; this.timer = setInterval(() => this.schedule(), 25); this.schedule();
-  },
-  stop() { clearInterval(this.timer); this.playing = false; },
-  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
-  schedule() {
-    while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / params.bpm / 4; this.step++; }
-    const old = this.ctx.currentTime - 1;
-    this.hits = this.hits.filter(h => h.time > old);
-    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
-  },
-  queueStep(step, time) {
-    const inBar = step % (params.bpb * 4); this.steps.push({ time, step });
-    for (const lane of LANES) { if (params[lane][inBar % 16] !== 'x') continue; const vel = inBar === 0 ? 1 : 0.7; this.hits.push({ lane, time, vel }); this.click(lane, time, vel); }
-  },
-  click(lane, t, vel) {
-    const ctx = this.ctx, g = ctx.createGain(); g.connect(this.master);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
-    let src;
-    if (lane === 'kick') { src = ctx.createOscillator(); src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08); src.connect(g); }
-    else { src = ctx.createBufferSource(); src.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = lane === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = lane === 'snare' ? 1800 : 8000; src.connect(f); f.connect(g); }
-    const end = t + TAU[lane] * 4; g.gain.exponentialRampToValueAtTime(0.001, end); src.start(t); src.stop(end + 0.01);
-  },
-  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
-  beats() {
-    if (!this.ctx) return -1;
-    const now = this.ctx.currentTime - this.latency();
-    let last = null; for (const s of this.steps) if (s.time <= now) last = s;
-    return last ? (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / 4 : -1;
-  },
-};
+// ---------- clock (experiments/clock.js, #132) and audio-in (#135) ----------
+// The copied metronome is gone: beats come from the shared clock (?clock=…, default its metronome, the same clicks
+// as before; metronome.read().beats is exactly the old metronome.beats()). metronome.hits, .steps, .ctx and
+// .latency() are unchanged, so the sync log reads them as before. audio-in (?audio=…, default 'clock') adds the
+// shared hooks: audio.frameStart(now) at the top of each frame, then audio.due(BEAT_LANES) right after the read,
+// which logs each hit the visuals reached in __qa.beatLog. This page reads no drum levels.
+const metronome = Clock.create({ source: query.get('clock') || 'metronome', settings: params, hitStep: false });
+const LANES = ['kick', 'snare', 'hat'], BEAT_LANES = LANES;   // the kick pulses the tour; every hit is logged when heard
+const audio = AudioIn.create({ clock: metronome, source: query.get('audio') || 'clock' }).start();
 
 // ---------- the tour engine: changes only happen on beats (or frame-paced inside a snap) ----------
 const st = {
@@ -331,22 +298,24 @@ function logEvent(e, now) {
 }
 const stepTime = step => { const s = metronome.playing && metronome.steps.find(x => x.step === step); return s ? s.time : null; };
 function frame(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt (clock port)
   requestAnimationFrame(frame);
   try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; if (window.__panicError) window.__panicError(); }
 }
 const ease = x => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
 let lastStep = -1;
-// the clock as this page uses it: beats (heard) and beats per bar. Until clock.js lands, the page's own
-// metronome (or wall time before Play); __qaShift is #88's forceDrop.
+// the clock as this page uses it: beats (heard) and beats per bar, from the shared clock (wall time before Play);
+// __qaShift is #88's forceDrop. (QA may call this too, so audio.due stays in draw.)
 function clockRead(now) {
-  const mb = metronome.beats();
+  const mb = metronome.read().beats;   // the shared clock (same number as the old metronome.beats())
   const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60) + (window.__qaShift || 0) * params.bpb;
   return { beats, bpb: params.bpb };
 }
 function draw(now) {
   resize();
   const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
-  const { beats, bpb } = clockRead(now);   // the page reads only beats and beats-per-bar, so clock.js can drop in
+  const { beats, bpb } = clockRead(now);   // the page reads only beats and beats-per-bar (the shared clock)
+  audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
   const bars = beats / bpb; window.__qaNowBars = bars;
   const spb = 60 / params.bpm;
   // drum events (logged when heard) and the kick pulse
@@ -515,6 +484,10 @@ window.__qa = { errors, events, lenLog, snapLog, truth1, snapTruth, triggerLog, 
   setMacro, pressTrigger,
   get macros() { return Object.fromEntries(MACRO_NAMES.map((name, i) => [`macro${i + 1}`, { name, value: params.macro[i], shown: macroText(i) }])); },
 };
+// clock port: the shared hooks (beatLog, frame, beatLanes, audioIn); __qa.events stays this page's sync log
+// (perfHeard/perfDrawn) followed by the clock's hits and jumps for the shared beat-match row
+AudioIn.qa(audio, window.__qa);
+Object.defineProperty(window.__qa, 'events', { get: () => [...events, ...Clock.qaEvents(metronome)], configurable: true, enumerable: true });
 // drop hook (#88): the drop is bar 8 of each 16-bar section; __qa.forceDrop() (panic.js) jumps the clock there
 window.__qaNextDrop = b => window.__qaSectionDrop(b, S_BARS, DROP_BAR);
 const q = k => query.get(k);
