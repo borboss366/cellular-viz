@@ -6,8 +6,9 @@
 // (drops, tine combs, vortices, circular tines; ≤ opsMax live) is traced backwards per pixel in one fragment pass:
 // the newest drop that holds the traced point gives the colour, else the point moves by each op's inverse, down to
 // the baked base layer. On top, in the same pass: coloured veins along every boundary and a thick-paint look (a
-// height field from the distance to the nearest boundary, a glossy key light, soft creases), plus paint strings
-// during the pour. ?qa=flat (controls.flat) turns off height, gloss, creases and strings.
+// height field from the distance to the nearest boundary: the newer paint a raised rounded lip, the older a soft
+// crease, ripples that ride with the paint; one soft key light above the top left with a sheen, a wet glint and
+// contact shadows), plus paint strings during the pour. ?qa=flat (controls.flat) turns all of that off.
 // When the ops fill up, the finished oldest ops are baked into a base texture in 8 row tiles over 8 frames (the old
 // base and all ops keep rendering until the swap), then dropped from the list. colourAt/fwd/inv trace the whole op
 // history in float64, so the area and topology truths never see the bake's resampling.
@@ -85,6 +86,7 @@ uniform vec2 uRes; uniform vec3 uCam;            // camera x, y (world), zoom (w
 uniform float uFlat, uVeinOn, uVeinW, uBevel, uHeight, uGloss, uKick, uV0, uV1;
 uniform vec3 uVein;
 uniform vec4 uStr[2]; uniform vec3 uStrCol; uniform float uStrOn;   // strings: pour point (px), top x (px), sag (px)
+uniform sampler2D uRip; uniform float uRipple;   // ripples: a tiling gradient field (RG) in paint coordinates
 out vec4 o;
 void main() {
   vec2 Q = uCam.xy + (gl_FragCoord.xy - 0.5 * uRes) / uRes.y * uCam.z;
@@ -99,13 +101,39 @@ void main() {
   float mv = smoothstep(uV0, uV1, gV);
   if (uVeinOn > 0.5) col = mix(col, uVein, (1.0 - smoothstep(uVeinW - 0.5, uVeinW + 0.5, dpx)) * (1.0 - smoothstep(0.3 * uV0, uV0, gV)));
   col = mix(col, vec3(0.035), 0.8 * mv);
+  // thick wet paint: a height field in screen pixels, lit by one soft key light, with no extra pass and no extra texture
+  // except a 128² ripple field (2 fetches)
   if (uFlat < 0.5) {
-    float x = clamp(dpx / uBevel, 0.0, 1.0), h = x * x * (3.0 - 2.0 * x), slope = uHeight * 6.0 * x * (1.0 - x);
-    vec3 n = normalize(vec3(-slope * nd, 1.0));
-    vec3 L = normalize(vec3(-0.45, 0.55, 0.70)), Hh = normalize(L + vec3(0.0, 0.0, 1.0));
-    float diff = max(dot(n, L), 0.0), ao = mix(0.72, 1.0, h);
-    float spec = uGloss * (1.0 + 0.1 * uKick) * (1.0 - mv) * pow(max(dot(n, Hh), 0.0), 140.0);
-    col = col * (0.82 + 0.55 * (diff - 0.70)) * ao + vec3(spec);
+    float calm = 1.0 - mv;                       // everything that adds light or shade fades where the paint moves fast
+    // the newer paint of a boundary is the upper layer: a rounded lip (steep at the edge, 1.6 bevels wide); the older
+    // paint dips into a soft crease. Heights in px: lip uHeight·1.6·uBevel, crease 0.6·uHeight·uBevel
+    bool upper = d < 0.0;
+    float w = upper ? 1.6 * uBevel : uBevel, x = clamp(dpx / w, 0.0, 1.0), ix = 1.0 - x;
+    float h = upper ? 1.0 - ix * ix * ix : x * x * (3.0 - 2.0 * x);
+    vec2 grad = (upper ? uHeight * 3.0 * ix * ix : 0.6 * uHeight * 6.0 * x * ix) * nd;   // dH/dpx
+    // ripples ride with the paint (paint coordinates q), so they never shimmer in place; they fade where the paint is
+    // stretched finer than ~1/6 cycle a pixel and at the boundaries (q jumps there), and where it moves fast
+    vec2 uv = q * 1.6, ux = dFdx(uv), uy = dFdy(uv);
+    float cpp = 20.0 * max(length(ux), length(uy));
+    float rf = uRipple * calm * (1.0 - smoothstep(0.06, 0.18, cpp)) * smoothstep(1.0, 3.0, dpx);
+    vec2 g1 = textureGrad(uRip, uv, ux, uy).rg * 2.0 - 1.0;
+    vec2 g2 = textureGrad(uRip, uv * 2.9 + 0.37, ux * 2.9, uy * 2.9).rg * 2.0 - 1.0;   // a finer layer, 0.35 high
+    vec2 rip = (vec2(dot(g1, ux), dot(g1, uy)) + vec2(dot(g2, ux), dot(g2, uy))) * (rf * 0.25 * uRes.y / (1.6 * uCam.z));
+    float rl = length(rip); if (rl > 0.5) rip *= 0.5 / rl;
+    vec3 n = normalize(vec3(-(grad + rip), 1.0));
+    // a soft box above the top left of the frame (px): flat paint keeps its colour; lips and ripples that face it
+    // catch a broad sheen and a sharp wet glint
+    vec3 L = normalize(vec3(-0.25 * uRes.x, 1.25 * uRes.y, 0.9 * uRes.y) - vec3(gl_FragCoord.xy, 0.0)), Hh = normalize(L + vec3(0.0, 0.0, 1.0));
+    float diff = max(dot(n, L), 0.0) - L.z;       // 0 on flat paint
+    // contact shadow: a lip shades the older paint beside it when it stands between that paint and the light
+    float face = upper ? 0.0 : max(dot(-nd, normalize(L.xy)), 0.0);
+    float reach = uHeight * 1.6 * uBevel * length(L.xy) / max(L.z, 0.2), sh = face * (1.0 - smoothstep(0.0, reach, dpx));
+    float ao = upper ? mix(0.88, 1.0, h) : mix(0.72, 1.0, h), nh = max(dot(n, Hh), 0.0);
+    float spec = uGloss * (1.0 + 0.1 * uKick) * calm * (0.22 * pow(nh, 32.0) + 0.85 * pow(nh, 160.0));
+    vec3 flatCol = col, lit = col * (1.0 + 0.6 * min(diff, 0.25)) * ao * (1.0 - 0.4 * sh * calm) + spec * vec3(1.0, 0.97, 0.92);
+    // light added above the flat colour rolls off into the headroom below 0.97, so highlights never clip (clip gate)
+    vec3 hd = max(vec3(0.97) - flatCol, vec3(1e-3));
+    col = min(lit, flatCol) + hd * (1.0 - exp(-max(lit - flatCol, vec3(0.0)) / hd));
     // paint strings: thin glossy threads from the pour point up out of the frame
     if (uStrOn > 0.5) for (int k = 0; k < 2; k++) {
       vec4 s = uStr[k]; float top = uRes.y + 24.0, span = top - s.y;
@@ -115,7 +143,7 @@ void main() {
       float dist = abs(gl_FragCoord.x - xc) / sqrt(1.0 + dxdy * dxdy), th = mix(4.5, 2.0, t) * uRes.y / 1440.0;
       float a = 1.0 - smoothstep(th - 0.75, th + 0.75, dist);
       float hl = exp(-pow((gl_FragCoord.x - xc + 0.35 * th) / (0.35 * th + 0.3), 2.0));
-      col = mix(col, uStrCol * 0.8 + vec3(0.5 * uGloss * hl), a);
+      col = mix(col, uStrCol * 0.8 + vec3(0.25 * uGloss * hl), a);   // gloss doubled with the new light: same highlight
     }
   }
   o = vec4(pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2)), 1.0);
@@ -140,7 +168,7 @@ void main() {
 
 // ---------------------------------------------------------------- the scene
 export function createScene() {
-  let gl = null, W = 0, H = 0, progs = null, vao = null, ubo = null;
+  let gl = null, W = 0, H = 0, progs = null, vao = null, ubo = null, rip = null;
   const opData = new Float32Array(MAXOPS * 12);
   const base = { tex: [null, null], fbo: [null, null], cur: -1, tw: 0, th: 0 };
   const st = {
@@ -182,16 +210,39 @@ export function createScene() {
     base.tw = tw; base.th = th; base.cur = -1;
   }
   function freeBase() { for (let i = 0; i < 2; i++) { if (base.tex[i]) { gl.deleteTexture(base.tex[i]); gl.deleteFramebuffer(base.fbo[i]); } base.tex[i] = base.fbo[i] = null; } base.tw = base.th = 0; base.cur = -1; }
+  // the ripple field: 24 waves with integer wave vectors (3–7 cycles a tile, so it tiles), its gradient in RG
+  // (±1 = the largest), mipmapped so stretched paint averages it away instead of aliasing. The same field every run.
+  function rippleTex() {
+    const N = 128, waves = [], g = new Float32Array(N * N * 2), data = new Uint8Array(N * N * 4);
+    let s = 0x2545f491; const rnd = () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
+    while (waves.length < 24) {
+      const kx = Math.round(rnd() * 14 - 7), ky = Math.round(rnd() * 14 - 7), k = Math.hypot(kx, ky);
+      if (k >= 3 && k <= 7) waves.push([kx, ky, 1 / k, rnd() * 2 * Math.PI]);
+    }
+    let gmax = 1e-9;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      let gx = 0, gy = 0;
+      for (const [kx, ky, a, ph] of waves) { const c = -a * 2 * Math.PI * Math.sin(2 * Math.PI * (kx * i + ky * j) / N + ph); gx += c * kx; gy += c * ky; }
+      g[2 * (j * N + i)] = gx; g[2 * (j * N + i) + 1] = gy; gmax = Math.max(gmax, Math.abs(gx), Math.abs(gy));
+    }
+    for (let p = 0; p < N * N; p++) data.set([Math.round(127.5 + 127.5 * g[2 * p] / gmax), Math.round(127.5 + 127.5 * g[2 * p + 1] / gmax), 128, 255], 4 * p);
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, N, N, 0, gl.RGBA, gl.UNSIGNED_BYTE, data); gl.generateMipmap(gl.TEXTURE_2D);
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.REPEAT], [gl.TEXTURE_WRAP_T, gl.REPEAT]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    return t;
+  }
   function resize(w, h) { W = w; H = h; }
   function init(g, { width, height, seed = 1 }) {
     gl = g; st.seed = seed; W = width; H = height;
     gl.getExtension('EXT_color_buffer_float');
     progs = { render: compile(RENDER_FS), bake: compile(BAKE_FS), probe: compile(PROBE_FS) };
+    rip = rippleTex();
     vao = gl.createVertexArray();
     ubo = gl.createBuffer(); gl.bindBuffer(gl.UNIFORM_BUFFER, ubo); gl.bufferData(gl.UNIFORM_BUFFER, opData.byteLength, gl.DYNAMIC_DRAW); gl.bindBuffer(gl.UNIFORM_BUFFER, null);
   }
   function dispose() {
-    if (!gl) return; freeBase();
+    if (!gl) return; freeBase(); if (rip) gl.deleteTexture(rip); rip = null;
     for (const p of Object.values(progs || {})) gl.deleteProgram(p.p);
     gl.deleteBuffer(ubo); gl.deleteVertexArray(vao); gl = null;
   }
@@ -354,8 +405,10 @@ export function createScene() {
     gl.uniform1f(u.uV0, 0.10); gl.uniform1f(u.uV1, 0.35);   // screen heights a second: 145 → 500 px/s at 1440p
     gl.uniform1f(u.uBevel, ctl.bevelWidth * fh / 1440); gl.uniform1f(u.uHeight, ctl.paintHeight); gl.uniform1f(u.uGloss, ctl.gloss); gl.uniform1f(u.uKick, kick);
     gl.uniform4fv(u.uStr, str); gl.uniform3fv(u.uStrCol, strCol); gl.uniform1f(u.uStrOn, strOn);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, rip); gl.uniform1i(u.uRip, 2); gl.uniform1f(u.uRipple, ctl.ripple ?? 0.6);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     // leave the GL state as found (#85 GL rules)
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, null);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, null); gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, null);
     gl.bindVertexArray(null); gl.useProgram(null); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     // --- QA state
@@ -517,11 +570,12 @@ export const DETAIL = [
   { name: 'strings', type: 'float', default: 1, min: 0, max: 1 },
   { name: 'veinWidth', type: 'float', default: 0.9, min: 0.4, max: 3 },
   { name: 'bevelWidth', type: 'float', default: 14, min: 4, max: 30 },
+  { name: 'ripple', type: 'float', default: 0.6, min: 0, max: 1 },
   { name: 'bakeScale', type: 'float', default: 1, min: 0.5, max: 2 },
 ];
 // macro value → inputs
 export function macroInputs(m) {
-  return { bassSwirl: m[0], tineDepth: 0.3 + 1.4 * m[1], paintHeight: 1.2 * m[2], gloss: 0.6 * m[2], camDrift: 2 * m[3] };
+  return { bassSwirl: m[0], tineDepth: 0.3 + 1.4 * m[1], paintHeight: 1.2 * m[2], gloss: 1.2 * m[2], camDrift: 2 * m[3] };
 }
 const scene = createScene();
 export default {
