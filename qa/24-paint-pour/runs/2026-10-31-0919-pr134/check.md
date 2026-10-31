@@ -1,0 +1,56 @@
+# 24-paint-pour · experiment for #134 @1176368
+
+| gate | result | detail |
+|---|---|---|
+| truth 1: every op is area-preserving, max  det J - 1  < 1e-5 (float64) | ✅ | default@1080p true · default@4k true |
+| truth 3: the shader's trace matches the float64 trace (max error < 1e-4, same drop away from boundaries) | ✅ | default@1080p true · default@4k true · flat@1080p true · flat@4k true · drop@1080p true · drop@4k true · build@1080p true · build@4k true · breakdown@1080p true · breakdown@4k true · bake@1080p true · bake@4k true · psych60s@1080p true · psych60s@4k true |
+| truth 4: a stroke then the same stroke reversed is the identity (< 1e-6) | ✅ | default@1080p true · default@4k true |
+| truth 5: the pour law r = sqrt(rate t / pi), within 0.5 % | ✅ | build@1080p "true" · build@4k "true" |
+| truth 9: the op log replays from the seed and the beat clock alone | ✅ | default@1080p "true" · default@4k "true" · flat@1080p "true" · flat@4k "true" · drop@1080p "true" · drop@4k "true" · build@1080p "true" · build@4k "true" · breakdown@1080p "true" · breakdown@4k "true" · bake@1080p "true" · bake@4k "true" · psych60s@1080p "true" · psych60s@4k "tru |
+| truth 10: canada colours >= 3:1 against the ground, no big drop above L 0.75 | ✅ | default@1080p true · default@4k true |
+| truth 8: every op in the measured window goes live within 40 ms of its beat | ✅ | default@1080p 7.194 · default@4k 10.64 · flat@1080p 10.562 · flat@4k 10.594 · drop@1080p 14.788 · drop@4k 14.788 · build@1080p 14.733 · build@4k 14.733 · breakdown@1080p 10.562 · breakdown@4k 10.562 · bake@1080p 10.64 · bake@4k 10.64 · psych60s@1080p 10.64 · psych60s@4k 10.617 |
+| the shared clock is playing (Play pressed) | ✅ | default@1080p true · default@4k true · flat@1080p true · flat@4k true · drop@1080p true · drop@4k true · build@1080p true · build@4k true · breakdown@1080p true · breakdown@4k true · bake@1080p true · bake@4k true · psych60s@1080p true · psych60s@4k true |
+| the drop at bar 16 fired | ✅ | drop@1080p 1 · drop@4k 1 |
+| the build's pour started at bar 12 | ✅ | build@1080p 1 · build@4k 1 |
+| no big drops in the breakdown (bars 8-11) | ✅ | default@1080p 0 · default@4k 0 · flat@1080p 0 · flat@4k 0 · drop@1080p 0 · drop@4k 0 · build@1080p 0 · build@4k 0 · breakdown@1080p 0 · breakdown@4k 0 · bake@1080p 0 · bake@4k 0 · psych60s@1080p 0 · psych60s@4k 0 |
+| combs on the kick (groove) and feathers (breakdown) | ✅ | default@1080p 25 · default@4k 25 · breakdown@1080p 25 · breakdown@4k 25 |
+| opsMax 32: at least one tiled bake in the window | ✅ | bake@1080p 3 · bake@4k 3 |
+| #88 forceDrop hook | ✅ | default@1080p "function" · default@4k "function" · flat@1080p "function" · flat@4k "function" · drop@1080p "function" · drop@4k "function" · build@1080p "function" · build@4k "function" · breakdown@1080p "function" · breakdown@4k "function" · bake@1080p "function" · bake@4k "func |
+| fps.p05 ≥ 55 | ✅ | default@1080p 59.52 · default@4k 59.88 · flat@1080p 59.88 · flat@4k 59.52 · drop@1080p 59.52 · drop@4k 59.88 · build@1080p 59.88 · build@4k 59.52 · breakdown@1080p 59.88 · breakdown@4k 59.52 · bake@1080p 59.52 · bake@4k 59.52 · psych60s@1080p 59.52 · psych60s@4k 59.88 |
+| longFrames ≤ 0.5 | ✅ | default@1080p 0 · default@4k 0 · flat@1080p 0 · flat@4k 0 · drop@1080p 0 · drop@4k 0 · build@1080p 0 · build@4k 0 · breakdown@1080p 0 · breakdown@4k 0 · bake@1080p 0 · bake@4k 0 · psych60s@1080p 0 · psych60s@4k 0 |
+| errors ≤ 0 | ✅ | default@1080p 0 · default@4k 0 · flat@1080p 0 · flat@4k 0 · drop@1080p 0 · drop@4k 0 · build@1080p 0 · build@4k 0 · breakdown@1080p 0 · breakdown@4k 0 · bake@1080p 0 · bake@4k 0 · psych60s@1080p 0 · psych60s@4k 0 |
+| gpuBusy ≤ 10 | ✅ | default@1080p 0 · default@4k 2 · flat@1080p 5 · flat@4k 2 · drop@1080p 5 · drop@4k 1 · build@1080p 3 · build@4k 1 · breakdown@1080p 3 · breakdown@4k 1 · bake@1080p 3 · bake@4k 1 · psych60s@1080p 3 · psych60s@4k 2 |
+| no white blobs: <= 1 % pixels clipped | ✅ | default@1080p 0.016 · default@4k 0.015 · flat@1080p 0 · flat@4k 0 · drop@1080p 0.008 · drop@4k 0.008 · build@1080p 0.016 · build@4k 0.016 · breakdown@1080p 0.01 · breakdown@4k 0.009 · bake@1080p 0.003 · bake@4k 0.001 · psych60s@1080p 0.012 · psych60s@4k 0.012 |
+| PR | ℹ️ | #134 @1176368 |
+| GPU | ℹ️ | /dev/dri/renderD128 (ANGLE gl-egl) |
+
+
+## shared gates (qa/check-shared.mjs)
+
+- ANGLE (AMD, AMD Radeon Graphics (gfx1103_r1 LLVM 15.0.6 DRM 3.64 7.0.0-31-generic), OpenGL ES 3.2) · Chromium 156.0.8078.4
+- 2560×1440, dpr 1, headless (rAF on Chromium's 60 Hz clock) · GPU: warm-up 120 s, measured 60 s · flash: 90 s with limiter=off
+
+| gate | result | detail |
+|---|---|---|
+| GPU p95 ≤ 7 ms and p99 ≤ 9 ms (standard at 1440p) | ✅ | p50 4.56 · p95 6.54 · p99 7.08 ms over 3599 frames · timer-elapsed (whole rAF callback) |
+| perf class (#88 ray-march ruling) | ℹ️ | standard (no __qa.scales declared) |
+| canvas 2560×1440 at dpr 1 | ✅ | 2560×1440 · dpr 1 |
+| rAF interval (solo, headless 60 Hz clock) | ℹ️ | p50 16.7 · p95 16.7 · p99 16.8 ms · 0 of 3599 > 17.5 ms (0 %) · 60 fps |
+| __qa.forceDrop() puts a drop inside the measured 60 s | ✅ | __qa.forceDrop() at 20 s |
+| pair gate (50/50 with the heaviest scene) | ℹ️ | waits for the #85 host: two modules in one context |
+| GPU clock during the measured windows (report-only) | ℹ️ | mean 2700 MHz of 2700 · ≥2500 MHz 100 % · 240 samples · power_dpm_force_performance_level high |
+| GPU ms measured at a pinned clock (≥ 90 % of top) | ✅ | mean 2700 of 2700 MHz |
+| timer query bits | ℹ️ | TIMESTAMP 0 · TIME_ELAPSED 64 |
+| flash capture | ✅ | 5401 frames in 90.0 s (60.0 fps, 0 skipped) · tap 6.31 ms/frame · scene canvas 2560×1440 → 640×360 linear · window 160×120 (640×480 at 1440p, fov 40°) · 91 windows |
+| general flash: ≥ 4 flashes/s on ≤ 25 % of any 10° window | ✅ | 0 failing frames · worst 21.8 % at 1280,640 (t 28.02 s) |
+| red flash: ≥ 4 flashes/s on ≤ 25 % of any 10° window | ✅ | 0 failing frames · worst 0.0 % |
+| frame mean L ≤ 0.60 | ✅ | 0 failing frames · max 0.2529 (t 87.85 s) |
+| 10° window mean L ≤ 0.80 | ✅ | 0 failing frames · max 0.4547 at 800,320 (t 61.55 s) |
+| window mean rises ≤ 0.25 in 100 ms | ✅ | 0 failing frames · max 0.1968 at 960,640 (t 1.8 s) |
+| L ≥ 0.9 on ≤ 5 % of the frame, or ≤ 3 frames in a row | ✅ | 0 failing frames · max 0.0 % · longest run over 5 %: 0 frames |
+| worst flash window trace ±1 s (report-only) | ℹ️ | 1280,640 at t 28.02 s · 121 frames over 2.00 s · window mean L 0.11–0.28, 0 swings ≥ 0.02 (0.0 Hz) · flashing share > 25 % on 0 frames, peak 22 % · mean L every 3rd frame: 0.27 0.27 0.28 0.28 0.27 0.27 0.26 0.26 0.26 0.25 0.25 0.24 0.24 0.23 0.23 0.22 0.22 0.21 0.20 0.20 0.19 0.19 0.18 0.18 0.17 0.17 0.16 0.16 0.15 0.15 0.15 0.14 0.14 0.13 0.13 0.12 0.12 0.12 0.12 0.11 0.11 |
+| drops during the flash clip | ℹ️ | __qa.forceDrop(), __qa.forceDrop() |
+| beat match: every clock hit drawn in the first frame that reaches it (__qa.beatLog) | ℹ️ | no __qa.beatLog: page not ported yet, or wiring only (01, 02, 05) |
+| #88 gating for this page | ℹ️ | gated: new scene |
+| page errors | ✅ | none |
+| GPU busy before the run | ℹ️ | 0, 0, 0, 0, 0 % (idle ≤ 10 % for 5 s; waited 4 s) |
