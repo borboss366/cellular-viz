@@ -116,6 +116,8 @@
   <a href="../index.html">← all experiments</a>
 </div>
 
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
 <script>
 'use strict';
 
@@ -154,86 +156,15 @@ function pcg(v) {
 }
 const rnd = (seed, i, k) => pcg((seed ^ pcg((i * 8 + k) >>> 0)) >>> 0) / 4294967296;
 
-// ---------- Metronome (as 11, with a look-ahead read) ----------
-const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
-const LANES = ['kick', 'snare', 'hat'];
-const metronome = {
-  ctx: null, master: null, bus: null, noise: null, timer: 0, playing: false,
-  nextTime: 0, step: 0, hits: [], steps: [],
-  start() {
-    if (!this.ctx) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      this.ctx = ctx;
-      this.bus = ctx.createGain(); this.master = ctx.createGain();
-      this.bus.connect(this.master); this.master.connect(ctx.destination);
-      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-      const d = this.noise.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    }
-    this.ctx.resume();
-    this.master.gain.value = params.muted ? 0 : 0.35;
-    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
-    this.playing = true;
-    this.timer = setInterval(() => this.schedule(), 25);
-    this.schedule();
-  },
-  stop() { clearInterval(this.timer); this.playing = false; },
-  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
-  schedule() {
-    while (this.nextTime < this.ctx.currentTime + 0.1) {
-      this.queueStep(this.step, this.nextTime);
-      this.nextTime += 60 / params.bpm / 4; this.step++;
-    }
-    const old = this.ctx.currentTime - 1;
-    this.hits = this.hits.filter(h => h.time > old);
-    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
-  },
-  queueStep(step, time) {
-    const inBar = step % (params.bpb * 4);
-    this.steps.push({ time, step });
-    for (const lane of LANES) {
-      if (params[lane][inBar % 16] !== 'x') continue;
-      const vel = inBar === 0 ? 1.0 : 0.7;
-      this.hits.push({ lane, time, vel });
-      this.click(lane, time, vel);
-    }
-  },
-  click(lane, t, vel) {
-    const ctx = this.ctx, g = ctx.createGain();
-    g.connect(this.bus);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
-    let src;
-    if (lane === 'kick') {
-      src = ctx.createOscillator();
-      src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08);
-      src.connect(g);
-    } else {
-      src = ctx.createBufferSource(); src.buffer = this.noise;
-      const f = ctx.createBiquadFilter();
-      f.type = lane === 'snare' ? 'bandpass' : 'highpass';
-      f.frequency.value = lane === 'snare' ? 1800 : 8000;
-      src.connect(f); f.connect(g);
-    }
-    const end = t + TAU[lane] * 4;
-    g.gain.exponentialRampToValueAtTime(0.001, end);
-    src.start(t); src.stop(end + 0.01);
-  },
-  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
-  // levels and the bar position at the moment the listener hears them (plus `lead` seconds)
-  read(lead = 0) {
-    const out = { kick: 0, snare: 0, hat: 0, bars: -1 };
-    if (!this.ctx) return out;
-    const now = this.ctx.currentTime - this.latency() + lead;
-    for (const h of this.hits) {
-      const dt = now - h.time;
-      if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane]));
-    }
-    let last = null;
-    for (const s of this.steps) if (s.time <= now) last = s;
-    if (last) out.bars = (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / (params.bpb * 4);
-    return out;
-  },
-};
+// ---------- clock (experiments/clock.js, #132) and audio-in (batch A, #135) ----------
+// The copied metronome is gone: beats, bars, BPM and phase come from the shared clock (?clock=…, default: its
+// metronome, the same clicks as before), and the kick/snare/hat levels from audio-in (?audio=…, default 'clock':
+// the clock's own clicks, the same numbers as clock.read()). metronome.hits, .steps, .ctx and .latency() are
+// unchanged, so the page's sync log reads them as before. Each frame: audio.frameStart(now) first, then
+// audio.due(BEAT_LANES) right after the read, which logs each hit the visuals reached in __qa.beatLog.
+const metronome = Clock.create({ source: query.get('clock') || 'metronome', settings: params, hitStep: false });
+const BEAT_LANES = ['kick', 'snare', 'hat'];   // kick → bass, camera and magnets; snare and hat → the tracks and strings
+const audio = AudioIn.create({ clock: metronome, source: query.get('audio') || 'clock' }).start();
 
 // ---------- the physics, in JS (drives the uniforms; QA recomputes from it) ----------
 // Fireball: an almond of overlap, short axis along b. Transverse axes accelerate at a = A/R0
@@ -953,6 +884,7 @@ function logEvent(e, now) {
 }
 function stepTime(step) { const s = metronome.steps.find(x => x.step === step); return s ? s.time : null; }
 function frame(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt (clock port)
   requestAnimationFrame(frame);
   try { draw(now); }
   catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
@@ -961,7 +893,8 @@ const qaState = { scene: null, bar: 0, lastEvent: null, lastJet: null, drawnTrac
 function draw(now) {
   resize();
   const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
-  const L = metronome.read(params.lead / 1000);
+  const L = Object.assign(metronome.read(params.lead / 1000), params.lead ? {} : audio.read());   // bars from the clock; kick/snare/hat from audio-in (the clock's look-ahead read when lead is set)
+  audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
   bassEnv = Math.max(L.kick, bassEnv * Math.exp(-dt / 0.25));   // the bass: the kick's slow envelope
   const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb) + (window.__qaShift || 0);   // __qaShift: forceDrop moves the clock (QA, #88)
   window.__qaNowBars = bars;
@@ -1286,6 +1219,10 @@ window.__qa = {
   loss: () => params.loss,
   bunchPos, ringPoint, camS, ringR: RING_R, pipeR: PIPE_R, calR: CAL_R, cs: CS,
 };
+// clock port: the shared hooks (beatLog, frame, beatLanes, audioIn); __qa.events stays this page's sync log
+// (perfHeard/perfDrawn, check-events) followed by the clock's hits and jumps for the shared beat-match row
+AudioIn.qa(audio, window.__qa);
+Object.defineProperty(window.__qa, 'events', { get: () => [...events, ...Clock.qaEvents(metronome)], configurable: true, enumerable: true });
 const q = k => query.get(k);
 if (q('scene') && (q('scene') === 'auto' || SCENES.includes(q('scene')))) params.scene = q('scene');
 for (const k of ['bars', 'bpm', 'n', 'gain', 'tau', 'loss', 'lead', 'seed']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }

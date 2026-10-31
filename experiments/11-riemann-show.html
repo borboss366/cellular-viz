@@ -91,6 +91,8 @@
   <a href="../index.html">← all experiments</a>
 </div>
 
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
 <script>
 'use strict';
 
@@ -207,93 +209,15 @@ function approxPi(x, K) {
 const PRIMES = []; for (let n = 2; n <= 100; n++) if (PRIMES.every(p => n % p)) PRIMES.push(n);
 const piExact = x => PRIMES.filter(p => p <= x).length;
 
-// =====================================================================================
-// Metronome (as 04) with an analyser for the scope's waveform
-// =====================================================================================
-const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
-const LANES = ['kick', 'snare', 'hat'];
-const metronome = {
-  ctx: null, master: null, bus: null, analyser: null, noise: null, timer: 0, playing: false,
-  nextTime: 0, step: 0, hits: [], steps: [], wave: new Float32Array(2048),
-  start() {
-    if (!this.ctx) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      this.ctx = ctx;
-      this.bus = ctx.createGain(); this.master = ctx.createGain(); this.analyser = ctx.createAnalyser();
-      this.analyser.fftSize = 2048;
-      this.bus.connect(this.master); this.bus.connect(this.analyser); this.master.connect(ctx.destination);
-      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-      const d = this.noise.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    }
-    this.ctx.resume();
-    this.master.gain.value = params.muted ? 0 : 0.35;
-    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
-    this.playing = true;
-    this.timer = setInterval(() => this.schedule(), 25);
-    this.schedule();
-  },
-  stop() { clearInterval(this.timer); this.playing = false; },
-  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
-  schedule() {
-    while (this.nextTime < this.ctx.currentTime + 0.1) {
-      this.queueStep(this.step, this.nextTime);
-      this.nextTime += 60 / params.bpm / 4; this.step++;
-    }
-    const old = this.ctx.currentTime - 1;
-    this.hits = this.hits.filter(h => h.time > old);
-    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
-  },
-  queueStep(step, time) {
-    const inBar = step % (params.bpb * 4);
-    this.steps.push({ time, step });
-    for (const lane of LANES) {
-      if (params[lane][inBar % 16] !== 'x') continue;
-      const vel = inBar === 0 ? 1.0 : 0.7;
-      this.hits.push({ lane, time, vel });
-      this.click(lane, time, vel);
-    }
-  },
-  click(lane, t, vel) {
-    const ctx = this.ctx, g = ctx.createGain();
-    g.connect(this.bus);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
-    let src;
-    if (lane === 'kick') {
-      src = ctx.createOscillator();
-      src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08);
-      src.connect(g);
-    } else {
-      src = ctx.createBufferSource(); src.buffer = this.noise;
-      const f = ctx.createBiquadFilter();
-      f.type = lane === 'snare' ? 'bandpass' : 'highpass';
-      f.frequency.value = lane === 'snare' ? 1800 : 8000;
-      src.connect(f); f.connect(g);
-    }
-    const end = t + TAU[lane] * 4;
-    g.gain.exponentialRampToValueAtTime(0.001, end);
-    src.start(t); src.stop(end + 0.01);
-  },
-  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
-  // lead (s): read the drums that far ahead of the heard clock (hits are booked 100 ms ahead).
-  read(lead = 0) {
-    const out = { kick: 0, snare: 0, hat: 0, bars: -1 };
-    if (!this.ctx) return out;
-    const now = this.ctx.currentTime - this.latency() + lead;
-    for (const h of this.hits) {
-      const dt = now - h.time;
-      if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane]));
-    }
-    let last = null;
-    for (const s of this.steps) if (s.time <= now) last = s;
-    if (last) {
-      const sixteenth = 60 / params.bpm / 4, frac = Math.min(1, (now - last.time) / sixteenth);
-      out.bars = (last.step + frac) / (params.bpb * 4);
-    }
-    if (this.analyser && !lead) this.analyser.getFloatTimeDomainData(this.wave);
-    return out;
-  },
-};
+// ---------- clock (experiments/clock.js, #132) and audio-in (batch A, #135) ----------
+// The copied metronome is gone: beats, bars, BPM and phase come from the shared clock (?clock=…, default: its
+// metronome, the same clicks as before), and the kick/snare/hat levels from audio-in (?audio=…, default 'clock':
+// the clock's own clicks, the same numbers as clock.read()). metronome.hits, .steps, .ctx and .latency() are
+// unchanged, so the page's sync log reads them as before. Each frame: audio.frameStart(now) first, then
+// audio.due(BEAT_LANES) right after the read, which logs each hit the visuals reached in __qa.beatLog.
+const metronome = Clock.create({ source: query.get('clock') || 'metronome', settings: params, analyser: true, hitStep: false });
+const BEAT_LANES = ['kick', 'snare', 'hat'];   // kick → ribbon, camera and scope sparks; snare and hat → the canyon (the scope keeps metronome.wave)
+const audio = AudioIn.create({ clock: metronome, source: query.get('audio') || 'clock' }).start();
 
 // The warped clock: the k-th zero on the k-th downbeat.
 const LOOP_ZEROS = 30;
@@ -1143,6 +1067,7 @@ function logHits(scene, now) {
 // so one bad frame can never stop the show (it froze on frame 1 before: QA box, #40).
 const errors = [];
 function frame(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt (clock port)
   requestAnimationFrame(frame);
   try { draw(now); }
   catch (e) {
@@ -1152,7 +1077,8 @@ function frame(now) {
 }
 function draw(now) {
   resize();
-  const L = metronome.read();
+  const L = Object.assign(metronome.read(), audio.read());   // bars and bpm from the clock, kick/snare/hat from audio-in
+  audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
   // rAF's timestamp can be a little older than clockStart on the first frame: never negative.
   const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb);
   const tc = tAtBars(bars);
@@ -1224,6 +1150,10 @@ window.__qa = {
   primeSteps: PRIMES.filter(p => p <= primesCache.x1), approxPi, piExact, hardyZ, zetaHalf,
   scene: null, tCam: null, bars: null, errors, events,
 };
+// clock port: the shared hooks (beatLog, frame, beatLanes, audioIn); __qa.events stays this page's sync log
+// (perfHeard/perfDrawn, check-events) followed by the clock's hits and jumps for the shared beat-match row
+AudioIn.qa(audio, window.__qa);
+Object.defineProperty(window.__qa, 'events', { get: () => [...events, ...Clock.qaEvents(metronome)], configurable: true, enumerable: true });
 
 const q = k => query.get(k);
 if (q('scene') && (q('scene') === 'auto' || SCENES.includes(q('scene')))) params.scene = q('scene');
