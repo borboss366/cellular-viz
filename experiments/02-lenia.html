@@ -92,6 +92,8 @@
   <a href="../index.html">← all experiments</a>
 </div>
 
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
 <script>
 'use strict';
 
@@ -634,8 +636,18 @@ function step(drawBrush, dt) {
   cur = next;
 }
 
+// ---------- clock and audio input (clock port, wiring only; ruled 30 Oct, #95) ----------
+// This page doesn't respond to music, so nothing it draws reads these yet, and it keeps no __qa.beatLog (the shared
+// beat-match row is ℹ️ here). The clock is never started on this page: no Play, no AudioContext, no sound. A later
+// version maps beats (clockState) or lanes (audio.read()) without touching the wiring.
+const clockQuery = new URLSearchParams(location.search);
+const clock = Clock.create({ source: clockQuery.get('clock') || 'metronome' });
+const audio = AudioIn.create({ clock, source: clockQuery.get('audio') || 'clock' });
+let clockState = clock.read();   // { beats, bars, phase, bpm, … }, read again at the top of every frame
+
 let frames = 0, fps = 0, lastFpsTime = performance.now(), autoFrame = 0;
 function frame(now) {
+  clockState = clock.read();   // the shared clock (wiring only: not used by the drawing)
   resize();
   if (params.paused) {
     if (pointer.down) step(true, 0);
