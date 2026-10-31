@@ -224,6 +224,7 @@
     def('beatLog', () => a.beatLog);
     def('frame', () => a.frame);
     def('beatLanes', () => a.beatLanes);
+    def('clockLate', () => (a.clock.lateStats ? a.clock.lateStats : null));   // #95: steps booked late (should be 0), largest frame gap, look-ahead
     def('events', () => (root.Clock && root.Clock.qaEvents ? root.Clock.qaEvents(a.clock) : [...(a.clock.hitLog || a.clock.events || [])]));
     def('audioIn', () => ({ source: a.source, requested: a.requested, fallback: a.fallback, status: a.status, error: a.error,
       warning: a.warning, device: a.device,

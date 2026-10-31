@@ -19,6 +19,13 @@
 //   metronome.setVisualOffset(ms) / .visualOffsetMs   → −100 … +200 ms, + = visuals earlier (#95 6498683963)
 //   metronome.now()              → the clock's time on the audio clock that the visuals show now (heard + offset)
 //   Clock.qaEvents(metronome)    → events and jumps merged, sorted by time (for __qa.events)
+//   metronome.lateStats          → { late, lateMaxMs, maxGapMs, lookAheadMs } (#95: heavy 4K frames; __qa.clockLate)
+//
+// Booking under long frames (#95, 31 Oct): read() and hitsDue() call schedule() first, at most once per frame, so a
+// frame longer than the 25 ms timer can't push the booking past its look-ahead; the look-ahead is
+// clamp(2 × p95 of the last 120 frame gaps, 0.1, 0.25) s (0.25 until 10 frames are seen). A step booked after its own
+// time counts in lateStats.late (should stay 0). Clocks made with timers:false (the caller drives schedule(), as the
+// node parity tests do) keep today's fixed 0.1 s and don't pump unless created with pump:true.
 //
 // Times are on the AudioContext clock (ctx.currentTime), as today's hits are. read() reports the clock at the
 // moment the listener hears it (currentTime − latency()), moved earlier in the music by visualOffsetMs: a positive
@@ -31,6 +38,7 @@
   const LANES = ['kick', 'snare', 'hat'];
   const BANDS = ['sub', 'kick', 'low', 'lowMid', 'mid', 'upperMid', 'presence', 'air'];
   const OFFSET_MIN = -100, OFFSET_MAX = 200, JUMPS_KEPT = 256, HITLOG_KEPT = 4096;
+  const AHEAD_MIN = 0.1, AHEAD_MAX = 0.25, GAPS_KEPT = 120, GAPS_MIN = 10, PUMP_MIN_MS = 4;
   const SOURCES_LATER = /^(file:|line$)/;
 
   function defaultContext() {
@@ -61,6 +69,8 @@
     };
     const makeContext = opts.audioContext || defaultContext;
     const useTimers = opts.timers !== false, hitStep = opts.hitStep !== false, withAnalyser = !!opts.analyser;
+    const pumpOn = opts.pump !== undefined ? !!opts.pump : useTimers;
+    const perfNow = opts.now || (() => (root.performance ? root.performance.now() : Date.now()));
 
     // ---------- the metronome (as 11/13/19), moved ----------
     const clock = {
@@ -68,6 +78,7 @@
       ctx: null, master: null, bus: null, analyser: null, noise: null, timer: 0, playing: false,
       nextTime: 0, step: 0, hits: [], steps: [], wave: withAnalyser ? new Float32Array(2048) : null,
       jumps: [], beatShift: 0, oneAt: 0, offsetMs: 0, hitLog: [], dueAt: 0,
+      lookAhead: pumpOn ? AHEAD_MAX : AHEAD_MIN, gaps: [], lastPump: null, late: 0, lateMaxMs: 0, maxGapMs: 0,
       start() {
         if (!this.ctx) {
           const ctx = makeContext();
@@ -83,6 +94,7 @@
         this.ctx.resume(); this.master.gain.value = settings.muted ? 0 : 0.35;
         this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = []; this.hitLog = []; this.dueAt = 0;
         this.beatShift = 0; this.oneAt = 0;
+        this.gaps = []; this.lastPump = null; this.late = 0; this.lateMaxMs = 0; this.maxGapMs = 0; this.lookAhead = pumpOn ? AHEAD_MAX : AHEAD_MIN;
         this.playing = true;
         if (useTimers) this.timer = setInterval(() => this.schedule(), 25);
         this.schedule();
@@ -90,7 +102,11 @@
       stop() { clearInterval(this.timer); this.playing = false; },
       setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
       schedule() {
-        while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / settings.bpm / 4; this.step++; }
+        const ct = this.ctx.currentTime;
+        while (this.nextTime < ct + this.lookAhead) {
+          if (this.nextTime < ct) { this.late++; this.lateMaxMs = Math.max(this.lateMaxMs, (ct - this.nextTime) * 1000); }   // booked after its own time
+          this.queueStep(this.step, this.nextTime); this.nextTime += 60 / settings.bpm / 4; this.step++;
+        }
         const old = this.ctx.currentTime - 1;
         this.hits = this.hits.filter(h => h.time > old);
         while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
@@ -128,6 +144,25 @@
       },
       latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
 
+      // once per frame from read() and hitsDue(): note the frame gap, adapt the look-ahead, book what's due (#95)
+      pump() {
+        if (!pumpOn || !this.ctx || !this.playing) return;
+        const p = perfNow();
+        if (this.lastPump !== null) {
+          const gap = p - this.lastPump;
+          if (gap < PUMP_MIN_MS) return;   // the same frame (read() then hitsDue())
+          this.gaps.push(gap); if (this.gaps.length > GAPS_KEPT) this.gaps.shift();
+          this.maxGapMs = Math.max(this.maxGapMs, gap);
+          if (this.gaps.length >= GAPS_MIN) {
+            const s = [...this.gaps].sort((a, b) => a - b), p95 = s[Math.min(s.length - 1, Math.floor(0.95 * s.length))];
+            this.lookAhead = Math.max(AHEAD_MIN, Math.min(AHEAD_MAX, 2 * p95 / 1000));
+          }
+        }
+        this.lastPump = p;
+        this.schedule();
+      },
+      get lateStats() { return { late: this.late, lateMaxMs: +this.lateMaxMs.toFixed(2), maxGapMs: +this.maxGapMs.toFixed(2), lookAheadMs: Math.round(this.lookAhead * 1000) }; },
+
       // ---------- the shared clock on top ----------
       get events() { return this.hits; },
       // the hits the visuals have reached since the last call (time ≤ now()), each handed out once; lanes filters them
@@ -135,6 +170,7 @@
       hitsDue(lanes, at) {
         const out = [];
         if (!this.ctx) return out;
+        this.pump();
         const now = Number.isFinite(at) ? at : this.now();
         while (this.dueAt < this.hitLog.length && this.hitLog[this.dueAt].time <= now) {
           const h = this.hitLog[this.dueAt++];
@@ -167,6 +203,7 @@
           bpm: settings.bpm, confidence: 1, level: 0, bands: {} };
         for (const b of BANDS) out.bands[b] = 0;
         if (!this.ctx) return out;
+        this.pump();
         const now = this.now(o) + lead;
         for (const h of this.hits) { const dt = now - h.time; if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane])); }
         const b0 = this.baseBeats(now);

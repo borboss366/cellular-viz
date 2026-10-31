@@ -270,3 +270,53 @@ test('sources not built yet fall back to the metronome and say so', () => {
     assert.equal(m.settings.bpm, 120); assert.equal(m.read().beats, -1, 'not started: beats −1 as today');
   } finally { console.warn = orig; }
 });
+
+// ---------- #95 (31 Oct): booking under long frames (16b morphs 72 ms late at 4K) ----------
+function longFrames({ frameMs, seconds, bpm, pump = true, perFrameTimer = false }) {
+  const ctx = fakeContext(0), s = SETTINGS(); s.bpm = bpm;
+  let wall = 0;
+  const c = Clock.create({ settings: s, audioContext: () => ctx, timers: false, pump, now: () => wall });
+  ctx.currentTime = 0.3; c.start();
+  let prevNow = -Infinity, handed = 0, firstRead = 0;
+  for (let f = 1; f * frameMs / 1000 <= seconds; f++) {
+    ctx.currentTime = 0.3 + f * frameMs / 1000; wall = f * frameMs;
+    if (perFrameTimer) c.schedule();   // the old way: a 25 ms timer starved to one call per long frame
+    c.read();
+    const now = c.now();
+    for (const h of c.hitsDue()) { handed++; if (h.time <= now && h.time > prevNow) firstRead++; }
+    prevNow = now;
+  }
+  const due = c.hitLog.filter(h => h.time <= prevNow).length;
+  return { c, handed, firstRead, due };
+}
+
+test('#95 truth: 150 ms frames at 174 bpm for 30 s: no late bookings, every hit handed out at the first read at or after its time', () => {
+  const { c, handed, firstRead, due } = longFrames({ frameMs: 150, seconds: 30, bpm: 174 });
+  assert.equal(c.lateStats.late, 0, `late bookings ${JSON.stringify(c.lateStats)}`);
+  assert.ok(handed > 30 * 174 / 60 * 2, `${handed} hits`);   // ≥ kicks + hats over 30 s
+  assert.equal(handed, due, 'every hit up to the last read handed out');
+  assert.equal(firstRead, handed, 'each at the first read at or after its time');
+  assert.equal(c.lateStats.lookAheadMs, 250);
+  assert.equal(Math.round(c.lateStats.maxGapMs), 150);
+});
+
+test('#95: the same frames with only a starved timer (fixed 0.1 s look-ahead, no pump) book late, and lateStats says so', () => {
+  const { c } = longFrames({ frameMs: 150, seconds: 10, bpm: 174, pump: false, perFrameTimer: true });
+  assert.ok(c.lateStats.late > 0 && c.lateStats.lateMaxMs > 0, JSON.stringify(c.lateStats));
+});
+
+test('#95: look-ahead = clamp(2 × p95 of the last 120 frame gaps, 0.1, 0.25); 0.25 until 10 frames are seen', () => {
+  assert.equal(longFrames({ frameMs: 1000 / 60, seconds: 0.1, bpm: 120 }).c.lateStats.lookAheadMs, 250);   // 6 frames: not enough yet
+  assert.equal(longFrames({ frameMs: 1000 / 60, seconds: 5, bpm: 120 }).c.lateStats.lookAheadMs, 100);
+  assert.equal(longFrames({ frameMs: 90, seconds: 5, bpm: 120 }).c.lateStats.lookAheadMs, 180);
+  const { c } = longFrames({ frameMs: 1000 / 60, seconds: 5, bpm: 120 });
+  assert.equal(c.lateStats.late, 0);
+});
+
+test('#95: schedule() runs at most once per frame (read() then hitsDue() in the same frame count one gap)', () => {
+  const ctx = fakeContext(0); let wall = 0;
+  const c = Clock.create({ settings: SETTINGS(), audioContext: () => ctx, timers: false, pump: true, now: () => wall });
+  ctx.currentTime = 0.3; c.start();
+  for (let f = 1; f <= 20; f++) { wall = f * 16; ctx.currentTime = 0.3 + f * 0.016; c.read(); c.hitsDue(); c.read({ raw: true }); }
+  assert.equal(c.gaps.length, 19);
+});
