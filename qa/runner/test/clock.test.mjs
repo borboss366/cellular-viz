@@ -240,7 +240,7 @@ test('hand commands are visible on the next read and logged as jumps, never as h
   assert.deepEqual(c.jumps.map(j => j.kind), ['nudge', 'setOne', 'x2', 'x2', 'half', 'reset']);
   assert.ok(c.events.every(e => e.type === 'hit' && 'lane' in e));
   const q = Clock.qaEvents(c), t = e => e.type === 'jump' ? e.at : e.time;
-  assert.equal(q.length, c.events.length + c.jumps.length);
+  assert.equal(q.length, c.hitLog.length + c.jumps.length);   // batch A: qaEvents lists every hit since start (hitLog), not the last second
   for (let i = 1; i < q.length; i++) assert.ok(t(q[i]) >= t(q[i - 1]));
 });
 
