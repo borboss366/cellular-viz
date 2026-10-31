@@ -5,12 +5,15 @@
 // metronome and say so in clock.requested / clock.fallback.
 //
 //   const metronome = Clock.create({ source: qs.get('clock') || 'metronome', settings });
-//   // settings is the page's live object: bpm, bpb, muted and the kick/snare/hat patterns ('x' = hit)
+//   // settings is the page's live object: bpm, bpb, muted and the kick/snare/hat patterns ('x' = hit);
+//   // optional swing (0..1 of a 16th, odd 16ths late) and human (± ms of jitter per hit)
 //   metronome.start() .stop() .setMuted(m) .latency() .playing .ctx .hits
 //   metronome.read()             → { beats, bars, phase, bar, beatInBar, bpm, confidence, kick, snare, hat, level, bands }
 //   metronome.read({ raw: true }) → the same, without the visual offset (for analysis and tests)
 //   metronome.read(lead)         → 11's form: lead seconds ahead of the heard clock
-//   metronome.events             → drum hits only: [{ type: 'hit', lane, time, vel, step }]
+//   metronome.events             → drum hits only: [{ type: 'hit', lane, time, vel, step }] (the last second)
+//   metronome.hitLog             → every hit booked since start(), capped at 4096, never pruned (batch A, #95 6533515449)
+//   metronome.hitsDue(lanes)     → hits whose time ≤ now() not handed out yet; each hit is handed out once per clock
 //   metronome.jumps              → hand commands: [{ type: 'jump', at, kind, fromBeats, toBeats }]
 //   metronome.fix(kind, arg)     → kind: 'nudge' (arg ms, + = clock ahead) | 'x2' | 'half' | 'setOne' | 'reset'
 //   metronome.setVisualOffset(ms) / .visualOffsetMs   → −100 … +200 ms, + = visuals earlier (#95 6498683963)
@@ -27,7 +30,7 @@
   const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
   const LANES = ['kick', 'snare', 'hat'];
   const BANDS = ['sub', 'kick', 'low', 'lowMid', 'mid', 'upperMid', 'presence', 'air'];
-  const OFFSET_MIN = -100, OFFSET_MAX = 200, JUMPS_KEPT = 256;
+  const OFFSET_MIN = -100, OFFSET_MAX = 200, JUMPS_KEPT = 256, HITLOG_KEPT = 4096;
   const SOURCES_LATER = /^(file:|line$)/;
 
   function defaultContext() {
@@ -64,7 +67,7 @@
       source, requested, fallback, settings,
       ctx: null, master: null, bus: null, analyser: null, noise: null, timer: 0, playing: false,
       nextTime: 0, step: 0, hits: [], steps: [], wave: withAnalyser ? new Float32Array(2048) : null,
-      jumps: [], beatShift: 0, oneAt: 0, offsetMs: 0,
+      jumps: [], beatShift: 0, oneAt: 0, offsetMs: 0, hitLog: [], dueAt: 0,
       start() {
         if (!this.ctx) {
           const ctx = makeContext();
@@ -78,7 +81,7 @@
           const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
         }
         this.ctx.resume(); this.master.gain.value = settings.muted ? 0 : 0.35;
-        this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
+        this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = []; this.hitLog = []; this.dueAt = 0;
         this.beatShift = 0; this.oneAt = 0;
         this.playing = true;
         if (useTimers) this.timer = setInterval(() => this.schedule(), 25);
@@ -92,14 +95,28 @@
         this.hits = this.hits.filter(h => h.time > old);
         while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
       },
+      // steps (and so beats) stay on the grid; each hit may be moved off it by settings.swing (odd 16ths late by
+      // swing × a 16th, 04/06/07/09) and settings.human (± human ms of jitter per hit), never before currentTime.
+      // At swing 0 and human 0 the hit time is the grid time exactly, as before.
       queueStep(step, time) {
-        const inBar = step % (settings.bpb * 4); this.steps.push({ time, step, dur: 60 / settings.bpm / 4 });
+        const inBar = step % (settings.bpb * 4), dur = 60 / settings.bpm / 4; this.steps.push({ time, step, dur });
+        const swing = (step % 2 && settings.swing) ? settings.swing * dur : 0, human = settings.human || 0;
         for (const lane of LANES) {
           if (settings[lane][inBar % 16] !== 'x') continue;
           const vel = inBar === 0 ? 1 : 0.7;
-          this.hits.push(hitStep ? { type: 'hit', lane, time, vel, step } : { type: 'hit', lane, time, vel });
-          this.click(lane, time, vel);
+          let t = time;
+          if (swing || human) t = Math.max(this.ctx.currentTime, time + swing + (human ? (Math.random() * 2 - 1) * human / 1000 : 0));
+          const hit = hitStep ? { type: 'hit', lane, time: t, vel, step } : { type: 'hit', lane, time: t, vel };
+          this.hits.push(hit); this.logHit(hit);
+          this.click(lane, t, vel);
         }
+      },
+      // hitLog stays in time order (jittered hits can land out of order), never before the hits already handed out
+      logHit(hit) {
+        const L = this.hitLog; let i = L.length;
+        while (i > this.dueAt && L[i - 1].time > hit.time) i--;
+        L.splice(i, 0, hit);
+        if (L.length > HITLOG_KEPT) { L.shift(); this.dueAt = Math.max(0, this.dueAt - 1); }
       },
       click(lane, t, vel) {
         const ctx = this.ctx, g = ctx.createGain(); g.connect(this.bus || this.master);
@@ -113,6 +130,18 @@
 
       // ---------- the shared clock on top ----------
       get events() { return this.hits; },
+      // the hits the visuals have reached since the last call (time ≤ now()), each handed out once; lanes filters them
+      // at: the visual time to hand out up to (default now()); audio-in passes its frame's time so lag and dt agree
+      hitsDue(lanes, at) {
+        const out = [];
+        if (!this.ctx) return out;
+        const now = Number.isFinite(at) ? at : this.now();
+        while (this.dueAt < this.hitLog.length && this.hitLog[this.dueAt].time <= now) {
+          const h = this.hitLog[this.dueAt++];
+          if (!lanes || lanes.includes(h.lane)) out.push(h);
+        }
+        return out;
+      },
       get visualOffsetMs() { return this.offsetMs; },
       setVisualOffset(ms) {
         if (Number.isFinite(ms)) this.offsetMs = Math.max(OFFSET_MIN, Math.min(OFFSET_MAX, ms));
@@ -181,7 +210,7 @@
 
   // events and jumps as one list in time order, for a page's __qa.events
   function qaEvents(clock) {
-    return [...clock.events, ...clock.jumps].sort((a, b) => (a.type === 'jump' ? a.at : a.time) - (b.type === 'jump' ? b.at : b.time));
+    return [...(clock.hitLog || clock.events), ...clock.jumps].sort((a, b) => (a.type === 'jump' ? a.at : a.time) - (b.type === 'jump' ? b.at : b.time));
   }
 
   const api = { create, qaEvents, TAU, LANES, BANDS, OFFSET_MIN, OFFSET_MAX };

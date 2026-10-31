@@ -208,10 +208,10 @@ function checkFor(tree, page) {   // qa/runner/checks.json (trusted, next to thi
   return fs.existsSync(p) ? { script: p, args: (c.args || []).map(String) } : null;
 }
 const reportPath = dir => path.relative(CFG.qaHome, path.join(dir, 'check.md'));   // e.g. qa/12-mass-gap/checks/2026-10-28-2051/check.md
-function failCheck(dir, rows) {   // a check.md the builds log can read, for runs that never wrote one
+function failCheck(dir, rows, mark = '❌') {   // a check.md the builds log can read, for runs that never wrote one
   fs.mkdirSync(dir, { recursive: true });
   const clean = s => String(s).replace(/[|\n\r]/g, ' ').slice(0, 280);
-  fs.writeFileSync(path.join(dir, 'check.md'), `# runner\n\n| gate | result | detail |\n|---|---|---|\n` + rows.map(([g, d]) => `| ${clean(g)} | ❌ | ${clean(d)} |`).join('\n') + '\n');
+  fs.writeFileSync(path.join(dir, 'check.md'), `# runner\n\n| gate | result | detail |\n|---|---|---|\n` + rows.map(([g, d]) => `| ${clean(g)} | ${mark} | ${clean(d)} |`).join('\n') + '\n');
 }
 // the GPU readings taken before the build go with its result: gpu-gate.json and an ℹ️ row in check.md
 function saveGate(dir, gate) {
@@ -359,13 +359,26 @@ async function runBuild(job, gate) {
     await must('tar', ['-xf', path.join(tmp, 'pages.tar'), '-C', tree]);
     const check = checkFor(tree, job.page);
     const fallback = path.join(CFG.qaHome, 'qa', job.page, 'checks', `${stamp}-runner`);
-    if (!check) {
-      failCheck(fallback, [[`a check script for ${job.page}`, `none on ${CFG.checksRef} (qa/check-${job.page.slice(0, 2)}.mjs or qa/runner/checks.json)`]]);
-      await builds('finish', '--id', id, '--check', fallback, '--status', 'failed', '--waiting', 'qa-box', '--note', 'no check script yet');
-      return;
-    }
     const nm = path.join(CFG.qaHome, 'qa', 'node_modules');
     if (fs.existsSync(nm)) fs.symlinkSync(nm, path.join(tree, 'qa', 'node_modules'), 'dir');
+    if (!check) {
+      // no check script of its own yet (01–08): the shared gates alone (#88 flash and GPU, the clock port's beat match),
+      // the missing own check as an ℹ️ row (VIZ research, 30 Oct: batch port PRs use plain page builds)
+      failCheck(fallback, [[`own check script for ${job.page}`, `none on ${CFG.checksRef} (qa/check-${job.page.slice(0, 2)}.mjs or qa/runner/checks.json): shared gates only`]], 'ℹ️');
+      if (!CFG.shared) {
+        await builds('finish', '--id', id, '--check', fallback, '--status', 'failed', '--waiting', 'qa-box', '--note', 'no check script yet');
+        return;
+      }
+      await builds('set', '--id', id, '--status', 'running');
+      const t0 = Date.now();
+      try { await runShared({ run, tree, page: job.page, dest: fallback, timeoutMs: CFG.sharedMin * 60e3, log }); }
+      catch (e) { log(`shared gates for ${job.page} could not run: ${e.message}`); }
+      log(`shared gates for ${job.page} (no own check) took ${((Date.now() - t0) / 60e3).toFixed(1)} min`);
+      saveGate(fallback, gate);
+      report = reportPath(fallback);
+      result = (await builds('finish', '--id', id, '--check', fallback)).trim();
+      return;
+    }
     await builds('set', '--id', id, '--status', 'running');
     const r = await run('node', [check.script, '--experiments', path.join(tree, 'experiments'), ...check.args], { cwd: tree, timeoutMs: CFG.timeoutMin * 60e3 });
     // the check prints its result folder last; copy it into QA box's tree, where the viewer and builds.mjs look
