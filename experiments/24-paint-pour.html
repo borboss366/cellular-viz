@@ -4,8 +4,9 @@
 
   Poured acrylic, exact: Mathematical Marbling (Lu, Jaffer, Jin et al. 2012). Every drop, tine comb and vortex is a
   closed-form map of the plane, traced backwards per pixel in one fragment pass, so edges stay crisp and every op is
-  invertible. A thick-paint pass on top: bevelled blobs from the distance to the nearest boundary, a glossy key light,
-  coloured veins, paint strings during the pour.
+  invertible. A thick-paint pass on top: the newer paint of every boundary a raised rounded lip, the older a crease,
+  ripples that ride with the paint, one soft key light (sheen, wet glint, contact shadows), coloured veins, paint
+  strings during the pour.
   The song (16-bar sections): bar 0 the drop (a big drop, rings, a burst of cells); bars 0–7 groove (kick → tine comb,
   N → E → S → W bar by bar; snare → vortex; a bass swirl a bar); 8–11 breakdown (slow N/S feather combs, no drops);
   12–15 build (a slow pour with strings). The scene is a #85 module (24-paint-pour.mjs) on the shared clock (clock.js).
@@ -18,7 +19,7 @@
   triggerEnv, bars, beats, bpm, errors.
   ?macro1..4=0..1, ?palette=canada|psych60s|psych70s, ?veinColour=lime|yellow|black|none, ?seed=, ?opsMax=, ?dropScale=,
   ?cellsPerDrop=, ?blackShare=, ?tines=, ?tineSharp=, ?vortexOn=0, ?pourRate=, ?strings=, ?veinWidth=, ?bevelWidth=,
-  ?bakeScale=, ?traceScale=, ?qa=flat, ?freeze=1, ?startBar=, ?bpm=, ?muted=1, ?clock=metronome, ?labels=0.
+  ?ripple=0..1, ?bakeScale=, ?traceScale=, ?qa=flat, ?freeze=1, ?startBar=, ?bpm=, ?muted=1, ?clock=metronome, ?labels=0.
 -->
 <html lang="en">
 <head>
@@ -188,7 +189,7 @@ $('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? d
 const controls = () => ({
   macro: params.macro, ...macroInputs(params.macro), seed: params.seed, palette: params.palette, veinColour: params.veinColour, opsMax: params.opsMax,
   dropScale: params.dropScale, cellsPerDrop: params.cellsPerDrop, blackShare: params.blackShare, tines: params.tines, tineSharp: params.tineSharp,
-  vortexOn: params.vortexOn, pourRate: params.pourRate, strings: params.strings, veinWidth: params.veinWidth, bevelWidth: params.bevelWidth,
+  vortexOn: params.vortexOn, pourRate: params.pourRate, strings: params.strings, veinWidth: params.veinWidth, bevelWidth: params.bevelWidth, ripple: params.ripple,
   bakeScale: params.bakeScale, flat: params.flat, freeze: params.freeze, pattern: { kick: params.kick, snare: params.snare, hat: params.hat },
 });
 window.__modules = { '24-paint-pour': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
