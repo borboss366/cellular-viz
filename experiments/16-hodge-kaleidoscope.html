@@ -109,6 +109,8 @@
   <a href="../index.html">← all experiments</a>
 </div>
 
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -182,71 +184,30 @@ function check(opts = {}) {
 const settledSeen = new Set(), glowCache = new Map();
 
 // ================================================================================================
-// metronome (as 14/19) + a 7-band analyser on what is heard (clicks, or the mic)
+// clock (experiments/clock.js, #132) + audio-in (#135) + a 7-band analyser on what is heard (clicks, mic or line)
 // ================================================================================================
-const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
-const LANES = ['kick', 'snare', 'hat'];
-const metronome = {
-  ctx: null, master: null, noise: null, timer: 0, playing: false, nextTime: 0, step: 0, hits: [], steps: [], analyser: null, mic: null,
-  ensure() {
-    if (this.ctx) return;
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    this.ctx = ctx; this.master = ctx.createGain(); this.master.connect(ctx.destination);
-    this.analyser = ctx.createAnalyser(); this.analyser.fftSize = 2048; this.analyser.smoothingTimeConstant = 0;
-    this.master.connect(this.analyser);
-    this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-    const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  },
-  start() {
-    this.ensure();
-    this.ctx.resume(); this.master.gain.value = params.muted ? 0 : 0.35;
-    this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = [];
-    this.playing = true; this.timer = setInterval(() => this.schedule(), 25); this.schedule();
-  },
-  stop() { clearInterval(this.timer); this.playing = false; },
-  setMuted(m) { if (this.master) this.master.gain.value = m ? 0 : 0.35; },
-  async useMic() {
-    this.ensure(); this.ctx.resume();
-    const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-    this.mic = this.ctx.createMediaStreamSource(s); this.mic.connect(this.analyser);
-  },
-  schedule() {
-    while (this.nextTime < this.ctx.currentTime + 0.1) { this.queueStep(this.step, this.nextTime); this.nextTime += 60 / params.bpm / 4; this.step++; }
-    const old = this.ctx.currentTime - 1;
-    this.hits = this.hits.filter(h => h.time > old);
-    while (this.steps.length > 2 && this.steps[1].time < old) this.steps.shift();
-  },
-  queueStep(step, time) {
-    const inBar = step % (params.bpb * 4); this.steps.push({ time, step });
-    for (const lane of LANES) { if (params[lane][inBar % 16] !== 'x') continue; const vel = inBar === 0 ? 1 : 0.7; this.hits.push({ lane, time, vel }); this.click(lane, time, vel); }
-  },
-  click(lane, t, vel) {
-    const ctx = this.ctx, g = ctx.createGain(); g.connect(this.master);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.003);
-    let src;
-    if (lane === 'kick') { src = ctx.createOscillator(); src.frequency.setValueAtTime(150, t); src.frequency.exponentialRampToValueAtTime(60, t + 0.08); src.connect(g); }
-    else { src = ctx.createBufferSource(); src.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = lane === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = lane === 'snare' ? 1800 : 8000; src.connect(f); f.connect(g); }
-    const end = t + TAU[lane] * 4; g.gain.exponentialRampToValueAtTime(0.001, end); src.start(t); src.stop(end + 0.01);
-  },
-  latency() { return this.ctx ? Math.min(0.3, this.ctx.outputLatency || this.ctx.baseLatency || 0) : 0; },
-  read() {
-    const out = { kick: 0, snare: 0, hat: 0, beats: -1 };
-    if (!this.ctx) return out;
-    const now = this.ctx.currentTime - this.latency();
-    for (const h of this.hits) { const dt = now - h.time; if (dt >= 0) out[h.lane] = Math.max(out[h.lane], h.vel * (1 - Math.exp(-dt / 0.005)) * Math.exp(-dt / TAU[h.lane])); }
-    let last = null; for (const s of this.steps) if (s.time <= now) last = s;
-    if (last) out.beats = (last.step + Math.min(1, (now - last.time) / (60 / params.bpm / 4))) / 4;
-    return out;
-  },
+// The copied metronome is gone: beats and drum levels come from the shared clock (?clock=…, default its metronome,
+// the same clicks as before; metronome.read() gives the same beats/kick/snare/hat as the old one). The heard sound
+// comes from the shared audio input (?audio=clock|mic|line, ?device=… picks the line-in by label); its AnalyserNode
+// replaces this page's own, at the same fftSize 2048 and smoothing 0, so the 7 log bands read exactly as before.
+// audio.frameStart(now) opens each frame and audio.due(BEAT_LANES) follows the read (__qa.beatLog, beat-match row).
+const metronome = Clock.create({ source: query.get('clock') || 'metronome', settings: params, hitStep: false });
+const BEAT_LANES = ['kick', 'snare', 'hat'];   // kick and snare light the gems, the hat is logged; all on the heard frame
+const AUDIO_SRC = query.get('audio') || 'clock';
+const audio = AudioIn.create({ clock: metronome, source: AUDIO_SRC, fftSize: 2048 }).start();
+const heardAnalyser = () => {   // the shared analyser once the clock has its AudioContext (after ▶ Play or 🎤)
+  if (!audio.attach() || !audio.analyser) return null;
+  if (audio.analyser.smoothingTimeConstant !== 0) audio.analyser.smoothingTimeConstant = 0;   // as this page's own was
+  return audio.analyser;
 };
 // 7 log bands, 40 Hz – 16 kHz; level from dB, attack 30 ms, release 180 ms (no strobe: tails ≥ 120 ms)
 const BAND_EDGES = Array.from({ length: 8 }, (_, i) => 40 * Math.pow(16000 / 40, i / 7));
 const bandLevel = new Float32Array(7);
 let fbuf = null;
 function readBands(dt) {
-  const A = metronome.analyser;
+  const A = heardAnalyser();
   const raw = new Float32Array(7);
-  if (A && (metronome.playing || metronome.mic)) {
+  if (A && (metronome.playing || AUDIO_SRC !== 'clock')) {
     if (!fbuf) fbuf = new Float32Array(A.frequencyBinCount);
     A.getFloatFrequencyData(fbuf);
     const hz = metronome.ctx.sampleRate / A.fftSize;
@@ -608,7 +569,9 @@ function sync() {
 }
 $('play').onclick = () => { if (metronome.playing) { metronome.stop(); $('play').textContent = '▶ Play'; } else { metronome.start(); clockStart = performance.now(); $('play').textContent = '■ Stop'; } };
 $('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
-$('mic').onclick = async () => { try { await metronome.useMic(); $('mic').classList.add('on'); } catch (e) { $('mic').textContent = 'mic: ' + e.message; } };
+// 🎤: the shared audio input reads the mic (?audio=mic, or ?audio=line&device=… for line-in); the page reloads with it
+$('mic').onclick = () => { const p = new URLSearchParams(location.search); p.set('audio', AUDIO_SRC === 'mic' ? 'clock' : 'mic'); location.search = p.toString(); };
+if (AUDIO_SRC === 'mic' || AUDIO_SRC === 'line') $('mic').classList.add('on');
 $('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen()).catch(() => {}); };
 $('labels').onclick = () => { params.labels = !params.labels; sync(); };
 $('flat').onclick = () => { params.bands = params.bands === 'flat' ? 'audio' : 'flat'; sync(); };
@@ -660,6 +623,7 @@ function logEvent(e, now) {
 const stepTime = step => { const s = metronome.playing && metronome.steps.find(x => x.step === step); return s ? s.time : null; };
 function logAt(type, bar, extra, now) { const t = stepTime(Math.round(bar * params.bpb * 4)); if (t !== null) logEvent({ type, bar, ...extra, tBeat: t }, now); }
 function frame(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt (clock port)
   requestAnimationFrame(frame);
   try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; }
 }
@@ -667,7 +631,8 @@ let pingA = true;
 function draw(now) {
   resize();
   const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
-  const L = metronome.read();
+  const L = metronome.read();   // the shared clock (the same beats and drum levels as the old metronome.read())
+  audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
   const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * params.bpm / 60);
   const bars = beats / params.bpb;
   readBands(dt);
@@ -677,7 +642,7 @@ function draw(now) {
   if (metronome.playing && step !== st.lastStep) {
     st.lastStep = step;
     const inBar = step % (params.bpb * 4);
-    for (const lane of LANES) if (params[lane][inBar % 16] === 'x') {
+    for (const lane of BEAT_LANES) if (params[lane][inBar % 16] === 'x') {
       logAt(lane, step / (params.bpb * 4), {}, now);
       if (lane === 'kick') { st.kickEnv = 1; st.kicks++; if (params.autoTrigger > 0 && st.kicks % params.autoTrigger === 0) trigger(); }
       if (lane === 'snare') st.snareEnv = 1;
@@ -798,6 +763,10 @@ window.__qa = { errors, events, presets: PRESET_NAMES, hodge, table: TABLE, bett
   triggers: [{ slot: 1, name: 'next shape', key: 'Z', does: 'next shape on the next beat' }], triggerLog,
   pressTrigger: (i, holdMs = 0) => { if (i !== 1) return false; trigger(); return true; },
   simulate, rateTruths, morphs, morphSync, liveTruths };
+// clock port: the shared hooks (beatLog, frame, beatLanes, audioIn); __qa.events stays this page's sync log
+// (perfHeard/perfDrawn, truth 7) followed by the clock's hits and jumps for the shared beat-match row
+AudioIn.qa(audio, window.__qa);
+Object.defineProperty(window.__qa, 'events', { get: () => [...events, ...Clock.qaEvents(metronome)], configurable: true, enumerable: true });
 const q = k => query.get(k);
 const pick = q('variant') || q('preset');
 if (pick && (pick === 'auto' || PRESET_NAMES.includes(pick))) params.preset = pick;

@@ -104,6 +104,8 @@
   <a href="../index.html">← all experiments</a>
 </div>
 
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
 <script>
 'use strict';
 
@@ -442,10 +444,21 @@ const audio = {
 };
 const player = document.getElementById('player');
 
+// Clock port (batch D, wiring only: this page has no metronome and no beat grid, so its beat-match row stays ℹ️).
+// The AudioContext is the shared clock's, started silent (muted, no pattern: it books no hits). The 🎤 mic now comes
+// from the shared audio input, so ?audio=line&device=blackhole picks a line-in by label like every other page; its
+// analyser has this page's fftSize 1024 and smoothing 0.5, so E, M and the beat read exactly as before. The 🎵 file
+// stays this page's own (an <audio> element with a seek bar), on the same AudioContext.
+const clock = Clock.create({ source: 'metronome', hitStep: false,
+  settings: { bpm: 120, bpb: 4, muted: true, kick: '', snare: '', hat: '' } });
+const MIC_SRC = query.get('audio') === 'line' ? 'line' : 'mic';
+const micIn = AudioIn.create({ clock, source: MIC_SRC, fftSize: 1024 });
+
 // Must run inside a tap: phones only let an AudioContext start from a user gesture.
 function ensureAudio() {
+  if (!clock.ctx) clock.start();   // the shared AudioContext (silent clock)
   if (!audio.ctx) {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = clock.ctx;
     audio.ctx = ctx;
     audio.analyser = ctx.createAnalyser();
     audio.analyser.fftSize = 1024;
@@ -484,14 +497,14 @@ async function loadBpm() {
 }
 
 function currentSource() {
-  return audio.kind === 'mic' ? audio.micSource : audio.kind === 'file' ? audio.elementSource : null;
+  return audio.kind === 'mic' ? micIn.analyser : audio.kind === 'file' ? audio.elementSource : null;
 }
 
 // Unhook whatever is playing; the analysers stay.
 function stopAudio() {
   const src = currentSource();
   if (src) src.disconnect();
-  if (audio.micStream) audio.micStream.getTracks().forEach(t => t.stop());
+  if (audio.kind === 'mic') micIn.stop();   // closes the shared input's stream
   audio.micStream = audio.micSource = null;
   if (audio.kind === 'file') player.pause();
   audio.kind = 'off';
@@ -509,20 +522,17 @@ function useSource(kind, node) {
   setAudioButtons();
 }
 
+// 🎤: the shared audio input opens the mic (or the line-in), raw, not to the speakers; its analyser is the beat's
 async function startMic() {
   ensureAudio();
   stopAudio();
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-    audio.micStream = stream;
-    audio.micSource = audio.ctx.createMediaStreamSource(stream);
-    useSource('mic', audio.micSource);
-  } catch (err) {
-    audio.kind = 'off';
-    hudNote = 'mic blocked: ' + err.name;
-    setAudioButtons();
-  }
+  micIn.start();
+  if (!micIn.analyser) { hudNote = 'mic: no audio context'; setAudioButtons(); return; }
+  audio.kind = 'mic';
+  hudNote = '';
+  micIn.analyser.connect(audio.mute);   // keep it pulled by the audio clock (silent)
+  if (audio.lowpass) micIn.analyser.connect(audio.lowpass);
+  setAudioButtons();
 }
 
 function startFile(file) {
@@ -541,12 +551,14 @@ player.addEventListener('play', () => { if (audio.ctx) audio.ctx.resume(); });
 // Beat pulse, once per frame (see the comment at the top).
 function updateBeat(dt) {
   const a = audio;
-  if (a.kind === 'off' || !a.analyser) {
+  const an = a.kind === 'mic' ? micIn.analyser : a.analyser;   // the mic is read on the shared input's analyser
+  if (a.kind === 'mic' && micIn.status === 'error') { hudNote = 'mic blocked: ' + micIn.error; a.kind = 'off'; setAudioButtons(); }
+  if (a.kind === 'off' || !an) {
     a.E = 0;
     a.beat *= Math.exp(-dt / 0.15);
     return;
   }
-  a.analyser.getByteFrequencyData(a.freq);
+  an.getByteFrequencyData(a.freq);
   let sum = 0;
   for (let i = 1; i <= a.bassBins; i++) sum += a.freq[i];
   a.E = sum / a.bassBins / 255;
@@ -716,6 +728,7 @@ function step(dt, mu, blob) {
 let frames = 0, fps = 0, lastFpsTime = performance.now(), lastFrame = performance.now();
 let lastHud = 0, lastInject = 0, prevBeat = 0, injects = 0;
 function frame(now) {
+  micIn.frameStart(now);   // __qa.frame, t, dt (clock port)
   const dt = Math.min(0.1, Math.max(0, (now - lastFrame) / 1000));
   lastFrame = now;
   resize();
@@ -769,6 +782,11 @@ function frame(now) {
   }
   requestAnimationFrame(frame);
 }
+
+// clock port: the shared hooks (beatLog, frame, beatLanes, events, audioIn). No beat lanes: the row is ℹ️ here.
+window.__qa = window.__qa || {};
+AudioIn.qa(micIn, window.__qa);
+Object.defineProperty(window.__qa, 'beat', { get: () => ({ kind: audio.kind, E: audio.E, M: audio.M, beat: audio.beat, input: micIn.status }), configurable: true, enumerable: true });
 
 loadFromUrl();
 requestAnimationFrame(frame);
