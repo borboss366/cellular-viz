@@ -11,15 +11,16 @@
   N → E → S → W bar by bar; snare → vortex; a bass swirl a bar); 8–11 breakdown (slow N/S feather combs, no drops);
   12–15 build (a slow pour with strings). The scene is a #85 module (24-paint-pour.mjs) on the shared clock (clock.js).
 
-  Controls (#85): macro1 bass swirl, macro2 tine depth, macro3 thick paint (0 = flat marbling), macro4 camera drift.
-  Triggers: 1 big drop (beat), 2 cells (now), 3 vortex (beat), 4 comb (beat); keys Z X C V.
+  Controls (#85): macro1 bass swirl, macro2 tine depth, macro3 thick paint (0 = flat marbling), macro4 pour colour
+  (was camera drift, now ?camDrift=). Triggers: 1 big drop (beat), 2 pour here (now, hold = bigger; was cells),
+  3 vortex (beat), 4 comb (beat); keys Z X C V. Touch or click the picture to pour there; hold to pour more.
   window.__qa: check() (truths 1, 3 on the GPU, 4, 5, 9, 10), ops, opLog, fwd(x,y), inv(x,y), traceGPU(points),
   traceCPU(points), colourAt(x,y), colourGrid(x0,y0,x1,y1,n), forceDrop() (panic.js), forceBake(), bakes, pour, view,
-  palette, events() (the clock's hits and jumps), setMacro(i,v), macros, pressTrigger(i,holdMs), triggers, triggerLog,
+  palette, events() (the clock's hits and jumps), setMacro(i,v), macros, pressTrigger(i,holdMs,at), releaseTrigger(i), triggers, triggerLog,
   triggerEnv, bars, beats, bpm, errors.
   ?macro1..4=0..1, ?palette=canada|psych60s|psych70s, ?veinColour=lime|yellow|black|none, ?seed=, ?opsMax=, ?dropScale=,
   ?cellsPerDrop=, ?blackShare=, ?tines=, ?tineSharp=, ?vortexOn=0, ?pourRate=, ?strings=, ?veinWidth=, ?bevelWidth=,
-  ?ripple=0..1, ?bakeScale=, ?traceScale=, ?qa=flat, ?freeze=1, ?startBar=, ?bpm=, ?muted=1, ?clock=metronome, ?labels=0.
+  ?ripple=0..1, ?camDrift=0..2, ?qaPour=1 (QA: a 4 s pour at bar 3 of the run), ?bakeScale=, ?traceScale=, ?qa=flat, ?freeze=1, ?startBar=, ?bpm=, ?muted=1, ?clock=metronome, ?labels=0.
 -->
 <html lang="en">
 <head>
@@ -33,6 +34,7 @@
   body { display: flex; flex-direction: column; }
   #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 16 / 9;
     margin: 0 auto; flex: none; background: #000; }
+  #c { touch-action: none; cursor: crosshair; }
   #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
   #wrap:fullscreen #hud { display: none; }
   canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
@@ -72,10 +74,10 @@
   <div class="row"><label for="m1">1 bass swirl</label><input id="m1" type="range" min="0" max="1" step="0.01"><output id="m1Out"></output></div>
   <div class="row"><label for="m2">2 tine depth</label><input id="m2" type="range" min="0" max="1" step="0.01"><output id="m2Out"></output></div>
   <div class="row"><label for="m3">3 thick paint</label><input id="m3" type="range" min="0" max="1" step="0.01"><output id="m3Out"></output></div>
-  <div class="row"><label for="m4">4 camera drift</label><input id="m4" type="range" min="0" max="1" step="0.01"><output id="m4Out"></output></div>
+  <div class="row"><label for="m4">4 pour colour</label><input id="m4" type="range" min="0" max="1" step="0.01"><output id="m4Out"></output></div>
   <h3>Triggers</h3>
   <div class="buttons">
-    <button id="t1">Z big drop</button><button id="t2">X cells</button><button id="t3">C vortex</button><button id="t4">V comb</button>
+    <button id="t1">Z big drop</button><button id="t2">X pour here (hold)</button><button id="t3">C vortex</button><button id="t4">V comb</button>
   </div>
   <h3>Detail</h3>
   <div class="buttons"><button id="palette">palette: canada</button><button id="vein">veins: lime</button><button id="flat">flat</button><button id="bake">bake now</button></div>
@@ -97,7 +99,7 @@
 <script src="panic.js"></script>
 <script src="clock.js"></script>
 <script type="module">
-import scene, { MACROS, TRIGGERS, DETAIL, macroInputs } from './24-paint-pour.mjs';
+import scene, { MACROS, TRIGGERS, DETAIL, macroInputs, pourColourOf } from './24-paint-pour.mjs';
 import * as K from './24-marble.mjs';
 const $ = id => document.getElementById(id);
 const query = new URLSearchParams(location.search);
@@ -156,11 +158,25 @@ function clockRead(now) {
 }
 
 // ---------- controls (#85 contract) ----------
-const macroText = i => params.macro[i].toFixed(2);
+const macroText = i => i === 3 ? (() => { const p = K.palette(params.palette); return p.colours[pourColourOf(params.macro[3], p)]; })() : params.macro[i].toFixed(2);
 function setMacro(i, v) { if (!(i >= 1 && i <= 4)) return null; params.macro[i - 1] = Math.max(0, Math.min(1, +v)); sync(); return params.macro[i - 1]; }
 for (let i = 1; i <= 4; i++) $('m' + i).addEventListener('input', e => setMacro(i, parseFloat(e.target.value)));
-function pressTrigger(i, holdMs = 0) { if (!(i >= 1 && i <= 4)) return false; return scene.press(i, holdMs, performance.now()); }
-for (let i = 1; i <= 4; i++) $('t' + i).onclick = () => pressTrigger(i);
+// at (trigger 2): where to pour, screen fractions { x, y } with y up; none = a seeded point
+function pressTrigger(i, holdMs = 0, at = null) { if (!(i >= 1 && i <= 4)) return false; return scene.press(i, holdMs, performance.now(), at); }
+function releaseTrigger(i) { return scene.release(i, performance.now()); }
+for (const i of [1, 3, 4]) $('t' + i).onclick = () => pressTrigger(i);
+// pour here holds: the button, the X key and the picture itself (touch or click where to pour)
+$('t2').addEventListener('pointerdown', e => { e.preventDefault(); pressTrigger(2); });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) $('t2').addEventListener(ev, () => releaseTrigger(2));
+let pouring = null;
+$('c').addEventListener('pointerdown', e => {
+  if (pouring !== null) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  pouring = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); e.preventDefault();
+  pressTrigger(2, 0, { x: (e.clientX - r.left) / r.width, y: 1 - (e.clientY - r.top) / r.height });
+});
+for (const ev of ['pointerup', 'pointercancel']) $('c').addEventListener(ev, e => { if (e.pointerId === pouring) { pouring = null; releaseTrigger(2); } });
+window.addEventListener('keyup', e => { if (e.key.toLowerCase() === 'x') releaseTrigger(2); });
 window.addEventListener('keydown', e => {
   if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.target && (e.target.tagName === 'TEXTAREA' || (e.target.tagName === 'INPUT' && e.target.type === 'text'))) return;
@@ -189,7 +205,7 @@ $('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? d
 const controls = () => ({
   macro: params.macro, ...macroInputs(params.macro), seed: params.seed, palette: params.palette, veinColour: params.veinColour, opsMax: params.opsMax,
   dropScale: params.dropScale, cellsPerDrop: params.cellsPerDrop, blackShare: params.blackShare, tines: params.tines, tineSharp: params.tineSharp,
-  vortexOn: params.vortexOn, pourRate: params.pourRate, strings: params.strings, veinWidth: params.veinWidth, bevelWidth: params.bevelWidth, ripple: params.ripple,
+  vortexOn: params.vortexOn, pourRate: params.pourRate, strings: params.strings, veinWidth: params.veinWidth, bevelWidth: params.bevelWidth, ripple: params.ripple, camDrift: params.camDrift,
   bakeScale: params.bakeScale, flat: params.flat, freeze: params.freeze, pattern: { kick: params.kick, snare: params.snare, hat: params.hat },
 });
 window.__modules = { '24-paint-pour': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
@@ -204,6 +220,7 @@ function resize() {
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; scene.resize(w, h); }
 }
 let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
+const qaPour = { on: q('qaPour') === '1', t0: null, state: 0 };
 function frame(now) {
   requestAnimationFrame(frame);
   try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; if (window.__panicError) window.__panicError(); }
@@ -215,6 +232,12 @@ function draw(now) {
   if (clock.playing && clock.ctx) clock.schedule();
   const c = clockRead(now);
   window.__qaNowBars = c.beats / c.bpb;
+  if (qaPour.on) {   // ?qaPour=1: pour here at a fixed point from bar 3 to bar 5 of the run (the clock going back restarts it)
+    const b = c.beats / c.bpb;
+    if (qaPour.t0 === null || b < qaPour.t0 - 0.01) { qaPour.t0 = b; qaPour.state = 0; }
+    if (qaPour.state === 0 && b - qaPour.t0 >= 3) { pressTrigger(2, 0, { x: 0.4, y: 0.55 }); qaPour.state = 1; }
+    else if (qaPour.state === 1 && b - qaPour.t0 >= 5) { releaseTrigger(2); qaPour.state = 2; }
+  }
   scene.frame({ target: null, t: now / 1000, beats: c.beats, bpb: c.bpb, bpm: params.bpm, hits: c.hits, controls: controls(), now });
   const v = scene.qa.view;
   Object.assign(window.__qa, { beats: c.beats, bars: c.beats / c.bpb, bpm: params.bpm, view: v, metrics: scene.qa.metrics });
@@ -236,7 +259,7 @@ const S = scene.qa;
 let checked = null;
 const check = (fresh = false) => { const t = performance.now(); if (fresh || !checked || t - checked.t > 1000) checked = { t, r: S.check() }; return checked.r; };
 expose({
-  errors, setMacro, pressTrigger, triggers: TRIGGERS, events: () => Clock.qaEvents(clock), clock, get clockSmooth() { return { ...smooth }; },
+  errors, setMacro, pressTrigger, releaseTrigger, triggers: TRIGGERS, events: () => Clock.qaEvents(clock), clock, get clockSmooth() { return { ...smooth }; },
   get macros() { return MACROS.map((m, i) => ({ slot: m.slot, name: m.name, label: m.label, value: params.macro[i], default: m.default, shown: macroText(i) })); },
   get triggerLog() { return S.triggerLog; }, get triggerEnv() { return S.triggerEnv; },
   // truth 8 counts only the ops admitted inside the runner's measured window (window.__qaFTon true): after it the

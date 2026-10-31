@@ -23,6 +23,8 @@ import * as K from './24-marble.mjs';
 const MAXOPS = 128, BAKE_TILES = 32, BAKE_HEADROOM = 16, HISTORY_MAX = 4096;
 const BASE_RECT = [-1.3, -0.85, 2.6, 1.7];   // world rect the base layer covers (the camera's whole range + margin)
 const BASE_DIST_K = 0.04;                     // world units per unit of the base's alpha (distance to a boundary)
+// pour here (trigger 2): the longest hold, the shortest pour (a tap), and the share of the drops' flash bounds
+const POUR_MAX_S = 8, POUR_MIN_BEATS = 0.5, POUR_SHARE = 0.7;
 
 // ---------------------------------------------------------------- shaders
 const VS = `#version 300 es
@@ -293,13 +295,27 @@ export function createScene() {
 
   // a fresh canvas: no paint, no ops (the page calls it on Play, so the song starts from the ground)
   function reset() {
-    Object.assign(st, { live: [], pending: [], history: [], opLog: [], lastBeat: null, bake: null, bakes: [], pour: null, trig: [], lastTrigDrop: -1e9, kickBeat: undefined, lastDropColour: undefined, lastBakeEnd: undefined });
+    Object.assign(st, { live: [], pending: [], history: [], opLog: [], lastBeat: null, bake: null, bakes: [], pour: null, trig: [], lastTrigDrop: -1e9, kickBeat: undefined, lastDropColour: undefined, lastBakeEnd: undefined, userPour: null, pourRelease: false });
     base.cur = -1;
   }
-  function press(slot, holdMs = 0, now = performance.now()) {
-    const e = { t: now, slot: `trigger${slot}`, holdMs, firedAt: null, quantisedTo: null, fired: null };
+  // at (page extra, trigger 2 only): where to pour, as screen fractions { x, y } (0–1, y up); none = a seeded point.
+  // Trigger 2 is a hold: holdMs > 0 pours for that long; 0 pours until release(2) (or POUR_MAX_S).
+  function press(slot, holdMs = 0, now = performance.now(), at = null) {
+    const e = { t: now, slot: `trigger${slot}`, holdMs, firedAt: null, quantisedTo: null, fired: null, at };
     st.triggerLog.push(e); if (st.triggerLog.length > 256) st.triggerLog.shift();
     st.trig.push({ slot, e });
+    return true;
+  }
+  function endUserPour(beats, tRelease) {
+    const o = st.userPour; if (!o) return;
+    const d = Math.min(o.dur, Math.max(POUR_MIN_BEATS, beats - o.start));
+    o.dur = d; o.r = Math.sqrt(o.pour * d / Math.PI); o.held = false;   // the same object is live and in the history
+    if (st.userPourEvent && tRelease !== undefined) st.userPourEvent.holdMs = tRelease - st.userPourEvent.t;
+    st.userPour = null;
+  }
+  function release(slot, now = performance.now()) {
+    if (slot !== 2) return false;
+    st.pourRelease = true; st.pourReleaseT = now;
     return true;
   }
 
@@ -327,7 +343,8 @@ export function createScene() {
       if (ops.length) queue(ops, now, e.kind);
     }
     st.lastBeat = Math.max(st.lastBeat, beats);
-    // --- triggers: 1 drop (beat; ignored while a trigger drop grows), 2 cells (now), 3 vortex (beat), 4 comb (beat)
+    // --- triggers: 1 drop (beat; ignored while a trigger drop grows), 2 pour here (now, a hold), 3 vortex (beat),
+    // 4 comb (beat). Their ops are logged with cause trigger<N>, so truth 9 replays the song without them
     const nextBeat = Math.floor(beats + 1e-6) + 1;
     for (const { slot, e } of st.trig.splice(0)) {
       const at = slot === 2 ? beats : nextBeat;
@@ -340,13 +357,30 @@ export function createScene() {
           o.dur = K.growSeconds(o.r / K.cameraAt(at, bpb, inp.camDrift).zoom, st.pal.L[o.colour] - st.pal.L[0], 60 / bpm) * bpm / 60;
         }
         st.lastTrigDrop = at + (ops[0] ? ops[0].dur : 1);
-      } else if (slot === 2) ops = K.opsFor({ ...ev, kind: 'drop', beat: at - bpb }, inp, st.pal).filter(o => o.role === 'cell').slice(0, 12).map((o, j) => ({ ...o, start: at + j * 0.08 }));
+      } else if (slot === 2) {
+        // pour here: one drop growing at a constant area rate (the pour law) from the touched point while held, in the
+        // pour colour (macro 4). Its rate is POUR_SHARE of the flash bounds the song's drops grow at: the 10° window
+        // rise (2 A_w / ΔL) and the push on the paint around it (A_MOVE), both in screen heights² a second
+        const cam = K.cameraAt(at, bpb, inp.camDrift), beatSec = 60 / bpm, colour = pourColourOf(ctl.pourColour ?? 0.5, st.pal);
+        let cx, cy;
+        if (e.at) { cx = cam.x + (e.at.x - 0.5) * (fw / fh) * cam.zoom; cy = cam.y + (e.at.y - 0.5) * cam.zoom; }
+        else { const r = K.rngAt(inp.seed, 8, at); cx = cam.x + (r() - 0.5) * 0.5 * cam.zoom; cy = cam.y + (r() - 0.5) * 0.4 * cam.zoom; }
+        const dL = Math.max(0.05, Math.abs(st.pal.L[colour] - st.pal.L[0]));
+        const rate = POUR_SHARE * Math.min(2 * K.WINDOW_AREA / dL, K.A_MOVE) * beatSec * cam.zoom * cam.zoom;   // area a beat
+        const maxDur = POUR_MAX_S / beatSec, dur = e.holdMs > 0 ? Math.min(maxDur, Math.max(POUR_MIN_BEATS, e.holdMs / 1000 / beatSec)) : maxDur;
+        if (st.userPour) endUserPour(beats);   // one pour at a time: a new press ends the last
+        ops = [{ type: K.DROP, start: at, dur, cx, cy, r: Math.sqrt(rate * dur / Math.PI), pour: rate, colour, role: 'pour', held: !(e.holdMs > 0) }];
+        st.userPour = ops[0]; st.userPourEvent = e;
+      }
       else if (slot === 3) ops = K.opsFor({ ...ev, kind: 'snare', beat: at }, { ...inp, vortexOn: true }, st.pal).map(o => ({ ...o, r0: o.r0 * 2, z: o.z * 2, lam: o.lam * 2, hmin: o.hmin * 2, dur: 0.5 }));
       else if (slot === 4) ops = K.opsFor({ ...ev, kind: 'kick', beat: at }, { ...inp, tines: 1 }, st.pal);
       e.fired = ops.length > 0; e.quantisedTo = perfOf(at); e.target = at;
       for (const o of ops) o.trigger = slot;
       queue(ops, now, `trigger${slot}`);
     }
+    // the pour ends at release (at least POUR_MIN_BEATS), or on its own at POUR_MAX_S
+    if (st.pourRelease) { if (st.userPour && st.userPour.held) endUserPour(beats, st.pourReleaseT); st.pourRelease = false; }
+    if (st.userPour && beats >= st.userPour.start + st.userPour.dur) st.userPour = null;
     admit(beats, now, msPerBeat);
     for (const e of st.triggerLog) if (e.fired && e.firedAt === null && e.target !== undefined && beats >= e.target) e.firedAt = now;
     // --- bake: when the ops near opsMax (or forced), bake the finished oldest ops in 8 row tiles, then drop them
@@ -421,7 +455,7 @@ export function createScene() {
       growing, baking: !!st.bake, bases: st.bakes.length, cam, palette: st.pal.name };
     st.metrics = { ops: st.live.length, history: st.history.length, kick };
     st.triggerEnv[0] = st.live.some(o => o.trigger === 1 && K.progress(o, beats) < 1) ? 1 - K.progress(st.live.find(o => o.trigger === 1 && K.progress(o, beats) < 1), beats) : 0;
-    st.triggerEnv[1] = st.live.filter(o => o.trigger === 2 && K.progress(o, beats) < 1).length / 12;
+    st.triggerEnv[1] = st.userPour ? 1 : 0;
     st.triggerEnv[2] = st.live.some(o => o.trigger === 3 && K.progress(o, beats) < 1) ? 1 : 0;
     st.triggerEnv[3] = st.live.some(o => o.trigger === 4 && K.progress(o, beats) < 1) ? 1 : 0;
     st.beats = beats;
@@ -538,7 +572,7 @@ export function createScene() {
   return {
     id: '24-paint-pour', title: '24 · Paint Pour',
     init, resize, frame, dispose, press, reset,
-    trigger(name) { const i = ['drop', 'cells', 'vortex', 'comb'].indexOf(name); return i >= 0 ? press(i + 1) : false; },
+    release, trigger(name) { const i = ['drop', 'pour', 'vortex', 'comb'].indexOf(name); return i >= 0 ? press(i + 1) : false; },
     qa: { get view() { return st.view; }, get metrics() { return st.metrics; }, get ops() { return opsView(); }, get opLog() { return st.opLog; },
       get bakes() { return st.bakes; }, get bakeFrames() { return st.bakeFrames || []; }, get pour() { return pourView(); }, get palette() { return st.pal; },
       get triggerLog() { return st.triggerLog; }, get triggerEnv() { return st.triggerEnv; },
@@ -547,15 +581,17 @@ export function createScene() {
 }
 
 // the #85 manifest: macros, triggers, detail inputs (the standalone page and the host read the same lists)
+// macro 4 → the pour colour: 0–1 across the palette's colours (index 0, the ground, is black)
+export function pourColourOf(m, pal) { const n = pal.colours.length; return Math.min(n - 1, Math.floor(Math.max(0, Math.min(1, m)) * n)); }
 export const MACROS = [
   { slot: 'macro1', name: 'swirl', label: 'bass swirl', default: 0.5, quantise: 'none' },
   { slot: 'macro2', name: 'tines', label: 'tine depth', default: 0.5, quantise: 'none' },
   { slot: 'macro3', name: 'paint', label: 'thick paint', default: 0.6, quantise: 'none' },
-  { slot: 'macro4', name: 'drift', label: 'camera drift', default: 0.5, quantise: 'none' },
+  { slot: 'macro4', name: 'pourColour', label: 'pour colour', default: 0.5, quantise: 'none' },   // was camera drift (now ?camDrift=)
 ];
 export const TRIGGERS = [
   { slot: 'trigger1', name: 'drop', label: 'big drop', key: 'Z', mode: 'tap', timing: 'beat', repeats: 'ignore', attackMs: 0, decayMs: 800 },
-  { slot: 'trigger2', name: 'cells', label: 'cells', key: 'X', mode: 'tap', timing: 'now', repeats: 'restart', attackMs: 0, decayMs: 600 },
+  { slot: 'trigger2', name: 'pour', label: 'pour here', key: 'X', mode: 'hold', timing: 'now', repeats: 'restart', attackMs: 0, decayMs: 600 },   // was cells
   { slot: 'trigger3', name: 'vortex', label: 'vortex', key: 'C', mode: 'tap', timing: 'beat', repeats: 'restart', attackMs: 0, decayMs: 250 },
   { slot: 'trigger4', name: 'comb', label: 'comb', key: 'V', mode: 'tap', timing: 'beat', repeats: 'restart', attackMs: 0, decayMs: 250 },
 ];
@@ -575,11 +611,12 @@ export const DETAIL = [
   { name: 'veinWidth', type: 'float', default: 0.9, min: 0.4, max: 3 },
   { name: 'bevelWidth', type: 'float', default: 14, min: 4, max: 30 },
   { name: 'ripple', type: 'float', default: 0.6, min: 0, max: 1 },
+  { name: 'camDrift', type: 'float', default: 1, min: 0, max: 2 },   // was macro 4 (2 × its 0.5 default = 1)
   { name: 'bakeScale', type: 'float', default: 1, min: 0.5, max: 2 },
 ];
 // macro value → inputs
 export function macroInputs(m) {
-  return { bassSwirl: m[0], tineDepth: 0.3 + 1.4 * m[1], paintHeight: 1.2 * m[2], gloss: 1.2 * m[2], camDrift: 2 * m[3] };
+  return { bassSwirl: m[0], tineDepth: 0.3 + 1.4 * m[1], paintHeight: 1.2 * m[2], gloss: 1.2 * m[2], pourColour: m[3] };
 }
 const scene = createScene();
 export default {
