@@ -21,7 +21,6 @@
     "t3": "__qa.check().t3.ok",
     "soundSpeed": "__qa.check().t3.speed",
     "soundSpeedPeak": "__qa.check().t3.speedPeak",
-    "soundSpeedAz": "__qa.check().t3.speedAz",
     "soundRelErr": "__qa.check().t3.relErr",
     "soundRadii": "JSON.stringify({ r1: __qa.check().t3.r1, r2: __qa.check().t3.r2 })",
     "liveMassSamples": "__qa.massHistory.filter(x => x.conserve).length",
