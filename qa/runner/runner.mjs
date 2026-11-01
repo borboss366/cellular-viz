@@ -35,6 +35,7 @@ import { addTodo } from './todo.mjs';
 import { audioDir, scanTracks } from './audio.mjs';
 import { settled } from './settle.mjs';
 import { defaultSwipe, swipeOnlyRaw, takeRequests } from './swipe.mjs';
+import { emit, buildEvent } from './events.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -57,6 +58,7 @@ const CFG = {
   shared: env('SHARED_CHECKS', '1') !== '0',   // after each page's own check: qa/check-shared.mjs (flash + GPU gates, #88)
   sharedMin: Math.max(1, +env('SHARED_TIMEOUT_MIN', '12') || 12),
   audioDir: audioDir(flag('audio-dir', '')),   // QA_AUDIO_DIR: the real tracks (#95 truth (b)); never in git or a run folder
+  events: env('QA_EVENTS_DIR', ''),            // build events for QA box's folder trigger (events.mjs); unset = none
   once: argv.includes('--once'),
 };
 if (!/^[\w.-]+\/[\w.-]+$/.test(CFG.repo)) throw new Error('bad repo ' + CFG.repo);
@@ -156,6 +158,12 @@ function dropPageJobsOfLabelled() {
   state.queue = state.queue.filter(j => !drop.includes(j));
   log(`dropped ${drop.length} queued page build${drop.length > 1 ? 's' : ''} of qa-ready PR${new Set(drop.map(j => j.pr)).size > 1 ? 's' : ''} #${[...new Set(drop.map(j => j.pr))].join(', #')} (${drop.map(j => j.page).join(', ')}): the experiment file runs instead`);
   save();
+}
+// a build event for QA box's folder trigger (events.mjs); never lets a write error stop a build
+function event(ev) {
+  if (!CFG.events) return;
+  try { const f = emit(CFG.events, ev); log(`event ${ev.type}${ev.pr ? ` #${ev.pr}` : ''}: ${path.basename(f)}`); }
+  catch (e) { log(`event ${ev.type} not written: ${e.message}`); }
 }
 // qa/swipe-ready.sh's requests (swipe.mjs): a swipe-only job for a build that finished green without a swipe, at the
 // commit it was built from (only while the PR is open and its experiment ran at that commit)
@@ -596,8 +604,11 @@ async function work() {
         polling = poll().then(() => { status.lastError = null; }, e => { status.lastError = e.message; log(`poll: ${e.message}`); }).finally(() => { polling = null; });
       }, CFG.poll * 1000);
       let gate;
-      const onWait = w => { status.waiting = { pr: job.pr, page: job.page, sha: job.sha.slice(0, 7), since: status.waiting && status.waiting.pr === job.pr && status.waiting.page === job.page ? status.waiting.since : new Date().toISOString(),
-        busy: w.busy ?? null, holders: (w.holders || []).map(h => `${h.pid} ${h.comm}`), lock: w.lock || null }; };
+      const onWait = w => {
+        if (!status.waiting || status.waiting.pr !== job.pr || status.waiting.page !== job.page) event(buildEvent('waiting', null, job, { busy: w.busy ?? null, lock: w.lock || null }));
+        status.waiting = { pr: job.pr, page: job.page, sha: job.sha.slice(0, 7), since: status.waiting && status.waiting.pr === job.pr && status.waiting.page === job.page ? status.waiting.since : new Date().toISOString(),
+        busy: w.busy ?? null, holders: (w.holders || []).map(h => `${h.pid} ${h.comm}`), lock: w.lock || null };
+      };
       try { gate = await gpuGate({ what: `runner #${job.pr} ${job.page}`, log, shouldStop: () => stopping || gone(), onWait }); }
       finally { clearInterval(pollTimer); if (polling) await polling; }
       status.gpu = gate;
@@ -619,7 +630,7 @@ async function work() {
         try { if (child) process.kill(-child.pid, 'SIGKILL'); } catch {}
       } });
       try { await (job.kind === 'experiment' ? runExperiment(job, gate) : job.kind === 'swipe' ? runSwipe(job) : runBuild(job, gate)); }
-      catch (e) { log(`build for #${job.pr} ${job.page} could not start: ${e.message}`); status.running = null; }
+      catch (e) { log(`build for #${job.pr} ${job.page} could not start: ${e.message}`); status.running = null; event(buildEvent('error', null, job, { error: e.message })); }
       finally {
         stopWatch();
         // #144: the GPU is free only when this job's processes have let go of the render node
@@ -645,10 +656,15 @@ async function work() {
         log(again ? `#${job.pr} ${job.page}: run discarded (GPU contended: ${contended}); requeued ${job.requeues}/2`
           : `#${job.pr} ${job.page}: GPU contended on 3 runs in a row (${contended}); not requeued, retry by hand`);
         if (!again) state.queue = state.queue.filter(j => j !== job);
+        event(buildEvent('discarded', rec.id && latestBuilds().find(x => x.id === rec.id), job, { contended, requeues: job.requeues, requeued: again }));
         save();
         continue;
       }
       if (fresh) await afterBuild(rec, gate, tr);
+      if (fresh) {   // the build's line as it stands now (settled, swipe), or an error when the runner itself broke
+        const b = rec.id && latestBuilds().find(x => x.id === rec.id);
+        event(buildEvent(/^error:/.test(String(rec.result)) ? 'error' : 'finished', b, job, { result: String(rec.result || '').slice(0, 200) }));
+      }
       state.queue = state.queue.filter(j => j !== job && !(j.pr === job.pr && j.page === job.page && j.sha === job.sha));
       save();
     }
