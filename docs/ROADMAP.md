@@ -16,8 +16,13 @@ The user is in charge ("for now I want to be in charge"): during step 1 the user
    - After that, every Millennium problem has at least one scene.
 2. **Clock** (see the Clock section below): one shared clock that follows the music, not a per-page metronome.
    - Offline beat grids for recorded tracks and DJ sets first, as beat grids along a tempo curve (blends, ramps and hand nudges; downbeats per beat).
+     - Beat This! (`qa/ref-beats.sh`) is the gridder, and a small converter writes its beats and downbeats as sidecar v2.
+     - The truth (b) reference and the rehearsal grid are the same file. Hand fixes go in the grid editor.
    - Then `experiments/clock.js`, with `?clock=metronome` as the default.
    - Then 13 Flow Lab moves over as the first page.
+   - **Then the live tracker** (`?clock=line`, clock PR 3), then `calibrate.html`.
+     - Spec: `docs/CELLULAR_VIZ_BRIEF_TRACKER.md` plus #95 comment 6560018120, whose amendments win.
+     - **Tracking issue: #173.**
 3. **New pages are born on the clock.** Everything else not yet built is built on the shared clock:
    - 15b–15f
    - 16a/c/d/e and the original 16
@@ -59,7 +64,7 @@ There is **one shared clock module**. The #85 host owns it, and standalone pages
 
 `read()` gains **bars and downbeats** next to beats and phase, because several things fire on the bar: TAKE (#85), the skater tricks (17/19) and 25's phrases.
 
-1. **Files first** (in step 1). Tracks and recorded DJ sets get an offline beat grid, ported from processing-llm's gridder (brief task 3).
+1. **Files first** (in step 1). Tracks and recorded DJ sets get an offline beat grid from Beat This! (`qa/ref-beats.sh`), converted to sidecar v2. processing-llm's gridder is not ported (#173).
    - The grid **follows tempo changes**, as beat grids along a tempo curve (blends, ramps and hand nudges; downbeats per beat). A recorded DJ set changes tempo at every mix, so the brief's single global tempo isn't enough.
    - Sidecar v2 is `beats: [{ms, pos, conf}]` plus `edits`, and v1 readers still work. On `file:`, `read()` uses a monotone-cubic warp: beats and phase = W⁻¹(t), bpm = 60/W′, and bar and beatInBar come from each beat's `pos` (#95).
    - Grid-editor fixes are local: move a beat, set "1" here, and a ranged nudge, ×2, ÷2 or tap.
@@ -104,7 +109,7 @@ There is **one shared clock module**. The #85 host owns it, and standalone pages
 | 22 Endless Labyrinth (first-person maze: Eller's algorithm + CA walls + raycast; not a Millennium page) | ⏳ not built. MVP spec on #37 (comment 6401505993, 25 Oct) |
 | Runners-up from the evangelist report: sandpile avalanches, Chladni plates, Turing reaction–diffusion | 💡 ideas |
 
-Rule for every MVP: art first, maths true underneath, a QA truth check, 60 fps at 1440p on the box, and drums drawn ≤ 40 ms after the sound. Until a page is on the shared clock with a passing `file:` run on the clock brief's truth (b) (real tracks with gridder sidecars; 13 Flow Lab first), the 40 ms is measured against the metronome's scheduled beat. After that it is measured against the onset in the audio waveform.
+Rule for every MVP: art first, maths true underneath, a QA truth check, 60 fps at 1440p on the box, and drums drawn ≤ 40 ms after the sound. Until a page is on the shared clock with a passing `file:` run on the clock brief's truth (b) (real tracks with Beat This! sidecars; 13 Flow Lab first), the 40 ms is measured against the metronome's scheduled beat. After that it is measured against the onset in the audio waveform.
 
 ## Step 2: audience interaction
 
