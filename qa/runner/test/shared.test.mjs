@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runShared, section, HEADING } from '../shared.mjs';
+import { runShared, section, HEADING, sharedPasses } from '../shared.mjs';
+import { validate, query as toQuery } from '../experiment.mjs';
 
 // the gate parser qa/builds.mjs uses (same regex), so the test proves the appended rows are gates
 const gates = md => md.split('\n').map(l => l.match(/^\| (.+?) \| (✅|❌)[^|]*\|(.*)\|$/)).filter(Boolean).map(m => ({ name: m[1].trim(), ok: m[2] === '✅' }));
@@ -79,6 +80,42 @@ test('without the script on the checks ref: an ℹ️ row, no gate, nothing run'
   const md = fs.readFileSync(path.join(dest, 'check.md'), 'utf8');
   assert.ok(md.includes('ℹ️'));
   assert.equal(gates(md).length, 1);   // only the page's own gate
+});
+
+test('a variant pass: own folder, heading names it, every gate prefixed [name], the query passed through', async () => {
+  const { tree, dest } = setup();
+  const seen = [];
+  const run = async (cmd, a) => {
+    const out = a[a.indexOf('--out') + 1]; seen.push({ out, q: a.includes('--query') ? a[a.indexOf('--query') + 1] : null });
+    fs.writeFileSync(path.join(out, 'check.md'), '# check-shared\n\n| gate | result | detail |\n|---|---|---|\n| flash general ≤ 3 per s | ✅ | 1.0 Hz |\n| GPU method | ℹ️ | timer |\n');
+    return { code: 0, out: '', err: '' };
+  };
+  await runShared({ run, tree, page: '26-lattice-gas', dest });
+  await runShared({ run, tree, page: '26-lattice-gas', dest, query: 'bpm=174&macro2=0.9', label: 'fast' });
+  assert.deepEqual(seen.map(s => path.basename(s.out)), ['shared', 'shared-fast']);
+  assert.deepEqual(seen.map(s => s.q), [null, 'bpm=174&macro2=0.9']);
+  const md = fs.readFileSync(path.join(dest, 'check.md'), 'utf8');
+  assert.ok(md.includes(`${HEADING} · variant fast (?bpm=174&macro2=0.9)`));
+  assert.deepEqual(gates(md), [
+    { name: 'fps p05 ≥ 55', ok: true },
+    { name: 'flash general ≤ 3 per s', ok: true },
+    { name: '[fast] flash general ≤ 3 per s', ok: true },
+  ]);
+  assert.ok(md.includes('| [fast] GPU method | ℹ️ |'));
+  assert.equal((md.match(/^\| gate \| result \| detail \|$/gm) || []).length, 3, 'table headers untouched');
+});
+
+test('experiment files: shared.variants names variants (≤ 2), default:false needs one; passes carry params + variant params', () => {
+  const base = { version: 1, id: '26-lattice-gas', params: { muted: 1 }, variants: [{ name: 'default' }, { name: 'fast', params: { bpm: 174, macro2: 0.9 } }] };
+  const ok = validate({ ...base, shared: { variants: ['fast'] } });
+  assert.deepEqual(ok.errors, []);
+  assert.deepEqual(sharedPasses(ok.exp, toQuery), [{ label: null, query: '' }, { label: 'fast', query: 'muted=1&bpm=174&macro2=0.9' }]);
+  assert.deepEqual(sharedPasses(validate({ ...base, shared: { variants: ['fast'], default: false } }).exp, toQuery), [{ label: 'fast', query: 'muted=1&bpm=174&macro2=0.9' }]);
+  assert.deepEqual(sharedPasses(validate(base).exp, toQuery), [{ label: null, query: '' }], 'no shared field: the default pass only');
+  assert.match(validate({ ...base, shared: { variants: ['slow'] } }).errors.join(), /shared.variants/);
+  assert.match(validate({ ...base, shared: { variants: ['fast', 'default', 'fast'] } }).errors.join(), /shared.variants/);
+  assert.match(validate({ ...base, shared: { default: false } }).errors.join(), /needs shared.variants/);
+  assert.match(validate({ ...base, shared: { variant: 'fast' } }).errors.join(), /unknown field "variant"/);
 });
 
 test('experimentPage: experiment builds get shared gates only for a real page with a check.md', async () => {

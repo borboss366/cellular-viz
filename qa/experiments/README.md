@@ -42,6 +42,7 @@ Check a file before pushing: `node qa/runner/experiment.mjs qa/experiments/57.js
 | `swipe` | off | `{"vs": "<older sha>" or "base", "seconds": 40, "warmup": 4, "variants": [names]}` |
 | `debug` | `{}` | debug probes, below |
 | `timeoutMin` | runner's | stop the whole experiment after this many minutes |
+| `shared` | default URL | where the shared gates run: `{"variants": ["fast"], "default": true}`, below |
 
 Unknown fields are errors, so a typo never passes silently. At most 64 runs (variants × sweep × resolutions).
 
@@ -97,6 +98,15 @@ script: the PR's `qa/` folder is never run.
 the grading page at :8787 opens as `/run/<id>/<stamp>-pr<N>-swipe/compare`. `vs` is any commit in the PR's history or
 on main (7–40 hex), or `"base"` for where the PR left main. Without `vs` only the new pages are recorded.
 With a swipe run and every gate passed, the build waits on the user.
+
+### Shared gates on a variant
+
+After the experiment, the runner runs `qa/check-shared.mjs` (flash, comfort, GPU, beat match) on the page's default URL.
+`"shared": {"variants": ["fast"]}` adds a pass at the `fast` variant's URL (the file's `params` plus the variant's
+`params`, as the runs load it), for worst cases the default URL never reaches. Up to 2 variant names. Their rows land
+under `## shared gates (qa/check-shared.mjs) · variant fast (?…)` with each gate named `[fast] …`, and they gate the
+build like the default pass. `"default": false` skips the default pass. Each pass is a full check-shared run, so
+each variant adds several minutes to the build (bounded by `SHARED_TIMEOUT_MIN` per pass).
 
 ### Debug probes
 
