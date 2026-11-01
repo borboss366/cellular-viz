@@ -39,14 +39,16 @@ test('swipe-ready picks the newest green round of each PR without a swipe', () =
   const builds = [
     bl(155, 3), bl(155, 4),                                   // newest round of #155 → asked for
     bl(159, 1, { page: '16-hodge-kaleidoscope', status: 'running' }),   // finished green, still "running" → asked for
-    bl(157, 1, { status: 'merged' }),                         // merged: never
+    bl(157, 1, { status: 'merged', finished: '2026-10-27T10:00:00Z' }),   // merged more than 3 days ago: no
+    bl(158, 1, { status: 'merged' }),                         // merged today (e.g. #155 before swipe-ready ran) → asked for
+    bl(166, 1, { report: 'qa/26-lattice-gas/checks/2026-11-01-1500/check.md' }),   // a page build: no experiment file
     bl(160, 1, { swipe: '/run/x/y/compare' }),                // has a swipe already
     bl(161, 1, { gates: [{ name: 'a', ok: true }, { name: 'b', ok: false }], status: 'failed' }),   // a failed gate
     bl(162, 1, { page: 'pr-162' }),                           // not a page (the experiment file was missing)
     bl(163, 1, { finished: null, status: 'running' }),        // still running
     bl(164, 2), bl(164, 3, { status: 'failed', gates: [{ name: 'a', ok: false }] }),   // newest round failed: no
   ];
-  assert.deepEqual(swipeCandidates(builds).map(b => b.id).sort(), ['viz-155-4', 'viz-159-1']);
+  assert.deepEqual(swipeCandidates(builds, { now: Date.parse('2026-11-01T20:00:00Z') }).map(b => b.id).sort(), ['viz-155-4', 'viz-158-1', 'viz-159-1']);
 });
 
 test('swipe requests: written atomically, taken once', () => {

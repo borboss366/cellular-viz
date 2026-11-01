@@ -29,11 +29,13 @@ import { putJob, superseded } from './queue.mjs';
 import { loadFile, query as toQuery } from './experiment.mjs';
 import { historyEntry, commitPaths, reportFiles, buildDirs, messageFor } from './post.mjs';
 import { sync as boardSync } from './board.mjs';
+import { notesDir, shareNotes } from '../notes.mjs';
 import { runShared, experimentPage, sharedPasses } from './shared.mjs';
 import { addTodo } from './todo.mjs';
 import { audioDir, scanTracks } from './audio.mjs';
 import { settled } from './settle.mjs';
 import { defaultSwipe, swipeOnlyRaw, takeRequests } from './swipe.mjs';
+import { emit, buildEvent } from './events.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -52,9 +54,11 @@ const CFG = {
   label: env('RUNNER_LABEL', 'qa-ready'),
   commit: env('RUNNER_COMMIT', '1') !== '0',   // after each build: commit its .md/.json reports + history entry in QA_HOME (never pushes)
   board: env('RUNNER_BOARD', '1') !== '0',     // after each build and merge: move the board cards (gh, the box's login)
+  notes: env('RUNNER_NOTES', '1') !== '0',     // post the user's shared build notes to their PRs (gh, the box's login; #162)
   shared: env('SHARED_CHECKS', '1') !== '0',   // after each page's own check: qa/check-shared.mjs (flash + GPU gates, #88)
   sharedMin: Math.max(1, +env('SHARED_TIMEOUT_MIN', '12') || 12),
   audioDir: audioDir(flag('audio-dir', '')),   // QA_AUDIO_DIR: the real tracks (#95 truth (b)); never in git or a run folder
+  events: env('QA_EVENTS_DIR', ''),            // build events for QA box's folder trigger (events.mjs); unset = none
   once: argv.includes('--once'),
 };
 if (!/^[\w.-]+\/[\w.-]+$/.test(CFG.repo)) throw new Error('bad repo ' + CFG.repo);
@@ -155,19 +159,40 @@ function dropPageJobsOfLabelled() {
   log(`dropped ${drop.length} queued page build${drop.length > 1 ? 's' : ''} of qa-ready PR${new Set(drop.map(j => j.pr)).size > 1 ? 's' : ''} #${[...new Set(drop.map(j => j.pr))].join(', #')} (${drop.map(j => j.page).join(', ')}): the experiment file runs instead`);
   save();
 }
+// a build event for QA box's folder trigger (events.mjs); never lets a write error stop a build
+function event(ev) {
+  if (!CFG.events) return;
+  try { const f = emit(CFG.events, ev); log(`event ${ev.type}${ev.pr ? ` #${ev.pr}` : ''}: ${path.basename(f)}`); }
+  catch (e) { log(`event ${ev.type} not written: ${e.message}`); }
+}
 // qa/swipe-ready.sh's requests (swipe.mjs): a swipe-only job for a build that finished green without a swipe, at the
-// commit it was built from (only while the PR is open and its experiment ran at that commit)
+// commit it was built from: an open PR whose experiment ran at that commit, or a merged PR's build (swipe.mjs keeps
+// those to MERGED_DAYS; the runner forgot its expDone when it left, so runSwipe resolves the short commit itself)
 function takeSwipeRequests() {
   for (const r of takeRequests(CFG.state)) {
-    const b = latestBuilds().find(x => x.id === r.id), sha = b && (state.expDone || {})[b.pr];
-    if (!b || !sha || !sha.startsWith(String(b.commit || 'x'))) { log(`swipe request for ${r.id}: skipped (no experiment build of an open PR at that commit)`); continue; }
+    const b = latestBuilds().find(x => x.id === r.id), merged = b && b.status === 'merged';
+    const sha = b && (merged ? (/^[0-9a-f]{7,40}$/.test(String(b.commit || '')) ? b.commit : null) : (state.expDone || {})[b.pr]);
+    if (!b || !sha || !sha.startsWith(String(b.commit || 'x'))) { log(`swipe request for ${r.id}: skipped (no experiment build of an open or merged PR at that commit)`); continue; }
     if (b.swipe) { log(`swipe request for ${r.id}: skipped (it has a swipe already)`); continue; }
-    enqueue({ pr: b.pr, sha, kind: 'swipe', page: 'swipe', buildId: b.id, report: b.report, title: `swipe for ${b.id}`, at: new Date().toISOString() });
+    enqueue({ pr: b.pr, sha, merged, kind: 'swipe', page: 'swipe', buildId: b.id, report: b.report, title: `swipe for ${b.id}`, at: new Date().toISOString() });
   }
   save();
 }
+// the user's notes from /builds (qa/notes.mjs): each one the user shared is posted once to its build's PR
+async function shareUserNotes() {
+  if (!CFG.notes) return;
+  const done = await shareNotes(notesDir(), {
+    prOf: id => (latestBuilds().find(b => b.id === id) || {}).pr || null,
+    existing: async (pr, since) => ((await gh(`issues/${pr}/comments?per_page=100&since=${encodeURIComponent(since)}`)).data || []).map(c => ({ body: c.body, url: c.html_url })),
+    post: async (pr, body) => JSON.parse(await must('gh', ['api', '--method', 'POST', `repos/${CFG.repo}/issues/${pr}/comments`, '-f', `body=${body}`])).html_url || null,
+    log,
+  });
+  for (const d of done) log(`note ${d.id} #${d.n} ${d.how === 'found' ? 'was already' : ''} posted on #${d.pr}: ${d.url}`);
+}
+const branchArg = job => (typeof job.branch === 'string' && job.branch ? ['--branch', job.branch] : []);
 async function poll() {
   try { takeSwipeRequests(); } catch (e) { log(`swipe requests: ${e.message}`); }
+  try { await shareUserNotes(); } catch (e) { log(`notes: ${e.message}`); }
   dropPageJobsOfLabelled();
   status.lastPoll = new Date().toISOString();
   if (status.rate && status.rate.remaining === 0 && Date.parse(status.rate.reset) > Date.now()) return;
@@ -188,14 +213,14 @@ async function poll() {
     if (labelled) {
       state.seen[n] = key;
       dropPageJobsOfLabelled();
-      if ((state.expDone || {})[n] !== sha) enqueue({ pr: n, sha, kind: 'experiment', page: 'experiment', title: pr.title, at: new Date().toISOString() });
+      if ((state.expDone || {})[n] !== sha) enqueue({ pr: n, sha, kind: 'experiment', page: 'experiment', branch: pr.head.ref, title: pr.title, at: new Date().toISOString() });
       save();
       continue;
     }
     const files = await gh(`pulls/${n}/files?per_page=100`);
     const pages = [...new Set(files.data.map(f => (f.filename.match(PAGE_RE) || [])[1]).filter(Boolean))];
     const done = latestBuilds().filter(b => b.pr === n && sha.startsWith(String(b.commit || 'x')));
-    for (const page of pages) if (!done.some(b => b.page === page)) enqueue({ pr: n, sha, page, title: pr.title, at: new Date().toISOString() });
+    for (const page of pages) if (!done.some(b => b.page === page)) enqueue({ pr: n, sha, page, branch: pr.head.ref, title: pr.title, at: new Date().toISOString() });
     state.seen[n] = key;
     save();
   }
@@ -295,8 +320,19 @@ async function oldSide(exp, job, tmp, page) {
   const r = exp.swipe.vs === 'base'
     ? await run('git', ['-C', WORK, 'merge-base', 'refs/runner/main', job.sha], { quiet: true })
     : await run('git', ['-C', WORK, 'rev-parse', '--verify', '-q', `${exp.swipe.vs}^{commit}`], { quiet: true });
-  const old = r.out.trim();
+  let old = r.out.trim();
   if (r.code !== 0 || !/^[0-9a-f]{40}$/.test(old)) return { args: [], error: `${exp.swipe.vs}: not in the PR's history or main` };
+  if (old === job.sha) {
+    // already merged: "base" is main before the merge, the first parent of the oldest merge commit that brought it in
+    const m = await run('git', ['-C', WORK, 'rev-list', '--ancestry-path', '--merges', `${job.sha}..refs/runner/main`], { quiet: true });
+    const M = m.code === 0 ? m.out.trim().split('\n').filter(Boolean).pop() : null;
+    const p = M ? await run('git', ['-C', WORK, 'rev-parse', '--verify', '-q', `${M}^1`], { quiet: true }) : null;
+    if (!p || p.code !== 0 || !/^[0-9a-f]{40}$/.test(p.out.trim())) {
+      log(`#${job.pr}: no main before the merge of ${job.sha.slice(0, 7)}; the swipe shows the new page only`);
+      return { args: [] };
+    }
+    old = p.out.trim();
+  }
   await unpack(old, 'experiments', path.join(tmp, 'old'));
   if (!fs.existsSync(path.join(tmp, 'old', 'experiments', `${exp.page || page}.html`))) {
     log(`#${job.pr}: ${exp.page || page} is new at ${old.slice(0, 7)}; the swipe shows the new page only`);
@@ -317,6 +353,11 @@ async function runSwipe(job) {
     await fetchRefs(job.pr);
     const b = latestBuilds().find(x => x.id === job.buildId);
     if (!b || !b.report) throw new Error(`no build ${job.buildId} with a report`);
+    if (!/^[0-9a-f]{40}$/.test(job.sha)) {   // a merged PR's build: its short commit, from pull/N/head or main
+      const c = await run('git', ['-C', WORK, 'rev-parse', '--verify', '-q', `${job.sha}^{commit}`], { quiet: true });
+      if (c.code !== 0 || !/^[0-9a-f]{40}$/.test(c.out.trim())) throw new Error(`commit ${job.sha} of ${job.buildId} not found`);
+      job.sha = c.out.trim();
+    }
     const raw = JSON.parse(await must('git', ['-C', WORK, 'show', `${job.sha}:qa/experiments/${job.pr}.json`]));
     const file = path.join(tmp, 'experiment.json');
     fs.writeFileSync(file, JSON.stringify(swipeOnlyRaw(raw), null, 1));
@@ -365,7 +406,7 @@ async function runExperiment(job, gate) {
   const fail = async (why, detail, waiting = 'dev') => {
     const dir = path.join(CFG.qaHome, 'qa', page, 'runs', `${stamp}-pr${job.pr}`);
     failCheck(dir, [[why, detail]]); saveGate(dir, gate); report = reportPath(dir);
-    if (!id) id = (await builds('start', '--page', page, '--pr', String(job.pr), '--commit', short)).trim().split('\n').pop();
+    if (!id) id = (await builds('start', '--page', page, '--pr', String(job.pr), '--commit', short, ...branchArg(job))).trim().split('\n').pop();
     status.running = { ...(status.running || job), id, page };
     await builds('finish', '--id', id, '--check', dir, '--status', 'failed', '--waiting', waiting, '--note', why);
     result = `failed: ${why}`;
@@ -390,7 +431,7 @@ async function runExperiment(job, gate) {
       if (errors.length) return await fail(`${rel} is valid with the default swipe`, errors.join(' · '));
       swipeOptional = true;
     }
-    id = (await builds('start', '--page', page, '--pr', String(job.pr), '--commit', short)).trim().split('\n').pop();
+    id = (await builds('start', '--page', page, '--pr', String(job.pr), '--commit', short, ...branchArg(job))).trim().split('\n').pop();
     status.running = { ...job, id, page, started: new Date().toISOString() };
     log(`build ${id}: #${job.pr} experiment ${page} @${short}, checks from ${CFG.checksRef}`);
 
@@ -454,7 +495,7 @@ async function runExperiment(job, gate) {
 async function runBuild(job, gate) {
   try { if (!(await fetchOrRetry(job))) return; } catch {}   // a non-network failure is recorded below, as before
   const short = job.sha.slice(0, 7), stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
-  const id = (await builds('start', '--page', job.page, '--pr', String(job.pr), '--commit', short)).trim().split('\n').pop();
+  const id = (await builds('start', '--page', job.page, '--pr', String(job.pr), '--commit', short, ...branchArg(job))).trim().split('\n').pop();
   status.running = { ...job, id, started: new Date().toISOString() };
   log(`build ${id}: #${job.pr} ${job.page} @${short}, checks from ${CFG.checksRef}`);
   const tmp = fs.mkdtempSync(path.join(CFG.state, 'build-'));
@@ -581,8 +622,11 @@ async function work() {
         polling = poll().then(() => { status.lastError = null; }, e => { status.lastError = e.message; log(`poll: ${e.message}`); }).finally(() => { polling = null; });
       }, CFG.poll * 1000);
       let gate;
-      const onWait = w => { status.waiting = { pr: job.pr, page: job.page, sha: job.sha.slice(0, 7), since: status.waiting && status.waiting.pr === job.pr && status.waiting.page === job.page ? status.waiting.since : new Date().toISOString(),
-        busy: w.busy ?? null, holders: (w.holders || []).map(h => `${h.pid} ${h.comm}`), lock: w.lock || null }; };
+      const onWait = w => {
+        if (!status.waiting || status.waiting.pr !== job.pr || status.waiting.page !== job.page) event(buildEvent('waiting', null, job, { busy: w.busy ?? null, lock: w.lock || null }));
+        status.waiting = { pr: job.pr, page: job.page, sha: job.sha.slice(0, 7), since: status.waiting && status.waiting.pr === job.pr && status.waiting.page === job.page ? status.waiting.since : new Date().toISOString(),
+        busy: w.busy ?? null, holders: (w.holders || []).map(h => `${h.pid} ${h.comm}`), lock: w.lock || null };
+      };
       try { gate = await gpuGate({ what: `runner #${job.pr} ${job.page}`, log, shouldStop: () => stopping || gone(), onWait }); }
       finally { clearInterval(pollTimer); if (polling) await polling; }
       status.gpu = gate;
@@ -604,7 +648,7 @@ async function work() {
         try { if (child) process.kill(-child.pid, 'SIGKILL'); } catch {}
       } });
       try { await (job.kind === 'experiment' ? runExperiment(job, gate) : job.kind === 'swipe' ? runSwipe(job) : runBuild(job, gate)); }
-      catch (e) { log(`build for #${job.pr} ${job.page} could not start: ${e.message}`); status.running = null; }
+      catch (e) { log(`build for #${job.pr} ${job.page} could not start: ${e.message}`); status.running = null; event(buildEvent('error', null, job, { error: e.message })); }
       finally {
         stopWatch();
         // #144: the GPU is free only when this job's processes have let go of the render node
@@ -630,10 +674,15 @@ async function work() {
         log(again ? `#${job.pr} ${job.page}: run discarded (GPU contended: ${contended}); requeued ${job.requeues}/2`
           : `#${job.pr} ${job.page}: GPU contended on 3 runs in a row (${contended}); not requeued, retry by hand`);
         if (!again) state.queue = state.queue.filter(j => j !== job);
+        event(buildEvent('discarded', rec.id && latestBuilds().find(x => x.id === rec.id), job, { contended, requeues: job.requeues, requeued: again }));
         save();
         continue;
       }
       if (fresh) await afterBuild(rec, gate, tr);
+      if (fresh) {   // the build's line as it stands now (settled, swipe), or an error when the runner itself broke
+        const b = rec.id && latestBuilds().find(x => x.id === rec.id);
+        event(buildEvent(/^error:/.test(String(rec.result)) ? 'error' : 'finished', b, job, { result: String(rec.result || '').slice(0, 200) }));
+      }
       state.queue = state.queue.filter(j => j !== job && !(j.pr === job.pr && j.page === job.page && j.sha === job.sha));
       save();
     }
