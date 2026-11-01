@@ -19,7 +19,10 @@
   conserveTest(), soundSpeed(), mass(), momentum(), lut, rings (bursts), step, massHistory, view, metrics, events
   (Clock.qaEvents), beatLog / frame / beatLanes / audioIn (audio-in), setMacro(i,v), macros, pressTrigger(i,holdMs),
   releaseTrigger(i), triggers, triggerLog, triggerEnv, forceDrop() (panic.js), bars, beats, bpm, errors.
-  ?macro1..4=0..1, ?palette=prism|ice, ?seed=, ?dotLum=, ?exposure=, ?burstSize=, ?nodes=, ?qa=conserve (no bursts,
+  The look (#155 ruling): every frame's dots go into a persistence buffer that decays with persist (100 ms), so a
+  passing dot leaves a short comet and the screen holds a steady neon glow, plus a bloom; the kick lifts the bloom
+  and the saturation (audio-in's kick envelope, 150 ms tail). __qa.lumMean: the frame's mean luminance (≥ 0.15 wanted).
+  ?macro1..4=0..1, ?palette=prism|ice, ?seed=, ?dotLum=, ?persist=, ?core=, ?bloom=, ?sat=, ?exposure=, ?burstSize=, ?nodes=, ?qa=conserve (no bursts,
   source or sink: the live mass stays exact), ?startBar=, ?bpm=, ?muted=1, ?clock=metronome, ?audio=clock, ?labels=0.
 -->
 <html lang="en">
@@ -81,6 +84,9 @@
   <h3>Detail</h3>
   <div class="buttons"><button id="palette">palette: prism</button></div>
   <div class="row"><label for="dotLum">dot light</label><input id="dotLum" type="range" min="0.02" max="0.12" step="0.002"><output id="dotLumOut"></output></div>
+  <div class="row"><label for="persist">persist ms</label><input id="persist" type="range" min="30" max="300" step="5"><output id="persistOut"></output></div>
+  <div class="row"><label for="bloom">bloom</label><input id="bloom" type="range" min="0" max="4" step="0.05"><output id="bloomOut"></output></div>
+  <div class="row"><label for="sat">saturation</label><input id="sat" type="range" min="0.5" max="2.5" step="0.05"><output id="satOut"></output></div>
   <div class="row"><label for="exposure">exposure</label><input id="exposure" type="range" min="0.5" max="2" step="0.01"><output id="exposureOut"></output></div>
   <div class="row"><label for="burstSize">burst size</label><input id="burstSize" type="range" min="2" max="8" step="0.1"><output id="burstSizeOut"></output></div>
   <div class="row"><label for="nodes">lattice</label><input id="nodes" type="range" min="0" max="1" step="0.01"><output id="nodesOut"></output></div>
@@ -152,7 +158,7 @@ window.addEventListener('keydown', e => {
   const k = 'zxcv'.indexOf(e.key.toLowerCase());
   if (k >= 0) { e.preventDefault(); pressTrigger(k + 1); }
 });
-const SLIDERS = { dotLum: 3, exposure: 2, burstSize: 1, nodes: 2, bpm: 0 };
+const SLIDERS = { dotLum: 3, persist: 0, bloom: 2, sat: 2, exposure: 2, burstSize: 1, nodes: 2, bpm: 0 };
 for (const name of Object.keys(SLIDERS)) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); sync(); });
 $('palette').onclick = () => { params.palette = PALETTES[(PALETTES.indexOf(params.palette) + 1) % PALETTES.length]; sync(); };
 function sync() {
@@ -168,7 +174,8 @@ $('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(par
 $('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen()).catch(() => {}); };
 const controls = () => ({
   macro: params.macro, density: densityOf(params.macro[0]), tempo: params.macro[1], sparks: params.macro[2], zoom: params.macro[3],
-  palette: params.palette, dotLum: params.dotLum, exposure: params.exposure, burstSize: params.burstSize, nodes: params.nodes, conserve: params.conserve,
+  palette: params.palette, dotLum: params.dotLum, persist: params.persist, core: params.core, bloom: params.bloom, sat: params.sat,
+  exposure: params.exposure, burstSize: params.burstSize, nodes: params.nodes, conserve: params.conserve,
 });
 window.__modules = { '26-lattice-gas': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
 
@@ -195,7 +202,7 @@ function draw(now) {
   const kicks = metronome.playing ? Math.min(2, due.filter(h => h.lane === 'kick').length) : patternKicks(lastBeats, beats);
   lastBeats = beats;
   window.__qaNowBars = beats / bpb;
-  scene.frame({ target: null, t: now / 1000, beats, bpb, bpm: params.bpm, controls: controls(), kicks, hat: A.hat, now });
+  scene.frame({ target: null, t: now / 1000, beats, bpb, bpm: params.bpm, controls: controls(), kicks, hat: A.hat, kick: A.kick, now });
   const v = scene.qa.view;
   Object.assign(window.__qa, { beats, bars: beats / bpb, bpm: params.bpm, view: v, metrics: scene.qa.metrics });
   frames++;
@@ -220,6 +227,7 @@ expose({
   check: fresh => S.check(fresh), conserveTest: o => S.conserveTest(o), soundSpeed: o => S.soundSpeed(o),
   mass: () => S.mass(), momentum: () => S.momentum(), lut: S.lut,
   get rings() { return S.rings; }, get step() { return S.step; }, get massHistory() { return S.massHistory; },
+  get lumMean() { return S.lumMean; }, get lumHistory() { return S.lumHistory; },
 });
 AudioIn.qa(audio, window.__qa);   // beatLog, frame, beatLanes, events (Clock.qaEvents), audioIn
 if (!gl) { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2'); }

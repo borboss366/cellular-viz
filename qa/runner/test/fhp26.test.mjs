@@ -63,7 +63,7 @@ test('the hash is the shader\'s: lowbias32 values and the chirality bit', () => 
 
 test('truth 3: a weak pulse rings out at the FHP-I sound speed 1/√2 (±10 %, 64 rings, steps 20 → 40)', () => {
   const r = F.soundSpeedCPU();
-  console.log(JSON.stringify({ rings: r.rings, r1: r.r1, r2: r.r2, speed: +r.speed.toFixed(4), speedPeak: +r.speedPeak.toFixed(4), theory: +r.theory.toFixed(4) }));
+  console.log(JSON.stringify({ rings: r.rings, r1: r.r1, r2: r.r2, speed: +r.speed.toFixed(4), speedPeak: +r.speedPeak.toFixed(4), speedAz: +r.speedAz.toFixed(4), theory: +r.theory.toFixed(4) }));
   assert.equal(r.rings, 64);
   assert.ok(Math.abs(r.speed - r.theory) / r.theory <= 0.1, `ring speed ${r.speed.toFixed(3)} vs ${r.theory.toFixed(3)}`);
 });

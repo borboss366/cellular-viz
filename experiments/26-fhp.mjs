@@ -151,14 +151,33 @@ export function ringRadius(E, rMin = 4) {
   for (let b = Math.max(0, best - 3); b <= Math.min(n - 1, best + 3); b++) if (s[b] > 0) { w += s[b]; m += s[b] * (b + 0.5); }
   return { peak: best + 0.5, centroid: w > 0 ? m / w : best + 0.5, height: s[best] };
 }
+// the azimuthal density-peak radius (#155 ruling 4, the fallback estimator): the excess profile in `sectors`
+// angle sectors (summed over the centres), each sector's smoothed peak beyond rMin, averaged over the sectors
+export function ringRadiusAzimuthal(S, nq, nr, centres, spacing, { rMax = 40, rMin = 4, sectors = 12 } = {}) {
+  let total = 0; for (let k = 0; k < S.length; k++) total += POP[S[k]];
+  const mean = total / S.length, nb = Math.ceil(rMax), h = spacing / 2;
+  const sum = Array.from({ length: sectors }, () => new Float64Array(nb)), cnt = Array.from({ length: sectors }, () => new Float64Array(nb));
+  for (const [cq, cr] of centres) {
+    for (let dr = -h; dr < h; dr++) for (let dq = -h; dq < h; dq++) {
+      const x = dq + dr / 2, y = dr * S3, d = Math.hypot(x, y);
+      if (d >= rMax) continue;
+      const a = Math.min(sectors - 1, Math.floor((Math.atan2(y, x) + Math.PI) / (2 * Math.PI) * sectors));
+      const q = wrap(cq + dq, nq), r = wrap(cr + dr, nr), b = Math.floor(d);
+      sum[a][b] += POP[S[r * nq + q]] - mean; cnt[a][b]++;
+    }
+  }
+  const peaks = sum.map((s, a) => ringRadius(Float64Array.from(s, (v, b) => cnt[a][b] ? v / cnt[a][b] : 0), rMin).centroid);
+  return { radius: peaks.reduce((x, y) => x + y, 0) / sectors, peaks };
+}
 // the whole measurement on the CPU (node's truth 3): steps t1 and t2, speed = Δradius / Δt
 export function soundSpeedCPU({ nq = 768, nr = 768, d = 0.25, amp = 0.1, radius = 5, spacing = 96, seed = 7, t1 = 20, t2 = 40 } = {}) {
   let { S, centres } = pulseLattice({ nq, nr, d, amp, radius, spacing, seed });
   let T = new Uint8Array(S.length), r1 = null, r2 = null;
   for (let t = 0; t < t2; t++) {
     stepCPU(S, nq, nr, t, seed, T); [S, T] = [T, S];
-    if (t + 1 === t1) r1 = ringRadius(ringProfile(S, nq, nr, centres, spacing).E);
+    if (t + 1 === t1) { r1 = ringRadius(ringProfile(S, nq, nr, centres, spacing).E); r1.az = ringRadiusAzimuthal(S, nq, nr, centres, spacing).radius; }
   }
-  r2 = ringRadius(ringProfile(S, nq, nr, centres, spacing).E);
-  return { rings: centres.length, r1, r2, speed: (r2.centroid - r1.centroid) / (t2 - t1), speedPeak: (r2.peak - r1.peak) / (t2 - t1), theory: Math.SQRT1_2 };
+  r2 = ringRadius(ringProfile(S, nq, nr, centres, spacing).E); r2.az = ringRadiusAzimuthal(S, nq, nr, centres, spacing).radius;
+  return { rings: centres.length, r1, r2, speed: (r2.centroid - r1.centroid) / (t2 - t1), speedPeak: (r2.peak - r1.peak) / (t2 - t1),
+    speedAz: (r2.az - r1.az) / (t2 - t1), theory: Math.SQRT1_2 };
 }

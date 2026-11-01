@@ -20,6 +20,7 @@ const MAX_STEPS_FRAME = 16;                  // more than this behind (a clock j
 const STEPS_PER_BEAT = [2, 4, 8, 16];
 const SECTION_BARS = 16;
 const SPARK_STEPS_PER_S = 16;                // above this rate sparks dim, so a spot stays under 4 sparks a second
+const LUM_W = 64, LUM_H = 36;                // the small copy of the picture for the mean luminance
 
 // ---------------------------------------------------------------- shaders
 const VS = `#version 300 es
@@ -117,10 +118,13 @@ float pc(ivec2 a) { uint s = texelFetch(uS, a, 0).r; uint n = 0u; for (int i = 0
 void main() { ivec2 a = ivec2(int(gl_FragCoord.x) * 4, int(gl_FragCoord.y)); o = vec4(pc(a), pc(a + ivec2(1, 0)), pc(a + ivec2(2, 0)), pc(a + ivec2(3, 0))); }`;
 // the picture: for each link direction, the particles gliding along it now sit at site + f·e_i; the 3 sites of the
 // triangle holding (pixel − f·e_i) are all the sites within 0.5 of it, which covers the dot's reach (0.5)
-const RENDER = HEAD + `
+// It draws into the persistence buffer: out = previous · uDecay + this frame's dots (linear light), so a dot that
+// passes leaves a short comet and the screen holds a steady glow instead of a flash at every pass (#155 ruling 1).
+const DOTS = HEAD + `
 uniform usampler2D uS;
+uniform sampler2D uPrev;
 uniform vec2 uCam, uRes;
-uniform float uScale, uF, uSpark, uNode, uExposure;
+uniform float uScale, uF, uSpark, uNode, uDecay;
 uniform vec3 uHue[6];
 uniform vec4 uBurst;     // world x, y, radius, envelope
 out vec4 o;
@@ -147,8 +151,7 @@ vec3 site(ivec2 a, vec2 w, int i, inout float spark, inout float node) {
 }
 void main() {
   vec2 w = uCam + (gl_FragCoord.xy - 0.5 * uRes) * uScale;
-  vec2 uv = gl_FragCoord.xy / uRes;
-  vec3 col = mix(vec3(0.0010, 0.0012, 0.0040), vec3(0.0024, 0.0016, 0.0060), uv.y);
+  vec3 col = vec3(0.0);
   float spark = 0.0, node = 0.0; ivec2 A, B, C;
   for (int i = 0; i < 6; i++) {
     tri(w - uF * E[i], A, B, C);
@@ -160,8 +163,46 @@ void main() {
   col += vec3(1.0, 0.95, 0.9) * spark * fade * uSpark + vec3(0.010, 0.012, 0.022) * node * uNode;
   vec2 bd = w - uBurst.xy;
   col += vec3(0.020, 0.012, 0.030) * uBurst.w * exp(-dot(bd, bd) / max(1.0, uBurst.z * uBurst.z));
-  col = 1.0 - exp(-col * uExposure);   // a soft shoulder, linear below ~0.2: never clips to white
-  vec3 srgb = mix(col * 12.92, 1.055 * pow(col, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, col));
+  o = vec4(texelFetch(uPrev, ivec2(gl_FragCoord.xy), 0).rgb * uDecay + col, 1.0);
+}`;
+const VS2 = `#version 300 es
+out vec2 vUv;
+void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = p; gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+// the bloom: the persistence buffer box-averaged down to 1/8 (every source pixel counts, so moving dots don't
+// shimmer in it), then a 13-tap Gaussian each way (σ ≈ 4.5 texels ≈ 1 site at 64 sites across)
+const DOWN = `#version 300 es
+precision highp float;
+uniform sampler2D uSrc; uniform vec2 uTexel;   // one source texel in uv
+in vec2 vUv; out vec4 o;
+void main() {
+  vec3 s = vec3(0.0);
+  for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++) s += texture(uSrc, vUv + (vec2(float(i), float(j)) * 2.0 - 3.0) * uTexel).rgb;
+  o = vec4(s / 16.0, 1.0);
+}`;
+const BLUR = `#version 300 es
+precision highp float;
+uniform sampler2D uSrc; uniform vec2 uStep;
+in vec2 vUv; out vec4 o;
+void main() {
+  vec3 s = vec3(0.0); float wsum = 0.0;
+  for (int k = -6; k <= 6; k++) { float w = exp(-float(k * k) / 18.0); s += w * texture(uSrc, vUv + float(k) * uStep).rgb; wsum += w; }
+  o = vec4(s / wsum, 1.0);
+}`;
+// the picture: core (the persistence buffer) + bloom, gain, saturation, a soft shoulder that never reaches white
+const COMP = `#version 300 es
+precision highp float;
+uniform sampler2D uAcc, uBloom;
+uniform vec2 uRes;
+uniform float uCore, uBloomGain, uGain, uSat, uExposure;
+out vec4 o;
+void main() {
+  vec2 uv = gl_FragCoord.xy / uRes;
+  vec3 c = mix(vec3(0.0010, 0.0012, 0.0040), vec3(0.0024, 0.0016, 0.0060), uv.y);
+  c += texture(uAcc, uv).rgb * uCore + texture(uBloom, uv).rgb * uBloomGain * uGain;
+  float L = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = max(vec3(0.0), vec3(L) + (c - vec3(L)) * uSat);
+  c = 0.94 * (1.0 - exp(-c * uExposure / 0.94));   // linear below ~0.2, never above 0.94: no clipped white
+  vec3 srgb = mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
   o = vec4(srgb, 1.0);
 }`;
 
@@ -184,17 +225,19 @@ export function createScene() {
     lastBeats: null, lastSection: null, burstEnv: 0, burstAt: [0, 0, 1], rng: F.rng(1),
     mass: null, massAt: -1, pq: 0, pr: 0, srcP: 0, sinkP: 0, frameNo: 0, pending: null,
     rings: [], triggerLog: [], triggerEnv: [0, 0, 0, 0], trig: [], view: {}, metrics: {}, conserve: false, qaCache: {}, massHistory: [],
+    lumMean: null, lumHistory: [], lumPending: null,
   };
-  let tex = [], fbo = [], red = null, pbo = null;
+  let red = null, pbo = null, lumPbo = null;
+  const fx = { w: 0, h: 0, half: false, acc: [], bl: [], ai: 0, lum: null };
 
   function compile(type, src) {
     const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
     if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error('26 shader: ' + gl.getShaderInfoLog(s));
     return s;
   }
-  function program(name, fs, uniforms) {
+  function program(name, fs, uniforms, vs = VS) {
     const p = gl.createProgram();
-    gl.attachShader(p, compile(gl.VERTEX_SHADER, VS)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, vs)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('26 link ' + name + ': ' + gl.getProgramInfoLog(p));
     P[name] = p; U[name] = {};
     for (const u of ['uN', 'uStep', 'uSeed', 'uLut', 'uS', ...uniforms]) U[name][u] = gl.getUniformLocation(p, u);
@@ -272,7 +315,12 @@ export function createScene() {
     program('edit', EDIT, ['uMode', 'uC', 'uR', 'uP', 'uKey']);
     program('reduce', REDUCE, []);
     program('pack', PACK, []);
-    program('render', RENDER, ['uCam', 'uRes', 'uScale', 'uF', 'uSpark', 'uNode', 'uExposure', 'uHue', 'uBurst']);
+    program('dots', DOTS, ['uPrev', 'uCam', 'uRes', 'uScale', 'uF', 'uSpark', 'uNode', 'uDecay', 'uHue', 'uBurst']);
+    program('down', DOWN, ['uSrc', 'uTexel'], VS2);
+    program('blur', BLUR, ['uSrc', 'uStep'], VS2);
+    program('comp', COMP, ['uAcc', 'uBloom', 'uRes', 'uCore', 'uBloomGain', 'uGain', 'uSat', 'uExposure']);
+    fx.half = !!gl.getExtension('EXT_color_buffer_float');
+    lumPbo = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, lumPbo); gl.bufferData(gl.PIXEL_PACK_BUFFER, LUM_W * LUM_H * 4, gl.STREAM_READ); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     live = lattice(NQ, NR, F.randomLattice(NQ, NR, 0.25, st.seed));
     red = reduceTex(NQ, NR);
     pbo = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo); gl.bufferData(gl.PIXEL_PACK_BUFFER, red.w * red.h * 16, gl.STREAM_READ); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
@@ -280,9 +328,71 @@ export function createScene() {
     reset();
   }
   function resize(w, h) { W = w; H = h; }
+
+  // ---- the look: a persistence buffer (two, ping-pong) at the canvas size, a 1/8 bloom, a small copy for the mean
+  // luminance. RGBA16F when the GPU can render to it (EXT_color_buffer_float), else RGBA8.
+  function fxTex(w, h) {
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    if (fx.half) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, gl.LINEAR);
+    for (const k of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D, k, gl.CLAMP_TO_EDGE);
+    const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+    return { t, f, w, h };
+  }
+  function ensureFx(w, h) {
+    if (fx.w === w && fx.h === h) return;
+    for (const t of [...fx.acc, ...fx.bl]) freeTex(t);
+    fx.acc = [fxTex(w, h), fxTex(w, h)]; fx.ai = 0;
+    const bw = Math.max(1, Math.ceil(w / 8)), bh = Math.max(1, Math.ceil(h / 8));
+    fx.bl = [fxTex(bw, bh), fxTex(bw, bh)];
+    if (!fx.lum) fx.lum = colourTex(LUM_W, LUM_H, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
+    fx.w = w; fx.h = h;
+  }
+  function blit(name, src, dst, set) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dst.f); gl.viewport(0, 0, dst.w, dst.h);
+    gl.useProgram(P[name]);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.t); gl.uniform1i(U[name].uSrc, 0);
+    if (set) set(U[name]);
+    gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  function composite(fbo, w, h, acc, look) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, w, h);
+    const u = U.comp; gl.useProgram(P.comp);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, acc.t); gl.uniform1i(u.uAcc, 0);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, fx.bl[0].t); gl.uniform1i(u.uBloom, 1);
+    gl.uniform2f(u.uRes, w, h); gl.uniform1f(u.uCore, look.core); gl.uniform1f(u.uBloomGain, look.bloom);
+    gl.uniform1f(u.uGain, look.gain); gl.uniform1f(u.uSat, look.sat); gl.uniform1f(u.uExposure, look.exposure);
+    gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.activeTexture(gl.TEXTURE0);
+  }
+  // the frame's mean luminance (report-only truth, #155 ruling 1: steady state ≥ 0.15): the same picture at
+  // 64 × 36, read back without a stall, decoded to linear light
+  function lumSample(acc, look) {
+    if (st.lumPending) return;
+    composite(fx.lum.f, LUM_W, LUM_H, acc, look);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fx.lum.f);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, lumPbo); gl.readPixels(0, 0, LUM_W, LUM_H, gl.RGBA, gl.UNSIGNED_BYTE, 0); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    st.lumPending = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+  }
+  function pollLum() {
+    if (!st.lumPending || gl.getSyncParameter(st.lumPending, gl.SYNC_STATUS) !== gl.SIGNALED) return;
+    const px = new Uint8Array(LUM_W * LUM_H * 4);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, lumPbo); gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, px); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    gl.deleteSync(st.lumPending); st.lumPending = null;
+    const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    let s = 0; for (let k = 0; k < px.length; k += 4) s += 0.2126 * lin(px[k]) + 0.7152 * lin(px[k + 1]) + 0.0722 * lin(px[k + 2]);
+    st.lumMean = +(s / (LUM_W * LUM_H)).toFixed(4);
+    st.lumHistory.push({ t: performance.now(), step: st.simStep, lum: st.lumMean }); if (st.lumHistory.length > 400) st.lumHistory.shift();
+  }
+
   function dispose() {
     if (!gl) return;
     if (live) freeLattice(live); if (red) freeTex(red);
+    for (const t of [...fx.acc, ...fx.bl, ...(fx.lum ? [fx.lum] : [])]) freeTex(t);
+    gl.deleteBuffer(lumPbo);
     for (const p of Object.values(P)) gl.deleteProgram(p);
     gl.deleteBuffer(pbo); gl.deleteVertexArray(vao);
     gl = null;
@@ -355,7 +465,7 @@ export function createScene() {
     return true;
   }
 
-  function frame({ target = null, beats, bpb = 4, bpm = 120, controls: ctl, kicks = 0, hat = 0, now = performance.now() }) {
+  function frame({ target = null, beats, bpb = 4, bpm = 120, controls: ctl, kicks = 0, hat = 0, kick = 0, now = performance.now() }) {
     if (!gl) return;
     st.frameNo++;
     st.conserve = !!ctl.conserve;
@@ -397,24 +507,42 @@ export function createScene() {
     st.burstEnv *= Math.exp(-dt / 0.35);
     for (let i = 0; i < 4; i++) if (i !== 2) st.triggerEnv[i] *= Math.exp(-dt / 0.4);
 
-    // draw
+    // draw: this frame's dots into the persistence buffer, its bloom, then the picture
     const fw = target ? target.width : W, fh = target ? target.height : H;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null); gl.viewport(0, 0, fw, fh);
-    const u = U.render; gl.useProgram(P.render);
+    ensureFx(fw, fh);
+    const prev = fx.acc[fx.ai], next = fx.acc[1 - fx.ai];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, next.f); gl.viewport(0, 0, fw, fh);
+    const u = U.dots; gl.useProgram(P.dots);
     gl.uniform2i(u.uN, NQ, NR); gl.uniform1ui(u.uStep, st.simStep >>> 0); gl.uniform1ui(u.uSeed, st.seed >>> 0);
     const [cx, cy] = camWorld();
     gl.uniform2f(u.uCam, cx, cy); gl.uniform2f(u.uRes, fw, fh); gl.uniform1f(u.uScale, sitesAcross / Math.max(1, fw));
     gl.uniform1f(u.uF, f);
     const sparkGain = ctl.sparks * (0.6 + 0.9 * Math.max(0, Math.min(1, hat))) * Math.min(1, SPARK_STEPS_PER_S / Math.max(1, stepsPerSec));
-    gl.uniform1f(u.uSpark, sparkGain); gl.uniform1f(u.uNode, ctl.nodes); gl.uniform1f(u.uExposure, ctl.exposure);
+    const decay = Math.exp(-dt / Math.max(0.01, ctl.persist / 1000));
+    // a still dot builds up to 1 / (1 − decay) of its frame value (freeze, slow tempos): the lattice and the burst
+    // glow are scaled by (1 − decay) so they sit at their frame value; the moving dots keep theirs (a pass is ~1 frame)
+    gl.uniform1f(u.uSpark, sparkGain); gl.uniform1f(u.uNode, ctl.nodes * (1 - decay)); gl.uniform1f(u.uDecay, decay);
     gl.uniform3fv(u.uHue, new Float32Array(huesAt(ctl.palette, ctl.dotLum).flat()));
-    gl.uniform4f(u.uBurst, st.burstAt[0], st.burstAt[1], st.burstAt[2], st.burstEnv);
+    gl.uniform4f(u.uBurst, st.burstAt[0], st.burstAt[1], st.burstAt[2], st.burstEnv * (1 - decay));
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, prev.t); gl.uniform1i(u.uPrev, 1);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, live.a.t);
     gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    fx.ai = 1 - fx.ai;
+    blit('down', next, fx.bl[0], v => gl.uniform2f(v.uTexel, 1 / fw, 1 / fh));
+    blit('blur', fx.bl[0], fx.bl[1], v => gl.uniform2f(v.uStep, 1.5 / fx.bl[0].w, 0));
+    blit('blur', fx.bl[1], fx.bl[0], v => gl.uniform2f(v.uStep, 0, 1.5 / fx.bl[0].h));
+    // the beat (#155 ruling 1): audio-in's kick envelope (τ 150 ms) lifts the bloom's gain and the saturation; the
+    // core is left alone, so a dot's own step stays under the flash transition
+    const pulse = Math.max(0, Math.min(1, kick));
+    const look = { core: ctl.core, bloom: ctl.bloom * (1 + 0.5 * pulse), gain: 1 + 0.25 * pulse, sat: ctl.sat * (1 + 0.3 * pulse), exposure: ctl.exposure };
+    composite(target ? target.fbo : null, fw, fh, next, look);
+    if (st.frameNo % 30 === 15) lumSample(next, look);
+    pollLum();
 
     st.view = { scene: 'F1', step: st.simStep, f: +f.toFixed(3), stepsPerBeat: spb, stepsPerSec: +stepsPerSec.toFixed(2), stepsThisFrame: n,
       sitesAcross: +sitesAcross.toFixed(1), density: st.mass === null ? null : +(st.mass / (6 * NQ * NR)).toFixed(4), target: ctl.density,
-      frozen: st.frozen, conserve: st.conserve, bars: beats / bpb, section, spark: +sparkGain.toFixed(3) };
+      frozen: st.frozen, conserve: st.conserve, bars: beats / bpb, section, spark: +sparkGain.toFixed(3),
+      pulse: +pulse.toFixed(3), decay: +decay.toFixed(4), lumMean: st.lumMean, fxFormat: fx.half ? 'RGBA16F' : 'RGBA8' };
     st.metrics = { mass: st.mass, massAt: st.massAt, momentum: [st.pq, st.pr], srcP: st.srcP, sinkP: st.sinkP, bursts: st.rings.length };
   }
 
@@ -450,12 +578,14 @@ export function createScene() {
     let r1 = null;
     for (let t = 0; t < t2; t++) {
       stepLattice(L, t, seed);
-      if (t + 1 === t1) r1 = F.ringRadius(F.ringProfile(asState(readCounts(L, pk)), n, n, centres, spacing).E);
+      if (t + 1 === t1) { const c = asState(readCounts(L, pk)); r1 = F.ringRadius(F.ringProfile(c, n, n, centres, spacing).E); r1.az = F.ringRadiusAzimuthal(c, n, n, centres, spacing).radius; }
     }
-    const prof = F.ringProfile(asState(readCounts(L, pk)), n, n, centres, spacing), r2 = F.ringRadius(prof.E);
+    const c2 = asState(readCounts(L, pk)), prof = F.ringProfile(c2, n, n, centres, spacing), r2 = F.ringRadius(prof.E);
+    r2.az = F.ringRadiusAzimuthal(c2, n, n, centres, spacing).radius;
     freeLattice(L); freeTex(pk); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     const speed = (r2.centroid - r1.centroid) / (t2 - t1), theory = Math.SQRT1_2;
-    return { ok: Math.abs(speed - theory) / theory <= 0.1, speed: +speed.toFixed(4), speedPeak: +((r2.peak - r1.peak) / (t2 - t1)).toFixed(4), theory: +theory.toFixed(4),
+    return { ok: Math.abs(speed - theory) / theory <= 0.1, speed: +speed.toFixed(4), speedPeak: +((r2.peak - r1.peak) / (t2 - t1)).toFixed(4),
+      speedAz: +((r2.az - r1.az) / (t2 - t1)).toFixed(4), theory: +theory.toFixed(4),
       relErr: +((speed - theory) / theory).toFixed(4), rings: centres.length, amp, r1, r2, profile: Array.from(prof.E, v => +v.toFixed(4)) };
   }
   function check(fresh = false) {
@@ -471,7 +601,7 @@ export function createScene() {
     trigger(name) { const i = ['burst', 'bigBurst', 'freeze', 'scatter'].indexOf(name); return i >= 0 ? press(i + 1) : false; },
     qa: {
       get view() { return st.view; }, get metrics() { return st.metrics; }, get rings() { return st.rings; }, get step() { return st.simStep; },
-      get massHistory() { return st.massHistory; },
+      get massHistory() { return st.massHistory; }, get lumMean() { return st.lumMean; }, get lumHistory() { return st.lumHistory; },
       get triggerLog() { return st.triggerLog; }, get triggerEnv() { return st.triggerEnv; }, lut: Array.from(F.LUT),
       mass() { const m = reduceSync(live, red); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return m.mass; },
       momentum() { const m = reduceSync(live, red); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return [m.pq, m.pr]; },
@@ -496,7 +626,11 @@ export const TRIGGERS = [
 export const DETAIL = [
   { name: 'palette', type: 'long', values: PALETTES, default: 'prism' },
   { name: 'seed', type: 'long', default: 1, min: 1, max: 1e6 },
-  { name: 'dotLum', type: 'float', default: 0.058, min: 0.02, max: 0.12 },
+  { name: 'dotLum', type: 'float', default: 0.058, min: 0.02, max: 0.12 },   // a dot's own step: kept under 0.1 (flash)
+  { name: 'persist', type: 'float', default: 100, min: 30, max: 300 },       // ms: the persistence buffer's decay τ
+  { name: 'core', type: 'float', default: 1, min: 0, max: 2 },
+  { name: 'bloom', type: 'float', default: 1.6, min: 0, max: 4 },
+  { name: 'sat', type: 'float', default: 1.45, min: 0.5, max: 2.5 },
   { name: 'exposure', type: 'float', default: 1, min: 0.5, max: 2 },
   { name: 'burstSize', type: 'float', default: 4, min: 2, max: 8 },
   { name: 'nodes', type: 'float', default: 0.5, min: 0, max: 1 },
