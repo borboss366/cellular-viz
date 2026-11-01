@@ -32,8 +32,18 @@ const ago = t => {
   const s = Math.round((Date.now() - Date.parse(t)) / 1000);
   return s < 120 ? `${s}s ago` : s < 7200 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`;
 };
-const job = j => `#${j.pr} ${j.kind === 'experiment' ? 'experiment' : (j.page || '?')} @${String(j.sha || '').slice(0, 7)}`;
+const job = j => `#${j.pr} ${j.kind === 'experiment' ? 'experiment' : j.kind === 'swipe' ? 'swipe' : (j.page || '?')} @${String(j.sha || '').slice(0, 7)}`;
 const short = (s, n = 100) => { s = String(s ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+
+// builds.json (QA_HOME/qa/builds.json): the current status of a build, so a 'done' line doesn't repeat the result text
+// it had when it finished (e.g. 'running 39/39' before the runner settled it to ready)
+const BUILDS = path.join(env('QA_HOME', path.join(path.dirname(new URL(import.meta.url).pathname), '..')), 'qa', 'builds.json');
+function currentBuilds() {
+  const m = new Map();
+  try { for (const l of fs.readFileSync(BUILDS, 'utf8').split('\n')) { if (!l.trim()) continue; try { const b = JSON.parse(l); m.set(b.id, b); } catch {} } } catch {}
+  return m;
+}
+const nowStatus = (b, fallback) => (b ? `${b.status} ${(b.gates || []).filter(g => g.ok).length}/${(b.gates || []).length}${b.waitingOn ? `, waiting on ${b.waitingOn}` : ''}${b.swipe ? ', swipe' : ''}` : fallback);
 
 const out = [];
 // runner
@@ -51,8 +61,9 @@ else {
     out.push(`  now: ${s.running ? `${job(s.running)}${s.running.id ? ` (${s.running.id})` : ''}, started ${ago(s.running.started)}` : 'idle'}`);
     const q = s.queue || [];
     out.push(`  queue (${q.length}): ${q.length ? q.slice(0, 6).map(job).join(', ') + (q.length > 6 ? ', …' : '') : '-'}`);
+    const known = currentBuilds();
     for (const r of (s.recent || []).slice(0, 3)) {
-      out.push(`  done ${ago(r.finished)}: ${job(r)}${r.id ? ` (${r.id})` : ''}: ${short(r.result, 90)}`);
+      out.push(`  done ${ago(r.finished)}: ${job(r)}${r.id ? ` (${r.id})` : ''}: ${short(nowStatus(r.id && known.get(r.id), r.result), 90)}`);
       if (r.report) out.push(`    report: ${r.report}`);   // relative to QA_HOME; builds from before this runner have none
     }
     if (s.gpu) out.push(`  last GPU gate: ${short(JSON.stringify(s.gpu), 100)}`);

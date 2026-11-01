@@ -279,7 +279,8 @@ if (exp.swipe) {
 
 // ---- 4. results ----
 const gates = [...evalGates(exp, runs, { missing }), ...checks.flatMap(c => c.gates)];
-if (exp.swipe && !swipe) gates.push({ name: 'swipe run recorded', ok: false, value: notes.filter(n => n.startsWith('swipe')).join(' / ') || 'failed' });
+// --swipe-optional: the runner's default swipe (the file asked for none): a failed recording is a note, not a fail
+if (exp.swipe && !swipe) gates.push({ name: 'swipe run recorded', ...(arg('swipe-optional') ? { ok: null, skipped: true } : { ok: false }), value: notes.filter(n => n.startsWith('swipe')).join(' / ') || 'failed' });
 if (!gates.length) gates.push({ name: 'the experiment ran', ok: runs.length > 0 || checks.length > 0, value: `${runs.length} runs` });
 const info = [['PR', `#${PR} @${SHA.slice(0, 7)}`], ['GPU', hasGpu ? `${renderNode} (ANGLE gl-egl)` : 'none: software GL, fps not comparable'],
   ...runs.filter(r => r.errors.length).map(r => [`errors ${r.label}`, r.errors.slice(0, 3).join(' / ')]), ...notes.map(n => ['note', n])];
