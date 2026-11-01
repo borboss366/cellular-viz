@@ -8,10 +8,16 @@ import path from 'node:path';
 export const SCRIPT = 'check-shared.mjs';
 export const HEADING = '## shared gates (qa/check-shared.mjs)';
 
-/** check-shared's check.md → the block appended to the build's check.md (its own # title dropped) */
-export function section(md) {
-  const body = String(md).replace(/\r/g, '').split('\n').filter((l, i) => !(i < 3 && /^# /.test(l))).join('\n').trim();
-  return `\n\n${HEADING}\n\n${body}\n`;
+/**
+ * check-shared's check.md → the block appended to the build's check.md (its own # title dropped). label: a variant pass
+ * (experiment files' shared.variants): its heading names it and every row's gate gets a "[label] " prefix, so the
+ * builds page tells the default URL's flash row from the variant's.
+ */
+export function section(md, label = null, query = '') {
+  let lines = String(md).replace(/\r/g, '').split('\n').filter((l, i) => !(i < 3 && /^# /.test(l)));
+  if (label) lines = lines.map(l => (/^\| /.test(l) && !/^\| gate \|/.test(l) && !/^\|-/.test(l) ? l.replace(/^\| /, `| [${label}] `) : l));
+  const head = label ? `${HEADING} · variant ${label}${query ? ` (?${query})` : ''}` : HEADING;
+  return `\n\n${head}\n\n${lines.join('\n').trim()}\n`;
 }
 
 const row = (gate, mark, detail) => `| ${gate} | ${mark} | ${String(detail).replace(/[|\n\r]/g, ' ').slice(0, 280)} |`;
@@ -22,30 +28,47 @@ const table = rows => `| gate | result | detail |\n|---|---|---|\n${rows.join('\
  *   run: the runner's run(cmd, args, {cwd, timeoutMs}) → {code, out, err}
  *   tree: the unpacked build tree (qa/ from CHECKS_REF, experiments/ from the PR); page: '13-flow-lab'
  *   dest: the build's report folder (has check.md); query: extra page query (host pages: 'w=2560&h=1440&dpr=1')
+ *   label: a variant pass (null = the page's default URL): its own folder shared-<label>, its rows prefixed "[label] "
  * → { ran, ok, why }  (ok: the shared check wrote its check.md; the gates themselves are in the rows)
  */
-export async function runShared({ run, tree, page, dest, timeoutMs = 12 * 60e3, query = '', log = () => {} }) {
+export async function runShared({ run, tree, page, dest, timeoutMs = 12 * 60e3, query = '', label = null, log = () => {} }) {
   const script = path.join(tree, 'qa', SCRIPT), checkMd = path.join(dest, 'check.md');
   const append = s => fs.appendFileSync(checkMd, s);
+  const sec = md => section(md, label, label ? query : '');
   if (!fs.existsSync(script)) {
-    append(section(table([row('shared gates', 'ℹ️', `qa/${SCRIPT} is not on the checks ref yet: not run`)])));
+    append(sec(table([row('shared gates', 'ℹ️', `qa/${SCRIPT} is not on the checks ref yet: not run`)])));
     return { ran: false, ok: false, why: 'no script' };
   }
-  const out = path.join(dest, 'shared');
+  const out = path.join(dest, label ? `shared-${label}` : 'shared');
   fs.mkdirSync(out, { recursive: true });
   const args = [script, '--experiments', path.join(tree, 'experiments'), '--page', `${page}.html`, '--out', out];
   if (query) args.push('--query', query);
-  log(`shared gates for ${page}: node qa/${SCRIPT} --page ${page}.html${query ? ` --query ${query}` : ''}`);
+  log(`shared gates for ${page}${label ? ` (variant ${label})` : ''}: node qa/${SCRIPT} --page ${page}.html${query ? ` --query ${query}` : ''}`);
   const r = await run('node', args, { cwd: tree, timeoutMs });
   const md = path.join(out, 'check.md');
   if (!fs.existsSync(md)) {
-    append(section(table([row('the shared check ran to the end and wrote check.md', '❌',
+    append(sec(table([row('the shared check ran to the end and wrote check.md', '❌',
       `exit ${r.code}: ${(r.err || r.out || '').trim().split('\n').slice(-3).join(' / ')}`)])));
     try { fs.writeFileSync(path.join(out, 'runner.log'), `exit ${r.code}\n\n${String(r.err || '').slice(-20000)}`); } catch {}
     return { ran: true, ok: false, why: `exit ${r.code}` };
   }
-  append(section(fs.readFileSync(md, 'utf8')));
+  append(sec(fs.readFileSync(md, 'utf8')));
   return { ran: true, ok: true, why: null };
+}
+
+/**
+ * The shared passes of an experiment build: the page's default URL (unless shared.default is false), then one pass per
+ * name in shared.variants, at that variant's URL (the file's params + the variant's params, as exp-run loads it).
+ * → [{ label: null | name, query }]
+ */
+export function sharedPasses(exp, toQuery) {
+  const s = (exp && exp.shared) || {}, out = [];
+  if (s.default !== false) out.push({ label: null, query: '' });
+  for (const name of s.variants || []) {
+    const v = (exp.variants || []).find(x => x.name === name);
+    if (v) out.push({ label: name, query: toQuery({ ...(exp.params || {}), ...(v.params || {}) }) });
+  }
+  return out;
 }
 
 /**

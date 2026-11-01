@@ -46,7 +46,7 @@ export const METRICS = {
 };
 export const KINDS = ['render', 'perf', 'audio', 'both'];   // #141: render = CPU (SwiftShader), perf = GPU, audio = a real track as the line input
 const TOP = ['$schema', 'version', 'id', 'page', 'note', 'params', 'resolutions', 'warmup', 'seconds', 'play', 'variants', 'sweep',
-  'values', 'gates', 'checks', 'record', 'swipe', 'debug', 'timeoutMin', 'kind', 'audio'];
+  'values', 'gates', 'checks', 'record', 'swipe', 'debug', 'timeoutMin', 'kind', 'audio', 'shared'];
 const MAX_RUNS = 64;
 
 const isObj = x => x !== null && typeof x === 'object' && !Array.isArray(x);
@@ -202,8 +202,26 @@ export function validate(raw) {
     }
   }
 
+  // the shared gates (check-shared: flash, comfort, GPU, beat match) run on the page's default URL after the experiment;
+  // shared.variants adds a pass at each named variant's URL (worst cases like a fast bpm), shared.default: false drops
+  // the default pass. At most 2 variant passes (each is a full check-shared run, minutes).
+  let shared = null;
+  if (raw.shared !== undefined) {
+    const s = raw.shared;
+    if (!isObj(s)) errs.push('shared must be an object like {"variants": ["fast"]}');
+    else {
+      for (const k of Object.keys(s)) if (!['variants', 'default'].includes(k)) errs.push(`shared: unknown field "${k}" (known: variants, default)`);
+      const sv = s.variants ?? [];
+      if (!Array.isArray(sv) || sv.length > 2 || new Set(sv).size !== sv.length || !sv.every(n => variants.some(v => v.name === n)))
+        errs.push('shared.variants: up to 2 distinct names from variants');
+      if (s.default !== undefined && typeof s.default !== 'boolean') errs.push('shared.default must be true or false');
+      if (s.default === false && !(Array.isArray(sv) && sv.length)) errs.push('shared.default: false needs shared.variants (else no shared pass at all)');
+      shared = { variants: Array.isArray(sv) ? sv : [], default: s.default !== false };
+    }
+  }
+
   const exp = { version: VERSION, id: raw.id, page, note: raw.note || '', params, sizes, warmup, seconds, play, variants, sweep: raw.sweep || null,
-    values: isObj(values) ? values : {}, gates: Array.isArray(gates) ? gates : [], checks, record, swipe, debug: isObj(debug) ? debug : {}, timeoutMin, kind, audio };
+    values: isObj(values) ? values : {}, gates: Array.isArray(gates) ? gates : [], checks, record, swipe, debug: isObj(debug) ? debug : {}, timeoutMin, kind, audio, shared };
   if (!errs.length) {
     const n = expand(exp).length;
     if (n > MAX_RUNS) errs.push(`${n} runs (variants × sweep × resolutions); keep it to ${MAX_RUNS}`);
