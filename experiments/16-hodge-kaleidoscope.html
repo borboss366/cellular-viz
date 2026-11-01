@@ -704,6 +704,7 @@ function draw(now) {
   Object.assign(window.__qa, { preset: st.cur.name, genus: st.cur.genus, n: st.cur.n, morph: m, from: st.prev ? st.prev.name : null,
     bands: levels, flat, rowGlow, betti: rowSums(st.cur), bars, beats, floatOk, hold: holdOf(params.shapeRate), shapeRate: params.shapeRate,
     morphBeats: st.morphBeats, pop: st.popEnv, idx: st.idx });
+  audio.logFrame({ rows: rowGlow, lanes: levels });   // #141 audio checks: each row's glow and the band envelope it follows
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
   if (now - lastHud > 200) {
@@ -762,7 +763,8 @@ window.__qa = { errors, events, presets: PRESET_NAMES, hodge, table: TABLE, bett
   // #85 buttons (comment 6481677687): trigger1 = bottom 1 / Z is "next shape"; 2–4 are free
   triggers: [{ slot: 1, name: 'next shape', key: 'Z', does: 'next shape on the next beat' }], triggerLog,
   pressTrigger: (i, holdMs = 0) => { if (i !== 1) return false; trigger(); return true; },
-  simulate, rateTruths, morphs, morphSync, liveTruths };
+  simulate, rateTruths, morphs, morphSync, liveTruths,
+  rowBands: [0, 1, 2, 3, 4, 5, 6] };   // row k glows with this page's band k (of its 7, not audio-in's 8)
 // clock port: the shared hooks (beatLog, frame, beatLanes, audioIn); __qa.events stays this page's sync log
 // (perfHeard/perfDrawn, truth 7) followed by the clock's hits and jumps for the shared beat-match row
 AudioIn.qa(audio, window.__qa);

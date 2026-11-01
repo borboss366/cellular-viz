@@ -42,13 +42,16 @@ Check a file before pushing: `node qa/runner/experiment.mjs qa/experiments/57.js
 | `swipe` | off | `{"vs": "<older sha>" or "base", "seconds": 40, "warmup": 4, "variants": [names]}` |
 | `debug` | `{}` | debug probes, below |
 | `timeoutMin` | runner's | stop the whole experiment after this many minutes |
+| `kind` | `"both"` | what the run checks (#141): `"render"` (CPU: SwiftShader), `"perf"` (GPU: the 780M), `"audio"` (a real track as the page's line input, below), `"both"` (today's runs) |
+| `audio` | none | kind `"audio"` only: `{"track": "<name>", "from": s, "len": s, "noloop": true, "via": "fake"}` |
 
 Unknown fields are errors, so a typo never passes silently. At most 64 runs (variants × sweep × resolutions).
 
 ### Gates
 
-`{"metric": "<metric>", "min": n, "max": n, "equals": x, "variant": name(s), "resolution": r(s), "name": "own label", "track": name}`
-(`track`: a real track, below; the gate is skipped when it's missing).
+`{"metric": "<metric>", "min": n, "max": n, "equals": x, "variant": name(s), "resolution": r(s), "name": "own label", "track": name, "report": true}`
+(`track`: a real track, below; the gate is skipped when it's missing. `report: true`: an ℹ️ row that says whether it
+would pass, never a fail, for a gate in its first week).
 A gate holds on every run it applies to (all runs, or only the `variant` / `resolution` named; a sweep variant also
 answers to its parent's name). The report shows the value of every run and which ones failed.
 
@@ -64,6 +67,13 @@ answers to its parent's name). The report shows the value of every run and which
 | `errors` | page errors + `__qa.errors` |
 | `gpuBusy` | GPU busy % before the run's page opens: the lowest of 6 readings over 3 s, so the previous run's tail doesn't count |
 | `value.<name>` | a number or value from `values` |
+| `audio.deviceOk` | kind `"audio"`: 1 when the page opened the route's input ("fake" / "blackhole" in its label) |
+| `audio.banner` | 1 when the page shows the no-match device banner |
+| `audio.levelDuringDb` | median RMS of the captured waveform while the excerpt plays, dBFS (from 0.5 s after the input opens) |
+| `audio.levelAfterEndDb` | the loudest frame from 0.5 s after a `noloop` excerpt ends, dBFS (silence: below −60) |
+| `audio.bandDiffDb.max` | the largest difference of a live band median from the offline analysis of the same excerpt, dB |
+| `audio.rowCorr.min` | the lowest Pearson of a page row with its band lane (best lag within ±100 ms) |
+| `audio.frames` | frames logged while the excerpt played |
 
 Each check script's own ✅/❌ rows become gates too, named `check-18: <its gate>`. A script that doesn't finish,
 or isn't on the checks ref, is a failed gate.
@@ -82,6 +92,27 @@ Four copyrighted tracks live only on the QA box, in `QA_AUDIO_DIR` (default
 - `results.json` lists each used track as its file name, sha256, format, sample rate and, for `.m4a`/`.mp3`, the
   encoder delay read from the file (LAME tag, iTunSMPB or the edit list), because a decoder offset matters against
   40 ms gates. Never the audio or the folder.
+
+### Audio jobs (kind `"audio"`, #141)
+
+The page hears a real track as its line input. Step 1 is `"via": "fake"`; `"loop"` (a PulseAudio sink called
+BlackHole-QA, `qa/audio-loop.sh`) comes next.
+
+- **The excerpt:** `len` seconds from `from` of `track`, cut once by Chromium's own decoder into
+  `QA_AUDIO_DIR/<track>.<from>-<len>.wav` (16-bit PCM). It's never committed or served.
+- **`via: "fake"`:** Chromium runs with `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream
+  --use-file-for-fake-audio-capture=<wav>%noloop`, and every run gets `?audio=line&device=fake` (a run's own params
+  win). Capture starts when the page opens the input (after Play), so `warmup + seconds` must reach 1.5 s past `len`
+  with `noloop`, to check the silence after the end.
+- **The page logs** one entry per frame in `__qa.audioIn.log`: `{t, rmsDb, bands[8]}` from audio-in (the raw
+  waveform's RMS and its 8 bands), plus what the page adds with `audio.logFrame({rows, lanes})` (16b: each row's glow
+  and the band envelope it follows; `__qa.rowBands` says which band).
+- **The runner** analyses the same WAV offline the way an AnalyserNode does (Blackman window, fftSize 2048, the
+  page's smoothing) with audio-in's band maths, and compares. Per run, `debug/audio-<run>.json` keeps the page's
+  log and the numbers; `results.json` has them under `runs[].audio`.
+- **Gates** are report-only to start (`"report": true`); 1–2 (device, level) become hard after a stable week.
+- **Lanes:** audio jobs run on the GPU lane under its lock, like every job today (real time, so they wait at the GPU
+  idle check like perf jobs).
 
 ### Check scripts: who writes what
 

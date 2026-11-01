@@ -112,6 +112,7 @@ export function tracksUsed(exp) {
   const out = new Set();
   const add = v => { if (typeof v === 'string' && TRACKS.includes(v)) out.add(v); };
   add(exp.params?.track);
+  add(exp.audio?.track);   // kind "audio" (#141): the excerpt's track
   for (const v of exp.variants || []) add(v.params?.track);
   for (const vals of Object.values(exp.sweep || {})) if (Array.isArray(vals)) vals.forEach(add);
   for (const g of exp.gates || []) add(g.track);

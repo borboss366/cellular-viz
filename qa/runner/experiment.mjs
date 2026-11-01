@@ -35,9 +35,18 @@ export const METRICS = {
   'lum.max': 'luminance of the brightest sampled frame, %',
   errors: 'page errors plus __qa.errors entries',
   gpuBusy: 'GPU busy % read just before the run (outside load)',
+  // kind "audio" (#141): from the page's __qa.audioIn.log and the offline analysis of the same excerpt (audiocheck.mjs)
+  'audio.deviceOk': '1 when the input the page opened is the route\'s (fake: "fake", loop: "blackhole" in its label)',
+  'audio.banner': '1 when the page shows the no-match device banner',
+  'audio.levelDuringDb': 'median RMS of the captured waveform while the excerpt plays, dBFS',
+  'audio.levelAfterEndDb': 'loudest frame from 0.5 s after a noloop excerpt ends, dBFS',
+  'audio.bandDiffDb.max': 'the largest per-band difference of the live band medians from the offline analysis, dB',
+  'audio.rowCorr.min': 'the lowest per-row Pearson of a row\'s glow with its band lane (best lag within ±100 ms)',
+  'audio.frames': 'frames logged while the excerpt played',
 };
+export const KINDS = ['render', 'perf', 'audio', 'both'];   // #141: render = CPU (SwiftShader), perf = GPU, audio = a real track as the line input
 const TOP = ['$schema', 'version', 'id', 'page', 'note', 'params', 'resolutions', 'warmup', 'seconds', 'play', 'variants', 'sweep',
-  'values', 'gates', 'checks', 'record', 'swipe', 'debug', 'timeoutMin'];
+  'values', 'gates', 'checks', 'record', 'swipe', 'debug', 'timeoutMin', 'kind', 'audio'];
 const MAX_RUNS = 64;
 
 const isObj = x => x !== null && typeof x === 'object' && !Array.isArray(x);
@@ -113,7 +122,8 @@ export function validate(raw) {
   else gates.forEach((g, i) => {
     const w = `gates[${i}]`;
     if (!isObj(g)) return errs.push(`${w}: must be an object like {"metric": "fps.p05", "min": 60}`);
-    for (const k of Object.keys(g)) if (!['metric', 'min', 'max', 'equals', 'variant', 'resolution', 'name', 'track'].includes(k)) errs.push(`${w}: unknown field "${k}"`);
+    for (const k of Object.keys(g)) if (!['metric', 'min', 'max', 'equals', 'variant', 'resolution', 'name', 'track', 'report'].includes(k)) errs.push(`${w}: unknown field "${k}"`);
+    if (g.report !== undefined && typeof g.report !== 'boolean') errs.push(`${w}.report: true (a report-only row, never a fail) or false`);
     if (g.track !== undefined && !TRACKS.includes(g.track)) errs.push(`${w}.track: one of ${TRACKS.join(', ')} (a real track in QA_AUDIO_DIR; the gate is skipped when it is missing)`);
     const m = g.metric;
     const known = typeof m === 'string' && (METRICS[m] || (m.startsWith('value.') && isObj(values) && m.slice(6) in values));
@@ -169,8 +179,31 @@ export function validate(raw) {
   const timeoutMin = raw.timeoutMin ?? null;
   if (timeoutMin !== null && !isNum(timeoutMin, 1, 600)) errs.push('timeoutMin: 1–600');
 
+  // #141: what the run checks, and for kind "audio" the track excerpt the page hears as its line input
+  const kind = raw.kind ?? 'both';
+  if (!KINDS.includes(kind)) errs.push(`kind: one of ${KINDS.join(', ')}`);
+  let audio = null;
+  if (raw.audio !== undefined || kind === 'audio') {
+    const a = raw.audio;
+    if (kind !== 'audio') errs.push('audio: only with kind "audio"');
+    else if (!isObj(a)) errs.push('audio: {"track": "<name>", "from": s, "len": s, "noloop": true, "via": "fake"} for kind "audio"');
+    else {
+      for (const k of Object.keys(a)) if (!['track', 'from', 'len', 'noloop', 'via'].includes(k)) errs.push(`audio: unknown field "${k}"`);
+      audio = { track: a.track, from: a.from ?? 0, len: a.len, noloop: a.noloop ?? true, via: a.via ?? 'fake' };
+      if (!TRACKS.includes(audio.track)) errs.push(`audio.track: one of ${TRACKS.join(', ')} (in QA_AUDIO_DIR; the runs are skipped when it is missing)`);
+      if (!Number.isInteger(audio.from) || audio.from < 0 || audio.from > 3600) errs.push('audio.from: whole seconds into the track, 0–3600');
+      if (!Number.isInteger(audio.len) || audio.len < 2 || audio.len > 120) errs.push('audio.len: whole seconds of excerpt, 2–120');
+      if (typeof audio.noloop !== 'boolean') errs.push('audio.noloop: true or false');
+      if (audio.via === 'loop') errs.push('audio.via "loop" needs qa/audio-loop.sh (the next runner PR); use "fake" for now');
+      else if (audio.via !== 'fake') errs.push('audio.via: "fake" (Chromium fake capture) or "loop" (PulseAudio BlackHole-QA)');
+      // a noloop excerpt is checked for silence after its end, so the run has to outlast it (it starts with Play)
+      if (audio.noloop && Number.isInteger(audio.len) && isNum(warmup, 0, 120) && isNum(seconds, 0, 600) && warmup + seconds < audio.len + 1.5)
+        errs.push(`audio: warmup + seconds (${warmup + seconds}) must reach 1.5 s past the excerpt's end (len ${audio.len}) to check the silence after it`);
+    }
+  }
+
   const exp = { version: VERSION, id: raw.id, page, note: raw.note || '', params, sizes, warmup, seconds, play, variants, sweep: raw.sweep || null,
-    values: isObj(values) ? values : {}, gates: Array.isArray(gates) ? gates : [], checks, record, swipe, debug: isObj(debug) ? debug : {}, timeoutMin };
+    values: isObj(values) ? values : {}, gates: Array.isArray(gates) ? gates : [], checks, record, swipe, debug: isObj(debug) ? debug : {}, timeoutMin, kind, audio };
   if (!errs.length) {
     const n = expand(exp).length;
     if (n > MAX_RUNS) errs.push(`${n} runs (variants × sweep × resolutions); keep it to ${MAX_RUNS}`);
@@ -211,6 +244,7 @@ export function evalGates(exp, runs, { missing = [] } = {}) {
     const bar = [g.min !== undefined && `≥ ${g.min}`, g.max !== undefined && `≤ ${g.max}`, g.equals !== undefined && `= ${g.equals}`].filter(Boolean).join(' ');
     const name = g.name || `${g.metric} ${bar}${vs ? ` (${vs.join(', ')})` : ''}${rs ? ` @${rs.join(', ')}` : ''}`;
     if (g.track && missing.includes(g.track)) return { name, ok: null, skipped: true, value: `skipped: track missing (${g.track})` };
+    if (exp.audio && missing.includes(exp.audio.track) && g.metric.startsWith('audio.')) return { name, ok: null, skipped: true, value: `skipped: track missing (${exp.audio.track})` };
     if (!mine.length && matched.length) return { name, ok: null, skipped: true, value: `skipped: track missing (${[...new Set(matched.map(r => r.skipped))].join(', ')})` };
     if (!mine.length) return { name, ok: false, value: 'no run matches this gate' };
     const fails = [], seen = [];
@@ -221,7 +255,10 @@ export function evalGates(exp, runs, { missing = [] } = {}) {
         || (g.min !== undefined && !(x >= g.min)) || (g.max !== undefined && !(x <= g.max)) || (g.equals !== undefined && x !== g.equals);
       if (bad) fails.push(r.label);
     }
-    return { name, ok: !fails.length, value: (fails.length ? `fails on ${fails.join(', ')} · ` : '') + seen.join(' · ') };
+    const value = (fails.length ? `fails on ${fails.join(', ')} · ` : '') + seen.join(' · ');
+    // report: true (an audio gate in its first week, #141): shown as a note with what it would say, never a fail
+    if (g.report) return { name: `${name} (report-only)`, ok: null, skipped: true, value: `${fails.length ? 'would fail' : 'would pass'} · ${value}` };
+    return { name, ok: !fails.length, value };
   });
 }
 
