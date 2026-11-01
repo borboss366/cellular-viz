@@ -173,18 +173,28 @@ export function flowAt(modes, q, r, nq, nr) {
   const dx = dq, dy = (2 * dr - dq) / Math.sqrt(3);   // ∂ψ/∂x, ∂ψ/∂y
   return [dy, -dx];
 }
-export function flowLattice(nq, nr, d, seed, { umax = 0.15, count = 8, kMax = 6 } = {}) {
+// the flow itself, sampled at every site (scaled so the peak |u| is umax): { ux, uy, modes, scale }
+export function flowField(nq, nr, seed, { umax = 0.15, count = 8, kMax = 6 } = {}) {
   const modes = flowModes(seed, { count, kMax });
   let peak = 0;
   for (let r = 0; r < nr; r += 8) for (let q = 0; q < nq; q += 8) { const [ux, uy] = flowAt(modes, q, r, nq, nr); peak = Math.max(peak, Math.hypot(ux, uy)); }
-  const k = peak > 0 ? umax / peak : 0, R = rng(seed), S = new Uint8Array(nq * nr);
-  for (let r = 0; r < nr; r++) for (let q = 0; q < nq; q++) {
-    const [ux, uy] = flowAt(modes, q, r, nq, nr), vx = ux * k, vy = uy * k;
+  const k = peak > 0 ? umax / peak : 0, ux = new Float32Array(nq * nr), uy = new Float32Array(nq * nr);
+  for (let r = 0; r < nr; r++) for (let q = 0; q < nq; q++) { const u = flowAt(modes, q, r, nq, nr); ux[r * nq + q] = u[0] * k; uy[r * nq + q] = u[1] * k; }
+  return { ux, uy, modes, scale: k };
+}
+// a lattice drawn from the equilibrium of a sampled flow; particleSeed picks the particles (replicas of one flow)
+export function latticeFromFlow(field, nq, nr, d, particleSeed) {
+  const R = rng(particleSeed), S = new Uint8Array(nq * nr), { ux, uy } = field;
+  for (let k = 0; k < S.length; k++) {
     let s = 0;
-    for (let i = 0; i < 6; i++) if (R() < Math.min(1, Math.max(0, d * (1 + 2 * (SCREEN[i][0] * vx + SCREEN[i][1] * vy))))) s |= 1 << i;
-    S[r * nq + q] = s;
+    for (let i = 0; i < 6; i++) if (R() < Math.min(1, Math.max(0, d * (1 + 2 * (SCREEN[i][0] * ux[k] + SCREEN[i][1] * uy[k]))))) s |= 1 << i;
+    S[k] = s;
   }
-  return { S, modes, scale: k };
+  return S;
+}
+export function flowLattice(nq, nr, d, seed, opts = {}) {
+  const field = flowField(nq, nr, seed, opts);
+  return { S: latticeFromFlow(field, nq, nr, d, seed), modes: field.modes, scale: field.scale };
 }
 // RMS divergence and curl of a coarse velocity field on a w × h grid of blocks, each B sites a side in q and r
 // (periodic). V: [vx, vy] per block, row-major (row = r). Central differences, then the screen chain rule above.
@@ -200,6 +210,30 @@ export function divCurl(V, w, h, B) {
   }
   const divRMS = Math.sqrt(d2 / n), curlRMS = Math.sqrt(c2 / n);
   return { divRMS, curlRMS, ratio: curlRMS > 0 ? divRMS / curlRMS : Infinity };
+}
+// the same with the particle noise taken out: VA and VB are two independent measurements of one flow (two halves
+// of the replicas), so their noise is uncorrelated and ⟨div_A · div_B⟩ estimates the flow's own div² (likewise curl).
+// ratio = sqrt(max(0, ⟨dA dB⟩) / ⟨cA cB⟩); the plain one-field ratio of the mean is returned too.
+export function divCurlCross(VA, VB, w, h, B) {
+  const field = V => {
+    const at = (x, y) => V[((y + h) % h) * w + ((x + w) % w)], out = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const xp = at(x + 1, y), xm = at(x - 1, y), yp = at(x, y + 1), ym = at(x, y - 1);
+      const dqx = (xp[0] - xm[0]) / (2 * B), dqy = (xp[1] - xm[1]) / (2 * B), drx = (yp[0] - ym[0]) / (2 * B), dry = (yp[1] - ym[1]) / (2 * B);
+      const dyvx = (2 * drx - dqx) / Math.sqrt(3), dyvy = (2 * dry - dqy) / Math.sqrt(3);
+      out.push([dqx + dyvy, dqy - dyvx]);
+    }
+    return out;
+  };
+  const A = field(VA), Bf = field(VB);
+  let dd = 0, cc = 0, d2 = 0, c2 = 0;
+  for (let k = 0; k < A.length; k++) {
+    dd += A[k][0] * Bf[k][0]; cc += A[k][1] * Bf[k][1];
+    const dm = (A[k][0] + Bf[k][0]) / 2, cm = (A[k][1] + Bf[k][1]) / 2; d2 += dm * dm; c2 += cm * cm;
+  }
+  const n = A.length, divSignal = Math.sqrt(Math.max(0, dd / n)), curlSignal = Math.sqrt(Math.max(0, cc / n));
+  return { divSignal, curlSignal, ratio: curlSignal > 0 ? divSignal / curlSignal : Infinity,
+    plainRatio: Math.sqrt(d2) / Math.max(1e-30, Math.sqrt(c2)), divRMS: Math.sqrt(d2 / n), curlRMS: Math.sqrt(c2 / n) };
 }
 // the whole measurement on the CPU (node's truth 3): steps t1 and t2, speed = Δradius / Δt
 export function soundSpeedCPU({ nq = 768, nr = 768, d = 0.25, amp = 0.1, radius = 5, spacing = 96, seed = 7, t1 = 20, t2 = 40 } = {}) {

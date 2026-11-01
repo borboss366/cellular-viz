@@ -94,3 +94,17 @@ test('F2 start: the vortex lattice holds its flow in the coarse momentum (equili
   assert.ok(corr > 0.8, `block velocity vs the flow: correlation ${corr.toFixed(3)}`);
   assert.equal(F.massMomentum(S).mass > 0.24 * 6 * nq * nr, true);
 });
+
+test('truth 4 noise removal: two noisy measurements of one solenoidal flow cross-correlate to div/curl ≈ 0, the plain ratio does not', () => {
+  const nq = 512, nr = 512, B = 16, w = nq / B, modes = F.flowModes(11, { count: 8, kMax: 2 }), R = F.rng(99);
+  const gauss = () => { let s = 0; for (let i = 0; i < 12; i++) s += R(); return s - 6; };
+  const flow = [];
+  for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) flow.push(F.flowAt(modes, x * B, y * B, nq, nr));
+  const peak = Math.max(...flow.map(u => Math.hypot(u[0], u[1])));
+  const sigma = 0.08 * peak;   // noise whose derivative is a third of the curl signal
+  const noisy = () => flow.map(u => [u[0] + sigma * gauss(), u[1] + sigma * gauss()]);
+  const r = F.divCurlCross(noisy(), noisy(), w, w, B);
+  console.log(JSON.stringify(r));
+  assert.ok(r.plainRatio > 0.15, `plain ratio ${r.plainRatio} (noise must show)`);
+  assert.ok(r.ratio < 0.1, `cross ratio ${r.ratio}`);
+});

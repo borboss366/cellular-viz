@@ -204,7 +204,7 @@ void main() {
     vec2 uv = vec2(q, r) / uLat;
     vec4 e = textureLod(uEma, uv, uLod);
     float sp = length(e.gb / max(e.r, 1.0e-3));
-    col += textureLod(uDye, uv, 0.0).rgb * (0.12 + 2.5 * sp) * uFieldGain * uFieldW;
+    col += textureLod(uDye, uv, 0.0).rgb * (0.3 + 4.0 * sp) * uFieldGain * uFieldW;   // ~2.8x viz-165-2 (fluid L 0.065)
   }
   vec2 bd = w - uBurst.xy;
   col += vec3(0.020, 0.012, 0.030) * uBurst.w * exp(-dot(bd, bd) / max(1.0, uBurst.z * uBurst.z));
@@ -447,7 +447,46 @@ export function createScene() {
     fl.di = 1 - fl.di;
     st.reseed = Math.max(0.004, st.reseed * 0.9);   // a drop's reseed (1) fades back to the slow pull in ~1 s
   }
-  // truth 4 (#71): RMS(div) / RMS(curl) of the time-averaged block velocity at block size B (8 · 2^k), read back
+  // truth 4 (#71, gated): is the coarse-grained FHP flow divergence-free at B ≥ 16? On the live lattice the particle
+  // noise is as big as the flow's own curl at B = 16 (viz-165-2: ratio 0.70, noise-limited), so the truth runs on its
+  // own QA lattices: `replicas` copies of one vortex flow (umax 0.12, large modes, so the compressible part ~ Ma²
+  // stays small and the differences stay accurate), each with its own particles and collision seed, stepped on the
+  // GPU; the 8 × 8 block sums of the last `window` steps are added up per half of the replicas, and divCurlCross
+  // takes the noise out by correlating the two halves.
+  function fluidTest({ n = 512, replicas = 32, steps = 64, window = 32, umax = 0.12, kMax = 2, seed = 11 } = {}) {
+    if (!fx.half) return { ok: null, note: 'no float render targets' };
+    const bw = n / 8, ct = flTex(bw, bw, false), px = new Float32Array(bw * bw * 4);
+    const sums = [new Float64Array(bw * bw * 3), new Float64Array(bw * bw * 3)];
+    const field = F.flowField(n, n, seed, { umax, kMax });
+    const t0 = performance.now();
+    for (let k = 0; k < replicas; k++) {
+      const L = lattice(n, n, F.latticeFromFlow(field, n, n, 0.25, seed * 1000 + k + 1)), acc = sums[k % 2];
+      for (let t = 0; t < steps; t++) {
+        stepLattice(L, t, (seed * 7919 + k * 104729) >>> 0);
+        if (t < steps - window) continue;
+        pass('coarse', L.a, ct);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, ct.f); gl.readPixels(0, 0, bw, bw, gl.RGBA, gl.FLOAT, px);
+        for (let i = 0; i < bw * bw; i++) { acc[3 * i] += px[4 * i]; acc[3 * i + 1] += px[4 * i + 1]; acc[3 * i + 2] += px[4 * i + 2]; }
+      }
+      freeLattice(L);
+    }
+    freeTex(ct); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // blocks of B = 8 f: sum f × f of the 8-blocks, velocity = momentum / mass
+    const at = B => {
+      const f = B / 8, w = bw / f, V = [[], []];
+      for (let h = 0; h < 2; h++) for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) {
+        let m = 0, vx = 0, vy = 0;
+        for (let j = 0; j < f; j++) for (let i = 0; i < f; i++) { const o = 3 * ((y * f + j) * bw + x * f + i); m += sums[h][o]; vx += sums[h][o + 1]; vy += sums[h][o + 2]; }
+        V[h].push([vx / Math.max(1e-9, m), vy / Math.max(1e-9, m)]);
+      }
+      const r = F.divCurlCross(V[0], V[1], w, w, B);
+      return { B, blocks: w * w, ratio: +r.ratio.toFixed(4), plainRatio: +r.plainRatio.toFixed(4), divSignal: +r.divSignal.toExponential(3), curlSignal: +r.curlSignal.toExponential(3) };
+    };
+    const b16 = at(16), b32 = at(32), b64 = at(64);
+    return { ok: b16.ratio < 0.1, b16, b32, b64, n, replicas, steps, window, umax, kMax, ms: Math.round(performance.now() - t0) };
+  }
+  // the live view's time-averaged block velocity at block size B (8 · 2^k), read back: RMS(div) / RMS(curl)
+  // (report-only: noise-limited at small B, see fluidTest)
   function coarse(B = 16) {
     if (!fl.coarse) return { ok: null, note: 'no float render targets: F2 off' };
     const lod = Math.max(0, Math.round(Math.log2(B / 8))), e = fl.ema[fl.ei];
@@ -766,11 +805,13 @@ export function createScene() {
     const lut = F.checkLut();
     // truth 4 reads the live flow (it only means something fully zoomed out with no stirs: ?qa=fluid), once a second
     const t = performance.now();
-    if (fresh || !st.qaCache.t4 || t - st.qaCache.t4.at > 1000) {
+    if (fresh || !st.qaCache.t4live || t - st.qaCache.t4live.at > 1000) {
       const b16 = coarse(16), b32 = coarse(32), b64 = coarse(64);
-      st.qaCache.t4 = { at: t, ok: b16.ok, b16, b32, b64, zoom: st.zoom, fluidQa: st.fluidQa };
+      st.qaCache.t4live = { at: t, b16, b32, b64, zoom: st.zoom, fluidQa: st.fluidQa };
     }
-    return { t1: st.qaCache.t1, t3: st.qaCache.t3, t4: st.qaCache.t4, lut: { ok: lut.ok, changed: lut.changed }, ok: st.qaCache.t1.ok && st.qaCache.t3.ok && lut.ok };
+    if (fresh || !st.qaCache.t4) st.qaCache.t4 = fluidTest();
+    return { t1: st.qaCache.t1, t3: st.qaCache.t3, t4: st.qaCache.t4, t4live: st.qaCache.t4live, lut: { ok: lut.ok, changed: lut.changed },
+      ok: st.qaCache.t1.ok && st.qaCache.t3.ok && st.qaCache.t4.ok !== false && lut.ok };
   }
 
   return {
@@ -783,7 +824,7 @@ export function createScene() {
       get triggerLog() { return st.triggerLog; }, get triggerEnv() { return st.triggerEnv; }, lut: Array.from(F.LUT),
       mass() { const m = reduceSync(live, red); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return m.mass; },
       momentum() { const m = reduceSync(live, red); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return [m.pq, m.pr]; },
-      conserveTest, soundSpeed, check, coarse,
+      conserveTest, soundSpeed, check, coarse, fluidTest,
       get zoom() { return st.zoom; }, get lattice() { return [NQ, NR]; },
     },
   };
@@ -813,7 +854,7 @@ export const DETAIL = [
   { name: 'exposure', type: 'float', default: 1, min: 0.5, max: 2 },
   { name: 'burstSize', type: 'float', default: 4, min: 2, max: 8 },
   { name: 'scene', type: 'long', values: ['auto', 'F1', 'fluid'], default: 'auto' },
-  { name: 'fieldGain', type: 'float', default: 1, min: 0, max: 3 },          // F2: the fluid layer's brightness
+  { name: 'fieldGain', type: 'float', default: 1.3, min: 0, max: 3 },          // F2: the fluid layer's brightness
   { name: 'emaMs', type: 'float', default: 150, min: 20, max: 2000 },        // F2: the block velocity's time average τ
   { name: 'nodes', type: 'float', default: 0.5, min: 0, max: 1 },
 ];
