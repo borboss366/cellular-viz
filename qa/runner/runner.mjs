@@ -35,6 +35,7 @@ import { addTodo } from './todo.mjs';
 import { audioDir, scanTracks } from './audio.mjs';
 import { settled } from './settle.mjs';
 import { defaultSwipe, swipeOnlyRaw, takeRequests } from './swipe.mjs';
+import { dailyConfig, dailyDue, dayOf } from './daily.mjs';
 import { emit, buildEvent } from './events.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -61,6 +62,9 @@ const CFG = {
   events: env('QA_EVENTS_DIR', ''),            // build events for QA box's folder trigger (events.mjs); unset = none
   once: argv.includes('--once'),
 };
+// experiment files re-run once a UTC day on main (daily.mjs): qa/runner/daily.json, the DAILY_* env keys override it
+{ let t = ''; try { t = fs.readFileSync(path.join(here, 'daily.json'), 'utf8'); } catch {}
+  const d = dailyConfig(t, process.env); CFG.daily = d.prs; CFG.dailyFrom = d.from; CFG.dailyTo = d.to; }
 if (!/^[\w.-]+\/[\w.-]+$/.test(CFG.repo)) throw new Error('bad repo ' + CFG.repo);
 if (!/^[\w][\w./-]*$/.test(CFG.checksRef) || CFG.checksRef.includes('..')) throw new Error('bad checks ref ' + CFG.checksRef);
 const BUILDS_CLI = path.join(CFG.qaHome, 'qa', 'builds.mjs');
@@ -190,8 +194,22 @@ async function shareUserNotes() {
   for (const d of done) log(`note ${d.id} #${d.n} ${d.how === 'found' ? 'was already' : ''} posted on #${d.pr}: ${d.url}`);
 }
 const branchArg = job => (typeof job.branch === 'string' && job.branch ? ['--branch', job.branch] : []);
+// DAILY_EXPERIMENTS (daily.mjs): queue each listed experiment file at main's head once a UTC day, in the daytime
+// window; it waits behind PR work like any job. The day is marked when it is queued, so a failed or discarded run
+// doesn't repeat that day.
+function queueDaily() {
+  if (!CFG.daily.length) return;
+  const now = new Date(), busy = [...state.queue, ...(status.running ? [status.running] : [])].filter(j => j.daily).map(j => j.pr);
+  const due = dailyDue({ prs: CFG.daily, now, done: state.dailyDone || {}, from: CFG.dailyFrom, to: CFG.dailyTo, busy });
+  for (const pr of due) {
+    state.dailyDone = { ...(state.dailyDone || {}), [pr]: dayOf(now) };
+    enqueue({ pr, sha: 'main', kind: 'experiment', daily: true, page: 'daily', title: `daily run of qa/experiments/${pr}.json on main`, at: now.toISOString() });
+  }
+  if (due.length) save();
+}
 async function poll() {
   try { takeSwipeRequests(); } catch (e) { log(`swipe requests: ${e.message}`); }
+  try { queueDaily(); } catch (e) { log(`daily experiments: ${e.message}`); }
   try { await shareUserNotes(); } catch (e) { log(`notes: ${e.message}`); }
   dropPageJobsOfLabelled();
   status.lastPoll = new Date().toISOString();
@@ -232,7 +250,7 @@ async function poll() {
   }
   // builds of PRs that left before the runner saw them go (closed by hand, or closed while it was down):
   // a few a poll, so the builds page shows only live work
-  const stale = [...new Set(latestBuilds().filter(b => b.pr && !DONE.has(b.status) && !open.has(b.pr)).map(b => b.pr))];
+  const stale = [...new Set(latestBuilds().filter(b => b.pr && b.kind !== 'daily' && !DONE.has(b.status) && !open.has(b.pr)).map(b => b.pr))];
   for (const n of stale.slice(0, 5)) await settleLeft(n);
 }
 const DONE = new Set(['merged', 'closed']);
@@ -241,7 +259,7 @@ async function settleLeft(n) {
     const pr = await gh(`pulls/${n}`);
     if (pr.data.state !== 'closed') return;
     const status = pr.data.merged ? 'merged' : 'closed';
-    const marked = latestBuilds().filter(b => b.pr === n && !DONE.has(b.status));
+    const marked = latestBuilds().filter(b => b.pr === n && b.kind !== 'daily' && !DONE.has(b.status));   // daily runs on main keep their own status
     for (const b of marked) { b.status = status; b.waitingOn = null; appendBuild(b); log(`#${n} ${status}: ${b.id}`); }
     if (marked.length) await afterMerge(n, marked, status);
   } catch (e) { log(`#${n} left the open list, state unknown: ${e.message}`); }
@@ -399,6 +417,11 @@ async function runSwipe(job) {
 // a qa-ready PR: run its experiment file with this runner's measuring code and the check scripts from CHECKS_REF
 async function runExperiment(job, gate) {
   try { if (!(await fetchOrRetry(job))) return; } catch {}   // a non-network failure is recorded below, as before
+  if (job.daily) {   // a daily run (DAILY_EXPERIMENTS): main's head as fetched just now
+    try { job.sha = (await must('git', ['-C', WORK, 'rev-parse', '--verify', 'refs/runner/main^{commit}'])).trim(); } catch {}
+    if (!/^[0-9a-f]{40}$/.test(job.sha)) { log(`daily run of #${job.pr}: main's head not found; skipped today`); return; }
+  }
+  const kindArg = job.daily ? ['--kind', 'daily'] : [];   // its own build ids (daily-159-1, …), never a round of the PR
   const short = job.sha.slice(0, 7), stamp = localStamp(), tmp = fs.mkdtempSync(path.join(CFG.state, 'exp-'));
   const rel = `qa/experiments/${job.pr}.json`;
   let id = null, result = 'failed', page = `pr-${job.pr}`, report = null;   // report: its check.md, relative to QA_HOME (status.sh)
@@ -406,7 +429,7 @@ async function runExperiment(job, gate) {
   const fail = async (why, detail, waiting = 'dev') => {
     const dir = path.join(CFG.qaHome, 'qa', page, 'runs', `${stamp}-pr${job.pr}`);
     failCheck(dir, [[why, detail]]); saveGate(dir, gate); report = reportPath(dir);
-    if (!id) id = (await builds('start', '--page', page, '--pr', String(job.pr), '--commit', short, ...branchArg(job))).trim().split('\n').pop();
+    if (!id) id = (await builds('start', '--page', page, '--pr', String(job.pr), '--commit', short, ...branchArg(job), ...kindArg)).trim().split('\n').pop();
     status.running = { ...(status.running || job), id, page };
     await builds('finish', '--id', id, '--check', dir, '--status', 'failed', '--waiting', waiting, '--note', why);
     result = `failed: ${why}`;
@@ -423,7 +446,12 @@ async function runExperiment(job, gate) {
     // no swipe in the file: a default one (first variant, new vs base, 30 s), so a green build reaches the grading page;
     // it is optional: if it can't be recorded that is a note, not a failed gate. Audio jobs record no swipe.
     let swipeOptional = false;
-    if (!exp.swipe && exp.kind !== 'audio' && exp.seconds > 0) {
+    if (job.daily && exp.swipe) {   // a daily run measures, it records no swipe
+      const raw = JSON.parse(fs.readFileSync(file, 'utf8')); delete raw.swipe;
+      fs.writeFileSync(file, JSON.stringify(raw, null, 1));
+      ({ errors, exp } = loadFile(file));
+    }
+    if (!exp.swipe && !job.daily && exp.kind !== 'audio' && exp.seconds > 0) {
       const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
       raw.swipe = defaultSwipe(raw);
       fs.writeFileSync(file, JSON.stringify(raw, null, 1));
@@ -431,7 +459,7 @@ async function runExperiment(job, gate) {
       if (errors.length) return await fail(`${rel} is valid with the default swipe`, errors.join(' · '));
       swipeOptional = true;
     }
-    id = (await builds('start', '--page', page, '--pr', String(job.pr), '--commit', short, ...branchArg(job))).trim().split('\n').pop();
+    id = (await builds('start', '--page', page, '--pr', String(job.pr), '--commit', short, ...branchArg(job), ...kindArg)).trim().split('\n').pop();
     status.running = { ...job, id, page, started: new Date().toISOString() };
     log(`build ${id}: #${job.pr} experiment ${page} @${short}, checks from ${CFG.checksRef}`);
 
@@ -484,7 +512,7 @@ async function runExperiment(job, gate) {
     result = `error: ${e.message}`;
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
-    state.expDone = { ...(state.expDone || {}), [job.pr]: job.sha };
+    if (!job.daily) state.expDone = { ...(state.expDone || {}), [job.pr]: job.sha };
     state.recent = [{ ...status.running, finished: new Date().toISOString(), result, report }, ...(state.recent || [])].slice(0, 30);
     save();
     status.running = null;
