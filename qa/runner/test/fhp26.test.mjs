@@ -107,4 +107,6 @@ test('truth 4 noise removal: two noisy measurements of one solenoidal flow cross
   console.log(JSON.stringify(r));
   assert.ok(r.plainRatio > 0.15, `plain ratio ${r.plainRatio} (noise must show)`);
   assert.ok(r.ratio < 0.1, `cross ratio ${r.ratio}`);
+  assert.ok(Number.isFinite(r.ddMean) && r.ddSigma > 0 && r.ratioUpper >= r.ratio, `signed cross term and its bound: ${r.ddMean} ± ${r.ddSigma}, upper ${r.ratioUpper}`);
+  assert.ok(r.ratioUpper < 0.2, `upper bound ${r.ratioUpper}`);
 });

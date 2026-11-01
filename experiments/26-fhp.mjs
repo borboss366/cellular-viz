@@ -226,13 +226,18 @@ export function divCurlCross(VA, VB, w, h, B) {
     return out;
   };
   const A = field(VA), Bf = field(VB);
-  let dd = 0, cc = 0, d2 = 0, c2 = 0;
+  let dd = 0, cc = 0, d2 = 0, c2 = 0, ddSq = 0;
   for (let k = 0; k < A.length; k++) {
-    dd += A[k][0] * Bf[k][0]; cc += A[k][1] * Bf[k][1];
+    const pd = A[k][0] * Bf[k][0];
+    dd += pd; ddSq += pd * pd; cc += A[k][1] * Bf[k][1];
     const dm = (A[k][0] + Bf[k][0]) / 2, cm = (A[k][1] + Bf[k][1]) / 2; d2 += dm * dm; c2 += cm * cm;
   }
-  const n = A.length, divSignal = Math.sqrt(Math.max(0, dd / n)), curlSignal = Math.sqrt(Math.max(0, cc / n));
-  return { divSignal, curlSignal, ratio: curlSignal > 0 ? divSignal / curlSignal : Infinity,
+  // the signed cross terms (div² can come out below 0: noise only), the spread of the div² estimate over the blocks,
+  // and an upper bound: the div that the estimate + 2σ allows (#165 viz-165-4: a clamped 0 can't be gated on)
+  const n = A.length, ddMean = dd / n, ccMean = cc / n, ddSigma = Math.sqrt(Math.max(0, ddSq / n - ddMean * ddMean) / n);
+  const divSignal = Math.sqrt(Math.max(0, ddMean)), curlSignal = Math.sqrt(Math.max(0, ccMean)), divUpper = Math.sqrt(Math.max(0, ddMean + 2 * ddSigma));
+  return { divSignal, curlSignal, ratio: curlSignal > 0 ? divSignal / curlSignal : Infinity, ddMean, ddSigma, ccMean,
+    divUpper, ratioUpper: curlSignal > 0 ? divUpper / curlSignal : Infinity,
     plainRatio: Math.sqrt(d2) / Math.max(1e-30, Math.sqrt(c2)), divRMS: Math.sqrt(d2 / n), curlRMS: Math.sqrt(c2 / n) };
 }
 // the whole measurement on the CPU (node's truth 3): steps t1 and t2, speed = Δradius / Δt

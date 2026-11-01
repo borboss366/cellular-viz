@@ -480,10 +480,13 @@ export function createScene() {
         V[h].push([vx / Math.max(1e-9, m), vy / Math.max(1e-9, m)]);
       }
       const r = F.divCurlCross(V[0], V[1], w, w, B);
-      return { B, blocks: w * w, ratio: +r.ratio.toFixed(4), plainRatio: +r.plainRatio.toFixed(4), divSignal: +r.divSignal.toExponential(3), curlSignal: +r.curlSignal.toExponential(3) };
+      return { B, blocks: w * w, ratio: +r.ratio.toFixed(4), ratioUpper: +r.ratioUpper.toFixed(4), plainRatio: +r.plainRatio.toFixed(4),
+        divSignal: +r.divSignal.toExponential(3), curlSignal: +r.curlSignal.toExponential(3),
+        ddMean: +r.ddMean.toExponential(3), ddSigma: +r.ddSigma.toExponential(3), ccMean: +r.ccMean.toExponential(3) };
     };
     const b16 = at(16), b32 = at(32), b64 = at(64);
-    return { ok: b16.ratio < 0.1, b16, b32, b64, n, replicas, steps, window, umax, kMax, ms: Math.round(performance.now() - t0) };
+    // gated on the upper bound (estimate + 2σ), never on the clamped estimate alone
+    return { ok: b16.ratioUpper < 0.1, b16, b32, b64, n, replicas, steps, window, umax, kMax, ms: Math.round(performance.now() - t0) };
   }
   // the live view's time-averaged block velocity at block size B (8 · 2^k), read back: RMS(div) / RMS(curl)
   // (report-only: noise-limited at small B, see fluidTest)
