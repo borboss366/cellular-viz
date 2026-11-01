@@ -285,7 +285,7 @@ if (!gates.length) gates.push({ name: 'the experiment ran', ok: runs.length > 0 
 const info = [['PR', `#${PR} @${SHA.slice(0, 7)}`], ['GPU', hasGpu ? `${renderNode} (ANGLE gl-egl)` : 'none: software GL, fps not comparable'],
   ...runs.filter(r => r.errors.length).map(r => [`errors ${r.label}`, r.errors.slice(0, 3).join(' / ')]), ...notes.map(n => ['note', n])];
 fs.writeFileSync(path.join(OUT, 'check.md'), checkMd(`${exp.id} · experiment for #${PR} @${SHA.slice(0, 7)}`, gates, info));
-fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ id: exp.id, page: exp.page, pr: +PR || null, sha: SHA, vs: VS || null, at: new Date().toISOString(),
+fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ id: exp.id, page: exp.page, kind: exp.kind || 'both', pr: +PR || null, sha: SHA, vs: VS || null, at: new Date().toISOString(),
   host: os.hostname(), hasGpu, runs, checks: checks.map(({ gates, ...c }) => ({ ...c, gates })), swipe, gates, notes,
   tracks: tracks.map(({ path: _p, ...t }) => t) }, null, 1));   // file names and sha256 only, never the folder or the audio
 const keys = Object.keys(METRICS).filter(k => runs.some(r => r.metrics[k] !== undefined && r.metrics[k] !== null));
