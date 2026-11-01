@@ -17,7 +17,7 @@ import { loadFile, expand, query, evalGates, gatesFromMd, checkMd, readExpr, MET
 import { PROBES } from './probes.mjs';
 import { readGpuBusy } from './gpu.mjs';
 import { audioDir, serveAudio, tracksUsed, trackInfo, describe } from './audio.mjs';
-import { excerptPath, excerptName, wavBytes, readWav, analyse, audioMetrics, audioGateMetrics, writeAtomic, DEVICE } from './audiocheck.mjs';
+import { excerptPath, excerptName, wavBytes, readWav, analyse, audioMetrics, audioGateMetrics, writeAtomic, padSilence, PAD_S, ROW_MIN_S, DEVICE } from './audiocheck.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 && i + 1 < process.argv.length ? process.argv[i + 1] : d; };
 const FILE = arg('file'), EXP_DIR = path.resolve(arg('experiments', '')), OLD_DIR = arg('experiments-old') ? path.resolve(arg('experiments-old')) : null;
@@ -69,12 +69,17 @@ const FULL = '#wrap{width:100vw !important;height:100vh !important;aspect-ratio:
 // ---- kind "audio" (#141): a track excerpt as the page's line input ----
 // via "fake": Chromium plays the excerpt WAV as its fake capture device from the moment the page opens it (noloop:
 // once, then silence). The WAV is cut once per (track, from, len) by Chromium's own decoder (no ffmpeg) and kept in
-// QA_AUDIO_DIR next to the track, never committed or served. The offline analysis of the same WAV is the truth the
-// page's live bands are compared with.
+// QA_AUDIO_DIR next to the track, never committed or served. The offline analysis of the same WAV's first `len`
+// seconds is the truth the page's live bands are compared with. The WAV ends in PAD_S s of silence (v2, #159): at the
+// end of the file Chromium's fake capture repeats its last buffer, so the silence is what it repeats.
 const A = exp.audio, audioMissing = A ? missing.includes(A.track) : false;
 let excerpt = null, wav = null;
 const offlines = new Map();   // the offline analysis per analyser smoothing (the page reports its own)
-const offlineFor = sm => { const k = Number.isFinite(sm) ? sm : 0; if (!offlines.has(k)) offlines.set(k, analyse(wav.mono, wav.sampleRate, { fftSize: 2048, smoothing: k })); return offlines.get(k); };
+const offlineFor = sm => {
+  const k = Number.isFinite(sm) ? sm : 0;
+  if (!offlines.has(k)) offlines.set(k, analyse(wav.mono.subarray(0, Math.min(wav.mono.length, Math.round(A.len * wav.sampleRate))), wav.sampleRate, { fftSize: 2048, smoothing: k }));
+  return offlines.get(k);
+};
 async function makeExcerpt() {
   const dest = excerptPath(AUDIO_DIR, A);
   if (!fs.existsSync(dest)) {
@@ -94,8 +99,9 @@ async function makeExcerpt() {
       }, A);
       if (!got.n) throw new Error(`the track is shorter than from ${A.from} s`);
       const pcm = Buffer.from(got.b64, 'base64');
-      writeAtomic(dest, wavBytes(new Int16Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 2), got.sr, got.ch));
-      note(`audio: cut ${excerptName(A)} (${got.ch} ch, ${got.sr} Hz, ${(got.n / got.sr).toFixed(1)} s) with Chromium's decoder`);
+      const cut = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 2);
+      writeAtomic(dest, wavBytes(padSilence(cut, got.sr, got.ch), got.sr, got.ch));
+      note(`audio: cut ${excerptName(A)} (${got.ch} ch, ${got.sr} Hz, ${(got.n / got.sr).toFixed(1)} s + ${PAD_S} s silence) with Chromium's decoder`);
     } finally { await b.close(); }
   }
   return dest;
@@ -168,6 +174,7 @@ async function measure(browser, run) {
       Object.assign(r.metrics, audioGateMetrics(m));
       const { log: _log, ...head } = info || {};
       r.audio = { ...m, status: head.status || null, error: head.error || null, smoothing: head.smoothing ?? null, logged: info && info.log ? info.log.length : 0 };
+      if (m.rowSec.length) note(`${r.label} audio rows: ${m.rowsCounted} of ${m.rowSec.length} counted (≥ ${ROW_MIN_S} s of samples); seconds [${m.rowSec.join(', ')}], corr [${m.rowCorr.map(c => (c === null ? '–' : c)).join(', ')}], lag ms [${m.rowLagMs.map(c => (c === null ? '–' : c)).join(', ')}]`);
       fs.writeFileSync(path.join(OUT, 'debug', `audio-${safe(r.label)}.json`), JSON.stringify({ audioIn: head, metrics: m, log: info ? info.log : null }));
     }
     for (let i = 0; i < exp.record.stills; i++) {
@@ -279,12 +286,13 @@ if (exp.swipe) {
 
 // ---- 4. results ----
 const gates = [...evalGates(exp, runs, { missing }), ...checks.flatMap(c => c.gates)];
-if (exp.swipe && !swipe) gates.push({ name: 'swipe run recorded', ok: false, value: notes.filter(n => n.startsWith('swipe')).join(' / ') || 'failed' });
+// --swipe-optional: the runner's default swipe (the file asked for none): a failed recording is a note, not a fail
+if (exp.swipe && !swipe) gates.push({ name: 'swipe run recorded', ...(arg('swipe-optional') ? { ok: null, skipped: true } : { ok: false }), value: notes.filter(n => n.startsWith('swipe')).join(' / ') || 'failed' });
 if (!gates.length) gates.push({ name: 'the experiment ran', ok: runs.length > 0 || checks.length > 0, value: `${runs.length} runs` });
 const info = [['PR', `#${PR} @${SHA.slice(0, 7)}`], ['GPU', hasGpu ? `${renderNode} (ANGLE gl-egl)` : 'none: software GL, fps not comparable'],
   ...runs.filter(r => r.errors.length).map(r => [`errors ${r.label}`, r.errors.slice(0, 3).join(' / ')]), ...notes.map(n => ['note', n])];
 fs.writeFileSync(path.join(OUT, 'check.md'), checkMd(`${exp.id} · experiment for #${PR} @${SHA.slice(0, 7)}`, gates, info));
-fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ id: exp.id, page: exp.page, pr: +PR || null, sha: SHA, vs: VS || null, at: new Date().toISOString(),
+fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ id: exp.id, page: exp.page, kind: exp.kind || 'both', pr: +PR || null, sha: SHA, vs: VS || null, at: new Date().toISOString(),
   host: os.hostname(), hasGpu, runs, checks: checks.map(({ gates, ...c }) => ({ ...c, gates })), swipe, gates, notes,
   tracks: tracks.map(({ path: _p, ...t }) => t) }, null, 1));   // file names and sha256 only, never the folder or the audio
 const keys = Object.keys(METRICS).filter(k => runs.some(r => r.metrics[k] !== undefined && r.metrics[k] !== null));
