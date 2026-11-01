@@ -72,6 +72,15 @@ unpacked from Debian .debs into `~/qa-libs` (with a `fonts.conf`) and
 software speed (~16 fps) and says nothing about the phone**; the fps part of
 the score is near 0 for every variant there. Compare variants with each other.
 
+### Reference beat grids (clock truth (b))
+
+`sh qa/ref-beats.sh` (from the runner's clone, `--force` to redo all) runs Beat This!
+(CPJKU, MIT) on the CPU over the private tracks in `QA_AUDIO_DIR` and writes
+`<track>.ref.beats` + `<track>.ref.json` next to them. The venv, pip cache and
+model live under `data/qa-audio` (no apt, survives a container recreate); it
+waits for the GPU lock so it never overlaps a build. Report-only: the gridder is
+compared against these; the hard gate is the node test on synthetic grids.
+
 ### Watch and grade (QA viewer)
 
 `node qa/serve.mjs --port 8787` on the box, then open `http://192.168.8.164:8787/`
