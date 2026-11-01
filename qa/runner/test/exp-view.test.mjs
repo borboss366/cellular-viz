@@ -41,7 +41,7 @@ test('expRunBody: stills that exist, URL-encoded \'@\', check links, failing gat
   assert.match(html, /<b>1\/2 gates pass<\/b>/);
   assert.ok(html.indexOf('errors = 0') < html.indexOf('fps ≥ 58'), 'the failing gate is listed first');
   assert.match(html, /skipped: track missing \(darude-sandstorm\.flac\)/);
-  assert.match(html, /No swipe run for this build/);
+  assert.match(html, /No swipe run in this folder/);
 });
 
 test('expRunBody: a swipe run gets its link; paths with .. never become links', () => {
