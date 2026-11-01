@@ -453,40 +453,56 @@ export function createScene() {
   // stays small and the differences stay accurate), each with its own particles and collision seed, stepped on the
   // GPU; the 8 × 8 block sums of the last `window` steps are added up per half of the replicas, and divCurlCross
   // takes the noise out by correlating the two halves.
-  function fluidTest({ n = 512, replicas = 32, steps = 64, window = 32, umax = 0.12, kMax = 2, seed = 11 } = {}) {
-    if (!fx.half) return { ok: null, note: 'no float render targets' };
+  // #165 ruling (viz-165-4): next to the vortex flow, a positive control on the same GPU path: the same field turned
+  // 90° (a potential flow, all divergence) must read div/curl > 10 at B = 16. Every row reports the raw RMS div and
+  // curl, the unclamped cross terms (ddMean < 0 = noise-dominated) and the non-empty blocks; no blocks, or no curl in
+  // the vortex flow, fails. Gated at B = 16 on the upper bound (estimate + 2σ) when it is proven there, else at B = 32.
+  function fluidTest({ n = 512, replicas = 32, controlReplicas = 16, steps = 64, window = 32, umax = 0.12, kMax = 2, seed = 11 } = {}) {
+    if (!fx.half) return { ok: false, note: 'no float render targets: truth 4 cannot run' };
     const bw = n / 8, ct = flTex(bw, bw, false), px = new Float32Array(bw * bw * 4);
-    const sums = [new Float64Array(bw * bw * 3), new Float64Array(bw * bw * 3)];
-    const field = F.flowField(n, n, seed, { umax, kMax });
     const t0 = performance.now();
-    for (let k = 0; k < replicas; k++) {
-      const L = lattice(n, n, F.latticeFromFlow(field, n, n, 0.25, seed * 1000 + k + 1)), acc = sums[k % 2];
-      for (let t = 0; t < steps; t++) {
-        stepLattice(L, t, (seed * 7919 + k * 104729) >>> 0);
-        if (t < steps - window) continue;
-        pass('coarse', L.a, ct);
-        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, ct.f); gl.readPixels(0, 0, bw, bw, gl.RGBA, gl.FLOAT, px);
-        for (let i = 0; i < bw * bw; i++) { acc[3 * i] += px[4 * i]; acc[3 * i + 1] += px[4 * i + 1]; acc[3 * i + 2] += px[4 * i + 2]; }
+    // block sums of the last `window` steps, per half of the replicas, for one sampled flow
+    const run = (field, count, salt) => {
+      const sums = [new Float64Array(bw * bw * 3), new Float64Array(bw * bw * 3)];
+      for (let k = 0; k < count; k++) {
+        const L = lattice(n, n, F.latticeFromFlow(field, n, n, 0.25, seed * 1000 + salt + k + 1)), acc = sums[k % 2];
+        for (let t = 0; t < steps; t++) {
+          stepLattice(L, t, (seed * 7919 + (salt + k) * 104729) >>> 0);
+          if (t < steps - window) continue;
+          pass('coarse', L.a, ct);
+          gl.bindFramebuffer(gl.READ_FRAMEBUFFER, ct.f); gl.readPixels(0, 0, bw, bw, gl.RGBA, gl.FLOAT, px);
+          for (let i = 0; i < bw * bw; i++) { acc[3 * i] += px[4 * i]; acc[3 * i + 1] += px[4 * i + 1]; acc[3 * i + 2] += px[4 * i + 2]; }
+        }
+        freeLattice(L);
       }
-      freeLattice(L);
-    }
-    freeTex(ct); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    // blocks of B = 8 f: sum f × f of the 8-blocks, velocity = momentum / mass
-    const at = B => {
+      return sums;
+    };
+    // blocks of B = 8 f: sum f × f of the 8-blocks, velocity = momentum / mass; empty blocks are counted, not used
+    const at = (sums, B) => {
       const f = B / 8, w = bw / f, V = [[], []];
+      let nonEmpty = 0;
       for (let h = 0; h < 2; h++) for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) {
         let m = 0, vx = 0, vy = 0;
         for (let j = 0; j < f; j++) for (let i = 0; i < f; i++) { const o = 3 * ((y * f + j) * bw + x * f + i); m += sums[h][o]; vx += sums[h][o + 1]; vy += sums[h][o + 2]; }
-        V[h].push([vx / Math.max(1e-9, m), vy / Math.max(1e-9, m)]);
+        if (m > 0) nonEmpty++;
+        V[h].push(m > 0 ? [vx / m, vy / m] : [0, 0]);
       }
       const r = F.divCurlCross(V[0], V[1], w, w, B);
-      return { B, blocks: w * w, ratio: +r.ratio.toFixed(4), ratioUpper: +r.ratioUpper.toFixed(4), plainRatio: +r.plainRatio.toFixed(4),
-        divSignal: +r.divSignal.toExponential(3), curlSignal: +r.curlSignal.toExponential(3),
-        ddMean: +r.ddMean.toExponential(3), ddSigma: +r.ddSigma.toExponential(3), ccMean: +r.ccMean.toExponential(3) };
+      const num = v => Number.isFinite(v) ? +v.toPrecision(4) : v;
+      return { B, blocks: w * w, nonEmpty: nonEmpty / 2, ratio: num(r.ratio), ratioUpper: num(r.ratioUpper), plainRatio: num(r.plainRatio),
+        divRMS: num(r.divRMS), curlRMS: num(r.curlRMS), divSignal: num(r.divSignal), curlSignal: num(r.curlSignal),
+        ddMean: num(r.ddMean), ddSigma: num(r.ddSigma), ccMean: num(r.ccMean), noiseDominated: r.ddMean < 0 };
     };
-    const b16 = at(16), b32 = at(32), b64 = at(64);
-    // gated on the upper bound (estimate + 2σ), never on the clamped estimate alone
-    return { ok: b16.ratioUpper < 0.1, b16, b32, b64, n, replicas, steps, window, umax, kMax, ms: Math.round(performance.now() - t0) };
+    const vortex = F.flowField(n, n, seed, { umax, kMax });
+    const potential = { ux: Float32Array.from(vortex.uy, v => -v), uy: Float32Array.from(vortex.ux) };   // u turned 90°
+    const vs = run(vortex, replicas, 0), ps = run(potential, controlReplicas, 5000);
+    freeTex(ct); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const b16 = at(vs, 16), b32 = at(vs, 32), b64 = at(vs, 64), control16 = at(ps, 16);
+    const sane = b => b.nonEmpty === b.blocks && b.blocks > 0 && b.curlRMS > 0;
+    const controlOk = sane(control16) && control16.divSignal > 0 && control16.ratio > 10;
+    const gatedB = b16.ratioUpper < 0.1 ? 16 : b32.ratioUpper < 0.1 ? 32 : null;
+    const ok = sane(b16) && sane(b32) && b16.curlSignal > 0 && controlOk && gatedB !== null;
+    return { ok, gatedB, controlOk, b16, b32, b64, control16, n, replicas, controlReplicas, steps, window, umax, kMax, ms: Math.round(performance.now() - t0) };
   }
   // the live view's time-averaged block velocity at block size B (8 · 2^k), read back: RMS(div) / RMS(curl)
   // (report-only: noise-limited at small B, see fluidTest)
