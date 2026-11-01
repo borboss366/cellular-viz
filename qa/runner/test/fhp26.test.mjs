@@ -135,7 +135,7 @@ test('F2 mixing: a forcing flip keeps mass and pushes momentum along the force',
       const a = F.massMomentum([s]), b = F.massMomentum([t]);
       assert.equal(a.mass, b.mass);
       const dp = [b.pq - a.pq, b.pr - a.pr];
-      assert.deepEqual(dp, F.DIRS[axis].map(c => 2 * c * Math.sign(f)));
+      assert.deepEqual(dp, F.DIRS[axis].map(c => 2 * c * Math.sign(f) + 0));   // + 0: no -0 under deepStrictEqual
       push += 1;
     }
     S[k] = t;

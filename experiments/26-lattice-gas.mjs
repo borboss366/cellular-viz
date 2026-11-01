@@ -239,7 +239,11 @@ void main() {
   }
   if (uSplash > 0.0 && uDotsW > 0.005) {
     float r = w.y / S3, q = w.x - 0.5 * r;
-    float ex = textureLod(uDens, vec2(q, r) / uLat, 0.0).r - uMeanRho;
+    // 3 × 3 taps one texel (4 sites) apart: ~12-site smoothing, the block noise down ~3× (viz-171-2: at 2σ of the
+    // raw 4 × 4 blocks a ring one beat out, excess ~0.4, sat under the knee and C3 read 1.4)
+    vec2 duv = vec2(q, r) / uLat, tx = 4.0 / uLat; float ex = 0.0;
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) ex += textureLod(uDens, duv + vec2(float(i), float(j)) * tx, 0.0).r;
+    ex = ex / 9.0 - uMeanRho;
     float e = max(0.0, ex - uKnee) / uScaleE, lit = 1.0 - exp(-e * e);
     if (lit > 0.001) {
       vec3 hue = vec3(1.0, 0.25, 0.55); float wsum = 1.0e-3; vec3 hs = hue * 1.0e-3;
@@ -280,6 +284,21 @@ uniform sampler2D uDyeOld, uEma;
 uniform vec2 uLat;
 uniform float uSteps, uReseed;
 in vec2 vUv; out vec4 o;
+// Catmull-Rom (16 taps, wrapping), clamped to the 4 nearest texels: far less blur a frame than bilinear, so the
+// dye's mixing comes from the flow and the mix knob's time-lapse shows (viz-171-2: T6 2.5–2.8 with bilinear)
+ivec2 wrapT(ivec2 a, ivec2 n) { return a - n * ivec2(floor(vec2(a) / vec2(n))); }
+vec3 sampleCR(sampler2D t, vec2 uv) {
+  ivec2 n = textureSize(t, 0);
+  vec2 p = uv * vec2(n) - 0.5, f = fract(p); ivec2 i0 = ivec2(floor(p));
+  vec2 w[4] = vec2[4](f * (-0.5 + f * (1.0 - 0.5 * f)), 1.0 + f * f * (-2.5 + 1.5 * f), f * (0.5 + f * (2.0 - 1.5 * f)), f * f * (-0.5 + 0.5 * f));
+  vec3 s = vec3(0.0), mn = vec3(1.0e9), mx = vec3(-1.0e9);
+  for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++) {
+    vec3 c = texelFetch(t, wrapT(i0 + ivec2(i - 1, j - 1), n), 0).rgb;
+    s += c * w[i].x * w[j].y;
+    if (i == 1 || i == 2) if (j == 1 || j == 2) { mn = min(mn, c); mx = max(mx, c); }
+  }
+  return clamp(s, mn, mx);
+}
 vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
 vec3 bands(vec2 uv) {
   float t = uv.x * 5.0 + uv.y * 3.0 + 0.25 * sin(6.2831853 * uv.y * 2.0);
@@ -291,7 +310,7 @@ void main() {
   vec4 e = textureLod(uEma, vUv, 0.0);
   vec2 v = e.gb / max(e.r, 1.0e-3);
   vec2 ax = vec2(v.x - v.y / 1.7320508, v.y * 2.0 / 1.7320508);
-  vec3 d = texture(uDyeOld, vUv - ax * uSteps / uLat).rgb;
+  vec3 d = sampleCR(uDyeOld, vUv - ax * uSteps / uLat);
   o = vec4(mix(d, bands(vUv), uReseed), 1.0);
 }`;
 // the bloom: the persistence buffer box-averaged down to 1/8 (every source pixel counts, so moving dots don't
@@ -520,7 +539,7 @@ export function createScene() {
     gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
     fl.di = 1 - fl.di;
-    st.reseed = Math.max(0.004, st.reseed * 0.9);   // a drop's reseed (1) fades back to the slow pull in ~1 s
+    st.reseed = Math.max(0.0015, st.reseed * 0.9);   // a drop's reseed (1) fades back to the slow pull (0.15 % a frame, was 0.4 %: viz-171-2's live T5 never halved)
   }
   // truth 4 (#71, gated): is the coarse-grained FHP flow divergence-free at B ≥ 16? On the live lattice the particle
   // noise is as big as the flow's own curl at B = 16 (viz-165-2: ratio 0.70, noise-limited), so the truth runs on its
@@ -960,15 +979,16 @@ export function createScene() {
     // the splash layer: excess over the mean particles a site (from the mass readback), a knee at ~2σ of a 4 × 4 block
     // (σ = √(6 d (1 − d)) / 4), the dots at 100 % → 25 % and desaturated as the knob goes 0 → 1
     const dMean = st.mass === null ? ctl.density : st.mass / (6 * NQ * NR), sigma4 = Math.sqrt(6 * dMean * (1 - dMean)) / 4;
-    gl.uniform1f(u.uMeanRho, 6 * dMean); gl.uniform1f(u.uKnee, 2 * sigma4); gl.uniform1f(u.uScaleE, 0.5);
+    gl.uniform1f(u.uMeanRho, 6 * dMean); gl.uniform1f(u.uKnee, 2 * sigma4 / 3); gl.uniform1f(u.uScaleE, 0.25);   // 2σ of the 3 × 3-smoothed blocks
     gl.uniform1f(u.uSplash, fl.dens ? ctl.splashGain * contrast * (1 - decay) : 0);
     // the dot floor (#171 ruling: C2 first, before the rings): 100 % → 20 % over the knob's 0 → 0.8, 20 % above
-    gl.uniform1f(u.uDotScale, 1 - 0.8 * Math.min(1, contrast / 0.8)); gl.uniform1f(u.uDesat, 0.6 * contrast);
+    // (viz-171-2: C2 0.072 at 20 %; now 15 % at 0.8 and above)
+    gl.uniform1f(u.uDotScale, 1 - 0.85 * Math.min(1, contrast / 0.8)); gl.uniform1f(u.uDesat, 0.6 * contrast);
     const B4 = new Float32Array(16), H4 = new Float32Array(16);
     st.splashes = st.splashes.filter(s => now - s.t < 3000).slice(-4);
     st.splashes.forEach((s, k) => {
       B4.set([s.x, s.y, s.r0 + Math.min(80, 0.71 * (st.simStep - s.step)), Math.exp(-(now - s.t) / 800)], 4 * k);   // FHP's c_s ≈ 1/√2
-      H4.set([...SPLASH_HUES[s.hue % SPLASH_HUES.length], 1 - Math.exp(-(now - s.t) / 70)], 4 * k);
+      H4.set([...SPLASH_HUES[s.hue % SPLASH_HUES.length], 1 - Math.exp(-(now - s.t) / 250)], 4 * k);   // 250 ms attack (viz-171-2: 70 ms gave window rises 0.30–0.32 / 100 ms)
     });
     gl.uniform4fv(u.uB, B4); gl.uniform4fv(u.uBH, H4);
     gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, fl.dens ? fl.dens.t : null); gl.uniform1i(u.uDens, 4);
