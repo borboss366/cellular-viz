@@ -147,7 +147,7 @@ async function load() {
     $('done').style.display = '';
     $('done').innerHTML = '🎉 <b>Done with this run.</b> ' + d.count + ' picks; your ranking is below and saved to the report.<div class="row">' +
       (d.nextRun ? '<a href="' + d.nextRun + '"><button>Next run to grade →</button></a>' : '<span class="m">No other runs waiting.</span>') +
-      '<a href="/"><button>Back to the list' + (d.openAsks ? ' (' + d.openAsks + ' waiting)' : '') + '</button></a>' +
+      '<a href="/grade"><button>Back to the list' + (d.openAsks ? ' (' + d.openAsks + ' waiting)' : '') + '</button></a>' +
       '<button id="more">Keep picking</button></div>';
     $('more').onclick = () => { more = true; $('done').style.display = 'none'; document.querySelector('.bar').style.display = ''; load(); };
     return;
