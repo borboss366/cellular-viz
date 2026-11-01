@@ -25,16 +25,23 @@ export function swipeOnlyRaw(raw) {
 }
 
 const green = b => Array.isArray(b.gates) && b.gates.length > 0 && b.gates.every(g => g && g.ok);
-/** builds (latest line per id) → the newest round of each PR that finished green on a real page without a swipe */
-export function swipeCandidates(builds) {
+// how long after it finished a merged build can still get its swipe (e.g. #155, merged before swipe-ready.sh ran)
+export const MERGED_DAYS = 3;
+// an experiment build's run folder (runner: <page>/runs/<stamp>-pr<N>); page builds (<page>/checks/<stamp>) have no
+// experiment file to reduce to a swipe, so the swipe-only job would only fail on them
+const expReport = b => /\/runs\/[^/]+-pr\d+\/check\.md$/.test(String(b.report || ''));
+/** builds (latest line per id) → the newest round of each PR that finished green on a real page without a swipe:
+ *  ready or still "running" (open PRs), or merged within MERGED_DAYS (the user still grades a merged page) */
+export function swipeCandidates(builds, { now = Date.now() } = {}) {
   const newest = new Map();
   for (const b of builds) {
     if (!b || !b.pr) continue;
     const cur = newest.get(b.pr);
     if (!cur || String(b.started || b.at || '') > String(cur.started || cur.at || '')) newest.set(b.pr, b);
   }
-  return [...newest.values()].filter(b => ['ready', 'running'].includes(b.status) && b.finished && green(b) && !b.swipe
-    && /^\d\d-[a-z0-9-]+$/.test(String(b.page || '')) && typeof b.report === 'string' && b.report.endsWith('check.md'));
+  const recent = b => now - Date.parse(b.finished) <= MERGED_DAYS * 864e5;
+  return [...newest.values()].filter(b => (['ready', 'running'].includes(b.status) || (b.status === 'merged' && recent(b)))
+    && b.finished && green(b) && !b.swipe && /^\d\d-[a-z0-9-]+$/.test(String(b.page || '')) && expReport(b));
 }
 
 /** a swipe request for the runner: <state>/swipe-requests/<pr>.json (the runner takes and deletes it at its next poll) */

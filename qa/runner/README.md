@@ -34,7 +34,8 @@ More, each run alone, no arguments, no pipes (so the judge sees the same string 
 sh <RUNNER_HOME>/qa/status.sh          # read only: runner /health + /api/status (now, queue, last 3 with each build's
                                        # current status), last 10 log lines, viewer HTTP codes for / and /builds, gpu_busy_percent
 sh <RUNNER_HOME>/qa/swipe-ready.sh     # ask the runner for a swipe on every build that finished green without one (it records
-                                       # them at its next poll and the builds land on the grading page). Experiment files
+                                       # them at its next poll and the builds land on the grading page; experiment builds
+                                       # only, open PRs and PRs merged in the last 3 days). Experiment files
                                        # without "swipe" get a default one (first variant, new vs base, 30 s) from now on.
 sh <RUNNER_HOME>/qa/emit-test-event.sh # write one "test" event into QA_EVENTS_DIR (the runner writes finished / discarded /
                                        # waiting / error events there for QA box's folder trigger)
