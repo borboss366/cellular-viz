@@ -39,6 +39,14 @@ sh <RUNNER_HOME>/qa/swipe-ready.sh     # ask the runner for a swipe on every bui
                                        # without "swipe" get a default one (first variant, new vs base, 30 s) from now on.
 sh <RUNNER_HOME>/qa/emit-test-event.sh # write one "test" event into QA_EVENTS_DIR (the runner writes finished / discarded /
                                        # waiting / error events there for QA box's folder trigger)
+```
+
+Daily runs on main (no script): the runner re-runs each experiment file listed in `qa/runner/daily.json` once a UTC
+day at main's head, inside its daytime window (08–20 UTC, clear of the ML jobs). They are builds of kind `daily`
+(`daily-159-1`, `-2`, …): never a round of the PR, never settled to merged, no swipe. `DAILY_EXPERIMENTS`,
+`DAILY_FROM_UTC` and `DAILY_TO_UTC` in the env override the file.
+
+```
 sh <RUNNER_HOME>/qa/commit-checks.sh   # in QA_HOME: commit only qa/check-*.mjs, todo.json, builds.json and the .md/.json
                                        # reports as "QA box"; never videos/screenshots, never pushes; nothing changed = no-op
 sh <RUNNER_HOME>/qa/test-pr.sh         # PR from ~/.cache/cellular-viz-runner/test-pr, else newest open PR labelled
