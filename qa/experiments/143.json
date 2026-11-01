@@ -48,7 +48,7 @@
     "combs": "__qa.opLog.filter(o => o.role === 'comb' || o.role === 'feather').length",
     "bakes": "__qa.bakes.length",
     "bakeMs": "__qa.bakes.length ? Math.max(...__qa.bakes.map(b => b.ms)) : 0",
-    "events": "__qa.events().length",
+    "events": "(typeof __qa.events === 'function' ? __qa.events() : __qa.events).length",
     "clockPlaying": "__qa.clock.playing",
     "forceDrop": "typeof __qa.forceDrop",
     "userPours": "__qa.opLog.filter(o => o.cause === 'trigger2').length",

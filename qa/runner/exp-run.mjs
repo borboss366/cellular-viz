@@ -17,6 +17,7 @@ import { loadFile, expand, query, evalGates, gatesFromMd, checkMd, readExpr, MET
 import { PROBES } from './probes.mjs';
 import { readGpuBusy } from './gpu.mjs';
 import { audioDir, serveAudio, tracksUsed, trackInfo, describe } from './audio.mjs';
+import { excerptPath, excerptName, wavBytes, readWav, analyse, audioMetrics, audioGateMetrics, writeAtomic, DEVICE } from './audiocheck.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 && i + 1 < process.argv.length ? process.argv[i + 1] : d; };
 const FILE = arg('file'), EXP_DIR = path.resolve(arg('experiments', '')), OLD_DIR = arg('experiments-old') ? path.resolve(arg('experiments-old')) : null;
@@ -49,8 +50,8 @@ const server = http.createServer((req, res) => {
 await new Promise(r => server.listen(0, '127.0.0.1', r));
 const BASE = `http://127.0.0.1:${server.address().port}/${exp.page}.html`;
 
-// ---- browser: the same GPU set-up as qa/run.mjs ----
-const renderNode = '/dev/dri/renderD128', hasGpu = fs.existsSync(renderNode);
+// ---- browser: the same GPU set-up as qa/run.mjs (kind "render": SwiftShader, the CPU renderer, #141) ----
+const renderNode = '/dev/dri/renderD128', hasGpu = exp.kind !== 'render' && fs.existsSync(renderNode);
 const flags = ['--autoplay-policy=no-user-gesture-required'];
 if (hasGpu) flags.push('--use-angle=gl-egl', '--ignore-gpu-blocklist', '--enable-gpu-rasterization');
 else flags.push('--use-angle=swiftshader', '--enable-unsafe-swiftshader');
@@ -64,6 +65,43 @@ if (hasGpu && fs.existsSync(path.join(libRoot, 'usr/share/glvnd/egl_vendor.d')))
 const fontsConf = path.join(os.homedir(), 'qa-libs/fonts.conf');
 if (!env.FONTCONFIG_FILE && fs.existsSync(fontsConf)) env.FONTCONFIG_FILE = fontsConf;
 const FULL = '#wrap{width:100vw !important;height:100vh !important;aspect-ratio:auto !important;margin:0 !important}';
+
+// ---- kind "audio" (#141): a track excerpt as the page's line input ----
+// via "fake": Chromium plays the excerpt WAV as its fake capture device from the moment the page opens it (noloop:
+// once, then silence). The WAV is cut once per (track, from, len) by Chromium's own decoder (no ffmpeg) and kept in
+// QA_AUDIO_DIR next to the track, never committed or served. The offline analysis of the same WAV is the truth the
+// page's live bands are compared with.
+const A = exp.audio, audioMissing = A ? missing.includes(A.track) : false;
+let excerpt = null, wav = null;
+const offlines = new Map();   // the offline analysis per analyser smoothing (the page reports its own)
+const offlineFor = sm => { const k = Number.isFinite(sm) ? sm : 0; if (!offlines.has(k)) offlines.set(k, analyse(wav.mono, wav.sampleRate, { fftSize: 2048, smoothing: k })); return offlines.get(k); };
+async function makeExcerpt() {
+  const dest = excerptPath(AUDIO_DIR, A);
+  if (!fs.existsSync(dest)) {
+    const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'], env });
+    try {
+      const page = await b.newPage();
+      await page.goto(BASE.replace(/\/[^/]*$/, '/'), { timeout: 30e3 }).catch(() => {});   // the same origin as /qa-audio/
+      const got = await page.evaluate(async ({ track, from, len }) => {
+        const buf = await (await fetch('/qa-audio/' + track)).arrayBuffer();
+        const ab = await new OfflineAudioContext(2, 1, 48000).decodeAudioData(buf);
+        const sr = ab.sampleRate, ch = Math.min(2, ab.numberOfChannels), a0 = Math.floor(from * sr), n = Math.max(0, Math.min(ab.length - a0, Math.round(len * sr)));
+        const pcm = new Int16Array(n * ch);
+        for (let c = 0; c < ch; c++) { const d = ab.getChannelData(c); for (let i = 0; i < n; i++) pcm[i * ch + c] = Math.round(Math.max(-1, Math.min(1, d[a0 + i])) * 32767); }
+        const u8 = new Uint8Array(pcm.buffer); let s = '';
+        for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000));
+        return { sr, ch, n, b64: btoa(s) };
+      }, A);
+      if (!got.n) throw new Error(`the track is shorter than from ${A.from} s`);
+      const pcm = Buffer.from(got.b64, 'base64');
+      writeAtomic(dest, wavBytes(new Int16Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 2), got.sr, got.ch));
+      note(`audio: cut ${excerptName(A)} (${got.ch} ch, ${got.sr} Hz, ${(got.n / got.sr).toFixed(1)} s) with Chromium's decoder`);
+    } finally { await b.close(); }
+  }
+  return dest;
+}
+const audioFlags = () => ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream',
+  `--use-file-for-fake-audio-capture=${excerpt}${A.noloop ? '%noloop' : ''}`];
 const needClip = exp.gates.some(g => g.metric.startsWith('clip') || g.metric.startsWith('lum'));
 const shared = {};
 
@@ -124,6 +162,14 @@ async function measure(browser, run) {
     }
     for (const [k, e] of Object.entries(exp.values))
       r.values[k] = await page.evaluate(readExpr(e)).catch(err => 'error: ' + err.message);
+    if (A) {   // the audio gates' numbers: the page's per-frame log against the offline analysis of the excerpt
+      const info = await page.evaluate(() => { const a = window.__qa && window.__qa.audioIn; return a ? JSON.parse(JSON.stringify(a)) : null; }).catch(() => null);
+      const m = audioMetrics(info && info.log, info, wav ? offlineFor(info && info.smoothing) : null, A, A.via);
+      Object.assign(r.metrics, audioGateMetrics(m));
+      const { log: _log, ...head } = info || {};
+      r.audio = { ...m, status: head.status || null, error: head.error || null, smoothing: head.smoothing ?? null, logged: info && info.log ? info.log.length : 0 };
+      fs.writeFileSync(path.join(OUT, 'debug', `audio-${safe(r.label)}.json`), JSON.stringify({ audioIn: head, metrics: m, log: info ? info.log : null }));
+    }
     for (let i = 0; i < exp.record.stills; i++) {
       const f = `stills/${safe(r.label)}${exp.record.stills > 1 ? '-' + (i + 1) : ''}.png`;
       await page.screenshot({ path: path.join(OUT, f) }).then(() => r.stills.push(f)).catch(e => note(`${r.label} still: ${e.message}`));
@@ -155,14 +201,23 @@ const lastLine = s => (s.trim().split('\n').pop() || '').trim();
 
 // ---- 1. measured runs ----
 const runs = [];
+if (A && !audioMissing && exp.seconds > 0) {
+  try {
+    excerpt = await makeExcerpt();
+    wav = readWav(fs.readFileSync(excerpt));
+    note(`audio: excerpt ${excerptName(A)}, ${wav.channels} ch, ${wav.sampleRate} Hz, ${(wav.mono.length / wav.sampleRate).toFixed(1)} s; fake capture ${A.noloop ? "once (noloop)" : "looped"}`);
+  } catch (e) { note(`audio: no excerpt for ${A.track} (${e.message}); its runs are skipped`); }
+}
 if (exp.seconds > 0) {
-  const browser = await chromium.launch({ args: flags, env });
+  const browser = await chromium.launch({ args: A && excerpt ? [...flags, ...audioFlags()] : flags, env });
   for (const run of expand(exp)) {
-    if (missing.includes(run.params.track)) {   // never a fail: the user hasn't copied that track to the box yet
-      note(`${run.label}: skipped, track missing (${run.params.track})`);
-      runs.push({ label: run.label, variant: run.variant, base: run.base, size: run.size, params: run.params, skipped: run.params.track, metrics: {}, values: {}, stills: [], errors: [] });
+    const skip = missing.includes(run.params.track) ? run.params.track : A && (audioMissing || !excerpt) ? A.track : null;
+    if (skip) {   // never a fail: the user hasn't copied that track to the box yet
+      note(`${run.label}: skipped, track missing (${skip})`);
+      runs.push({ label: run.label, variant: run.variant, base: run.base, size: run.size, params: run.params, skipped: skip, metrics: {}, values: {}, stills: [], errors: [] });
       continue;
     }
+    if (A) run.params = { audio: 'line', device: DEVICE[A.via], ...run.params };   // the page opens the excerpt as its line input
     console.error(`run ${run.label}`); runs.push(await measure(browser, run));
   }
   await browser.close();

@@ -63,7 +63,7 @@ const WORK = path.join(CFG.state, 'repo');
 const STATE_FILE = path.join(CFG.state, 'state.json');
 const LOG_FILE = path.join(CFG.state, 'runner.log');
 const PAGE_RE = /^experiments\/(\d\d-[a-z0-9-]+)\.html$/;
-const EXP_FILES = ['experiment.mjs', 'probes.mjs', 'gpu.mjs', 'exp-run.mjs', 'audio.mjs'];   // the measuring code: always this runner's own copy
+const EXP_FILES = ['experiment.mjs', 'probes.mjs', 'gpu.mjs', 'exp-run.mjs', 'audio.mjs', 'audiocheck.mjs'];   // the measuring code: always this runner's own copy
 fs.mkdirSync(CFG.state, { recursive: true });
 
 // ---------- log ----------

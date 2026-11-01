@@ -24,6 +24,12 @@
 // Anything else falls back to 'clock' and says so in .fallback (as the clock does). Analysis runs once per read();
 // the fixed 57 Hz AudioWorklet cadence comes with the live tracker (clock PR 3).
 //
+// The runner's audio checks (#141, kind 'audio'): with a mic, line or file source, frameStart() also reads the
+// analyser once and logs { t, rmsDb, bands[8] } per frame in __qa.audioIn.log (rmsDb: RMS of the raw waveform, dBFS,
+// before any envelope); read() in the same frame reuses that reading. A page adds its own per-frame numbers to the
+// frame's entry with audio.logFrame({ rows, lanes }). __qa.audioIn also has banner (the no-match warning is shown),
+// openedAt (the frame clock, s, when the input opened), smoothing, fftSize and sampleRate.
+//
 // __qa.beatLog (the check-shared beat-match row): due(lanes) pushes one entry per hit it hands out,
 //   { time, lane, now, beats, frame, t, dt }   (time: the hit's audio time; now: clock.now(); t, dt in seconds)
 // capped at 4096. Include with <script src="audio-in.js"></script> after clock.js; node's tests use require.
@@ -35,7 +41,8 @@
   const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };            // as clock.js
   const LANE_BANDS = { kick: ['sub', 'kick'], snare: ['mid'], hat: ['air'] };
   const MIN_GAP = { kick: 0.1, snare: 0.1, hat: 0.05 };
-  const DB_FLOOR = -90, DB_SPAN = 70, LOG_KEPT = 4096;
+  const DB_FLOOR = -90, DB_SPAN = 70, LOG_KEPT = 4096, LOG_FRAMES = 4000;   // LOG_FRAMES: ~66 s of audio log at 60 fps
+  const nowSec = () => (root.performance ? root.performance.now() : Date.now()) / 1000;   // the frame clock (rAF time)
 
   // magnitude spectrum (dB per bin) → 8 band levels 0..1 (mean over each band's bins, dB mapped −90 … −20 → 0 … 1)
   function bandLevels(db, sampleRate, out) {
@@ -98,6 +105,7 @@
       status: 'idle', error: null, running: false, warning: null, device: null,
       lanes: { kick: onsetLane('kick'), snare: onsetLane('snare'), hat: onsetLane('hat') },
       beatLog: [], beatLanes: null, frame: 0, t: null, dt: 0, rafDt: 0, now: null,
+      log: [], logOn: source !== 'clock' || !!opts.log, dbFrame: -1, openedAt: null,
       // start() / stop(): reading is on between them; start() before the clock exists is fine (attached on read)
       start() { this.running = true; this.attach(); return this; },
       stop() {
@@ -121,13 +129,13 @@
         if (source === 'clock') { if (clock.master) clock.master.connect(this.analyser); this.status = 'clock'; }
         else if (source === 'mic' || source === 'line') {
           this.status = 'asking';
-          this.openInput().then(stream => { this.input = ctx.createMediaStreamSource(stream); this.input.connect(this.analyser); this.status = source; },
+          this.openInput().then(stream => { this.input = ctx.createMediaStreamSource(stream); this.input.connect(this.analyser); this.status = source; this.openedAt = nowSec(); },
             e => { this.error = String(e && e.message || e); this.status = 'error'; });
         } else {
           this.status = 'loading';
           Promise.resolve(source.slice(5)).then(fetchFn).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => {
             const s = this.input = ctx.createBufferSource(); s.buffer = buf; s.loop = true;
-            s.connect(this.analyser); s.connect(ctx.destination); s.start(); this.status = 'file';
+            s.connect(this.analyser); s.connect(ctx.destination); s.start(); this.status = 'file'; this.openedAt = nowSec();
           }, e => { this.error = String(e && e.message || e); this.status = 'error'; });
         }
         return true;
@@ -173,15 +181,37 @@
         const now = clock.ctx && typeof clock.now === 'function' ? clock.now() : null;
         this.dt = Number.isFinite(now) && Number.isFinite(this.now) ? Math.max(0, now - this.now) : 0;
         this.now = Number.isFinite(now) ? now : null;
+        if (this.logOn && this.running && this.ctx && this.analyser && (source === 'clock' || this.input)) this.sampleLog();
         return this.frame;
+      },
+      // one analyser reading for the frame's log entry (#141 audio checks); read() reuses it in the same frame
+      sampleLog() {
+        const A = this.analyser;
+        A.getFloatFrequencyData(this.db); this.dbFrame = this.frame;
+        let rmsDb = null;
+        if (A.getFloatTimeDomainData) {
+          A.getFloatTimeDomainData(this.wave);
+          let s = 0; for (let i = 0; i < this.wave.length; i++) s += this.wave[i] * this.wave[i];
+          rmsDb = +(10 * Math.log10(s / this.wave.length + 1e-20)).toFixed(2);
+        }
+        const b = bandLevels(this.db, this.ctx.sampleRate, {});
+        this.log.push({ t: this.t, rmsDb, bands: BANDS.map(k => +b[k].toFixed(4)) });
+        if (this.log.length > LOG_FRAMES) this.log.shift();
+      },
+      // the page's own numbers for this frame (16b: rows = the row glows, lanes = the band envelope each row follows)
+      logFrame(extra) {
+        const e = this.log[this.log.length - 1];
+        if (e && e.t === this.t && extra) for (const [k, v] of Object.entries(extra)) e[k] = Array.isArray(v) || ArrayBuffer.isView(v) ? Array.from(v, x => +(+x).toFixed(4)) : v;
       },
       // the frame's audio (#85 frame().audio): call once per frame
       read() {
         const c = clock.read();
         const out = { level: c.level, kick: c.kick, snare: c.snare, hat: c.hat, bands: ZERO(), wave: null };
         if (!this.running || !this.attach() || !this.analyser) return out;
-        this.analyser.getFloatFrequencyData(this.db); bandLevels(this.db, this.ctx.sampleRate, out.bands);
-        if (this.analyser.getFloatTimeDomainData) { this.analyser.getFloatTimeDomainData(this.wave); out.wave = this.wave; }
+        const fresh = !(this.logOn && this.dbFrame === this.frame);   // frameStart's log reading, if this frame has one
+        if (fresh) this.analyser.getFloatFrequencyData(this.db);
+        bandLevels(this.db, this.ctx.sampleRate, out.bands);
+        if (this.analyser.getFloatTimeDomainData) { if (fresh) this.analyser.getFloatTimeDomainData(this.wave); out.wave = this.wave; }
         if (source !== 'clock') {
           const t = this.ctx.currentTime;
           out.kick = out.snare = out.hat = 0;
@@ -228,7 +258,9 @@
     def('fixRejected', () => a.clock.fixRejected || []);   // #95 beat authority: fix() calls from non-fix origins (should stay empty)
     def('events', () => (root.Clock && root.Clock.qaEvents ? root.Clock.qaEvents(a.clock) : [...(a.clock.hitLog || a.clock.events || [])]));
     def('audioIn', () => ({ source: a.source, requested: a.requested, fallback: a.fallback, status: a.status, error: a.error,
-      warning: a.warning, device: a.device,
+      warning: a.warning, device: a.device, banner: !!a.warning, openedAt: a.openedAt, log: a.log,
+      smoothing: a.analyser ? a.analyser.smoothingTimeConstant : null, fftSize: a.analyser ? a.analyser.fftSize : null,
+      sampleRate: a.ctx ? a.ctx.sampleRate : null,
       now: a.clock.ctx && a.clock.now ? a.clock.now() : null, playing: !!a.clock.playing }));
     return target;
   }
