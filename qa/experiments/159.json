@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "id": "16-hodge-kaleidoscope",
+  "kind": "audio",
+  "note": "First audio job (#141, kind audio, via fake): 16b hears 14 s of darude-sandstorm from 30 s as its line input through Chromium's fake capture, once (noloop). All audio gates are report-only for their first week; device and level become hard after that.",
+  "resolutions": ["1080p"],
+  "warmup": 2,
+  "seconds": 16,
+  "audio": { "track": "darude-sandstorm", "from": 30, "len": 14, "noloop": true, "via": "fake" },
+  "values": {
+    "status": "__qa.audioIn.status",
+    "device": "__qa.audioIn.device ? __qa.audioIn.device.label : null",
+    "logged": "__qa.audioIn.log.length",
+    "rowBands": "JSON.stringify(__qa.rowBands)"
+  },
+  "gates": [
+    { "metric": "audio.deviceOk", "equals": 1, "report": true, "name": "gate 1: the page opened the fake capture device" },
+    { "metric": "audio.banner", "equals": 0, "report": true, "name": "gate 1: no device banner" },
+    { "metric": "audio.levelDuringDb", "min": -40, "report": true, "name": "gate 2: level while the excerpt plays > -40 dBFS" },
+    { "metric": "audio.levelAfterEndDb", "max": -60, "report": true, "name": "gate 2: silence 0.5 s after the noloop end < -60 dBFS" },
+    { "metric": "audio.bandDiffDb.max", "max": 3, "report": true, "name": "gate 3: live band medians within 3 dB of the offline analysis" },
+    { "metric": "audio.rowCorr.min", "min": 0.8, "report": true, "name": "gate 4: each row glow follows its band lane, Pearson >= 0.8" },
+    { "metric": "errors", "max": 0 }
+  ],
+  "record": { "stills": 1 }
+}
