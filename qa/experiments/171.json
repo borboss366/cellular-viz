@@ -1,7 +1,7 @@
 {
   "version": 1,
   "id": "26-lattice-gas",
-  "note": "26 Lattice Gas look round (#171, stacked on #165): faster mixing in F2 (#165 6561994762: 16 vortex modes at |u| <= 0.18, a solenoidal Kolmogorov force in the fluid view, kick stirs 1.8x, macro4 mix speed = the dye's time-lapse 1-6x (3x), up to 96 steps a beat) and splash contrast in F1 (#71 6562177939: macro3 splash contrast 0.8, dots 20 % and desaturated, the 4x4-block density excess over the mean lit in a hot hue per burst, bursts 2x). Truth 4's vortex replicas carry the forcing (amp 0.004). T5 (report-only): dye block-variance half-time in bars at the default mix, frozen flow (check().t5) and live after the drop on default (__qa.mixLive(), the number that matters); T6 (gated): 1x / 6x half-time >= 3. ?qa=splash (F1, no kicks): a burst every 2 beats in the middle, knob cycling default / 0 / 1, measured 1 beat later: C1 ring / median (report-only, >= 4 wanted), C2 median (report-only, <= 0.05 wanted), C3 knob 1 / 0 (gated, >= 2). GPU budget: shared passes on fluid (96 steps a beat + forcing) and F1 (splash layer) besides the default page. Sparks and F1 zoom moved to detail inputs.",
+  "note": "26 Lattice Gas look round (#171, stacked on #165): faster mixing in F2 (#165 6561994762: 16 vortex modes at |u| <= 0.18, a solenoidal Kolmogorov force in the fluid view, kick stirs 1.8x, macro4 mix speed = the dye's time-lapse 1-6x (3x), up to 96 steps a beat) and splash contrast in F1 (#71 6562177939: macro3 splash contrast 0.8, dots 20 % and desaturated, the 4x4-block density excess over the mean lit in a hot hue per burst, bursts 2x). Truth 4's vortex replicas carry the forcing (amp 0.004). T5 (report-only): dye block-variance half-time in bars at the default mix, frozen flow (check().t5) and live after the drop on default (__qa.mixLive(), the number that matters); T6 (gated): 1x / 6x half-time >= 3. ?qa=splash (F1, no kicks): a burst every 2 beats in the middle, knob cycling default / 0 / 1, measured 1 beat later: C1 ring / median (report-only, >= 4 wanted), C2 median (report-only, <= 0.05 wanted), C3 knob 1 / 0 (gated, >= 2), N1 ring annulus >= 0.5 at the default knob (report-only; #171 ruling: C2 wins at splash contrast >= 0.5, so the frame-mean >= 0.15 target is retired for F1 there and lumSteady on F1 / splash is informational). GPU budget: shared passes on fluid (96 steps a beat + forcing) and F1 (splash layer) besides the default page. Sparks and F1 zoom moved to detail inputs.",
   "resolutions": ["1080p", "4k"],
   "warmup": 4,
   "seconds": 12,
@@ -40,6 +40,9 @@
     "c2page": "__qa.splash().c2page ?? -1",
     "c3": "__qa.splash().c3 ?? -1",
     "c3ok": "__qa.splash().c3ok",
+    "n1": "__qa.splash().n1 ?? -1",
+    "n1ok": "__qa.splash().n1ok",
+    "lumTargetApplies": "__qa.splash().lumTargetApplies",
     "splashTests": "__qa.splash().n",
     "splashLog": "JSON.stringify(__qa.splash().log)",
     "zoom": "__qa.view.zoom",

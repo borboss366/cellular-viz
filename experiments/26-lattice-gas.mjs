@@ -26,7 +26,7 @@ const LUM_W = 64, LUM_H = 36;                // the small copy of the picture fo
 // the bursts' ring hues (#71 round 2: hot, saturated, rotating per kick; linear light)
 const SPLASH_HUES = [[1.0, 0.08, 0.45], [1.0, 0.42, 0.04], [1.0, 0.78, 0.08], [0.95, 0.05, 0.12], [1.0, 0.25, 0.85], [0.9, 0.55, 0.0]];
 // each scaled to linear luminance 1, so splashGain is the ring's own luminance whatever the hue (bloom 1.6 lifts a
-// ring ~2.6× in the picture: 0.13 → ~0.34)
+// ring ~2.6×; at 0.32 × contrast 0.8 that is ~0.66 before the 0.94 shoulder, ~0.45–0.5 in the picture: N1)
 const SPLASH_HUES_L1 = SPLASH_HUES.map(c => { const k = 1 / (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]); return c.map(v => v * k); });
 const ADVECT_STEPS_PASS = 4;                 // the dye moves at most 4 gas steps a pass (≤ 0.2 texel at |u| 0.2)
 
@@ -715,7 +715,12 @@ export function createScene() {
     // C2: the frame's median luminance at the default knob (each test frame), and the page's own 64 × 36 samples in F1
     const bgDef = st.splashLog.filter(e => Math.abs(e.knob - (st.lastSplash ?? 0.8)) < 1e-3).map(e => e.bg).sort((a, b) => a - b);
     const steady = st.lumHistory.filter(h => h.zoom <= 0.02 && h.median !== undefined).map(h => h.median).sort((a, b) => a - b);
+    // N1 (#171 ruling, report-only): the ring annulus itself one beat out, at the default knob, ≥ 0.5 (neon, not just
+    // contrast). The frame-mean ≥ 0.15 target is retired for F1 at splash contrast ≥ 0.5 (C2 wins); it holds below.
+    const ringDef = st.splashLog.filter(e => Math.abs(e.knob - (st.lastSplash ?? 0.8)) < 1e-3).map(e => e.ring).sort((a, b) => a - b);
+    const n1 = med(ringDef), lumTarget = (st.lastSplash ?? 0.8) < 0.5;
     return { c1: def, c1ok: def !== null && def >= 4, c2: med(bgDef), c2ok: bgDef.length ? med(bgDef) <= 0.05 : null, c2page: med(steady),
+      n1, n1ok: n1 === null ? null : n1 >= 0.5, lumTargetApplies: lumTarget,
       c3: r0 && r1 ? +(r1 / r0).toFixed(2) : null, c3ok: r0 && r1 ? r1 / r0 >= 2 : null, n: st.splashLog.length, log: st.splashLog.slice(-9) };
   }
 
@@ -879,7 +884,7 @@ export function createScene() {
   function frame({ target = null, beats, bpb = 4, bpm = 120, controls: ctl, kicks = 0, hat = 0, kick = 0, now = performance.now() }) {
     if (!gl) return;
     // the knobs this round added (a host that predates them gets the defaults)
-    ctl = { splash: 0.8, mix: 3, sparks: 0.5, zoom: 1 / 3, splashGain: 0.13, force: 0.0008, maxSpb: 96, ...ctl };
+    ctl = { splash: 0.8, mix: 3, sparks: 0.5, zoom: 1 / 3, splashGain: 0.32, force: 0.0008, maxSpb: 96, ...ctl };
     st.frameNo++;
     st.conserve = !!ctl.conserve;
     // the zoom (F2): 0 = F1's micro view, 1 = the whole torus as a fluid. Scene auto runs zoomAt's 16-bar song.
@@ -1131,7 +1136,7 @@ export const DETAIL = [
   { name: 'burstSize', type: 'float', default: 8, min: 2, max: 12 },          // #71 round 2: 2× (was 4)
   { name: 'sparks', type: 'float', default: 0.5, min: 0, max: 1 },             // was macro3
   { name: 'zoom', type: 'float', default: 1 / 3, min: 0, max: 1 },             // was macro4: F1's 40–112 sites across (64)
-  { name: 'splashGain', type: 'float', default: 0.13, min: 0, max: 0.4 },    // the rings' linear luminance at full contrast
+  { name: 'splashGain', type: 'float', default: 0.32, min: 0, max: 0.8 },    // the rings' linear luminance at full contrast (N1: ~0.5 in the picture at 0.8)
   { name: 'force', type: 'float', default: 0.0008, min: 0, max: 0.004 },     // F2's Kolmogorov stirring (flip probability)
   { name: 'maxSpb', type: 'long', default: 96, min: 64, max: 128 },          // F2's steps a beat at full zoom-out
   { name: 'scene', type: 'long', values: ['auto', 'F1', 'fluid'], default: 'auto' },
