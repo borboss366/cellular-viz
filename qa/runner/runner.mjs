@@ -750,7 +750,9 @@ if (!CFG.once) fs.writeFileSync(PID_FILE, String(process.pid));
 if (!CFG.once) {
   const vals = { RUNNER_REPO: CFG.repo, QA_HOME: CFG.qaHome, CHECKS_REF: CFG.checksRef, RUNNER_AUTHORS: CFG.authors.join(','), RUNNER_POLL: CFG.poll,
     RUNNER_TIMEOUT_MIN: CFG.timeoutMin, RUNNER_STATE: CFG.state, QA_AUDIO_DIR: CFG.audioDir, RUNNER_LABEL: CFG.label, RUNNER_COMMIT: CFG.commit ? 1 : 0, RUNNER_BOARD: CFG.board ? 1 : 0,
-    GPU_BUSY_FILE: GPU.file, GPU_IDLE_MAX: GPU.idleMax, GPU_IDLE_SECS: GPU.idleSecs, GPU_WAIT_MIN: GPU.waitMin, GPU_LOCK: GPU.lock };
+    GPU_BUSY_FILE: GPU.file, GPU_IDLE_MAX: GPU.idleMax, GPU_IDLE_SECS: GPU.idleSecs, GPU_WAIT_MIN: GPU.waitMin, GPU_LOCK: GPU.lock,
+    // qa/emit-test-event.sh and the viewer's notes read these through settings.sh too (#164, #168)
+    QA_EVENTS_DIR: CFG.events || '', QA_NOTES_DIR: process.env.QA_NOTES_DIR || '', RUNNER_NOTES: CFG.notes ? 1 : 0 };
   const q = v => `'${String(v).replace(/'/g, `'\\''`)}'`;
   try { fs.writeFileSync(path.join(CFG.state, 'runner.env'), '# written by the runner service at start; qa/run-next.sh reads it\n' + Object.entries(vals).map(([k, v]) => `${k}=${q(v)}`).join('\n') + '\n'); }
   catch (e) { log(`could not write runner.env: ${e.message}`); }

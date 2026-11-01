@@ -2,7 +2,8 @@
 //
 //   node qa/serve.mjs [--port 8787]      → http://<box>:8787/
 //
-// Pages: /                 list of runs (newest first)
+// Pages: /, /builds        every build (below); the viewer opens here (the user's choice, #162)
+//        /grade            what waits for the user: the bots' asks, then runs to grade (was /)
 //        /run/<exp>/<stamp> videos + scores + keep / maybe / dull; for a runner experiment folder (…-prN) its stills,
 //                           gates and check links instead (exp-view.mjs)
 //        /builds            every build (qa/builds.json via qa/builds.mjs), newest first: thumbnail, status, gates, links,
@@ -81,7 +82,7 @@ video,img{width:100%;border-radius:8px;background:#000;display:block}.m{color:#8
 button{font:inherit;background:#1a2234;color:#e6ecf7;border:1px solid #2c3850;border-radius:10px;padding:10px 14px}
 button.on{background:#2b5cff;border-color:#2b5cff}input{font:inherit;flex:1;min-width:150px;background:#1a2234;color:#e6ecf7;border:1px solid #2c3850;border-radius:10px;padding:9px}
 li{margin:8px 0}` + buildsCss;
-const page = (title, body) => `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${css}</style></head><body><header><h1>${esc(title)}</h1><div class="m"><a href="/">all runs</a></div></header><main>${body}</main></body></html>`;
+const page = (title, body) => `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${css}</style></head><body><header><h1>${esc(title)}</h1><div class="m"><a href="/">builds</a> · <a href="/grade">grading</a></div></header><main>${body}</main></body></html>`;
 
 // ---- start page: everything that waits for the user's eyes ----
 // qa/todo.json holds the questions bots ask the user ({id, title, note?, links:[{label, href}], done?});
@@ -118,12 +119,12 @@ function indexPage() {
     <h2 style="font-size:16px">Graded (${done.length})</h2>${done.length ? `<ul>${done.map(row).join('')}</ul>` : '<p class="m">None yet.</p>'}
     <details><summary class="m">Other runs (${other.length}): branch checks, software-only, single variant</summary><ul>${other.map(row).join('')}</ul></details>
     <h2 style="font-size:16px">Elsewhere</h2><ul>
-      <li><a href="/builds"><b>Builds</b></a> <span class="m">— every check round and who it is waiting on</span></li>
+      <li><a href="/"><b>Builds</b></a> <span class="m">— every build, its notes and who it is waiting on</span></li>
       <li><a href="https://github.com/users/borboss366/projects/1">Board (GitHub Projects)</a></li>
       <li><a href="https://github.com/borboss366/cellular-viz/pulls">Pull requests</a></li>
       <li><a href="https://borboss366.github.io/cellular-viz/">Experiments (live site)</a></li></ul>
-    <p class="m">Bookmark this page: http://192.168.8.164:8787/ (home Wi-Fi only).</p>`;
-  return page('QA: what needs you', body);
+    <p class="m">This page: http://192.168.8.164:8787/grade (home Wi-Fi only).</p>`;
+  return page('QA: grading', body);
 }
 
 function runPage(exp, stamp, dir) {
@@ -259,15 +260,23 @@ function firstStill(b) {
   }
   return null;
 }
+// what /grade holds, for the link at the top of /builds: the bots' open asks and the runs still to grade
+function gradeCounts() {
+  const asks = loadTodo().filter(t => !t.done).length;
+  const toGrade = runs().map(r => ({ ...r, s: runState(r) })).filter(r => !r.s.graded && !r.s.software && r.s.n > 1 && !r.s.tag).length;
+  return { asks, toGrade };
+}
 function buildsPage(query) {
   const NOTES = notesDir();
+  let g = { asks: 0, toGrade: 0 }; try { g = gradeCounts(); } catch {}
   const rows = buildRows(loadBuilds(), b => {
     const dir = buildDir(b);
     if (!dir) return {};
     let checkMd = null; try { checkMd = fs.readFileSync(path.join(dir, 'check.md'), 'utf8'); } catch {}
     return { results: readJson(path.join(dir, 'results.json')), checkMd, thumb: !!firstStill(b), stills: runLink(b) };
   });
-  return page('Builds', `<p class="m"><a href="/builds/open">open PRs only (latest round each)</a></p>`
+  return page('Builds', `<div class="card"><a href="/grade"><b>Grading →</b></a> <span class="m">${g.asks} waiting for you · ${g.toGrade} runs to grade</span></div>
+    <p class="m"><a href="/builds/open">open PRs only (latest round each)</a></p>`
     + buildsBody(rows, parseFilters(query), id => { try { return loadNotes(NOTES, id); } catch { return []; } }));
 }
 // the old list: one row per open PR (its latest round)
@@ -323,7 +332,8 @@ const handler = (req, res) => {
   const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   const html = s => { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(s); };
   try {
-    if (!parts.length) return html(indexPage());
+    if (!parts.length) return html(buildsPage(url.searchParams));   // the viewer opens on the builds (#162)
+    if (parts[0] === 'grade' && parts.length === 1) return html(indexPage());
     if (parts[0] === 'run' && parts.length >= 3 && safe(parts[1]) && safe(parts[2])) {
       const dir = path.join(here, parts[1], 'runs', parts[2]);
       if (!fs.existsSync(path.join(dir, 'results.json'))) { res.writeHead(404); return res.end('no such run'); }
