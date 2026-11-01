@@ -196,7 +196,7 @@ uniform float uScale, uF, uSpark, uNode, uDecay;
 uniform sampler2D uDens;
 uniform float uMeanRho, uKnee, uScaleE, uSplash, uDotScale, uDesat;
 uniform vec4 uB[4];      // world x, y, ring radius, weight
-uniform vec4 uBH[4];     // their hues (linear), .w the 70 ms attack (a burst's density jumps at once: no flash step)
+uniform vec4 uBH[4];     // their hues (linear), .w the 350 ms attack (a burst's density jumps at once: no flash step)
 uniform vec3 uHue[6];
 uniform vec4 uBurst;     // world x, y, radius, envelope
 // F2: the fluid layer (the time-averaged block velocity at block size 8 · 2^uLod, carried dye on top)
@@ -981,7 +981,7 @@ export function createScene() {
     // the splash layer: excess over the mean particles a site (from the mass readback), a knee at ~2σ of a 4 × 4 block
     // (σ = √(6 d (1 − d)) / 4), the dots at 100 % → 25 % and desaturated as the knob goes 0 → 1
     const dMean = st.mass === null ? ctl.density : st.mass / (6 * NQ * NR), sigma4 = Math.sqrt(6 * dMean * (1 - dMean)) / 4;
-    gl.uniform1f(u.uMeanRho, 6 * dMean); gl.uniform1f(u.uKnee, 2 * sigma4 / 3); gl.uniform1f(u.uScaleE, 0.1);   // 2σ of the 3 × 3-smoothed blocks; full light from ~0.3 excess (a ring one beat out), so a burst's core (~1.4) is no brighter than its ring
+    gl.uniform1f(u.uMeanRho, 6 * dMean); gl.uniform1f(u.uKnee, 2 * sigma4 / 3); gl.uniform1f(u.uScaleE, 0.06);   // (viz-171-4: at 0.1 a ring one beat out, smoothed excess ~0.27, lit only ~half and patchy; C3 1.6–1.7)   // 2σ of the 3 × 3-smoothed blocks; full light from ~0.3 excess (a ring one beat out), so a burst's core (~1.4) is no brighter than its ring
     gl.uniform1f(u.uSplash, fl.dens ? ctl.splashGain * contrast * (1 - decay) : 0);
     // the dot floor (#171 ruling: C2 first, before the rings): 100 % → 20 % over the knob's 0 → 0.8, 20 % above
     // (viz-171-2: C2 0.072 at 20 %; now 15 % at 0.8 and above)
@@ -990,7 +990,7 @@ export function createScene() {
     st.splashes = st.splashes.filter(s => now - s.t < 3000).slice(-4);
     st.splashes.forEach((s, k) => {
       B4.set([s.x, s.y, s.r0 + Math.min(80, 0.71 * (st.simStep - s.step)), Math.exp(-(now - s.t) / 800)], 4 * k);   // FHP's c_s ≈ 1/√2
-      H4.set([...SPLASH_HUES_L1[s.hue % SPLASH_HUES_L1.length], 1 - Math.exp(-(now - s.t) / 250)], 4 * k);   // 250 ms attack (viz-171-2: 70 ms gave window rises 0.30–0.32 / 100 ms)
+      H4.set([...SPLASH_HUES_L1[s.hue % SPLASH_HUES_L1.length], 1 - Math.exp(-(now - s.t) / 350)], 4 * k);   // 350 ms attack (viz-171-2: 70 ms gave rises 0.30–0.32 / 100 ms; 250 ms gave 0.13 at splashGain 0.13; 350 for 0.32)
     });
     gl.uniform4fv(u.uB, B4); gl.uniform4fv(u.uBH, H4);
     gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, fl.dens ? fl.dens.t : null); gl.uniform1i(u.uDens, 4);
@@ -1140,7 +1140,7 @@ export const DETAIL = [
   { name: 'force', type: 'float', default: 0.0008, min: 0, max: 0.004 },     // F2's Kolmogorov stirring (flip probability)
   { name: 'maxSpb', type: 'long', default: 96, min: 64, max: 128 },          // F2's steps a beat at full zoom-out
   { name: 'scene', type: 'long', values: ['auto', 'F1', 'fluid'], default: 'auto' },
-  { name: 'fieldGain', type: 'float', default: 1.45, min: 0, max: 3 },   // 1.3 → 1.45 (viz-171-3 fluid L 0.138–0.146, speed term now capped)          // F2: the fluid layer's brightness
+  { name: 'fieldGain', type: 'float', default: 1.85, min: 0, max: 3 },   // viz-171-4 fluid L 0.117 with the capped speed term and per-distance passes   // 1.3 → 1.45 (viz-171-3 fluid L 0.138–0.146, speed term now capped)          // F2: the fluid layer's brightness
   { name: 'emaMs', type: 'float', default: 150, min: 20, max: 2000 },        // F2: the block velocity's time average τ
   { name: 'nodes', type: 'float', default: 0.5, min: 0, max: 1 },
 ];
