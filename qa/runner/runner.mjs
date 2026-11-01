@@ -33,6 +33,7 @@ import { runShared, experimentPage, sharedPasses } from './shared.mjs';
 import { addTodo } from './todo.mjs';
 import { audioDir, scanTracks } from './audio.mjs';
 import { settled } from './settle.mjs';
+import { defaultSwipe, swipeOnlyRaw, takeRequests } from './swipe.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -148,13 +149,25 @@ function enqueue(job) {
 // restart. A PR is labelled when its seen key carries the label (set below).
 function dropPageJobsOfLabelled() {
   const labelled = n => String(state.seen[n] || '').endsWith(`+${CFG.label}`);
-  const drop = state.queue.filter(j => j.kind !== 'experiment' && labelled(j.pr));
+  const drop = state.queue.filter(j => j.kind !== 'experiment' && j.kind !== 'swipe' && labelled(j.pr));
   if (!drop.length) return;
   state.queue = state.queue.filter(j => !drop.includes(j));
   log(`dropped ${drop.length} queued page build${drop.length > 1 ? 's' : ''} of qa-ready PR${new Set(drop.map(j => j.pr)).size > 1 ? 's' : ''} #${[...new Set(drop.map(j => j.pr))].join(', #')} (${drop.map(j => j.page).join(', ')}): the experiment file runs instead`);
   save();
 }
+// qa/swipe-ready.sh's requests (swipe.mjs): a swipe-only job for a build that finished green without a swipe, at the
+// commit it was built from (only while the PR is open and its experiment ran at that commit)
+function takeSwipeRequests() {
+  for (const r of takeRequests(CFG.state)) {
+    const b = latestBuilds().find(x => x.id === r.id), sha = b && (state.expDone || {})[b.pr];
+    if (!b || !sha || !sha.startsWith(String(b.commit || 'x'))) { log(`swipe request for ${r.id}: skipped (no experiment build of an open PR at that commit)`); continue; }
+    if (b.swipe) { log(`swipe request for ${r.id}: skipped (it has a swipe already)`); continue; }
+    enqueue({ pr: b.pr, sha, kind: 'swipe', page: 'swipe', buildId: b.id, report: b.report, title: `swipe for ${b.id}`, at: new Date().toISOString() });
+  }
+  save();
+}
 async function poll() {
+  try { takeSwipeRequests(); } catch (e) { log(`swipe requests: ${e.message}`); }
   dropPageJobsOfLabelled();
   status.lastPoll = new Date().toISOString();
   if (status.rate && status.rate.remaining === 0 && Date.parse(status.rate.reset) > Date.now()) return;
@@ -275,6 +288,73 @@ async function unpack(ref, what, dir) {
   await must('tar', ['-xf', tar, '-C', dir]);
 }
 
+// the old side of a swipe: the page at swipe.vs ("base": where the PR left main). A page that isn't there yet (a new
+// page) has no old side: the swipe shows the new page only. → { args, error }
+async function oldSide(exp, job, tmp, page) {
+  if (!exp.swipe || !exp.swipe.vs) return { args: [] };
+  const r = exp.swipe.vs === 'base'
+    ? await run('git', ['-C', WORK, 'merge-base', 'refs/runner/main', job.sha], { quiet: true })
+    : await run('git', ['-C', WORK, 'rev-parse', '--verify', '-q', `${exp.swipe.vs}^{commit}`], { quiet: true });
+  const old = r.out.trim();
+  if (r.code !== 0 || !/^[0-9a-f]{40}$/.test(old)) return { args: [], error: `${exp.swipe.vs}: not in the PR's history or main` };
+  await unpack(old, 'experiments', path.join(tmp, 'old'));
+  if (!fs.existsSync(path.join(tmp, 'old', 'experiments', `${exp.page || page}.html`))) {
+    log(`#${job.pr}: ${exp.page || page} is new at ${old.slice(0, 7)}; the swipe shows the new page only`);
+    return { args: [] };
+  }
+  return { args: ['--experiments-old', path.join(tmp, 'old', 'experiments'), '--vs', old.slice(0, 7)] };
+}
+
+// qa/swipe-ready.sh: a swipe-only run for a build that finished green without one. The experiment file at the build's
+// commit, reduced to its swipe (swipe.mjs), runs through exp-run; the same build is then finished again with the swipe
+// (its gates unchanged, from its check.md), so it waits on the user on the grading page.
+async function runSwipe(job) {
+  try { if (!(await fetchOrRetry(job))) return; } catch {}
+  const stamp = localStamp(), tmp = fs.mkdtempSync(path.join(CFG.state, 'swipe-'));
+  let result = 'failed';
+  status.running = { ...job, id: job.buildId, started: new Date().toISOString() };
+  try {
+    await fetchRefs(job.pr);
+    const b = latestBuilds().find(x => x.id === job.buildId);
+    if (!b || !b.report) throw new Error(`no build ${job.buildId} with a report`);
+    const raw = JSON.parse(await must('git', ['-C', WORK, 'show', `${job.sha}:qa/experiments/${job.pr}.json`]));
+    const file = path.join(tmp, 'experiment.json');
+    fs.writeFileSync(file, JSON.stringify(swipeOnlyRaw(raw), null, 1));
+    const { errors, exp } = loadFile(file);
+    if (errors.length) throw new Error(`swipe-only experiment: ${errors.join(' · ')}`);
+    const page = exp.id;
+    log(`swipe for ${job.buildId}: #${job.pr} ${page} @${job.sha.slice(0, 7)} (${exp.swipe.variants.join(', ')}, ${exp.swipe.seconds} s)`);
+    const tree = path.join(tmp, 'tree');
+    await unpack('refs/runner/checks', 'qa', tree);
+    await unpack(job.sha, 'experiments', tree);
+    fs.mkdirSync(path.join(tree, 'qa', 'runner'), { recursive: true });
+    for (const f of EXP_FILES) fs.copyFileSync(path.join(here, f), path.join(tree, 'qa', 'runner', f));
+    const nm = path.join(CFG.qaHome, 'qa', 'node_modules');
+    if (fs.existsSync(nm) && !fs.existsSync(path.join(tree, 'qa', 'node_modules'))) fs.symlinkSync(nm, path.join(tree, 'qa', 'node_modules'), 'dir');
+    const side = await oldSide(exp, job, tmp, page);
+    if (side.error) throw new Error(side.error);
+    const out = path.join(tree, 'qa', page, 'runs', `${stamp}-pr${job.pr}-swipeonly`);
+    const args = ['--file', file, '--experiments', path.join(tree, 'experiments'), '--qa', path.join(tree, 'qa'), '--pr', String(job.pr), '--sha', job.sha,
+      '--audio-dir', CFG.audioDir, ...side.args, '--out', out];
+    const r = await run('node', [path.join(tree, 'qa', 'runner', 'exp-run.mjs'), ...args], { cwd: tree, timeoutMs: 30 * 60e3 });
+    let swipe = null;
+    try { swipe = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8')).swipe; } catch {}
+    if (!swipe || !swipe.dir || swipe.dir.includes('..')) throw new Error(`no swipe recorded (exit ${r.code}: ${(r.err || r.out).trim().split('\n').slice(-2).join(' / ')})`);
+    fs.cpSync(path.join(tree, 'qa', swipe.dir), path.join(CFG.qaHome, 'qa', swipe.dir), { recursive: true });
+    const check = path.join(CFG.qaHome, path.dirname(b.report));
+    result = settleBuild(job.buildId, (await builds('finish', '--id', job.buildId, '--check', check, '--swipe', swipe.url)).trim());
+    state.recent = [{ ...status.running, page, finished: new Date().toISOString(), result, report: b.report }, ...(state.recent || [])].slice(0, 30);
+    save();
+  } catch (e) {
+    log(`swipe for ${job.buildId} failed: ${e.message}`);
+    result = `failed: ${e.message}`;
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    status.running = null;
+    log(`swipe for ${job.buildId} done: ${result}`);
+  }
+}
+
 // a qa-ready PR: run its experiment file with this runner's measuring code and the check scripts from CHECKS_REF
 async function runExperiment(job, gate) {
   try { if (!(await fetchOrRetry(job))) return; } catch {}   // a non-network failure is recorded below, as before
@@ -296,9 +376,20 @@ async function runExperiment(job, gate) {
     if (has.code !== 0) return await fail(`the PR carries ${rel}`, `not on @${short}; see qa/experiments/README.md`);
     const file = path.join(tmp, 'experiment.json');
     fs.writeFileSync(file, await must('git', ['-C', WORK, 'show', `${job.sha}:${rel}`]));
-    const { errors, exp } = loadFile(file);
+    let { errors, exp } = loadFile(file);
     if (exp && typeof exp.id === 'string' && /^\d\d-[a-z0-9-]+$/.test(exp.id)) page = exp.id;
     if (errors.length) return await fail(`${rel} is valid`, errors.join(' · '));
+    // no swipe in the file: a default one (first variant, new vs base, 30 s), so a green build reaches the grading page;
+    // it is optional: if it can't be recorded that is a note, not a failed gate. Audio jobs record no swipe.
+    let swipeOptional = false;
+    if (!exp.swipe && exp.kind !== 'audio' && exp.seconds > 0) {
+      const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+      raw.swipe = defaultSwipe(raw);
+      fs.writeFileSync(file, JSON.stringify(raw, null, 1));
+      ({ errors, exp } = loadFile(file));
+      if (errors.length) return await fail(`${rel} is valid with the default swipe`, errors.join(' · '));
+      swipeOptional = true;
+    }
     id = (await builds('start', '--page', page, '--pr', String(job.pr), '--commit', short)).trim().split('\n').pop();
     status.running = { ...job, id, page, started: new Date().toISOString() };
     log(`build ${id}: #${job.pr} experiment ${page} @${short}, checks from ${CFG.checksRef}`);
@@ -312,15 +403,10 @@ async function runExperiment(job, gate) {
     if (fs.existsSync(nm) && !fs.existsSync(path.join(tree, 'qa', 'node_modules'))) fs.symlinkSync(nm, path.join(tree, 'qa', 'node_modules'), 'dir');
     const args = ['--file', file, '--experiments', path.join(tree, 'experiments'), '--qa', path.join(tree, 'qa'), '--pr', String(job.pr), '--sha', job.sha,
       '--audio-dir', CFG.audioDir];
-    if (exp.swipe && exp.swipe.vs) {
-      const r = exp.swipe.vs === 'base'
-        ? await run('git', ['-C', WORK, 'merge-base', 'refs/runner/main', job.sha], { quiet: true })
-        : await run('git', ['-C', WORK, 'rev-parse', '--verify', '-q', `${exp.swipe.vs}^{commit}`], { quiet: true });
-      const old = r.out.trim();
-      if (r.code !== 0 || !/^[0-9a-f]{40}$/.test(old)) return await fail('swipe.vs names a commit the runner can fetch', `${exp.swipe.vs}: not in the PR's history or main`);
-      await unpack(old, 'experiments', path.join(tmp, 'old'));
-      args.push('--experiments-old', path.join(tmp, 'old', 'experiments'), '--vs', old.slice(0, 7));
-    }
+    if (swipeOptional) args.push('--swipe-optional', '1');
+    const side = await oldSide(exp, job, tmp, page);
+    if (side.error) return await fail('swipe.vs names a commit the runner can fetch', side.error);
+    args.push(...side.args);
     const out = path.join(tree, 'qa', page, 'runs', `${stamp}-pr${job.pr}`);
     args.push('--out', out);
     await builds('set', '--id', id, '--status', 'running');
@@ -517,7 +603,7 @@ async function work() {
         log(`GPU contended during #${job.pr} ${job.page}: ${contended}; stopping the run, it will be discarded`);
         try { if (child) process.kill(-child.pid, 'SIGKILL'); } catch {}
       } });
-      try { await (job.kind === 'experiment' ? runExperiment(job, gate) : runBuild(job, gate)); }
+      try { await (job.kind === 'experiment' ? runExperiment(job, gate) : job.kind === 'swipe' ? runSwipe(job) : runBuild(job, gate)); }
       catch (e) { log(`build for #${job.pr} ${job.page} could not start: ${e.message}`); status.running = null; }
       finally {
         stopWatch();
@@ -535,8 +621,8 @@ async function work() {
       }
       const rec = (state.recent || [])[0];
       const fresh = rec && rec !== before;
-      if (fresh) gpuRow(rec, gate, tail, job, contended);
-      if (contended && fresh) {
+      if (fresh && job.kind !== 'swipe') gpuRow(rec, gate, tail, job, contended);   // a swipe-only job leaves the build's check.md alone
+      if (contended && fresh && job.kind !== 'swipe') {
         job.requeues = (job.requeues || 0) + 1; job.contended = contended;
         const again = job.requeues <= 2;
         try { if (rec.id) await builds('set', '--id', rec.id, '--status', again ? 'discarded' : 'contended', '--waiting', 'qa-box'); }

@@ -28,11 +28,14 @@ Two more fixed scripts exist for the rare case something is left over; the runne
 `sh <RUNNER_HOME>/qa/board-sync.sh` (board moves, replaces `qa/board.py`) and `sh <RUNNER_HOME>/qa/commit-reports.sh`
 (commits changed .md/.json reports, never pushes).
 
-Three more, each run alone, no arguments, no pipes (so the judge sees the same string every time):
+More, each run alone, no arguments, no pipes (so the judge sees the same string every time):
 
 ```
-sh <RUNNER_HOME>/qa/status.sh          # read only: runner /health + /api/status (now, queue, last 3), last 10 log lines,
-                                       # viewer HTTP codes for / and /builds, gpu_busy_percent
+sh <RUNNER_HOME>/qa/status.sh          # read only: runner /health + /api/status (now, queue, last 3 with each build's
+                                       # current status), last 10 log lines, viewer HTTP codes for / and /builds, gpu_busy_percent
+sh <RUNNER_HOME>/qa/swipe-ready.sh     # ask the runner for a swipe on every build that finished green without one (it records
+                                       # them at its next poll and the builds land on the grading page). Experiment files
+                                       # without "swipe" get a default one (first variant, new vs base, 30 s) from now on.
 sh <RUNNER_HOME>/qa/commit-checks.sh   # in QA_HOME: commit only qa/check-*.mjs, todo.json, builds.json and the .md/.json
                                        # reports as "QA box"; never videos/screenshots, never pushes; nothing changed = no-op
 sh <RUNNER_HOME>/qa/test-pr.sh         # PR from ~/.cache/cellular-viz-runner/test-pr, else newest open PR labelled
