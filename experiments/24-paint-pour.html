@@ -16,11 +16,11 @@
   3 vortex (beat), 4 comb (beat); keys Z X C V. Touch or click the picture to pour there; hold to pour more.
   window.__qa: check() (truths 1, 3 on the GPU, 4, 5, 9, 10), ops, opLog, fwd(x,y), inv(x,y), traceGPU(points),
   traceCPU(points), colourAt(x,y), colourGrid(x0,y0,x1,y1,n), forceDrop() (panic.js), forceBake(), bakes, pour, view,
-  palette, events() (the clock's hits and jumps), setMacro(i,v), macros, pressTrigger(i,holdMs,at), releaseTrigger(i), triggers, triggerLog,
+  palette, events (the clock's hits and jumps, an array since audio-in), beatLog, frame, clockLate, fixRejected, audioIn, setMacro(i,v), macros, pressTrigger(i,holdMs,at), releaseTrigger(i), triggers, triggerLog,
   triggerEnv, bars, beats, bpm, errors.
   ?macro1..4=0..1, ?palette=canada|psych60s|psych70s, ?veinColour=lime|yellow|black|none, ?seed=, ?opsMax=, ?dropScale=,
   ?cellsPerDrop=, ?blackShare=, ?tines=, ?tineSharp=, ?vortexOn=0, ?pourRate=, ?strings=, ?veinWidth=, ?bevelWidth=,
-  ?ripple=0..1, ?camDrift=0..2, ?qaPour=1 (QA: a 4 s pour at bar 3 of the run), ?bakeScale=, ?traceScale=, ?qa=flat, ?freeze=1, ?startBar=, ?bpm=, ?muted=1, ?clock=metronome, ?labels=0.
+  ?ripple=0..1, ?camDrift=0..2, ?qaPour=1 (QA: a 4 s pour at bar 3 of the run), ?bakeScale=, ?traceScale=, ?qa=flat, ?freeze=1, ?startBar=, ?bpm=, ?muted=1, ?clock=metronome, ?audio=clock|mic|line (audio-in), ?labels=0.
 -->
 <html lang="en">
 <head>
@@ -98,6 +98,7 @@
 </script>
 <script src="panic.js"></script>
 <script src="clock.js"></script>
+<script src="audio-in.js"></script>
 <script type="module">
 import scene, { MACROS, TRIGGERS, DETAIL, macroInputs, pourColourOf } from './24-paint-pour.mjs';
 import * as K from './24-marble.mjs';
@@ -122,6 +123,12 @@ params.flat = q('qa') === 'flat'; params.freeze = q('freeze') === '1'; params.la
 
 // ---------- the shared clock (#95): the metronome until a page asks for another source ----------
 const clock = Clock.create({ source: q('clock') || 'metronome', settings: params });
+// audio-in (#135, the shared input): the shared hooks only. audio.frameStart(now) at the top of each frame and
+// audio.due(BEAT_LANES) right after the read log the hits each frame reached in __qa.beatLog, for check-shared's
+// beat-match row. The scene still takes its hits from clockRead below (beat positions, truth 9's op log), so it looks
+// and plays exactly as before.
+const BEAT_LANES = ['kick', 'snare', 'hat'];
+const audio = AudioIn.create({ clock, source: q('audio') || 'clock' }).start();
 let clockStart = performance.now();
 // the clock as the scene reads it: beats (at visual time), the drum hits since the last frame as beat positions.
 // Not playing: beats from performance.now and the hits from the patterns (the same op log either way, truth 9).
@@ -226,11 +233,12 @@ function frame(now) {
   try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; if (window.__panicError) window.__panicError(); }
 }
 function draw(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt (audio-in)
   resize();
-  // book the metronome's next steps from the frame too: its own 25 ms timer can fall behind when frames are heavy
-  // (4K), and steps booked late play late and jump the beat count (truth 8 at 4K, viz-134-4: up to 328 ms)
-  if (clock.playing && clock.ctx) clock.schedule();
+  // no clock.schedule() here any more: since #148 clock.read() books the next steps once per frame itself, with a
+  // look-ahead that stretches under long frames (truth 8 at 4K, viz-134-4)
   const c = clockRead(now);
+  audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
   window.__qaNowBars = c.beats / c.bpb;
   if (qaPour.on) {   // ?qaPour=1: pour here at a fixed point from bar 3 to bar 5 of the run (the clock going back restarts it)
     const b = c.beats / c.bpb;
@@ -259,7 +267,7 @@ const S = scene.qa;
 let checked = null;
 const check = (fresh = false) => { const t = performance.now(); if (fresh || !checked || t - checked.t > 1000) checked = { t, r: S.check() }; return checked.r; };
 expose({
-  errors, setMacro, pressTrigger, releaseTrigger, triggers: TRIGGERS, events: () => Clock.qaEvents(clock), clock, get clockSmooth() { return { ...smooth }; },
+  errors, setMacro, pressTrigger, releaseTrigger, triggers: TRIGGERS, clock, get clockSmooth() { return { ...smooth }; },
   get macros() { return MACROS.map((m, i) => ({ slot: m.slot, name: m.name, label: m.label, value: params.macro[i], default: m.default, shown: macroText(i) })); },
   get triggerLog() { return S.triggerLog; }, get triggerEnv() { return S.triggerEnv; },
   // truth 8 counts only the ops admitted inside the runner's measured window (window.__qaFTon true): after it the
@@ -270,6 +278,9 @@ expose({
   check, fwd: (x, y) => S.fwd(x, y), inv: (x, y) => S.inv(x, y), traceGPU: p => S.traceGPU(p), traceCPU: p => S.traceCPU(p),
   colourAt: (x, y) => S.colourAt(x, y), colourGrid: (x0, y0, x1, y1, n) => S.colourGrid(x0, y0, x1, y1, n), forceBake: () => S.forceBake(),
 });
+// beatLog, frame, beatLanes, clockLate, fixRejected, audioIn and events (Clock.qaEvents as an array, which
+// check-shared reads; it was a function here before)
+AudioIn.qa(audio, window.__qa);
 if (!gl) { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2'); }
 else {
   try { resize(); scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed }); }
