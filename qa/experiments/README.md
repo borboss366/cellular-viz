@@ -73,7 +73,8 @@ answers to its parent's name). The report shows the value of every run and which
 | `audio.levelDuringDb` | median RMS of the captured waveform while the excerpt plays, dBFS (from 0.5 s after the input opens) |
 | `audio.levelAfterEndDb` | the loudest frame from 0.5 s after a `noloop` excerpt ends, dBFS (silence: below −60) |
 | `audio.bandDiffDb.max` | the largest difference of a live band median from the offline analysis of the same excerpt, dB |
-| `audio.rowCorr.min` | the lowest Pearson of a page row with its band lane (best lag within ±100 ms) |
+| `audio.rowCorr.min` | the lowest Pearson of a page row with its band lane (best lag within ±100 ms), over the counted rows |
+| `audio.rowsCounted` | rows with ≥ 3 s of non-null samples (the page logs `null` while a row is empty or morphing); `audio.rowCorr.min` is taken over these only |
 | `audio.frames` | frames logged while the excerpt played |
 
 Each check script's own ✅/❌ rows become gates too, named `check-18: <its gate>`. A script that doesn't finish,
