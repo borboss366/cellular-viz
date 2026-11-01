@@ -11,8 +11,14 @@
   Music: each kick bursts particles out at a random spot, hats brighten the sparks, bar 0 of every 16-bar section
   (#88's drop) bursts big in the middle.
 
-  Controls (#85): macro1 density (0.10–0.40 a link), macro2 steps a beat (2/4/8/16), macro3 sparks, macro4 zoom out
-  (40–112 sites across). Triggers: 1 burst (now), 2 big burst (next beat), 3 freeze (hold), 4 scatter (next beat);
+  Controls (#85): macro1 density (0.10–0.40 a link), macro2 steps a beat (2/4/8/16), macro3 splash contrast (#71
+  round 2: the dots dim to 25 % and the bursts' rings light up in hot hues from the 4 × 4-block density excess over
+  the mean, so gas at the mean goes near-black), macro4 mix speed (#165: the dye's time-lapse, 1–6×, 3× default).
+  Detail: sparks and zoom (F1's 40–112 sites across) moved off the macros; force (F2's Kolmogorov stirring, its axis
+  turning every 4 bars), maxSpb (96: F2's steps a beat), splashGain. ?qa=splash: a measured burst in the middle
+  every 2 beats, the knob cycling default / 0 / 1; __qa.splash() → C1 ring ÷ median, C2 median, C3 knob 1 ÷ 0;
+  check().t5: T5 dye half-time in bars at the default mix (frozen flow), T6 the 1× ÷ 6× ratio; __qa.mixLive(): T5 on
+  the live page, the half-time of the dye's 32-site block variance after each drop's fresh dye. Triggers: 1 burst (now), 2 big burst (next beat), 3 freeze (hold), 4 scatter (next beat);
   keys Z X C V.
   window.__qa: check() (truth 1: GPU mass and momentum exact over 40 steps on 6 lattices, the state equal to the CPU
   reference bit for bit, the 64-entry table exhaustive; truth 3: weak-pulse sound speed vs 1/√2 over 64 rings),
@@ -82,8 +88,8 @@
   <h3>Macros</h3>
   <div class="row"><label for="m1">1 density</label><input id="m1" type="range" min="0" max="1" step="0.01"><output id="m1Out"></output></div>
   <div class="row"><label for="m2">2 steps a beat</label><input id="m2" type="range" min="0" max="1" step="0.01"><output id="m2Out"></output></div>
-  <div class="row"><label for="m3">3 sparks</label><input id="m3" type="range" min="0" max="1" step="0.01"><output id="m3Out"></output></div>
-  <div class="row"><label for="m4">4 zoom out</label><input id="m4" type="range" min="0" max="1" step="0.01"><output id="m4Out"></output></div>
+  <div class="row"><label for="m3">3 splash contrast</label><input id="m3" type="range" min="0" max="1" step="0.01"><output id="m3Out"></output></div>
+  <div class="row"><label for="m4">4 mix speed</label><input id="m4" type="range" min="0" max="1" step="0.01"><output id="m4Out"></output></div>
   <h3>Triggers</h3>
   <div class="buttons">
     <button id="t1">Z burst</button><button id="t2">X big burst</button><button id="t3">C freeze (hold)</button><button id="t4">V scatter</button>
@@ -110,7 +116,7 @@
 <script src="clock.js"></script>
 <script src="audio-in.js"></script>
 <script type="module">
-import scene, { MACROS, TRIGGERS, DETAIL, PALETTES, stepsPerBeatOf, densityOf, sitesAcrossOf } from './26-lattice-gas.mjs';
+import scene, { MACROS, TRIGGERS, DETAIL, PALETTES, stepsPerBeatOf, densityOf, mixOf } from './26-lattice-gas.mjs';
 const $ = id => document.getElementById(id);
 const query = new URLSearchParams(location.search);
 const def = Object.fromEntries(DETAIL.map(d => [d.name, d.default]));
@@ -127,7 +133,7 @@ for (const d of DETAIL) {
   else { const v = num(d.name, d.min, d.max); if (v !== null) params[d.name] = d.type === 'long' ? Math.round(v) : v; }
 }
 for (const [k, lo, hi] of [['bpm', 60, 180], ['startBar', 0, 4096]]) { const v = num(k, lo, hi); if (v !== null) params[k] = v; }
-params.conserve = q('qa') === 'conserve'; params.fluidQa = q('qa') === 'fluid'; params.lattice = q('lattice') === '1024' ? 1024 : 2048;
+params.conserve = q('qa') === 'conserve'; params.fluidQa = q('qa') === 'fluid'; params.splashQa = q('qa') === 'splash'; params.lattice = q('lattice') === '1024' ? 1024 : 2048;
 params.labels = q('labels') !== '0'; params.muted = q('muted') === '1';
 
 // ---------- the shared clock (#95) and audio input (#135) ----------
@@ -152,7 +158,7 @@ function patternKicks(b0, b1) {
 }
 
 // ---------- controls (#85 contract) ----------
-const macroText = i => i === 0 ? densityOf(params.macro[0]).toFixed(2) : i === 1 ? `${stepsPerBeatOf(params.macro[1])}` : i === 3 ? `${Math.round(sitesAcrossOf(params.macro[3]))}` : params.macro[i].toFixed(2);
+const macroText = i => i === 0 ? densityOf(params.macro[0]).toFixed(2) : i === 1 ? `${stepsPerBeatOf(params.macro[1])}` : i === 3 ? `${mixOf(params.macro[3]).toFixed(1)}×` : params.macro[i].toFixed(2);
 function setMacro(i, v) { if (!(i >= 1 && i <= 4)) return null; params.macro[i - 1] = Math.max(0, Math.min(1, +v)); sync(); return params.macro[i - 1]; }
 for (let i = 1; i <= 4; i++) $('m' + i).addEventListener('input', e => setMacro(i, parseFloat(e.target.value)));
 function pressTrigger(i, holdMs = 0) { if (!(i >= 1 && i <= 4)) return false; return scene.press(i, holdMs, performance.now()); }
@@ -185,10 +191,10 @@ $('play').onclick = () => {
 $('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
 $('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen()).catch(() => {}); };
 const controls = () => ({
-  macro: params.macro, density: densityOf(params.macro[0]), tempo: params.macro[1], sparks: params.macro[2], zoom: params.macro[3],
+  macro: params.macro, density: densityOf(params.macro[0]), tempo: params.macro[1], splash: params.macro[2], mix: mixOf(params.macro[3]), sparks: params.sparks, zoom: params.zoom,
   palette: params.palette, dotLum: params.dotLum, persist: params.persist, core: params.core, bloom: params.bloom, sat: params.sat,
   exposure: params.exposure, burstSize: params.burstSize, nodes: params.nodes, conserve: params.conserve,
-  scene: params.scene, fieldGain: params.fieldGain, emaMs: params.emaMs,
+  scene: params.scene, fieldGain: params.fieldGain, emaMs: params.emaMs, splashGain: params.splashGain, force: params.force, maxSpb: params.maxSpb,
 });
 window.__modules = { '26-lattice-gas': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
 
@@ -241,11 +247,12 @@ expose({
   mass: () => S.mass(), momentum: () => S.momentum(), lut: S.lut,
   get rings() { return S.rings; }, get step() { return S.step; }, get massHistory() { return S.massHistory; },
   get lumMean() { return S.lumMean; }, get lumHistory() { return S.lumHistory; },
+  splash: () => S.splashSummary(), get splashLog() { return S.splashLog; }, mixHalfTime: (mix, o) => S.mixHalfTime(mix, o), mixLive: () => S.mixLive(),
 });
 AudioIn.qa(audio, window.__qa);   // beatLog, frame, beatLanes, events (Clock.qaEvents), audioIn
 if (!gl) { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2'); }
 else {
-  try { resize(); scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed, conserve: params.conserve, lattice: params.lattice, scene: params.scene, fluidQa: params.fluidQa }); }
+  try { resize(); scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed, conserve: params.conserve, lattice: params.lattice, scene: params.scene, fluidQa: params.fluidQa, splashQa: params.splashQa }); }
   catch (e) { errors.push(String(e && e.stack || e)); hud.textContent = 'init error: ' + e.message; }
   sync();
   requestAnimationFrame(frame);

@@ -110,3 +110,46 @@ test('truth 4 noise removal: two noisy measurements of one solenoidal flow cross
   assert.ok(Number.isFinite(r.ddMean) && r.ddSigma > 0 && r.ratioUpper >= r.ratio, `signed cross term and its bound: ${r.ddMean} ± ${r.ddSigma}, upper ${r.ratioUpper}`);
   assert.ok(r.ratioUpper < 0.2, `upper bound ${r.ratioUpper}`);
 });
+
+test('F2 mixing (#165): the Kolmogorov force is constant along its link (divergence-free) and periodic on both tori', () => {
+  for (const [nq, nr, kk] of [[2048, 1152, 16], [1024, 576, 16], [512, 512, 4]]) for (let axis = 0; axis < 3; axis++) {
+    const [dq, dr] = F.DIRS[axis], R = F.rng(axis + nq);
+    let sum = 0;
+    for (let k = 0; k < 2000; k++) {
+      const q = Math.floor(R() * nq), r = Math.floor(R() * nr), f = F.forceAt(axis, q, r, nq, nr, 0.7, kk);
+      assert.ok(Math.abs(F.forceAt(axis, q + dq, r + dr, nq, nr, 0.7, kk) - f) < 1e-9, `axis ${axis}: along its link at ${q},${r}`);
+      assert.ok(Math.abs(F.forceAt(axis, q + nq, r, nq, nr, 0.7, kk) - f) < 1e-9 && Math.abs(F.forceAt(axis, q, r + nr, nq, nr, 0.7, kk) - f) < 1e-9, `axis ${axis}: periodic (${nq} x ${nr}, k ${kk})`);
+    }
+    for (let r = 0; r < nr; r += 3) for (let q = 0; q < nq; q += 5) sum += F.forceAt(axis, q, r, nq, nr, 0, kk);
+    assert.ok(Math.abs(sum) / ((nr / 3) * (nq / 5)) < 0.02, `axis ${axis}: no net push (${sum})`);
+  }
+});
+
+test('F2 mixing: a forcing flip keeps mass and pushes momentum along the force', () => {
+  const nq = 128, nr = 72, S = F.randomLattice(nq, nr, 0.25, 3), R = F.rng(5), before = F.massMomentum(S);
+  let push = 0, flips = 0;
+  for (let axis = 0; axis < 3; axis++) for (let k = 0; k < S.length; k++) {
+    const q = k % nq, r = Math.floor(k / nq), f = F.forceAt(axis, q, r, nq, nr), s = S[k], t = F.forceFlip(s, axis, f, 0.5, R());
+    if (t !== s) {
+      flips++;
+      const a = F.massMomentum([s]), b = F.massMomentum([t]);
+      assert.equal(a.mass, b.mass);
+      const dp = [b.pq - a.pq, b.pr - a.pr];
+      assert.deepEqual(dp, F.DIRS[axis].map(c => 2 * c * Math.sign(f) + 0));   // + 0: no -0 under deepStrictEqual
+      push += 1;
+    }
+    S[k] = t;
+  }
+  assert.ok(flips > 500, `flips ${flips}`);
+  assert.equal(F.massMomentum(S).mass, before.mass);
+});
+
+test('F2 mixing: twice the vortices per axis (16 modes, |m|, |n| ≤ 12) keep |u| ≤ 0.2 at every site', () => {
+  for (const seed of [1, 2, 3]) {
+    const { ux, uy, modes } = F.flowField(1024, 576, seed, { umax: 0.18, count: 16, kMax: 12 });
+    assert.equal(modes.length, 16);
+    assert.ok(modes.every(k => Math.abs(k.m) <= 12 && Math.abs(k.n) <= 12));
+    let peak = 0; for (let i = 0; i < ux.length; i++) peak = Math.max(peak, Math.hypot(ux[i], uy[i]));
+    assert.ok(peak <= 0.2 && peak >= 0.17, `seed ${seed}: peak |u| ${peak.toFixed(4)}`);
+  }
+});
