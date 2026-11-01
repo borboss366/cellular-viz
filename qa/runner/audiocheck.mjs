@@ -16,8 +16,19 @@ export const DB_FLOOR = -90, DB_SPAN = 70;
 export const VIAS = ['fake', 'loop'];
 export const DEVICE = { fake: 'fake', loop: 'blackhole' };   // the ?device= substring each route's input matches
 
-/** the excerpt's file name in QA_AUDIO_DIR: one file per (track, from, len) */
-export const excerptName = a => `${a.track}.${a.from}-${a.len}.wav`;
+/**
+ * the excerpt's file name in QA_AUDIO_DIR: one file per (track, from, len). v2 (#159): the WAV ends in PAD_S seconds of
+ * digital silence, because Chromium's fake capture with %noloop repeats its last buffer at the end of the file instead
+ * of going quiet (FileSource::OnMoreData returns 0 without clearing the bus), so a v1 excerpt never fell silent.
+ * Only the first `len` seconds are analysed offline.
+ */
+export const PAD_S = 2;
+export const excerptName = a => `${a.track}.${a.from}-${a.len}.v2.wav`;
+/** interleaved Int16 samples followed by `seconds` of silence */
+export const padSilence = (pcm, sampleRate, channels, seconds = PAD_S) => {
+  const out = new Int16Array(pcm.length + Math.round(seconds * sampleRate) * channels);
+  out.set(pcm); return out;
+};
 export const excerptPath = (dir, a) => path.join(dir, excerptName(a));
 
 // ---------- WAV (16-bit PCM) ----------
@@ -118,13 +129,17 @@ function pearson(x, y) {
  *   levelAfterEndDb  the loudest frame from 0.5 s after the end (a noloop excerpt: should be silence)
  *   bandLiveDb / bandOfflineDb / bandDiffDb   per band, the medians over the excerpt in dB and their difference
  *   rowCorr / rowLagMs  per page row: Pearson of the row's glow with the band lane it follows, best lag within ±100 ms
+ *                    (#159: the page logs null where a row has nothing to show, e.g. no cells or mid-morph; those frames
+ *                    are skipped, and a row counts only with ≥ ROW_MIN_S seconds of samples, else its corr is null)
+ *   rowSec           per row, the seconds of non-null samples; rowsCounted how many rows reached ROW_MIN_S
  * info is __qa.audioIn (openedAt on the frame clock, device, banner); a.len the excerpt's length in seconds.
  */
+export const ROW_MIN_S = 3;
 export function audioMetrics(log, info, offline, a, via = 'fake') {
   const open = info && Number.isFinite(info.openedAt) ? info.openedAt : null;
   const out = { opened: open !== null, frames: 0, framesAfter: 0, device: info && info.device ? info.device.label || null : null,
     deviceOk: null, banner: info ? (info.banner ? 1 : 0) : null, levelDuringDb: null, levelAfterEndDb: null,
-    bandLiveDb: [], bandOfflineDb: [], bandDiffDb: [], rowCorr: [], rowLagMs: [] };
+    bandLiveDb: [], bandOfflineDb: [], bandDiffDb: [], rowCorr: [], rowLagMs: [], rowSec: [], rowsCounted: 0 };
   out.deviceOk = out.device ? (out.device.toLowerCase().includes(DEVICE[via]) ? 1 : 0) : 0;
   if (open === null || !Array.isArray(log)) return out;
   const end = open + a.len;
@@ -140,15 +155,23 @@ export function audioMetrics(log, info, offline, a, via = 'fake') {
   const rowed = during.filter(e => Array.isArray(e.rows) && Array.isArray(e.lanes));
   if (rowed.length > 10) {
     const dts = rowed.slice(1).map((e, i) => e.t - rowed[i].t).filter(d => d > 0), dt = median(dts) || 1 / 60;
-    const maxLag = Math.max(0, Math.round(0.1 / dt)), rows = rowed[0].rows.length;
+    const maxLag = Math.max(0, Math.round(0.1 / dt)), rows = Math.max(...rowed.map(e => e.rows.length));
+    const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : null);
     for (let k = 0; k < rows; k++) {
-      const x = rowed.map(e => e.rows[k]), y = rowed.map(e => e.lanes[k]);
+      const x = rowed.map(e => num(e.rows[k])), y = rowed.map(e => num(e.lanes[k]));
+      // the time this row had something to show: each non-null frame counts up to the next frame (at most 3 frames' worth)
+      let sec = 0;
+      for (let i = 0; i < rowed.length; i++) if (x[i] !== null) sec += i + 1 < rowed.length ? Math.min(3 * dt, rowed[i + 1].t - rowed[i].t) : dt;
+      out.rowSec.push(+sec.toFixed(2));
       let best = null, lag = 0;
-      for (let L = -maxLag; L <= maxLag; L++) {   // L > 0: the glow follows its lane L frames later
-        const xs = [], ys = [];
-        for (let i = 0; i < x.length; i++) { const j = i - L; if (j >= 0 && j < y.length) { xs.push(x[i]); ys.push(y[j]); } }
-        const c = pearson(xs, ys);
-        if (c !== null && (best === null || c > best)) { best = c; lag = L; }
+      if (sec >= ROW_MIN_S) {
+        out.rowsCounted++;
+        for (let L = -maxLag; L <= maxLag; L++) {   // L > 0: the glow follows its lane L frames later
+          const xs = [], ys = [];
+          for (let i = 0; i < x.length; i++) { const j = i - L; if (j >= 0 && j < y.length && x[i] !== null && y[j] !== null) { xs.push(x[i]); ys.push(y[j]); } }
+          const c = pearson(xs, ys);
+          if (c !== null && (best === null || c > best)) { best = c; lag = L; }
+        }
       }
       out.rowCorr.push(best === null ? null : +best.toFixed(4)); out.rowLagMs.push(best === null ? null : Math.round(lag * dt * 1000));
     }
@@ -161,7 +184,8 @@ export function audioGateMetrics(m) {
   const vals = xs => xs.filter(x => x !== null && Number.isFinite(x));
   const diffs = vals(m.bandDiffDb), corrs = vals(m.rowCorr);
   return { 'audio.deviceOk': m.deviceOk, 'audio.banner': m.banner, 'audio.levelDuringDb': m.levelDuringDb, 'audio.levelAfterEndDb': m.levelAfterEndDb,
-    'audio.bandDiffDb.max': diffs.length ? Math.max(...diffs) : null, 'audio.rowCorr.min': corrs.length ? Math.min(...corrs) : null, 'audio.frames': m.frames };
+    'audio.bandDiffDb.max': diffs.length ? Math.max(...diffs) : null, 'audio.rowCorr.min': corrs.length ? Math.min(...corrs) : null, 'audio.frames': m.frames,
+    'audio.rowsCounted': m.rowsCounted ?? 0 };
 }
 
 /** write a file atomically (a temp name, then rename): a half-written excerpt is never picked up */

@@ -61,8 +61,41 @@ test('audioMetrics: level during and after, band differences, row correlation wi
   assert.equal(m.rowCorr[1], null, 'a constant row has no correlation');
   const g = AC.audioGateMetrics(m);
   assert.equal(g['audio.bandDiffDb.max'], 3); assert.ok(g['audio.rowCorr.min'] > 0.999); assert.equal(g['audio.levelAfterEndDb'], -120);
+  assert.equal(m.rowsCounted, 2); assert.equal(g['audio.rowsCounted'], 2); assert.ok(m.rowSec[0] > 6.9 && m.rowSec[0] < 7.1, `row 0 ${m.rowSec[0]} s`);
   const none = AC.audioMetrics(log, { openedAt: null, device: { label: 'MacBook Pro Microphone' } }, offline, { len }, 'fake');
   assert.equal(none.opened, false); assert.equal(none.deviceOk, 0); assert.equal(none.levelDuringDb, null);
+});
+
+test('#159: null samples are skipped, a row counts only with ≥ 3 s of them, and morph jumps no longer hide a row', () => {
+  const open = 0, len = 12, log = [];
+  for (let i = 0; i < 60 * 13; i++) {
+    const t = i / 60, lane = 0.5 + 0.4 * Math.sin(i / 9), morph = (i % 240) >= 200;   // 4 s scenes, the last ⅔ s a morph
+    log.push({ t, rmsDb: -20, bands: [0, 0, 0, 0, 0, 0, 0, 0], lanes: [lane, lane, lane, lane, lane, lane, lane],
+      rows: [morph ? null : 0.2 + 0.8 * lane,   // row 0: the floor/lane law, null during morphs
+        morph ? 50 : 0.2 + 0.8 * lane,          // what an un-nulled morph would look like: big jumps
+        i < 120 ? 0.2 + 0.8 * lane : null,      // row 2: only the first 2 s have cells
+        null, null, null, null] });             // rows 3–6: none at this n
+  }
+  const m = AC.audioMetrics(log, { openedAt: open, device: { label: 'Fake Default Audio Input' } }, null, { len });
+  assert.equal(m.rowSec.length, 7);
+  assert.ok(m.rowCorr[0] > 0.999, `row 0 corr ${m.rowCorr[0]} with nulls skipped`); assert.equal(m.rowLagMs[0], 0);
+  assert.ok(m.rowCorr[1] < 0.5, `row 1 corr ${m.rowCorr[1]}: morph jumps ruin it, which is why the page nulls them`);
+  assert.ok(m.rowSec[2] < 3, `row 2 has ${m.rowSec[2]} s`); assert.equal(m.rowCorr[2], null, 'under 3 s: not counted');
+  assert.deepEqual(m.rowSec.slice(3), [0, 0, 0, 0]); assert.deepEqual(m.rowCorr.slice(3), [null, null, null, null]);
+  assert.equal(m.rowsCounted, 2);
+  assert.ok(m.rowSec[0] > 8 && m.rowSec[0] < 10, `row 0 ${m.rowSec[0]} s (11 s window less the morphs)`);
+  const g = AC.audioGateMetrics(m);
+  assert.equal(g['audio.rowsCounted'], 2); assert.equal(g['audio.rowCorr.min'], m.rowCorr[1]);
+});
+
+test('#159: v2 excerpts end in 2 s of silence and have their own name', () => {
+  assert.equal(AC.excerptName({ track: 'darude-sandstorm', from: 30, len: 14 }), 'darude-sandstorm.30-14.v2.wav');
+  const pcm = new Int16Array([5, -5, 7, -7]);   // 2 stereo frames
+  const out = AC.padSilence(pcm, 10, 2);
+  assert.equal(out.length, 4 + 2 * 10 * 2); assert.deepEqual(Array.from(out.subarray(0, 4)), [5, -5, 7, -7]);
+  assert.ok(out.subarray(4).every(v => v === 0));
+  const w = AC.readWav(AC.wavBytes(out, 10, 2));
+  assert.equal(w.mono.length, 22); assert.equal(AC.PAD_S, 2);
 });
 
 const AUDIO_EXP = extra => ({ version: 1, id: '16-hodge-kaleidoscope', kind: 'audio', warmup: 2, seconds: 16,
@@ -129,8 +162,10 @@ test('audio-in: a line input logs one entry per frame, read() reuses it, and the
   const e = audio.log.at(-1);
   assert.equal(e.rmsDb, -20); assert.equal(e.bands.length, 8); assert.ok(e.bands.every(v => Math.abs(v - 30 / 70) < 1e-3));
   assert.deepEqual(e.rows, [0.5, 0.25]); assert.deepEqual(e.lanes, [1, 0.5]);
+  frame(); audio.logFrame({ rows: [0.123456, null, undefined, NaN], lanes: [1, 0.5] });   // #159: null marks a row with nothing to show
+  assert.deepEqual(audio.log.at(-1).rows, [0.1235, null, null, null], 'null stays null, never 0');
   const q = AudioIn.qa(audio, {});
-  assert.equal(q.audioIn.log.length, 10); assert.equal(q.audioIn.banner, false); assert.equal(q.audioIn.smoothing, 0.5);
+  assert.equal(q.audioIn.log.length, 11); assert.equal(q.audioIn.banner, false); assert.equal(q.audioIn.smoothing, 0.5);
   assert.equal(q.audioIn.sampleRate, 48000); assert.equal(q.audioIn.openedAt, audio.openedAt);
 });
 
