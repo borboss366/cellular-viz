@@ -36,6 +36,8 @@ sh <RUNNER_HOME>/qa/status.sh          # read only: runner /health + /api/status
 sh <RUNNER_HOME>/qa/swipe-ready.sh     # ask the runner for a swipe on every build that finished green without one (it records
                                        # them at its next poll and the builds land on the grading page). Experiment files
                                        # without "swipe" get a default one (first variant, new vs base, 30 s) from now on.
+sh <RUNNER_HOME>/qa/emit-test-event.sh # write one "test" event into QA_EVENTS_DIR (the runner writes finished / discarded /
+                                       # waiting / error events there for QA box's folder trigger)
 sh <RUNNER_HOME>/qa/commit-checks.sh   # in QA_HOME: commit only qa/check-*.mjs, todo.json, builds.json and the .md/.json
                                        # reports as "QA box"; never videos/screenshots, never pushes; nothing changed = no-op
 sh <RUNNER_HOME>/qa/test-pr.sh         # PR from ~/.cache/cellular-viz-runner/test-pr, else newest open PR labelled
