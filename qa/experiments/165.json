@@ -49,7 +49,7 @@
   "gates": [
     { "metric": "value.t1", "equals": true, "variant": "F1", "name": "truth 1: exact mass and momentum on 6 GPU lattices, GPU == CPU, table exhaustive" },
     { "metric": "value.t3", "equals": true, "variant": "F1", "name": "truth 3: weak-pulse ring speed within 10 % of 1/sqrt 2" },
-    { "metric": "value.t4", "equals": true, "variant": "fluid", "name": "truth 4: coarse FHP flow divergence-free at B = 16: noise-free div/curl < 0.1 (32 replica QA lattices, halves cross-correlated)" },
+    { "metric": "value.t4", "equals": true, "variant": "fluid", "name": "truth 4: FHP flow divergence-free at B = 16, noise-free div/curl < 0.1 (32 replicas, halves cross-correlated)" },
     { "metric": "value.liveMassConst", "equals": true, "variant": "conserve", "name": "?qa=conserve: the live 2048 lattice keeps mass and momentum exactly" },
     { "metric": "value.dropBursts", "min": 1, "variant": "default", "name": "the drop at bar 16 fired (burst + vortex pair)" },
     { "metric": "value.zoom", "equals": 1, "variant": ["fluid", "fluid1024", "fluidEma"], "name": "?qa=fluid is fully zoomed out" },
