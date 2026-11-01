@@ -1,9 +1,10 @@
 // Builds log: one check round of one commit on one PR = one build.
 // qa/builds.json is append-only JSON Lines; each line is a full snapshot of a build, the latest line per id wins.
-//   {id, kind, page, pr, commit, round, started, finished, status, gates:[{name, ok, value, bar}], report, swipe, waitingOn, at}
+//   {id, kind, page, pr, commit, branch, round, started, finished, status, gates:[{name, ok, value, bar}], report, swipe, waitingOn, at}
+//   branch: the PR's head branch when the runner knew it (the viewer's live link, #162); null on older lines
 //   status: queued → running → failed | ready → merged      waitingOn: dev | qa-box | user
 //
-//   node qa/builds.mjs start  --page 25-shape-shifter-2 --pr 57 --commit acef3bb [--kind viz]      → prints the build id (status queued)
+//   node qa/builds.mjs start  --page 25-shape-shifter-2 --pr 57 --commit acef3bb [--kind viz] [--branch page-25]  → prints the build id (status queued)
 //   node qa/builds.mjs set    --id <id> --status running
 //   node qa/builds.mjs finish --id <id> --check qa/<page>/checks/<stamp> [--swipe /run/<exp>/<stamp>/compare]
 //                             → gates from that check.md, status failed (waiting on dev) or ready (waiting on user)
@@ -44,7 +45,8 @@ const cmd = process.argv[2];
 if (cmd === 'start') {
   const a = args(), all = loadBuilds(), kind = a.kind || 'viz';
   const round = all.filter(b => b.kind === kind && String(b.pr) === String(a.pr)).length + 1;
-  const b = append({ id: `${kind}-${a.pr}-${round}`, kind, page: a.page, pr: +a.pr, commit: a.commit, round, started: a.at || new Date().toISOString(), finished: null,
+  const branch = typeof a.branch === 'string' && /^[\w.\/-]+$/.test(a.branch) ? a.branch : null;
+  const b = append({ id: `${kind}-${a.pr}-${round}`, kind, page: a.page, pr: +a.pr, commit: a.commit, branch, round, started: a.at || new Date().toISOString(), finished: null,
     status: 'queued', gates: [], report: null, swipe: null, waitingOn: 'qa-box' });
   console.log(b.id);
 } else if (cmd === 'set') {
