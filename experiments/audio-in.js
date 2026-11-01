@@ -201,7 +201,8 @@
       // the page's own numbers for this frame (16b: rows = the row glows, lanes = the band envelope each row follows)
       logFrame(extra) {
         const e = this.log[this.log.length - 1];
-        if (e && e.t === this.t && extra) for (const [k, v] of Object.entries(extra)) e[k] = Array.isArray(v) || ArrayBuffer.isView(v) ? Array.from(v, x => +(+x).toFixed(4)) : v;
+        // arrays are rounded to 4 places; null (or a non-number) stays null, so a page can mark samples to skip (#159)
+        if (e && e.t === this.t && extra) for (const [k, v] of Object.entries(extra)) e[k] = Array.isArray(v) || ArrayBuffer.isView(v) ? Array.from(v, x => x == null || !Number.isFinite(+x) ? null : +(+x).toFixed(4)) : v;
       },
       // the frame's audio (#85 frame().audio): call once per frame
       read() {
