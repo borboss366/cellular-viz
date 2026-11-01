@@ -3,8 +3,10 @@
 //   node qa/serve.mjs [--port 8787]      → http://<box>:8787/
 //
 // Pages: /                 list of runs (newest first)
-//        /run/<exp>/<stamp> videos + scores + keep / maybe / dull
+//        /run/<exp>/<stamp> videos + scores + keep / maybe / dull; for a runner experiment folder (…-prN) its stills,
+//                           gates and check links instead (exp-view.mjs)
 //        /builds            every check round (qa/builds.json via qa/builds.mjs): status, gates, who it waits on
+//                           (/builds/155/4 and /builds/viz-155-4 go to that PR's page at that round)
 // Verdicts are saved to qa/<exp>/runs/<stamp>/verdicts.json and copied into
 // results.json and report.md, which are the files that go to GitHub.
 // Videos never leave the box. LAN only: no login, do not expose to the internet.
@@ -14,6 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadComparisons, nextPair, ranking, savePick, undoPick, setups, comparePage, writeRankingToReport } from './compare.mjs';
 import { loadBuilds } from './builds.mjs';
+import { isExpRun, expRunBody, safePart, runLinkOf } from './exp-view.mjs';
 
 // The data (runs, grades, builds, todo) lives in QA box's working copy, QA_HOME; the code may run from another clone
 // (the viewer service runs main's copy from RUNNER_HOME). Without QA_HOME both are this clone, as before.
@@ -28,7 +31,7 @@ const sock = sockArg > 0 ? process.argv[sockArg + 1] : null;
 const VERDICTS = ['keep', 'maybe', 'dull'];
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const safe = s => /^[\w.-]+$/.test(s);
+const safe = safePart;   // letters, digits, _ . @ - (exp-run's stills are named like default@1080p-1.png); never . or .. alone
 
 function runs() {
   const out = [];
@@ -120,6 +123,11 @@ function indexPage() {
 
 function runPage(exp, stamp, dir) {
   const d = load(dir), v = loadVerdicts(dir), m = d.meta || {};
+  // a runner experiment folder (…-prN): stills, gates and check links, no videos to grade (exp-view.mjs)
+  if (isExpRun(d)) {
+    const sharedDirs = fs.readdirSync(dir).filter(n => /^shared(-[\w.-]+)?$/.test(n)).sort();
+    return page(`${exp} · ${stamp}`, expRunBody(exp, stamp, d, rel => fs.existsSync(path.join(dir, ...rel.split('/'))), { sharedDirs }));
+  }
   const cards = d.results.map((r, i) => {
     const a = r.agg || {}, cur = v[r.label] || {};
     const media = r.video && fs.existsSync(path.join(dir, r.video))
@@ -168,6 +176,10 @@ function sendFile(req, res, p) {
 function compareRoute(req, res, exp, stamp, dir, action) {
   const json = (o, code = 200) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
   const data = load(dir);
+  if (isExpRun(data)) {   // nothing to compare in an experiment folder: its swipe run if it has one, else its stills
+    res.writeHead(302, { location: data.swipe && typeof data.swipe.url === 'string' && data.swipe.url.startsWith('/run/') ? data.swipe.url : `/run/${encodeURIComponent(exp)}/${encodeURIComponent(stamp)}` });
+    return res.end();
+  }
   const usable = data.results.filter(r => r.video && fs.existsSync(path.join(dir, r.video)));
   const labels = usable.map(r => r.label);
   if (!action) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(page(`${exp} · ${stamp} · compare`, comparePage(exp, stamp))); }
@@ -222,6 +234,8 @@ const chip = st => { const [c, t] = CHIP[st] || ['#5b6478', st]; return `<span s
 const ago = iso => { if (!iso) return ''; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min` : m < 2880 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; };
 const gatesCell = b => (b.gates || []).length ? `${b.gates.filter(g => g.ok).length}/${b.gates.length}` : '–';
 const waitTxt = { dev: 'VIZ dev', 'qa-box': 'QA box', user: 'you' };
+// the viewer page of a build's run folder (stills, gates), when that folder has a results.json the run page can read
+const runLink = b => { const l = runLinkOf(b.report); return l && fs.existsSync(path.join(repo, path.dirname(b.report), 'results.json')) ? l : null; };
 function buildsPage() {
   const all = loadBuilds(), last = new Map();
   for (const b of all) { const k = `${b.kind}/${b.pr}`, cur = last.get(k); if (!cur || b.round > cur.round) last.set(k, b); }
@@ -230,7 +244,7 @@ function buildsPage() {
   const open = rows.filter(b => !gone(b)), merged = rows.filter(gone);
   const tr = b => `<tr onclick="location='/builds/${esc(b.kind)}/${b.pr}'" style="cursor:pointer"><td><b>${esc(b.page)}</b><br><span class="m">#${b.pr} · ${esc(b.commit)} · round ${b.round}</span></td>
     <td>${chip(b.status)}</td><td>${gatesCell(b)}</td><td>${b.waitingOn ? esc(waitTxt[b.waitingOn] || b.waitingOn) : ''}</td><td class="m">${ago(b.at)}</td>
-    <td>${b.report ? `<a href="/report/${esc(b.report)}" onclick="event.stopPropagation()">report</a>` : ''}${b.swipe ? ` · <a href="${esc(b.swipe)}" onclick="event.stopPropagation()">swipe</a>` : ''}</td></tr>`;
+    <td>${b.report ? `<a href="/report/${esc(b.report)}" onclick="event.stopPropagation()">report</a>` : ''}${runLink(b) ? ` · <a href="${runLink(b)}" onclick="event.stopPropagation()">stills</a>` : ''}${b.swipe ? ` · <a href="${esc(b.swipe)}" onclick="event.stopPropagation()">swipe</a>` : ''}</td></tr>`;
   const table = list => `<table style="width:100%;border-collapse:collapse;font-size:14px"><tr class="m"><th align=left>page</th><th align=left>status</th><th align=left>gates</th><th align=left>waiting on</th><th align=left>last</th><th></th></tr>${list.map(tr).join('')}</table>`;
   return page('Builds', `<p class="m">One build = one check round of one commit. Latest round per PR; tap a row for its history.</p>
     <div class="card">${open.length ? table(open) : 'Nothing open.'}</div>
@@ -239,9 +253,9 @@ function buildsPage() {
 function buildPage(kind, pr) {
   const list = loadBuilds().filter(b => b.kind === kind && String(b.pr) === String(pr)).sort((a, b) => b.round - a.round);
   if (!list.length) return page('Builds', '<p>No builds for this PR.</p>');
-  const card = b => `<div class="card"><b>Round ${b.round}</b> · ${esc(b.commit)} ${chip(b.status)} <span class="m">gates ${gatesCell(b)} · ${b.finished ? 'finished ' + ago(b.finished) + ' ago' : 'started ' + ago(b.started) + ' ago'}</span>
+  const card = b => `<div class="card" id="round-${b.round}"><b>Round ${b.round}</b> · ${esc(b.commit)} ${chip(b.status)} <span class="m">gates ${gatesCell(b)} · ${b.finished ? 'finished ' + ago(b.finished) + ' ago' : 'started ' + ago(b.started) + ' ago'}</span>
     ${b.gates.filter(g => !g.ok).map(g => `<div class="m">❌ ${esc(g.name)}${g.value ? ': ' + esc(g.value.slice(0, 160)) : ''}</div>`).join('')}
-    <div class="row">${b.report ? `<a href="/report/${esc(b.report)}">report</a>` : ''}${b.swipe ? ` · <a href="${esc(b.swipe)}">swipe</a>` : ''}</div></div>`;
+    <div class="row">${b.report ? `<a href="/report/${esc(b.report)}">report</a>` : ''}${runLink(b) ? ` · <a href="${runLink(b)}">stills</a>` : ''}${b.swipe ? ` · <a href="${esc(b.swipe)}">swipe</a>` : ''}</div></div>`;
   return page(`${list[0].page} · #${pr}`, `<p class="m"><a href="/builds">← all builds</a> · <a href="https://github.com/borboss366/cellular-viz/pull/${esc(pr)}">PR #${esc(pr)}</a></p>${list.map(card).join('')}`);
 }
 
@@ -295,6 +309,13 @@ const handler = (req, res) => {
       return html(runPage(parts[1], parts[2], dir));
     }
     if (parts[0] === 'builds' && parts.length === 1) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(buildsPage()); }
+    // /builds/155/4 (PR, round) and /builds/viz-155-4 (a build id): send them to the PR's page at that round
+    if (parts[0] === 'builds' && (parts.length === 2 || (parts.length === 3 && /^\d+$/.test(parts[1]))) && safe(parts[1])) {
+      const m = parts.length === 3 ? { pr: parts[1], round: parts[2] } : (parts[1].match(/^[a-z]+-(?<pr>\d+)-(?<round>\d+)$/) || {}).groups;
+      const b = m && loadBuilds().filter(x => String(x.pr) === m.pr).sort((x, y) => (String(x.round) === m.round) - (String(y.round) === m.round) || x.round - y.round).pop();
+      if (!b) return html(page('Builds', `<p>No builds for ${esc(parts.slice(1).join('/'))}. <a href="/builds">All builds</a></p>`));
+      res.writeHead(302, { location: `/builds/${encodeURIComponent(b.kind)}/${b.pr}#round-${b.round}` }); return res.end();
+    }
     if (parts[0] === 'builds' && parts.length === 3 && safe(parts[1]) && /^\d+$/.test(parts[2])) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(buildPage(parts[1], parts[2])); }
     if (parts[0] === 'report' && parts[1] === 'qa' && parts.length >= 4 && parts.slice(1).every(safe) && parts.at(-1) === 'check.md') {   // check reports only
       const f = path.join(repo, ...parts.slice(1)); if (!fs.existsSync(f)) { res.writeHead(404); return res.end(); }
