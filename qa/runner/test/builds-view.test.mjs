@@ -89,7 +89,7 @@ test('a note round-trips: saved, listed; a private note is never posted, a share
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('serve.mjs: an \'@\' still loads (200), and so do the thumbnail, /builds and a saved note', async () => {
+test('serve.mjs: an \'@\' still loads (200), and so do the thumbnail, /builds (also at /), /grade and a saved note', async () => {
   const home = tmp(), notes = path.join(home, 'notes'), stamp = '2026-11-01-1200-pr155', run = path.join(home, 'qa', '26-lattice-gas', 'runs', stamp);
   fs.mkdirSync(path.join(run, 'stills'), { recursive: true });
   const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a5b70000000049454e44ae426082', 'hex');
@@ -118,5 +118,11 @@ test('serve.mjs: an \'@\' still loads (200), and so do the thumbnail, /builds an
     assert.equal((await fetch(`${base}/notes/viz-999-1`, { method: 'POST', body: '{"text":"x"}' })).status, 404, 'no such build');
     assert.ok((await (await fetch(`${base}/builds`)).text()).includes('from the phone'));
     assert.equal((await fetch(`${base}/builds/open`)).status, 200);
+    // the viewer opens on the builds; the grading list moved to /grade and is linked from the top (user's choice, #162)
+    const home = await (await fetch(`${base}/`)).text();
+    assert.ok(home.includes('id="b-viz-155-4"') && home.includes('href="/grade"'), '/ is the builds page with the grading link');
+    const grade = await fetch(`${base}/grade`);
+    assert.equal(grade.status, 200); assert.match(await grade.text(), /QA: grading/);
+    assert.ok((await (await fetch(`${base}/?me=1`)).text()).includes('needs me'), 'filters work on / too');
   } finally { child.kill(); fs.rmSync(home, { recursive: true, force: true }); }
 });
