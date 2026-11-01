@@ -258,6 +258,17 @@ void main() {
   col += vec3(0.020, 0.012, 0.030) * uBurst.w * exp(-dot(bd, bd) / max(1.0, uBurst.z * uBurst.z));
   o = vec4(texelFetch(uPrev, ivec2(gl_FragCoord.xy), 0).rgb * uDecay + col, 1.0);
 }`;
+// T5 live (#171 ruling): the dye averaged over 8 × 8 texels (32-site blocks), read back without a stall
+const BLOCK8 = `#version 300 es
+precision highp float;
+uniform sampler2D uSrc;
+out vec4 o;
+void main() {
+  ivec2 b = ivec2(gl_FragCoord.xy) * 8;
+  vec3 s = vec3(0.0);
+  for (int j = 0; j < 8; j++) for (int i = 0; i < 8; i++) s += texelFetch(uSrc, b + ivec2(i, j), 0).rgb;
+  o = vec4(s / 64.0, 1.0);
+}`;
 const VS2 = `#version 300 es
 out vec2 vUv;
 void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = p; gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
@@ -346,7 +357,7 @@ export function createScene() {
     fluidSpb: 96, lastBpm: 120, lastBpb: 4, lastMix: 3, lastSplash: 0.8,
   };
   const fl = { coarse: null, ema: [], ei: 0, dye: [], di: 0 };   // F2's textures
-  let red = null, pbo = null, lumPbo = null;
+  let red = null, pbo = null, lumPbo = null, mixPbo = null;
   const fx = { w: 0, h: 0, half: false, acc: [], bl: [], ai: 0, lum: null };
 
   function compile(type, src) {
@@ -447,6 +458,7 @@ export function createScene() {
       'uDens', 'uMeanRho', 'uKnee', 'uScaleE', 'uSplash', 'uDotScale', 'uDesat', 'uB', 'uBH']);
     program('coarse', COARSE, []);
     program('dens', DENS, []);
+    program('block8', BLOCK8, ['uSrc']);
     program('ema', EMA, ['uPrevE', 'uCur', 'uA']);
     program('advect', ADVECT, ['uDyeOld', 'uEma', 'uLat', 'uSteps', 'uReseed'], VS2);
     program('down', DOWN, ['uSrc', 'uTexel'], VS2);
@@ -462,6 +474,8 @@ export function createScene() {
       fl.ema = [flTex(NQ / 8, NR / 8, true), flTex(NQ / 8, NR / 8, true)];
       fl.dye = [flTex(NQ / 4, NR / 4, false), flTex(NQ / 4, NR / 4, false)];
       fl.dens = flTex(NQ / 4, NR / 4, false);
+      fl.blk = flTex(NQ / 32, NR / 32, false);
+      mixPbo = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, mixPbo); gl.bufferData(gl.PIXEL_PACK_BUFFER, fl.blk.w * fl.blk.h * 16, gl.STREAM_READ); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     }
     red = reduceTex(NQ, NR);
     pbo = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo); gl.bufferData(gl.PIXEL_PACK_BUFFER, red.w * red.h * 16, gl.STREAM_READ); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
@@ -729,11 +743,40 @@ export function createScene() {
       v0: +v0.toExponential(3), vEnd: +last.toExponential(3), stepsPerFrame: +n.toFixed(2) };
   }
 
+  // ---- T5 live (#171 ruling): on the live page, after each drop's fresh dye, the 32-site block variance of the dye
+  // is read every 6 frames (async, no stall); its peak in the first half bar is the start, the half-time in bars the
+  // first sample at or below half of it. Followed for 6 bars (report-only; the live dye's slow pull back to its bands,
+  // 0.4 % a frame, keeps a floor, so `endRatio` says how far it got when it never halves).
+  function mixLiveSample(bars) {
+    const M = st.mixLive;
+    if (st.mixPending && gl.getSyncParameter(st.mixPending, gl.SYNC_STATUS) === gl.SIGNALED) {
+      const w = fl.blk.w, h = fl.blk.h, px = new Float32Array(w * h * 4);
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, mixPbo); gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, px); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      gl.deleteSync(st.mixPending); st.mixPending = null;
+      let s = 0, s2 = 0; for (let k = 0; k < w * h; k++) { const m = (px[4 * k] + px[4 * k + 1] + px[4 * k + 2]) / 3; s += m; s2 += m * m; }
+      const N = w * h, v = s2 / N - (s / N) * (s / N), at = st.mixPendingBars - M.dropBars;
+      M.last = v; M.lastBars = +at.toFixed(3); if (M.samples.length < 200) M.samples.push([+at.toFixed(3), +v.toExponential(3)]);
+      if (at <= 0.5) { if (v > M.peak) { M.peak = v; M.peakBars = at; } }
+      else if (M.halfBars === null && M.peak > 0 && v <= M.peak / 2) M.halfBars = +(at - M.peakBars).toFixed(3);
+    }
+    if (st.mixPending || st.frameNo % 6 || bars - M.dropBars > 6) return;
+    pass('block8', fl.dye[fl.di], fl.blk, v => gl.uniform1i(v.uSrc, 0));
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fl.blk.f);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, mixPbo); gl.readPixels(0, 0, fl.blk.w, fl.blk.h, gl.RGBA, gl.FLOAT, 0); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    st.mixPending = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); st.mixPendingBars = bars;
+  }
+  function mixLiveSummary() {
+    const M = st.mixLive; if (!M) return { halfBars: null, note: 'no drop yet' };
+    return { halfBars: M.halfBars, peak: +M.peak.toExponential(3), peakBars: M.peakBars === null ? null : +M.peakBars.toFixed(3),
+      followedBars: M.lastBars, endRatio: M.peak > 0 && M.last !== null ? +(M.last / M.peak).toFixed(3) : null, samples: M.samples.length, trace: M.samples.filter((_, i) => i % 5 === 0) };
+  }
+
   function dispose() {
     if (!gl) return;
     if (live) freeLattice(live); if (red) freeTex(red);
     for (const t of [...fx.acc, ...fx.bl, ...(fx.lum ? [fx.lum] : []), ...(fx.lum2 ? [fx.lum2] : []), ...fl.ema, ...fl.dye, ...(fl.coarse ? [fl.coarse] : []), ...(fl.dens ? [fl.dens] : [])]) freeTex(t);
-    fx.lum2 = null; fl.dens = null;
+    if (fl.blk) freeTex(fl.blk); if (mixPbo) gl.deleteBuffer(mixPbo);
+    fx.lum2 = null; fl.dens = null; fl.blk = null; mixPbo = null;
     gl.deleteBuffer(lumPbo);
     for (const p of Object.values(P)) gl.deleteProgram(p);
     gl.deleteBuffer(pbo); gl.deleteVertexArray(vao);
@@ -886,9 +929,11 @@ export function createScene() {
       burst(c[0], c[1], 1.6 * ctl.burstSize, 0.85, 'drop', now);   // 12.8 sites (was 2.2 × 4 = 8.8)
       stir(c[0] - d, c[1], sitesAcross / 10, 0.6, 'drop', now); stir(c[0] + d, c[1], sitesAcross / 10, -0.6, 'drop', now);
       st.reseed = 0.15;
+      st.mixLive = { dropBars: bars, peak: 0, peakBars: null, halfBars: null, last: null, lastBars: null, samples: [] };   // T5 live
     }
     st.lastSection = section; st.lastBeats = beats;
     if (fl.coarse) fluidPasses(dt, n, ctl.emaMs, ctl.mix);   // every frame: the dye and the average stay continuous
+    if (fl.blk && st.mixLive) mixLiveSample(bars);
     if (fl.dens && contrast > 0 && dotsW > 0.005) pass('dens', live.a, fl.dens);
     st.burstEnv *= Math.exp(-dt / 0.35);
     for (let i = 0; i < 4; i++) if (i !== 2) st.triggerEnv[i] *= Math.exp(-dt / 0.4);
@@ -917,7 +962,8 @@ export function createScene() {
     const dMean = st.mass === null ? ctl.density : st.mass / (6 * NQ * NR), sigma4 = Math.sqrt(6 * dMean * (1 - dMean)) / 4;
     gl.uniform1f(u.uMeanRho, 6 * dMean); gl.uniform1f(u.uKnee, 2 * sigma4); gl.uniform1f(u.uScaleE, 0.5);
     gl.uniform1f(u.uSplash, fl.dens ? ctl.splashGain * contrast * (1 - decay) : 0);
-    gl.uniform1f(u.uDotScale, 1 - 0.9 * contrast); gl.uniform1f(u.uDesat, 0.6 * contrast);   // 28 % at the default 0.8
+    // the dot floor (#171 ruling: C2 first, before the rings): 100 % → 20 % over the knob's 0 → 0.8, 20 % above
+    gl.uniform1f(u.uDotScale, 1 - 0.8 * Math.min(1, contrast / 0.8)); gl.uniform1f(u.uDesat, 0.6 * contrast);
     const B4 = new Float32Array(16), H4 = new Float32Array(16);
     st.splashes = st.splashes.filter(s => now - s.t < 3000).slice(-4);
     st.splashes.forEach((s, k) => {
@@ -1034,7 +1080,7 @@ export function createScene() {
       mass() { const m = reduceSync(live, red); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return m.mass; },
       momentum() { const m = reduceSync(live, red); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return [m.pq, m.pr]; },
       conserveTest, soundSpeed, check, coarse, fluidTest, mixHalfTime, splashSummary,
-      get splashLog() { return st.splashLog; },
+      get splashLog() { return st.splashLog; }, mixLive: mixLiveSummary,
       get zoom() { return st.zoom; }, get lattice() { return [NQ, NR]; },
     },
   };

@@ -17,7 +17,8 @@
   Detail: sparks and zoom (F1's 40–112 sites across) moved off the macros; force (F2's Kolmogorov stirring, its axis
   turning every 4 bars), maxSpb (96: F2's steps a beat), splashGain. ?qa=splash: a measured burst in the middle
   every 2 beats, the knob cycling default / 0 / 1; __qa.splash() → C1 ring ÷ median, C2 median, C3 knob 1 ÷ 0;
-  check().t5: T5 dye half-time in bars at the default mix, T6 the 1× ÷ 6× ratio. Triggers: 1 burst (now), 2 big burst (next beat), 3 freeze (hold), 4 scatter (next beat);
+  check().t5: T5 dye half-time in bars at the default mix (frozen flow), T6 the 1× ÷ 6× ratio; __qa.mixLive(): T5 on
+  the live page, the half-time of the dye's 32-site block variance after each drop's fresh dye. Triggers: 1 burst (now), 2 big burst (next beat), 3 freeze (hold), 4 scatter (next beat);
   keys Z X C V.
   window.__qa: check() (truth 1: GPU mass and momentum exact over 40 steps on 6 lattices, the state equal to the CPU
   reference bit for bit, the 64-entry table exhaustive; truth 3: weak-pulse sound speed vs 1/√2 over 64 rings),
@@ -246,7 +247,7 @@ expose({
   mass: () => S.mass(), momentum: () => S.momentum(), lut: S.lut,
   get rings() { return S.rings; }, get step() { return S.step; }, get massHistory() { return S.massHistory; },
   get lumMean() { return S.lumMean; }, get lumHistory() { return S.lumHistory; },
-  splash: () => S.splashSummary(), get splashLog() { return S.splashLog; }, mixHalfTime: (mix, o) => S.mixHalfTime(mix, o),
+  splash: () => S.splashSummary(), get splashLog() { return S.splashLog; }, mixHalfTime: (mix, o) => S.mixHalfTime(mix, o), mixLive: () => S.mixLive(),
 });
 AudioIn.qa(audio, window.__qa);   // beatLog, frame, beatLanes, events (Clock.qaEvents), audioIn
 if (!gl) { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2'); }
