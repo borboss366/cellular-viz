@@ -23,6 +23,8 @@ const STEPS_PER_BEAT = [2, 4, 8, 16];
 const SECTION_BARS = 16;
 const SPARK_STEPS_PER_S = 16;                // above this rate sparks dim, so a spot stays under 4 sparks a second
 const LUM_W = 64, LUM_H = 36;                // the small copy of the picture for the mean luminance
+// the bursts' ring hues (#71 round 2: hot, saturated, rotating per kick; linear light)
+const SPLASH_HUES = [[1.0, 0.08, 0.45], [1.0, 0.42, 0.04], [1.0, 0.78, 0.08], [0.95, 0.05, 0.12], [1.0, 0.25, 0.85], [0.9, 0.55, 0.0]];
 
 // ---------------------------------------------------------------- shaders
 const VS = `#version 300 es
@@ -53,6 +55,12 @@ float rand01(inout uint h, uint k) { h = hash32(h + k * 0x27d4eb2fu); return flo
 const STEP = HEAD + `
 uniform usampler2D uS;
 uniform float uSrcP, uSinkP;
+// F2's stirring (#165 "mix faster"): a Kolmogorov body force along link uForce.x (0, 1 or 2), varying only across
+// it, so it is exactly divergence-free: sin(2π k r / NQ), sin(2π k (q + r) / NQ) or sin(2π k q / NQ) for links 0, 1,
+// 2 (each constant along its own link; periodic when k NR / NQ is whole: k 16 on 2048 × 1152, 4 on truth 4's 512²).
+// uForce.y the phase, uForce.z the largest flip probability (a particle against the force moves onto the link along
+// it: mass kept, momentum given), uForce.w = k. 26-fhp.mjs forceAt / forceFlip mirror it.
+uniform vec4 uForce;
 out uint o;
 void main() {
   ivec2 x = ivec2(gl_FragCoord.xy);
@@ -60,6 +68,16 @@ void main() {
   for (int i = 0; i < 6; i++) {
     ivec2 a = wrapA(x - D[i]);
     v |= collide(a, texelFetch(uS, a, 0).r) & (1u << uint(i));
+  }
+  if (uForce.z > 0.0) {
+    int ax = int(uForce.x + 0.5);
+    float arg = uForce.w / float(uN.x) * float(ax == 0 ? x.y : ax == 1 ? x.x + x.y : x.x);
+    float s = sin(6.2831853 * arg + uForce.y);
+    uint hf = hash32(idxOf(x) ^ hash32(uStep * 0x2545F491u + uSeed + 0x9E37u));
+    if (rand01(hf, 7u) < uForce.z * abs(s)) {
+      uint along = 1u << uint(s > 0.0 ? ax : ax + 3), against = 1u << uint(s > 0.0 ? ax + 3 : ax);
+      if ((v & against) != 0u && (v & along) == 0u) v = (v & ~against) | along;
+    }
   }
   if (uSrcP > 0.0 || uSinkP > 0.0) {
     uint h = hash32(idxOf(x) ^ hash32(uStep * 0x85EBCA6Bu + uSeed + 0x1234567u));
@@ -118,6 +136,19 @@ void main() {
   }
   o = vec4(acc, 1.0);
 }`;
+// particles per site averaged over 4 × 4-site blocks (the splash layer's density; bilinear on screen)
+const DENS = HEAD + `
+uniform usampler2D uS;
+out vec4 o;
+void main() {
+  ivec2 b = ivec2(gl_FragCoord.xy) * 4;
+  float n = 0.0;
+  for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++) {
+    uint s = texelFetch(uS, b + ivec2(i, j), 0).r;
+    for (int k = 0; k < 6; k++) n += float((s >> uint(k)) & 1u);
+  }
+  o = vec4(n / 16.0, 0.0, 0.0, 1.0);
+}`;
 // the block sums averaged in time: next = mix(previous, now, uA), uA = 1 − exp(−dt / τ); mipmapped after, so a
 // coarser block B = 8 · 2^lod is one textureLod away (the mip average keeps momentum / mass a velocity)
 const EMA = `#version 300 es
@@ -156,6 +187,12 @@ uniform usampler2D uS;
 uniform sampler2D uPrev;
 uniform vec2 uCam, uRes;
 uniform float uScale, uF, uSpark, uNode, uDecay;
+// splash contrast (#71 F1 round 2): the density excess ρ − ρ̄ of 4 × 4-site blocks lights the bursts' rings in a hot
+// hue (the nearest of the last 4 bursts' rings picks it); the dots dim and desaturate as the knob goes up
+uniform sampler2D uDens;
+uniform float uMeanRho, uKnee, uScaleE, uSplash, uDotScale, uDesat;
+uniform vec4 uB[4];      // world x, y, ring radius, weight
+uniform vec4 uBH[4];     // their hues (linear), .w the 70 ms attack (a burst's density jumps at once: no flash step)
 uniform vec3 uHue[6];
 uniform vec4 uBurst;     // world x, y, radius, envelope
 // F2: the fluid layer (the time-averaged block velocity at block size 8 · 2^uLod, carried dye on top)
@@ -197,7 +234,18 @@ void main() {
     site(A, w, -1, spark, node); site(B, w, -1, spark, node); site(C, w, -1, spark, node);
     float fade = (1.0 - uF) * (1.0 - uF);
     col += vec3(1.0, 0.95, 0.9) * spark * fade * uSpark + vec3(0.010, 0.012, 0.022) * node * uNode;
-    col *= uDotsW;
+    col *= uDotsW * uDotScale;
+    col = mix(col, vec3(dot(col, vec3(0.2126, 0.7152, 0.0722))), uDesat);
+  }
+  if (uSplash > 0.0 && uDotsW > 0.005) {
+    float r = w.y / S3, q = w.x - 0.5 * r;
+    float ex = textureLod(uDens, vec2(q, r) / uLat, 0.0).r - uMeanRho;
+    float e = max(0.0, ex - uKnee) / uScaleE, lit = 1.0 - exp(-e * e);
+    if (lit > 0.001) {
+      vec3 hue = vec3(1.0, 0.25, 0.55); float wsum = 1.0e-3; vec3 hs = hue * 1.0e-3;
+      for (int k = 0; k < 4; k++) { float d = length(w - uB[k].xy) - uB[k].z; float wk = uB[k].w * exp(-d * d / 18.0); hs += uBH[k].rgb * uBH[k].w * wk; wsum += wk; }
+      col += hs / wsum * lit * uSplash * uDotsW;
+    }
   }
   if (uFieldW > 0.0) {    // the fluid (F2): dye lit by the flow's speed; uFieldW carries the (1 − decay) deposit
     float r = w.y / S3, q = w.x - 0.5 * r;
@@ -294,6 +342,8 @@ export function createScene() {
     rings: [], triggerLog: [], triggerEnv: [0, 0, 0, 0], trig: [], view: {}, metrics: {}, conserve: false, qaCache: {}, massHistory: [],
     lumMean: null, lumHistory: [], lumPending: null,
     stepAcc: 0, lastBeatsStep: null, zoom: 0, scene: 'auto', fluidQa: false, lastLod: 0, reseed: 1, coarseLog: [],
+    splashes: [], splashHue: 0, splashQa: false, splashTest: null, splashLog: [], lumMedian: null,
+    fluidSpb: 96, lastBpm: 120, lastBpb: 4, lastMix: 3, lastSplash: 0.8,
   };
   const fl = { coarse: null, ema: [], ei: 0, dye: [], di: 0 };   // F2's textures
   let red = null, pbo = null, lumPbo = null;
@@ -341,8 +391,12 @@ export function createScene() {
     if (set) set(U[name]);
     gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
-  function stepLattice(L, step, seed, srcP = 0, sinkP = 0) {
-    pass('step', L.a, L.b, u => { gl.uniform1ui(u.uStep, step >>> 0); gl.uniform1ui(u.uSeed, seed >>> 0); gl.uniform1f(u.uSrcP, srcP); gl.uniform1f(u.uSinkP, sinkP); });
+  // force: null, or { axis 0–2, phase, amp } (F2's stirring; never on the QA lattices)
+  function stepLattice(L, step, seed, srcP = 0, sinkP = 0, force = null) {
+    pass('step', L.a, L.b, u => {
+      gl.uniform1ui(u.uStep, step >>> 0); gl.uniform1ui(u.uSeed, seed >>> 0); gl.uniform1f(u.uSrcP, srcP); gl.uniform1f(u.uSinkP, sinkP);
+      gl.uniform4f(u.uForce, force ? force.axis : 0, force ? force.phase : 0, force ? force.amp : 0, force ? force.k || 16 : 16);
+    });
     [L.a, L.b] = [L.b, L.a];
   }
   function editLattice(L, mode, cq, cr, R, p, key) {
@@ -379,16 +433,20 @@ export function createScene() {
   // conserve (?qa=conserve): no bursts, no source or sink, no scatter, so the live lattice keeps its mass exactly
   // lattice (?lattice=2048|1024), scene (auto | F1 | fluid), fluidQa (?qa=fluid: F2 fully zoomed out, no stirs,
   // bursts or drops, for truth 4 and the GPU budget)
-  function init(g, { width = 1, height = 1, seed = 1, conserve = false, lattice: lat = 2048, scene = 'auto', fluidQa = false } = {}) {
+  // splashQa (?qa=splash): no kick bursts; a measured burst in the middle every 2 beats (C1–C3)
+  function init(g, { width = 1, height = 1, seed = 1, conserve = false, lattice: lat = 2048, scene = 'auto', fluidQa = false, splashQa = false } = {}) {
+    st.splashQa = !!splashQa;
     gl = g; W = width; H = height; st.seed = seed >>> 0 || 1; st.rng = F.rng(st.seed * 7919 + 13); st.conserve = !!conserve;
     [NQ, NR] = LATTICES[lat] || LATTICES[2048]; st.scene = scene; st.fluidQa = !!fluidQa;
     vao = gl.createVertexArray();
-    program('step', STEP, ['uSrcP', 'uSinkP']);
+    program('step', STEP, ['uSrcP', 'uSinkP', 'uForce']);
     program('edit', EDIT, ['uMode', 'uC', 'uR', 'uP', 'uKey']);
     program('reduce', REDUCE, []);
     program('pack', PACK, []);
-    program('dots', DOTS, ['uPrev', 'uCam', 'uRes', 'uScale', 'uF', 'uSpark', 'uNode', 'uDecay', 'uHue', 'uBurst', 'uEma', 'uDye', 'uLat', 'uDotsW', 'uFieldW', 'uLod', 'uFieldGain']);
+    program('dots', DOTS, ['uPrev', 'uCam', 'uRes', 'uScale', 'uF', 'uSpark', 'uNode', 'uDecay', 'uHue', 'uBurst', 'uEma', 'uDye', 'uLat', 'uDotsW', 'uFieldW', 'uLod', 'uFieldGain',
+      'uDens', 'uMeanRho', 'uKnee', 'uScaleE', 'uSplash', 'uDotScale', 'uDesat', 'uB', 'uBH']);
     program('coarse', COARSE, []);
+    program('dens', DENS, []);
     program('ema', EMA, ['uPrevE', 'uCur', 'uA']);
     program('advect', ADVECT, ['uDyeOld', 'uEma', 'uLat', 'uSteps', 'uReseed'], VS2);
     program('down', DOWN, ['uSrc', 'uTexel'], VS2);
@@ -397,11 +455,13 @@ export function createScene() {
     fx.half = !!gl.getExtension('EXT_color_buffer_float');
     lumPbo = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, lumPbo); gl.bufferData(gl.PIXEL_PACK_BUFFER, LUM_W * LUM_H * 4, gl.STREAM_READ); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     // the gas starts in the low-Mach equilibrium of a few large vortices, so the zoom out finds a flow to show
-    live = lattice(NQ, NR, F.flowLattice(NQ, NR, 0.25, st.seed).S);
+    // #165 "mix faster": about twice the vortices per axis (16 modes up to |m|, |n| ≤ 12), |u| ≤ 0.18 (FHP: ≤ 0.2)
+    live = lattice(NQ, NR, F.flowLattice(NQ, NR, 0.25, st.seed, { umax: 0.18, count: 16, kMax: 12 }).S);
     if (fx.half) {   // F2 needs float render targets (the block sums are signed); without them F2 shows the particles only
       fl.coarse = flTex(NQ / 8, NR / 8, false);
       fl.ema = [flTex(NQ / 8, NR / 8, true), flTex(NQ / 8, NR / 8, true)];
       fl.dye = [flTex(NQ / 4, NR / 4, false), flTex(NQ / 4, NR / 4, false)];
+      fl.dens = flTex(NQ / 4, NR / 4, false);
     }
     red = reduceTex(NQ, NR);
     pbo = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo); gl.bufferData(gl.PIXEL_PACK_BUFFER, red.w * red.h * 16, gl.STREAM_READ); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
@@ -423,7 +483,8 @@ export function createScene() {
     return { t, f, w, h, mips, levels: mips ? Math.floor(Math.log2(Math.max(w, h))) + 1 : 1 };
   }
   // F2's per-frame passes: block sums → time average (+ mipmaps) → dye carried by n steps of the flow
-  function fluidPasses(dt, n, emaMs) {
+  // mix (#165): the dye's time-lapse factor, 1–6× (the gas is unchanged; the dye moves mix steps for each one)
+  function fluidPasses(dt, n, emaMs, mix = 1) {
     if (!fl.coarse) return;
     pass('coarse', live.a, fl.coarse);
     const prev = fl.ema[fl.ei], next = fl.ema[1 - fl.ei];
@@ -441,7 +502,7 @@ export function createScene() {
     gl.useProgram(P.advect);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dOld.t); gl.uniform1i(U.advect.uDyeOld, 0);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, next.t); gl.uniform1i(U.advect.uEma, 1);
-    gl.uniform2f(U.advect.uLat, NQ, NR); gl.uniform1f(U.advect.uSteps, n); gl.uniform1f(U.advect.uReseed, st.reseed);
+    gl.uniform2f(U.advect.uLat, NQ, NR); gl.uniform1f(U.advect.uSteps, n * mix); gl.uniform1f(U.advect.uReseed, st.reseed);
     gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
     fl.di = 1 - fl.di;
@@ -457,17 +518,20 @@ export function createScene() {
   // 90° (a potential flow, all divergence) must read div/curl > 10 at B = 16. Every row reports the raw RMS div and
   // curl, the unclamped cross terms (ddMean < 0 = noise-dominated) and the non-empty blocks; no blocks, or no curl in
   // the vortex flow, fails. Gated at B = 16 on the upper bound (estimate + 2σ) when it is proven there, else at B = 32.
-  function fluidTest({ n = 512, replicas = 32, controlReplicas = 16, steps = 64, window = 32, umax = 0.12, kMax = 2, seed = 11 } = {}) {
+  // #165 "mix faster": the vortex replicas also carry F2's forcing (at the knob's maximum, 0.004, so it shows:
+  // the axis cycling per replica, 128-site waves as on the live torus); the potential control is unchanged.
+  function fluidTest({ n = 512, replicas = 32, controlReplicas = 16, steps = 64, window = 32, umax = 0.12, kMax = 2, seed = 11, forceAmp = 0.004 } = {}) {
     if (!fx.half) return { ok: false, note: 'no float render targets: truth 4 cannot run' };
     const bw = n / 8, ct = flTex(bw, bw, false), px = new Float32Array(bw * bw * 4);
     const t0 = performance.now();
     // block sums of the last `window` steps, per half of the replicas, for one sampled flow
-    const run = (field, count, salt) => {
+    const run = (field, count, salt, forced) => {
       const sums = [new Float64Array(bw * bw * 3), new Float64Array(bw * bw * 3)];
       for (let k = 0; k < count; k++) {
         const L = lattice(n, n, F.latticeFromFlow(field, n, n, 0.25, seed * 1000 + salt + k + 1)), acc = sums[k % 2];
+        const force = forced && forceAmp > 0 ? { axis: Math.floor(k / 2) % 3, phase: 0.9 * Math.floor(k / 2), amp: forceAmp, k: n / 128 } : null;
         for (let t = 0; t < steps; t++) {
-          stepLattice(L, t, (seed * 7919 + (salt + k) * 104729) >>> 0);
+          stepLattice(L, t, (seed * 7919 + (salt + k) * 104729) >>> 0, 0, 0, force);
           if (t < steps - window) continue;
           pass('coarse', L.a, ct);
           gl.bindFramebuffer(gl.READ_FRAMEBUFFER, ct.f); gl.readPixels(0, 0, bw, bw, gl.RGBA, gl.FLOAT, px);
@@ -495,14 +559,14 @@ export function createScene() {
     };
     const vortex = F.flowField(n, n, seed, { umax, kMax });
     const potential = { ux: Float32Array.from(vortex.uy, v => -v), uy: Float32Array.from(vortex.ux) };   // u turned 90°
-    const vs = run(vortex, replicas, 0), ps = run(potential, controlReplicas, 5000);
+    const vs = run(vortex, replicas, 0, true), ps = run(potential, controlReplicas, 5000, false);
     freeTex(ct); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     const b16 = at(vs, 16), b32 = at(vs, 32), b64 = at(vs, 64), control16 = at(ps, 16);
     const sane = b => b.nonEmpty === b.blocks && b.blocks > 0 && b.curlRMS > 0;
     const controlOk = sane(control16) && control16.divSignal > 0 && control16.ratio > 10;
     const gatedB = b16.ratioUpper < 0.1 ? 16 : b32.ratioUpper < 0.1 ? 32 : null;
     const ok = sane(b16) && sane(b32) && b16.curlSignal > 0 && controlOk && gatedB !== null;
-    return { ok, gatedB, controlOk, b16, b32, b64, control16, n, replicas, controlReplicas, steps, window, umax, kMax, ms: Math.round(performance.now() - t0) };
+    return { ok, gatedB, controlOk, b16, b32, b64, control16, n, replicas, controlReplicas, steps, window, umax, kMax, forceAmp, ms: Math.round(performance.now() - t0) };
   }
   // the live view's time-averaged block velocity at block size B (8 · 2^k), read back: RMS(div) / RMS(curl)
   // (report-only: noise-limited at small B, see fluidTest)
@@ -573,15 +637,103 @@ export function createScene() {
     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, lumPbo); gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, px); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     gl.deleteSync(st.lumPending); st.lumPending = null;
     const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
-    let s = 0; for (let k = 0; k < px.length; k += 4) s += 0.2126 * lin(px[k]) + 0.7152 * lin(px[k + 1]) + 0.0722 * lin(px[k + 2]);
-    st.lumMean = +(s / (LUM_W * LUM_H)).toFixed(4);
-    st.lumHistory.push({ t: performance.now(), step: st.simStep, lum: st.lumMean }); if (st.lumHistory.length > 400) st.lumHistory.shift();
+    const L = []; let s = 0;
+    for (let k = 0; k < px.length; k += 4) { const l = 0.2126 * lin(px[k]) + 0.7152 * lin(px[k + 1]) + 0.0722 * lin(px[k + 2]); L.push(l); s += l; }
+    L.sort((a, b) => a - b);
+    st.lumMean = +(s / (LUM_W * LUM_H)).toFixed(4); st.lumMedian = +L[L.length >> 1].toFixed(4);
+    st.lumHistory.push({ t: performance.now(), step: st.simStep, lum: st.lumMean, median: st.lumMedian, zoom: st.zoom }); if (st.lumHistory.length > 400) st.lumHistory.shift();
+  }
+
+  // ---- splash QA (?qa=splash, #71 round 2 C1–C3): every 2 beats a burst in the middle, the knob cycling through
+  // the default, 0 and 1; a beat later (the disc has opened into a ring) the picture is read at 128 × 72 (a GPU sync: QA only): the brightest
+  // ring around the burst (a radial profile) against the frame's median
+  function splashQaStep(beats, now, ctl) {
+    const slot = Math.floor(beats / 2);
+    if (st.splashSlot === undefined) st.splashSlot = slot;
+    if (slot !== st.splashSlot && (!st.splashTest || st.splashTest.measured)) {
+      st.splashSlot = slot;
+      const knob = [ctl.splash, 0, 1][st.splashLog.length % 3], c = viewCentreAxial();
+      st.splashTest = { knob, beatAt: beats, measureAt: beats + 1, measured: false, measureNow: false, at: c };
+      burst(c[0], c[1], ctl.burstSize, 0.95, 'qa-splash', now);
+    }
+    if (st.splashTest && !st.splashTest.measured && beats >= st.splashTest.measureAt) st.splashTest.measureNow = true;
+  }
+  function splashMeasure(acc, look, sitesAcross, fw, fh) {
+    const T = st.splashTest; T.measureNow = false; T.measured = true;
+    if (!fx.lum2) fx.lum2 = colourTex(128, 72, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
+    composite(fx.lum2.f, 128, 72, acc, look);
+    const px = new Uint8Array(128 * 72 * 4);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fx.lum2.f); gl.readPixels(0, 0, 128, 72, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    // the burst's centre on the small picture: it sits at the camera centre (viewCentreAxial), so the middle
+    const cxp = 64, cyp = 36, sum = new Float64Array(40), cnt = new Float64Array(40), all = [];
+    for (let y = 0; y < 72; y++) for (let x = 0; x < 128; x++) {
+      const k = 4 * (y * 128 + x), l = 0.2126 * lin(px[k]) + 0.7152 * lin(px[k + 1]) + 0.0722 * lin(px[k + 2]);
+      all.push(l); const r = Math.floor(Math.hypot(x + 0.5 - cxp, y + 0.5 - cyp));
+      if (r < 40) { sum[r] += l; cnt[r]++; }
+    }
+    all.sort((a, b) => a - b);
+    let ring = 0, ringR = -1; for (let r = 2; r < 40; r++) if (cnt[r] && sum[r] / cnt[r] > ring) { ring = sum[r] / cnt[r]; ringR = r; }
+    const bg = all[all.length >> 1];
+    st.splashLog.push({ knob: +T.knob.toFixed(2), ring: +ring.toFixed(4), ringPx: ringR, ringSites: +(ringR * sitesAcross / 128).toFixed(1), bg: +bg.toFixed(4), ratio: +(ring / Math.max(1e-4, bg)).toFixed(2) });
+    if (st.splashLog.length > 60) st.splashLog.shift();
+  }
+  function splashSummary() {
+    const by = k => st.splashLog.filter(e => Math.abs(e.knob - k) < 1e-3).map(e => e.ratio).sort((a, b) => a - b);
+    const med = a => a.length ? a[a.length >> 1] : null;
+    const def = med(by(st.lastSplash ?? 0.8)), r0 = med(by(0)), r1 = med(by(1));
+    // C2: the frame's median luminance at the default knob (each test frame), and the page's own 64 × 36 samples in F1
+    const bgDef = st.splashLog.filter(e => Math.abs(e.knob - (st.lastSplash ?? 0.8)) < 1e-3).map(e => e.bg).sort((a, b) => a - b);
+    const steady = st.lumHistory.filter(h => h.zoom <= 0.02 && h.median !== undefined).map(h => h.median).sort((a, b) => a - b);
+    return { c1: def, c1ok: def !== null && def >= 4, c2: med(bgDef), c2ok: bgDef.length ? med(bgDef) <= 0.05 : null, c2page: med(steady),
+      c3: r0 && r1 ? +(r1 / r0).toFixed(2) : null, c3ok: r0 && r1 ? r1 / r0 >= 2 : null, n: st.splashLog.length, log: st.splashLog.slice(-9) };
+  }
+
+  // ---- T5/T6 (#165 "mix faster"): the dye's mixing half-time. A QA dye pair starts from the bands and is carried
+  // by the live flow (its current time average, held still) for as many frames as it takes the 8 × 8-texel (32-site)
+  // block variance to halve; the half-time in bars counts the gas's steps at the fluid rate (st.fluidSpb, bpm)
+  function mixHalfTime(mix, { maxIter = 900, every = 10 } = {}) {
+    if (!fl.coarse) return null;
+    const w = NQ / 4, h = NR / 4, A = flTex(w, h, false), Bt = flTex(w, h, false), px = new Float32Array(w * h * 4);
+    const spb = st.fluidSpb || 96, bpm = st.lastBpm || 120, bpb = st.lastBpb || 4, n = spb * bpm / 60 / 60;   // gas steps a 60 fps frame
+    const ema = fl.ema[fl.ei];
+    const advect = (src, dst, steps, reseed) => {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, dst.f); gl.viewport(0, 0, dst.w, dst.h); gl.useProgram(P.advect);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.t); gl.uniform1i(U.advect.uDyeOld, 0);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, ema.t); gl.uniform1i(U.advect.uEma, 1);
+      gl.uniform2f(U.advect.uLat, NQ, NR); gl.uniform1f(U.advect.uSteps, steps); gl.uniform1f(U.advect.uReseed, reseed);
+      gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
+    };
+    const blockVar = t => {
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, t.f); gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT, px);
+      const bw = Math.floor(w / 8), bh = Math.floor(h / 8); let s = 0, s2 = 0;
+      for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) {
+        let m = 0;
+        for (let j = 0; j < 8; j++) for (let i = 0; i < 8; i++) { const k = 4 * ((by * 8 + j) * w + bx * 8 + i); m += px[k] + px[k + 1] + px[k + 2]; }
+        m /= 64; s += m; s2 += m * m;
+      }
+      const N = bw * bh, mean = s / N; return s2 / N - mean * mean;
+    };
+    advect(Bt, A, 0, 1);   // the bands, fresh
+    const v0 = blockVar(A);
+    let src = A, dst = Bt, half = null, last = v0;
+    for (let it = 1; it <= maxIter; it++) {
+      advect(src, dst, n * mix, 0); [src, dst] = [dst, src];
+      if (it % every === 0) { last = blockVar(src); if (last <= v0 / 2) { half = it; break; } }
+    }
+    freeTex(A); freeTex(Bt); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const barsPer = n / (spb * bpb);   // bars of music a frame
+    return { mix, halfFrames: half, halfBars: half === null ? null : +(half * barsPer).toFixed(3), maxBars: +(maxIter * barsPer).toFixed(2),
+      v0: +v0.toExponential(3), vEnd: +last.toExponential(3), stepsPerFrame: +n.toFixed(2) };
   }
 
   function dispose() {
     if (!gl) return;
     if (live) freeLattice(live); if (red) freeTex(red);
-    for (const t of [...fx.acc, ...fx.bl, ...(fx.lum ? [fx.lum] : []), ...fl.ema, ...fl.dye, ...(fl.coarse ? [fl.coarse] : [])]) freeTex(t);
+    for (const t of [...fx.acc, ...fx.bl, ...(fx.lum ? [fx.lum] : []), ...(fx.lum2 ? [fx.lum2] : []), ...fl.ema, ...fl.dye, ...(fl.coarse ? [fl.coarse] : []), ...(fl.dens ? [fl.dens] : [])]) freeTex(t);
+    fx.lum2 = null; fl.dens = null;
     gl.deleteBuffer(lumPbo);
     for (const p of Object.values(P)) gl.deleteProgram(p);
     gl.deleteBuffer(pbo); gl.deleteVertexArray(vao);
@@ -607,6 +759,7 @@ export function createScene() {
     editLattice(live, 1, cq, cr, R, p, key);
     const r = cr, x = cq + r / 2, y = r * F.S3;
     st.burstEnv = 1; st.burstAt = [x, y, R];
+    st.splashes.push({ x, y, r0: R, step: st.simStep, t: now, hue: st.splashHue++ });   // its ring's hot hue (#71 round 2)
     const e = { t: now, step: st.simStep, q: +cq.toFixed(2), r: +cr.toFixed(2), x: +x.toFixed(2), y: +y.toFixed(2), radius: R, cause };
     st.rings.push(e); if (st.rings.length > 512) st.rings.shift();
     return e;
@@ -666,6 +819,8 @@ export function createScene() {
 
   function frame({ target = null, beats, bpb = 4, bpm = 120, controls: ctl, kicks = 0, hat = 0, kick = 0, now = performance.now() }) {
     if (!gl) return;
+    // the knobs this round added (a host that predates them gets the defaults)
+    ctl = { splash: 0.8, mix: 3, sparks: 0.5, zoom: 1 / 3, splashGain: 0.9, force: 0.0008, maxSpb: 96, ...ctl };
     st.frameNo++;
     st.conserve = !!ctl.conserve;
     // the zoom (F2): 0 = F1's micro view, 1 = the whole torus as a fluid. Scene auto runs zoomAt's 16-bar song.
@@ -675,9 +830,13 @@ export function createScene() {
     st.zoom = z;
     const sMin = 40 + 72 * ctl.zoom, sMax = Math.min(NQ, NR * F.S3 * Math.max(1, W) / Math.max(1, H));
     const sitesAcross = sMin * Math.pow(Math.max(1, sMax / sMin), z);
-    // 8 → 64 steps a beat as the view becomes a fluid (#71: stepsPerBeat 8 micro, 64 fluid)
-    const spb = Math.min(64, STEPS_PER_BEAT[Math.min(3, Math.floor(ctl.tempo * 4))] * Math.pow(8, z));
+    // 8 → 96 steps a beat as the view becomes a fluid (#71: 8 micro, 64 fluid; #165 "mix faster": up to 96 if the
+    // GPU budget allows, ?maxSpb=)
+    const spb = Math.min(ctl.maxSpb, STEPS_PER_BEAT[Math.min(3, Math.floor(ctl.tempo * 4))] * Math.pow(12, z));
+    // the splash look (#71 F1 round 2): QA's ?qa=splash alternates the knob between 1 and 0 per test burst (C3)
+    const contrast = st.splashQa ? (st.splashTest && st.splashTest.knob !== undefined ? st.splashTest.knob : ctl.splash) : ctl.splash;
     const stepsPerSec = spb * bpm / 60;
+    Object.assign(st, { fluidSpb: Math.min(ctl.maxSpb, STEPS_PER_BEAT[Math.min(3, Math.floor(ctl.tempo * 4))] * 12), lastBpm: bpm, lastBpb: bpb, lastMix: ctl.mix, lastSplash: ctl.splash });
     const fieldW = fl.coarse ? smooth01(0.25, 0.5, z) : 0, dotsW = fl.coarse ? 1 - smooth01(0.2, 0.45, z) : 1;
     const blockB = Math.max(8, sitesAcross / 32), lod = Math.min(4, Math.log2(blockB / 8));
     const dt = st.lastNow ? Math.min(0.1, (now - st.lastNow) / 1000) : 0; st.lastNow = now;
@@ -691,7 +850,7 @@ export function createScene() {
       if (quant && beats < t.at) continue;
       t.done = true; t.e.fired = true; t.e.firedAt = now;
       if (t.slot === 1) { const c = randomSpot(sitesAcross); burst(c[0], c[1], ctl.burstSize, 0.8, 'trigger1', now); st.triggerEnv[0] = 1; }
-      else if (t.slot === 2) { const c = viewCentreAxial(); burst(c[0], c[1], 2.2 * ctl.burstSize, 0.8, 'trigger2', now); st.triggerEnv[1] = 1; }
+      else if (t.slot === 2) { const c = viewCentreAxial(); burst(c[0], c[1], 1.6 * ctl.burstSize, 0.8, 'trigger2', now); st.triggerEnv[1] = 1; }
       else if (t.slot === 3) { st.frozen = true; st.frozenF = st.f; st.triggerEnv[2] = 1; if (t.holdMs > 0) t.releaseAt = now + t.holdMs; }
       else if (t.slot === 4) { scatter(now); st.triggerEnv[3] = 1; }
     }
@@ -704,28 +863,33 @@ export function createScene() {
     st.lastBeatsStep = beats;
     if (!st.frozen && db > 0 && db < 4) st.stepAcc += db * spb;
     let n = 0;
-    while (st.stepAcc >= 1 && n < MAX_STEPS_FRAME) { stepLattice(live, st.simStep, st.seed, st.srcP, st.sinkP); st.simStep++; st.stepAcc -= 1; n++; }
+    // F2's stirring: a Kolmogorov force in the fluid view, its axis turning every 4 bars, its phase drifting
+    const force = fieldW > 0 && !st.conserve && ctl.force > 0 ? { axis: ((Math.floor(bars / 4) % 3) + 3) % 3, phase: 2 * Math.PI * bars / 16, amp: ctl.force * fieldW } : null;
+    while (st.stepAcc >= 1 && n < MAX_STEPS_FRAME) { stepLattice(live, st.simStep, st.seed, st.srcP, st.sinkP, force); st.simStep++; st.stepAcc -= 1; n++; }
     if (st.stepAcc >= 1) st.stepAcc %= 1;
     const f = st.frozen ? st.frozenF : st.stepAcc;
     st.f = f;
 
     // the music: in the micro view a burst per kick reached this frame, in the fluid view a stir (a small vortex,
     // either way round); the drop (bar 0 of each section) a big burst and a vortex pair in the middle, and fresh dye
-    const quiet = st.fluidQa;
+    // (#165: kick vortices 1.8× the spin and a larger radius; #71 round 2: bursts about 2×, fuller and wider)
+    const quiet = st.fluidQa || st.splashQa;
     for (let k = 0; k < kicks && !quiet; k++) {
       const c = randomSpot(sitesAcross);
-      if (z > 0.5) stir(c[0], c[1], sitesAcross / 16, (st.rng() < 0.5 ? -1 : 1) * 0.25, 'kick', now);
-      else burst(c[0], c[1], ctl.burstSize, 0.8, 'kick', now);
+      if (z > 0.5) stir(c[0], c[1], sitesAcross / 12, (st.rng() < 0.5 ? -1 : 1) * 0.45, 'kick', now);
+      else burst(c[0], c[1], ctl.burstSize, 0.95, 'kick', now);
     }
+    if (st.splashQa) splashQaStep(beats, now, ctl);
     const section = Math.floor(beats / (SECTION_BARS * bpb));
     if (!quiet && st.lastSection !== null && section === st.lastSection + 1) {
       const c = viewCentreAxial(), d = sitesAcross / 12;
-      burst(c[0], c[1], 2.2 * ctl.burstSize, 0.85, 'drop', now);
-      stir(c[0] - d, c[1], sitesAcross / 10, 0.35, 'drop', now); stir(c[0] + d, c[1], sitesAcross / 10, -0.35, 'drop', now);
+      burst(c[0], c[1], 1.6 * ctl.burstSize, 0.85, 'drop', now);   // 12.8 sites (was 2.2 × 4 = 8.8)
+      stir(c[0] - d, c[1], sitesAcross / 10, 0.6, 'drop', now); stir(c[0] + d, c[1], sitesAcross / 10, -0.6, 'drop', now);
       st.reseed = 0.15;
     }
     st.lastSection = section; st.lastBeats = beats;
-    if (fl.coarse) fluidPasses(dt, n, ctl.emaMs);   // every frame: the dye and the average stay continuous
+    if (fl.coarse) fluidPasses(dt, n, ctl.emaMs, ctl.mix);   // every frame: the dye and the average stay continuous
+    if (fl.dens && contrast > 0 && dotsW > 0.005) pass('dens', live.a, fl.dens);
     st.burstEnv *= Math.exp(-dt / 0.35);
     for (let i = 0; i < 4; i++) if (i !== 2) st.triggerEnv[i] *= Math.exp(-dt / 0.4);
 
@@ -748,6 +912,20 @@ export function createScene() {
     gl.uniform4f(u.uBurst, st.burstAt[0], st.burstAt[1], st.burstAt[2], st.burstEnv * (1 - decay));
     gl.uniform2f(u.uLat, NQ, NR); gl.uniform1f(u.uDotsW, dotsW); gl.uniform1f(u.uFieldW, fieldW * (1 - decay));
     gl.uniform1f(u.uLod, Math.max(0, lod)); gl.uniform1f(u.uFieldGain, ctl.fieldGain);
+    // the splash layer: excess over the mean particles a site (from the mass readback), a knee at ~2σ of a 4 × 4 block
+    // (σ = √(6 d (1 − d)) / 4), the dots at 100 % → 25 % and desaturated as the knob goes 0 → 1
+    const dMean = st.mass === null ? ctl.density : st.mass / (6 * NQ * NR), sigma4 = Math.sqrt(6 * dMean * (1 - dMean)) / 4;
+    gl.uniform1f(u.uMeanRho, 6 * dMean); gl.uniform1f(u.uKnee, 2 * sigma4); gl.uniform1f(u.uScaleE, 0.5);
+    gl.uniform1f(u.uSplash, fl.dens ? ctl.splashGain * contrast * (1 - decay) : 0);
+    gl.uniform1f(u.uDotScale, 1 - 0.9 * contrast); gl.uniform1f(u.uDesat, 0.6 * contrast);   // 28 % at the default 0.8
+    const B4 = new Float32Array(16), H4 = new Float32Array(16);
+    st.splashes = st.splashes.filter(s => now - s.t < 3000).slice(-4);
+    st.splashes.forEach((s, k) => {
+      B4.set([s.x, s.y, s.r0 + Math.min(80, 0.71 * (st.simStep - s.step)), Math.exp(-(now - s.t) / 800)], 4 * k);   // FHP's c_s ≈ 1/√2
+      H4.set([...SPLASH_HUES[s.hue % SPLASH_HUES.length], 1 - Math.exp(-(now - s.t) / 70)], 4 * k);
+    });
+    gl.uniform4fv(u.uB, B4); gl.uniform4fv(u.uBH, H4);
+    gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, fl.dens ? fl.dens.t : null); gl.uniform1i(u.uDens, 4);
     if (fl.coarse) {
       gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, fl.ema[fl.ei].t); gl.uniform1i(u.uEma, 2);
       gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, fl.dye[fl.di].t); gl.uniform1i(u.uDye, 3);
@@ -755,7 +933,7 @@ export function createScene() {
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, prev.t); gl.uniform1i(u.uPrev, 1);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, live.a.t);
     gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
-    for (const unit of [gl.TEXTURE2, gl.TEXTURE3]) { gl.activeTexture(unit); gl.bindTexture(gl.TEXTURE_2D, null); }
+    for (const unit of [gl.TEXTURE2, gl.TEXTURE3, gl.TEXTURE4]) { gl.activeTexture(unit); gl.bindTexture(gl.TEXTURE_2D, null); }
     gl.activeTexture(gl.TEXTURE0);
     fx.ai = 1 - fx.ai;
     blit('down', next, fx.bl[0], v => gl.uniform2f(v.uTexel, 1 / fw, 1 / fh));
@@ -768,12 +946,14 @@ export function createScene() {
     composite(target ? target.fbo : null, fw, fh, next, look);
     if (st.frameNo % 30 === 15) lumSample(next, look);
     pollLum();
+    if (st.splashQa && st.splashTest && st.splashTest.measureNow) splashMeasure(next, look, sitesAcross, fw, fh);
 
     st.view = { scene: z <= 0.02 ? 'F1' : z >= 0.98 ? 'fluid' : 'zoom', zoom: +z.toFixed(3), blockB: +blockB.toFixed(1), dotsW: +dotsW.toFixed(3), fieldW: +fieldW.toFixed(3),
       lattice: `${NQ}x${NR}`, fluidQa: st.fluidQa, step: st.simStep, f: +f.toFixed(3), stepsPerBeat: +spb.toFixed(1), stepsPerSec: +stepsPerSec.toFixed(2), stepsThisFrame: n,
       sitesAcross: +sitesAcross.toFixed(1), density: st.mass === null ? null : +(st.mass / (6 * NQ * NR)).toFixed(4), target: ctl.density,
       frozen: st.frozen, conserve: st.conserve, bars: beats / bpb, section, spark: +sparkGain.toFixed(3),
-      pulse: +pulse.toFixed(3), decay: +decay.toFixed(4), lumMean: st.lumMean, fxFormat: fx.half ? 'RGBA16F' : 'RGBA8' };
+      pulse: +pulse.toFixed(3), decay: +decay.toFixed(4), lumMean: st.lumMean, lumMedian: st.lumMedian, fxFormat: fx.half ? 'RGBA16F' : 'RGBA8',
+      contrast: +contrast.toFixed(2), mix: ctl.mix, force: force ? +force.amp.toExponential(2) : 0 };
     st.metrics = { mass: st.mass, massAt: st.massAt, momentum: [st.pq, st.pr], srcP: st.srcP, sinkP: st.sinkP, bursts: st.rings.length };
   }
 
@@ -829,7 +1009,17 @@ export function createScene() {
       st.qaCache.t4live = { at: t, b16, b32, b64, zoom: st.zoom, fluidQa: st.fluidQa };
     }
     if (fresh || !st.qaCache.t4) st.qaCache.t4 = fluidTest();
-    return { t1: st.qaCache.t1, t3: st.qaCache.t3, t4: st.qaCache.t4, t4live: st.qaCache.t4live, lut: { ok: lut.ok, changed: lut.changed },
+    // T5 (half-time ≤ 2 bars at the default mix) and T6 (mix knob 0 vs 1, 1× vs 6×: ≥ 3×), report-only first; only
+    // meaningful once the fluid has run (the fluid variants)
+    if (fresh || !st.qaCache.t5) {
+      const d = mixHalfTime(st.lastMix || 3), lo = mixHalfTime(1), hi = mixHalfTime(6);
+      // 1× not halved within the 900 frames: the ratio is a lower bound, 900 / the 6× half-time
+      const ratio = lo && hi && hi.halfFrames ? (lo.halfFrames || 900) / hi.halfFrames : null;
+      st.qaCache.t5 = { t5: d, t5ok: d && d.halfBars !== null ? d.halfBars <= 2 : false,
+        t6: { lo, hi, ratio: ratio === null ? null : +ratio.toFixed(2), lowerBound: !!(lo && !lo.halfFrames) }, t6ok: ratio !== null && ratio >= 3 };
+    }
+    const splash = splashSummary();
+    return { t1: st.qaCache.t1, t3: st.qaCache.t3, t4: st.qaCache.t4, t4live: st.qaCache.t4live, t5: st.qaCache.t5, splash, lut: { ok: lut.ok, changed: lut.changed },
       ok: st.qaCache.t1.ok && st.qaCache.t3.ok && st.qaCache.t4.ok !== false && lut.ok };
   }
 
@@ -843,7 +1033,8 @@ export function createScene() {
       get triggerLog() { return st.triggerLog; }, get triggerEnv() { return st.triggerEnv; }, lut: Array.from(F.LUT),
       mass() { const m = reduceSync(live, red); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return m.mass; },
       momentum() { const m = reduceSync(live, red); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return [m.pq, m.pr]; },
-      conserveTest, soundSpeed, check, coarse, fluidTest,
+      conserveTest, soundSpeed, check, coarse, fluidTest, mixHalfTime, splashSummary,
+      get splashLog() { return st.splashLog; },
       get zoom() { return st.zoom; }, get lattice() { return [NQ, NR]; },
     },
   };
@@ -853,8 +1044,9 @@ export function createScene() {
 export const MACROS = [
   { slot: 'macro1', name: 'density', label: 'density', default: 0.5, quantise: 'none' },     // 0.10–0.40 a link (0.25)
   { slot: 'macro2', name: 'tempo', label: 'steps a beat', default: 0.6, quantise: 'none' },  // 2, 4, 8, 16 (8)
-  { slot: 'macro3', name: 'sparks', label: 'sparks', default: 0.5, quantise: 'none' },
-  { slot: 'macro4', name: 'zoom', label: 'zoom out', default: 1 / 3, quantise: 'none' },     // 40–112 sites across (64)
+  // #71 round 2 / #165 "mix faster": the two new knobs take macro3 and macro4; sparks and F1's zoom move to detail
+  { slot: 'macro3', name: 'splash', label: 'splash contrast', default: 0.8, quantise: 'none' },  // dots 100 → 25 %, rings lit
+  { slot: 'macro4', name: 'mix', label: 'mix speed', default: 0.4, quantise: 'none' },          // the dye's time-lapse 1–6× (3×)
 ];
 export const TRIGGERS = [
   { slot: 'trigger1', name: 'burst', label: 'burst', key: 'Z', mode: 'tap', timing: 'now', repeats: 'restart', attackMs: 0, decayMs: 400 },
@@ -871,7 +1063,12 @@ export const DETAIL = [
   { name: 'bloom', type: 'float', default: 1.6, min: 0, max: 4 },
   { name: 'sat', type: 'float', default: 1.45, min: 0.5, max: 2.5 },
   { name: 'exposure', type: 'float', default: 1, min: 0.5, max: 2 },
-  { name: 'burstSize', type: 'float', default: 4, min: 2, max: 8 },
+  { name: 'burstSize', type: 'float', default: 8, min: 2, max: 12 },          // #71 round 2: 2× (was 4)
+  { name: 'sparks', type: 'float', default: 0.5, min: 0, max: 1 },             // was macro3
+  { name: 'zoom', type: 'float', default: 1 / 3, min: 0, max: 1 },             // was macro4: F1's 40–112 sites across (64)
+  { name: 'splashGain', type: 'float', default: 0.9, min: 0, max: 2 },       // the rings' brightness at full contrast
+  { name: 'force', type: 'float', default: 0.0008, min: 0, max: 0.004 },     // F2's Kolmogorov stirring (flip probability)
+  { name: 'maxSpb', type: 'long', default: 96, min: 64, max: 128 },          // F2's steps a beat at full zoom-out
   { name: 'scene', type: 'long', values: ['auto', 'F1', 'fluid'], default: 'auto' },
   { name: 'fieldGain', type: 'float', default: 1.3, min: 0, max: 3 },          // F2: the fluid layer's brightness
   { name: 'emaMs', type: 'float', default: 150, min: 20, max: 2000 },        // F2: the block velocity's time average τ
@@ -890,6 +1087,7 @@ export function zoomAt(bars) {
 }
 export const densityOf = m => 0.1 + 0.3 * m;
 export const sitesAcrossOf = m => 40 + 72 * m;
+export const mixOf = m => 1 + 5 * m;   // macro4 → the dye's time-lapse factor
 const scene = createScene();
 export default {
   ...scene,
