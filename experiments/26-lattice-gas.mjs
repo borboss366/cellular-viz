@@ -25,6 +25,10 @@ const SPARK_STEPS_PER_S = 16;                // above this rate sparks dim, so a
 const LUM_W = 64, LUM_H = 36;                // the small copy of the picture for the mean luminance
 // the bursts' ring hues (#71 round 2: hot, saturated, rotating per kick; linear light)
 const SPLASH_HUES = [[1.0, 0.08, 0.45], [1.0, 0.42, 0.04], [1.0, 0.78, 0.08], [0.95, 0.05, 0.12], [1.0, 0.25, 0.85], [0.9, 0.55, 0.0]];
+// each scaled to linear luminance 1, so splashGain is the ring's own luminance whatever the hue (bloom 1.6 lifts a
+// ring ~2.6× in the picture: 0.13 → ~0.34)
+const SPLASH_HUES_L1 = SPLASH_HUES.map(c => { const k = 1 / (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]); return c.map(v => v * k); });
+const ADVECT_STEPS_PASS = 4;                 // the dye moves at most 4 gas steps a pass (≤ 0.2 texel at |u| 0.2)
 
 // ---------------------------------------------------------------- shaders
 const VS = `#version 300 es
@@ -256,7 +260,8 @@ void main() {
     vec2 uv = vec2(q, r) / uLat;
     vec4 e = textureLod(uEma, uv, uLod);
     float sp = length(e.gb / max(e.r, 1.0e-3));
-    col += textureLod(uDye, uv, 0.0).rgb * (0.3 + 4.0 * sp) * uFieldGain * uFieldW;   // ~2.8x viz-165-2 (fluid L 0.065)
+    // the speed term capped at |u| 0.2 (viz-171-3: a 1.8× kick stir lifted it within the 150 ms average, a 0.30 rise)
+    col += textureLod(uDye, uv, 0.0).rgb * (0.3 + 4.0 * min(sp, 0.2)) * uFieldGain * uFieldW;   // ~2.8x viz-165-2 (fluid L 0.065)
   }
   vec2 bd = w - uBurst.xy;
   col += vec3(0.020, 0.012, 0.030) * uBurst.w * exp(-dot(bd, bd) / max(1.0, uBurst.z * uBurst.z));
@@ -284,21 +289,6 @@ uniform sampler2D uDyeOld, uEma;
 uniform vec2 uLat;
 uniform float uSteps, uReseed;
 in vec2 vUv; out vec4 o;
-// Catmull-Rom (16 taps, wrapping), clamped to the 4 nearest texels: far less blur a frame than bilinear, so the
-// dye's mixing comes from the flow and the mix knob's time-lapse shows (viz-171-2: T6 2.5–2.8 with bilinear)
-ivec2 wrapT(ivec2 a, ivec2 n) { return a - n * ivec2(floor(vec2(a) / vec2(n))); }
-vec3 sampleCR(sampler2D t, vec2 uv) {
-  ivec2 n = textureSize(t, 0);
-  vec2 p = uv * vec2(n) - 0.5, f = fract(p); ivec2 i0 = ivec2(floor(p));
-  vec2 w[4] = vec2[4](f * (-0.5 + f * (1.0 - 0.5 * f)), 1.0 + f * f * (-2.5 + 1.5 * f), f * (0.5 + f * (2.0 - 1.5 * f)), f * f * (-0.5 + 0.5 * f));
-  vec3 s = vec3(0.0), mn = vec3(1.0e9), mx = vec3(-1.0e9);
-  for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++) {
-    vec3 c = texelFetch(t, wrapT(i0 + ivec2(i - 1, j - 1), n), 0).rgb;
-    s += c * w[i].x * w[j].y;
-    if (i == 1 || i == 2) if (j == 1 || j == 2) { mn = min(mn, c); mx = max(mx, c); }
-  }
-  return clamp(s, mn, mx);
-}
 vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
 vec3 bands(vec2 uv) {
   float t = uv.x * 5.0 + uv.y * 3.0 + 0.25 * sin(6.2831853 * uv.y * 2.0);
@@ -310,7 +300,7 @@ void main() {
   vec4 e = textureLod(uEma, vUv, 0.0);
   vec2 v = e.gb / max(e.r, 1.0e-3);
   vec2 ax = vec2(v.x - v.y / 1.7320508, v.y * 2.0 / 1.7320508);
-  vec3 d = sampleCR(uDyeOld, vUv - ax * uSteps / uLat);
+  vec3 d = texture(uDyeOld, vUv - ax * uSteps / uLat).rgb;
   o = vec4(mix(d, bands(vUv), uReseed), 1.0);
 }`;
 // the bloom: the persistence buffer box-averaged down to 1/8 (every source pixel counts, so moving dots don't
@@ -530,15 +520,21 @@ export function createScene() {
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, next.t); gl.generateMipmap(gl.TEXTURE_2D);
     fl.ei = 1 - fl.ei; st.emaPrimed = true;
-    const dOld = fl.dye[fl.di], dNew = fl.dye[1 - fl.di];
-    gl.bindFramebuffer(gl.FRAMEBUFFER, dNew.f); gl.viewport(0, 0, dNew.w, dNew.h);
-    gl.useProgram(P.advect);
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dOld.t); gl.uniform1i(U.advect.uDyeOld, 0);
-    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, next.t); gl.uniform1i(U.advect.uEma, 1);
-    gl.uniform2f(U.advect.uLat, NQ, NR); gl.uniform1f(U.advect.uSteps, n * mix); gl.uniform1f(U.advect.uReseed, st.reseed);
-    gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
-    fl.di = 1 - fl.di;
+    // the dye moves n · mix steps, in passes of at most ADVECT_STEPS_PASS (viz-171-3: the dye's mixing at block
+    // scale is mostly the bilinear blur of each pass, so passes a distance, not a frame, make the knob a true
+    // time-lapse: blur and stretching both scale with mix)
+    const total = n * mix, k = Math.max(1, Math.ceil(total / ADVECT_STEPS_PASS));
+    for (let s = 0; s < k; s++) {
+      const dOld = fl.dye[fl.di], dNew = fl.dye[1 - fl.di];
+      gl.bindFramebuffer(gl.FRAMEBUFFER, dNew.f); gl.viewport(0, 0, dNew.w, dNew.h);
+      gl.useProgram(P.advect);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dOld.t); gl.uniform1i(U.advect.uDyeOld, 0);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, next.t); gl.uniform1i(U.advect.uEma, 1);
+      gl.uniform2f(U.advect.uLat, NQ, NR); gl.uniform1f(U.advect.uSteps, total / k); gl.uniform1f(U.advect.uReseed, s === k - 1 ? st.reseed : 0);
+      gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
+      fl.di = 1 - fl.di;
+    }
     st.reseed = Math.max(0.0015, st.reseed * 0.9);   // a drop's reseed (1) fades back to the slow pull (0.15 % a frame, was 0.4 %: viz-171-2's live T5 never halved)
   }
   // truth 4 (#71, gated): is the coarse-grained FHP flow divergence-free at B ≥ 16? On the live lattice the particle
@@ -726,7 +722,7 @@ export function createScene() {
   // ---- T5/T6 (#165 "mix faster"): the dye's mixing half-time. A QA dye pair starts from the bands and is carried
   // by the live flow (its current time average, held still) for as many frames as it takes the 8 × 8-texel (32-site)
   // block variance to halve; the half-time in bars counts the gas's steps at the fluid rate (st.fluidSpb, bpm)
-  function mixHalfTime(mix, { maxIter = 900, every = 10 } = {}) {
+  function mixHalfTime(mix, { maxIter = 2400, every = 10 } = {}) {
     if (!fl.coarse) return null;
     const w = NQ / 4, h = NR / 4, A = flTex(w, h, false), Bt = flTex(w, h, false), px = new Float32Array(w * h * 4);
     const spb = st.fluidSpb || 96, bpm = st.lastBpm || 120, bpb = st.lastBpb || 4, n = spb * bpm / 60 / 60;   // gas steps a 60 fps frame
@@ -753,7 +749,8 @@ export function createScene() {
     const v0 = blockVar(A);
     let src = A, dst = Bt, half = null, last = v0;
     for (let it = 1; it <= maxIter; it++) {
-      advect(src, dst, n * mix, 0); [src, dst] = [dst, src];
+      const k = Math.max(1, Math.ceil(n * mix / ADVECT_STEPS_PASS));   // the live page's passes (fluidPasses)
+      for (let s = 0; s < k; s++) { advect(src, dst, n * mix / k, 0); [src, dst] = [dst, src]; }
       if (it % every === 0) { last = blockVar(src); if (last <= v0 / 2) { half = it; break; } }
     }
     freeTex(A); freeTex(Bt); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -882,7 +879,7 @@ export function createScene() {
   function frame({ target = null, beats, bpb = 4, bpm = 120, controls: ctl, kicks = 0, hat = 0, kick = 0, now = performance.now() }) {
     if (!gl) return;
     // the knobs this round added (a host that predates them gets the defaults)
-    ctl = { splash: 0.8, mix: 3, sparks: 0.5, zoom: 1 / 3, splashGain: 0.9, force: 0.0008, maxSpb: 96, ...ctl };
+    ctl = { splash: 0.8, mix: 3, sparks: 0.5, zoom: 1 / 3, splashGain: 0.13, force: 0.0008, maxSpb: 96, ...ctl };
     st.frameNo++;
     st.conserve = !!ctl.conserve;
     // the zoom (F2): 0 = F1's micro view, 1 = the whole torus as a fluid. Scene auto runs zoomAt's 16-bar song.
@@ -979,7 +976,7 @@ export function createScene() {
     // the splash layer: excess over the mean particles a site (from the mass readback), a knee at ~2σ of a 4 × 4 block
     // (σ = √(6 d (1 − d)) / 4), the dots at 100 % → 25 % and desaturated as the knob goes 0 → 1
     const dMean = st.mass === null ? ctl.density : st.mass / (6 * NQ * NR), sigma4 = Math.sqrt(6 * dMean * (1 - dMean)) / 4;
-    gl.uniform1f(u.uMeanRho, 6 * dMean); gl.uniform1f(u.uKnee, 2 * sigma4 / 3); gl.uniform1f(u.uScaleE, 0.25);   // 2σ of the 3 × 3-smoothed blocks
+    gl.uniform1f(u.uMeanRho, 6 * dMean); gl.uniform1f(u.uKnee, 2 * sigma4 / 3); gl.uniform1f(u.uScaleE, 0.1);   // 2σ of the 3 × 3-smoothed blocks; full light from ~0.3 excess (a ring one beat out), so a burst's core (~1.4) is no brighter than its ring
     gl.uniform1f(u.uSplash, fl.dens ? ctl.splashGain * contrast * (1 - decay) : 0);
     // the dot floor (#171 ruling: C2 first, before the rings): 100 % → 20 % over the knob's 0 → 0.8, 20 % above
     // (viz-171-2: C2 0.072 at 20 %; now 15 % at 0.8 and above)
@@ -988,7 +985,7 @@ export function createScene() {
     st.splashes = st.splashes.filter(s => now - s.t < 3000).slice(-4);
     st.splashes.forEach((s, k) => {
       B4.set([s.x, s.y, s.r0 + Math.min(80, 0.71 * (st.simStep - s.step)), Math.exp(-(now - s.t) / 800)], 4 * k);   // FHP's c_s ≈ 1/√2
-      H4.set([...SPLASH_HUES[s.hue % SPLASH_HUES.length], 1 - Math.exp(-(now - s.t) / 250)], 4 * k);   // 250 ms attack (viz-171-2: 70 ms gave window rises 0.30–0.32 / 100 ms)
+      H4.set([...SPLASH_HUES_L1[s.hue % SPLASH_HUES_L1.length], 1 - Math.exp(-(now - s.t) / 250)], 4 * k);   // 250 ms attack (viz-171-2: 70 ms gave window rises 0.30–0.32 / 100 ms)
     });
     gl.uniform4fv(u.uB, B4); gl.uniform4fv(u.uBH, H4);
     gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, fl.dens ? fl.dens.t : null); gl.uniform1i(u.uDens, 4);
@@ -1077,10 +1074,12 @@ export function createScene() {
     if (fresh || !st.qaCache.t4) st.qaCache.t4 = fluidTest();
     // T5 (half-time ≤ 2 bars at the default mix) and T6 (mix knob 0 vs 1, 1× vs 6×: ≥ 3×), report-only first; only
     // meaningful once the fluid has run (the fluid variants)
-    if (fresh || !st.qaCache.t5) {
+    // (on the fluid views only: ?qa=fluid or the fluid scene; elsewhere the time average isn't a fluid's)
+    if ((fresh || !st.qaCache.t5) && !(st.fluidQa || st.scene === 'fluid')) st.qaCache.t5 = { t5: null, t5ok: null, t6: {}, t6ok: null, note: 'fluid views only' };
+    else if (fresh || !st.qaCache.t5) {
       const d = mixHalfTime(st.lastMix || 3), lo = mixHalfTime(1), hi = mixHalfTime(6);
-      // 1× not halved within the 900 frames: the ratio is a lower bound, 900 / the 6× half-time
-      const ratio = lo && hi && hi.halfFrames ? (lo.halfFrames || 900) / hi.halfFrames : null;
+      // 1× not halved within the 2400 frames: the ratio is a lower bound, 2400 / the 6× half-time
+      const ratio = lo && hi && hi.halfFrames ? (lo.halfFrames || 2400) / hi.halfFrames : null;
       st.qaCache.t5 = { t5: d, t5ok: d && d.halfBars !== null ? d.halfBars <= 2 : false,
         t6: { lo, hi, ratio: ratio === null ? null : +ratio.toFixed(2), lowerBound: !!(lo && !lo.halfFrames) }, t6ok: ratio !== null && ratio >= 3 };
     }
@@ -1132,11 +1131,11 @@ export const DETAIL = [
   { name: 'burstSize', type: 'float', default: 8, min: 2, max: 12 },          // #71 round 2: 2× (was 4)
   { name: 'sparks', type: 'float', default: 0.5, min: 0, max: 1 },             // was macro3
   { name: 'zoom', type: 'float', default: 1 / 3, min: 0, max: 1 },             // was macro4: F1's 40–112 sites across (64)
-  { name: 'splashGain', type: 'float', default: 0.9, min: 0, max: 2 },       // the rings' brightness at full contrast
+  { name: 'splashGain', type: 'float', default: 0.13, min: 0, max: 0.4 },    // the rings' linear luminance at full contrast
   { name: 'force', type: 'float', default: 0.0008, min: 0, max: 0.004 },     // F2's Kolmogorov stirring (flip probability)
   { name: 'maxSpb', type: 'long', default: 96, min: 64, max: 128 },          // F2's steps a beat at full zoom-out
   { name: 'scene', type: 'long', values: ['auto', 'F1', 'fluid'], default: 'auto' },
-  { name: 'fieldGain', type: 'float', default: 1.3, min: 0, max: 3 },          // F2: the fluid layer's brightness
+  { name: 'fieldGain', type: 'float', default: 1.45, min: 0, max: 3 },   // 1.3 → 1.45 (viz-171-3 fluid L 0.138–0.146, speed term now capped)          // F2: the fluid layer's brightness
   { name: 'emaMs', type: 'float', default: 150, min: 20, max: 2000 },        // F2: the block velocity's time average τ
   { name: 'nodes', type: 'float', default: 0.5, min: 0, max: 1 },
 ];
