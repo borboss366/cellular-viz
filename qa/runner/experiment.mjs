@@ -41,8 +41,9 @@ export const METRICS = {
   'audio.levelDuringDb': 'median RMS of the captured waveform while the excerpt plays, dBFS',
   'audio.levelAfterEndDb': 'loudest frame from 0.5 s after a noloop excerpt ends, dBFS',
   'audio.bandDiffDb.max': 'the largest per-band difference of the live band medians from the offline analysis, dB',
-  'audio.rowCorr.min': 'the lowest per-row Pearson of a row\'s glow with its band lane (best lag within ±100 ms)',
+  'audio.rowCorr.min': 'the lowest per-row Pearson of a row\'s glow with its band lane (best lag within ±100 ms), over the rows with ≥ 3 s of samples',
   'audio.frames': 'frames logged while the excerpt played',
+  'audio.rowsCounted': 'rows with ≥ 3 s of non-null samples, the ones audio.rowCorr.min is taken over',
 };
 export const KINDS = ['render', 'perf', 'audio', 'both'];   // #141: render = CPU (SwiftShader), perf = GPU, audio = a real track as the line input
 const TOP = ['$schema', 'version', 'id', 'page', 'note', 'params', 'resolutions', 'warmup', 'seconds', 'play', 'variants', 'sweep',

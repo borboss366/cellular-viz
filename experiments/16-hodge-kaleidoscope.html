@@ -704,7 +704,14 @@ function draw(now) {
   Object.assign(window.__qa, { preset: st.cur.name, genus: st.cur.genus, n: st.cur.n, morph: m, from: st.prev ? st.prev.name : null,
     bands: levels, flat, rowGlow, betti: rowSums(st.cur), bars, beats, floatOk, hold: holdOf(params.shapeRate), shapeRate: params.shapeRate,
     morphBeats: st.morphBeats, pop: st.popEnv, idx: st.idx });
-  audio.logFrame({ rows: rowGlow, lanes: levels });   // #141 audio checks: each row's glow and the band envelope it follows
+  // #141 audio checks (#159 ruling): each row's glow per unit Betti number and gain, which should follow its band lane
+  // (floor + (1 − floor)·L_k); 7 entries, null where the row has no cells (b_k = 0), its gain is 0, or a morph is running
+  const betti = rowSums(st.cur);
+  const rowNorm = Array.from({ length: 7 }, (_, k) => {
+    const b = betti[k] || 0, g = flat ? 1 : params.bandGains[k];
+    return st.prev || !(b > 0) || !(g > 0) ? null : rowGlow[k] / (b * g);
+  });
+  audio.logFrame({ rows: rowNorm, lanes: levels });
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
   if (now - lastHud > 200) {

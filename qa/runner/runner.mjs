@@ -166,13 +166,15 @@ function event(ev) {
   catch (e) { log(`event ${ev.type} not written: ${e.message}`); }
 }
 // qa/swipe-ready.sh's requests (swipe.mjs): a swipe-only job for a build that finished green without a swipe, at the
-// commit it was built from (only while the PR is open and its experiment ran at that commit)
+// commit it was built from: an open PR whose experiment ran at that commit, or a merged PR's build (swipe.mjs keeps
+// those to MERGED_DAYS; the runner forgot its expDone when it left, so runSwipe resolves the short commit itself)
 function takeSwipeRequests() {
   for (const r of takeRequests(CFG.state)) {
-    const b = latestBuilds().find(x => x.id === r.id), sha = b && (state.expDone || {})[b.pr];
-    if (!b || !sha || !sha.startsWith(String(b.commit || 'x'))) { log(`swipe request for ${r.id}: skipped (no experiment build of an open PR at that commit)`); continue; }
+    const b = latestBuilds().find(x => x.id === r.id), merged = b && b.status === 'merged';
+    const sha = b && (merged ? (/^[0-9a-f]{7,40}$/.test(String(b.commit || '')) ? b.commit : null) : (state.expDone || {})[b.pr]);
+    if (!b || !sha || !sha.startsWith(String(b.commit || 'x'))) { log(`swipe request for ${r.id}: skipped (no experiment build of an open or merged PR at that commit)`); continue; }
     if (b.swipe) { log(`swipe request for ${r.id}: skipped (it has a swipe already)`); continue; }
-    enqueue({ pr: b.pr, sha, kind: 'swipe', page: 'swipe', buildId: b.id, report: b.report, title: `swipe for ${b.id}`, at: new Date().toISOString() });
+    enqueue({ pr: b.pr, sha, merged, kind: 'swipe', page: 'swipe', buildId: b.id, report: b.report, title: `swipe for ${b.id}`, at: new Date().toISOString() });
   }
   save();
 }
@@ -318,8 +320,19 @@ async function oldSide(exp, job, tmp, page) {
   const r = exp.swipe.vs === 'base'
     ? await run('git', ['-C', WORK, 'merge-base', 'refs/runner/main', job.sha], { quiet: true })
     : await run('git', ['-C', WORK, 'rev-parse', '--verify', '-q', `${exp.swipe.vs}^{commit}`], { quiet: true });
-  const old = r.out.trim();
+  let old = r.out.trim();
   if (r.code !== 0 || !/^[0-9a-f]{40}$/.test(old)) return { args: [], error: `${exp.swipe.vs}: not in the PR's history or main` };
+  if (old === job.sha) {
+    // already merged: "base" is main before the merge, the first parent of the oldest merge commit that brought it in
+    const m = await run('git', ['-C', WORK, 'rev-list', '--ancestry-path', '--merges', `${job.sha}..refs/runner/main`], { quiet: true });
+    const M = m.code === 0 ? m.out.trim().split('\n').filter(Boolean).pop() : null;
+    const p = M ? await run('git', ['-C', WORK, 'rev-parse', '--verify', '-q', `${M}^1`], { quiet: true }) : null;
+    if (!p || p.code !== 0 || !/^[0-9a-f]{40}$/.test(p.out.trim())) {
+      log(`#${job.pr}: no main before the merge of ${job.sha.slice(0, 7)}; the swipe shows the new page only`);
+      return { args: [] };
+    }
+    old = p.out.trim();
+  }
   await unpack(old, 'experiments', path.join(tmp, 'old'));
   if (!fs.existsSync(path.join(tmp, 'old', 'experiments', `${exp.page || page}.html`))) {
     log(`#${job.pr}: ${exp.page || page} is new at ${old.slice(0, 7)}; the swipe shows the new page only`);
@@ -340,6 +353,11 @@ async function runSwipe(job) {
     await fetchRefs(job.pr);
     const b = latestBuilds().find(x => x.id === job.buildId);
     if (!b || !b.report) throw new Error(`no build ${job.buildId} with a report`);
+    if (!/^[0-9a-f]{40}$/.test(job.sha)) {   // a merged PR's build: its short commit, from pull/N/head or main
+      const c = await run('git', ['-C', WORK, 'rev-parse', '--verify', '-q', `${job.sha}^{commit}`], { quiet: true });
+      if (c.code !== 0 || !/^[0-9a-f]{40}$/.test(c.out.trim())) throw new Error(`commit ${job.sha} of ${job.buildId} not found`);
+      job.sha = c.out.trim();
+    }
     const raw = JSON.parse(await must('git', ['-C', WORK, 'show', `${job.sha}:qa/experiments/${job.pr}.json`]));
     const file = path.join(tmp, 'experiment.json');
     fs.writeFileSync(file, JSON.stringify(swipeOnlyRaw(raw), null, 1));
