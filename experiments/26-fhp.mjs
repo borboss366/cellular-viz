@@ -151,23 +151,94 @@ export function ringRadius(E, rMin = 4) {
   for (let b = Math.max(0, best - 3); b <= Math.min(n - 1, best + 3); b++) if (s[b] > 0) { w += s[b]; m += s[b] * (b + 0.5); }
   return { peak: best + 0.5, centroid: w > 0 ? m / w : best + 0.5, height: s[best] };
 }
-// the azimuthal density-peak radius (#155 ruling 4, the fallback estimator): the excess profile in `sectors`
-// angle sectors (summed over the centres), each sector's smoothed peak beyond rMin, averaged over the sectors
-export function ringRadiusAzimuthal(S, nq, nr, centres, spacing, { rMax = 40, rMin = 4, sectors = 12 } = {}) {
-  let total = 0; for (let k = 0; k < S.length; k++) total += POP[S[k]];
-  const mean = total / S.length, nb = Math.ceil(rMax), h = spacing / 2;
-  const sum = Array.from({ length: sectors }, () => new Float64Array(nb)), cnt = Array.from({ length: sectors }, () => new Float64Array(nb));
-  for (const [cq, cr] of centres) {
-    for (let dr = -h; dr < h; dr++) for (let dq = -h; dq < h; dq++) {
-      const x = dq + dr / 2, y = dr * S3, d = Math.hypot(x, y);
-      if (d >= rMax) continue;
-      const a = Math.min(sectors - 1, Math.floor((Math.atan2(y, x) + Math.PI) / (2 * Math.PI) * sectors));
-      const q = wrap(cq + dq, nq), r = wrap(cr + dr, nr), b = Math.floor(d);
-      sum[a][b] += POP[S[r * nq + q]] - mean; cnt[a][b]++;
-    }
+// ---------- the fluid (F2, truth 4) ----------
+// A lattice in the low-Mach FHP equilibrium p_i = d (1 + 2 e_i · u) of a divergence-free flow: u = (∂ψ/∂y, −∂ψ/∂x)
+// of a stream function ψ = Σ a_k sin(2π (m q / nq + n r / nr) + φ_k), periodic on the torus, scaled to |u| ≤ umax.
+// On screen ∂/∂x = ∂/∂q and ∂/∂y = (2 ∂/∂r − ∂/∂q) / √3.
+export function flowModes(seed, { count = 8, kMax = 6 } = {}) {
+  const R = rng(seed * 31 + 7), modes = [];
+  while (modes.length < count) {
+    const m = Math.round((R() * 2 - 1) * kMax), n = Math.round((R() * 2 - 1) * kMax);
+    if (m === 0 && n === 0) continue;
+    modes.push({ m, n, a: 0.5 + R(), ph: R() * 2 * Math.PI });
   }
-  const peaks = sum.map((s, a) => ringRadius(Float64Array.from(s, (v, b) => cnt[a][b] ? v / cnt[a][b] : 0), rMin).centroid);
-  return { radius: peaks.reduce((x, y) => x + y, 0) / sectors, peaks };
+  return modes;
+}
+export function flowAt(modes, q, r, nq, nr) {
+  let dq = 0, dr = 0;
+  for (const k of modes) {
+    const c = k.a * Math.cos(2 * Math.PI * (k.m * q / nq + k.n * r / nr) + k.ph);
+    dq += c * 2 * Math.PI * k.m / nq; dr += c * 2 * Math.PI * k.n / nr;
+  }
+  const dx = dq, dy = (2 * dr - dq) / Math.sqrt(3);   // ∂ψ/∂x, ∂ψ/∂y
+  return [dy, -dx];
+}
+// the flow itself, sampled at every site (scaled so the peak |u| is umax): { ux, uy, modes, scale }
+export function flowField(nq, nr, seed, { umax = 0.15, count = 8, kMax = 6 } = {}) {
+  const modes = flowModes(seed, { count, kMax });
+  let peak = 0;
+  for (let r = 0; r < nr; r += 8) for (let q = 0; q < nq; q += 8) { const [ux, uy] = flowAt(modes, q, r, nq, nr); peak = Math.max(peak, Math.hypot(ux, uy)); }
+  const k = peak > 0 ? umax / peak : 0, ux = new Float32Array(nq * nr), uy = new Float32Array(nq * nr);
+  for (let r = 0; r < nr; r++) for (let q = 0; q < nq; q++) { const u = flowAt(modes, q, r, nq, nr); ux[r * nq + q] = u[0] * k; uy[r * nq + q] = u[1] * k; }
+  return { ux, uy, modes, scale: k };
+}
+// a lattice drawn from the equilibrium of a sampled flow; particleSeed picks the particles (replicas of one flow)
+export function latticeFromFlow(field, nq, nr, d, particleSeed) {
+  const R = rng(particleSeed), S = new Uint8Array(nq * nr), { ux, uy } = field;
+  for (let k = 0; k < S.length; k++) {
+    let s = 0;
+    for (let i = 0; i < 6; i++) if (R() < Math.min(1, Math.max(0, d * (1 + 2 * (SCREEN[i][0] * ux[k] + SCREEN[i][1] * uy[k]))))) s |= 1 << i;
+    S[k] = s;
+  }
+  return S;
+}
+export function flowLattice(nq, nr, d, seed, opts = {}) {
+  const field = flowField(nq, nr, seed, opts);
+  return { S: latticeFromFlow(field, nq, nr, d, seed), modes: field.modes, scale: field.scale };
+}
+// RMS divergence and curl of a coarse velocity field on a w × h grid of blocks, each B sites a side in q and r
+// (periodic). V: [vx, vy] per block, row-major (row = r). Central differences, then the screen chain rule above.
+export function divCurl(V, w, h, B) {
+  const at = (x, y) => V[((y + h) % h) * w + ((x + w) % w)];
+  let d2 = 0, c2 = 0, n = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const xp = at(x + 1, y), xm = at(x - 1, y), yp = at(x, y + 1), ym = at(x, y - 1);
+    const dqx = (xp[0] - xm[0]) / (2 * B), dqy = (xp[1] - xm[1]) / (2 * B), drx = (yp[0] - ym[0]) / (2 * B), dry = (yp[1] - ym[1]) / (2 * B);
+    const dxvx = dqx, dxvy = dqy, dyvx = (2 * drx - dqx) / Math.sqrt(3), dyvy = (2 * dry - dqy) / Math.sqrt(3);
+    const div = dxvx + dyvy, curl = dxvy - dyvx;
+    d2 += div * div; c2 += curl * curl; n++;
+  }
+  const divRMS = Math.sqrt(d2 / n), curlRMS = Math.sqrt(c2 / n);
+  return { divRMS, curlRMS, ratio: curlRMS > 0 ? divRMS / curlRMS : Infinity };
+}
+// the same with the particle noise taken out: VA and VB are two independent measurements of one flow (two halves
+// of the replicas), so their noise is uncorrelated and ⟨div_A · div_B⟩ estimates the flow's own div² (likewise curl).
+// ratio = sqrt(max(0, ⟨dA dB⟩) / ⟨cA cB⟩); the plain one-field ratio of the mean is returned too.
+export function divCurlCross(VA, VB, w, h, B) {
+  const field = V => {
+    const at = (x, y) => V[((y + h) % h) * w + ((x + w) % w)], out = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const xp = at(x + 1, y), xm = at(x - 1, y), yp = at(x, y + 1), ym = at(x, y - 1);
+      const dqx = (xp[0] - xm[0]) / (2 * B), dqy = (xp[1] - xm[1]) / (2 * B), drx = (yp[0] - ym[0]) / (2 * B), dry = (yp[1] - ym[1]) / (2 * B);
+      const dyvx = (2 * drx - dqx) / Math.sqrt(3), dyvy = (2 * dry - dqy) / Math.sqrt(3);
+      out.push([dqx + dyvy, dqy - dyvx]);
+    }
+    return out;
+  };
+  const A = field(VA), Bf = field(VB);
+  let dd = 0, cc = 0, d2 = 0, c2 = 0, ddSq = 0;
+  for (let k = 0; k < A.length; k++) {
+    const pd = A[k][0] * Bf[k][0];
+    dd += pd; ddSq += pd * pd; cc += A[k][1] * Bf[k][1];
+    const dm = (A[k][0] + Bf[k][0]) / 2, cm = (A[k][1] + Bf[k][1]) / 2; d2 += dm * dm; c2 += cm * cm;
+  }
+  // the signed cross terms (div² can come out below 0: noise only), the spread of the div² estimate over the blocks,
+  // and an upper bound: the div that the estimate + 2σ allows (#165 viz-165-4: a clamped 0 can't be gated on)
+  const n = A.length, ddMean = dd / n, ccMean = cc / n, ddSigma = Math.sqrt(Math.max(0, ddSq / n - ddMean * ddMean) / n);
+  const divSignal = Math.sqrt(Math.max(0, ddMean)), curlSignal = Math.sqrt(Math.max(0, ccMean)), divUpper = Math.sqrt(Math.max(0, ddMean + 2 * ddSigma));
+  return { divSignal, curlSignal, ratio: curlSignal > 0 ? divSignal / curlSignal : Infinity, ddMean, ddSigma, ccMean,
+    divUpper, ratioUpper: curlSignal > 0 ? divUpper / curlSignal : Infinity,
+    plainRatio: Math.sqrt(d2) / Math.max(1e-30, Math.sqrt(c2)), divRMS: Math.sqrt(d2 / n), curlRMS: Math.sqrt(c2 / n) };
 }
 // the whole measurement on the CPU (node's truth 3): steps t1 and t2, speed = Δradius / Δt
 export function soundSpeedCPU({ nq = 768, nr = 768, d = 0.25, amp = 0.1, radius = 5, spacing = 96, seed = 7, t1 = 20, t2 = 40 } = {}) {
@@ -175,9 +246,8 @@ export function soundSpeedCPU({ nq = 768, nr = 768, d = 0.25, amp = 0.1, radius 
   let T = new Uint8Array(S.length), r1 = null, r2 = null;
   for (let t = 0; t < t2; t++) {
     stepCPU(S, nq, nr, t, seed, T); [S, T] = [T, S];
-    if (t + 1 === t1) { r1 = ringRadius(ringProfile(S, nq, nr, centres, spacing).E); r1.az = ringRadiusAzimuthal(S, nq, nr, centres, spacing).radius; }
+    if (t + 1 === t1) { r1 = ringRadius(ringProfile(S, nq, nr, centres, spacing).E); }
   }
-  r2 = ringRadius(ringProfile(S, nq, nr, centres, spacing).E); r2.az = ringRadiusAzimuthal(S, nq, nr, centres, spacing).radius;
-  return { rings: centres.length, r1, r2, speed: (r2.centroid - r1.centroid) / (t2 - t1), speedPeak: (r2.peak - r1.peak) / (t2 - t1),
-    speedAz: (r2.az - r1.az) / (t2 - t1), theory: Math.SQRT1_2 };
+  r2 = ringRadius(ringProfile(S, nq, nr, centres, spacing).E);
+  return { rings: centres.length, r1, r2, speed: (r2.centroid - r1.centroid) / (t2 - t1), speedPeak: (r2.peak - r1.peak) / (t2 - t1), theory: Math.SQRT1_2 };
 }

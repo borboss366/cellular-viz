@@ -19,6 +19,13 @@
   conserveTest(), soundSpeed(), mass(), momentum(), lut, rings (bursts), step, massHistory, view, metrics, events
   (Clock.qaEvents), beatLog / frame / beatLanes / audioIn (audio-in), setMacro(i,v), macros, pressTrigger(i,holdMs),
   releaseTrigger(i), triggers, triggerLog, triggerEnv, forceDrop() (panic.js), bars, beats, bpm, errors.
+  Scene F2 Zoom to fluid (scene auto, 16-bar song): bars 12–15 the build pulls the camera back from the particles
+  to the whole 2048 × 1152 torus while the gas speeds up to 64 steps a beat; the drop (bar 0) lands fully zoomed
+  out: the flow, time-averaged over blocks of B = 8 … 64 sites, carries bands of dye in smooth swirls (the gas
+  starts in the equilibrium of a few large vortices; a kick stirs a small vortex, the drop a vortex pair); bars 4–7
+  zoom back in to F1. ?scene=auto|F1|fluid, ?lattice=2048|1024 (#155 ruling 2's fallback), ?qa=fluid (fully zoomed
+  out, no stirs: truth 4 and the GPU budget), ?emaMs=, ?fieldGain=. __qa.coarse(B) → {divRMS, curlRMS, ratio}
+  (truth 4: ratio < 0.1 at B = 16), check().t4.
   The look (#155 ruling): every frame's dots go into a persistence buffer that decays with persist (100 ms), so a
   passing dot leaves a short comet and the screen holds a steady neon glow, plus a bloom; the kick lifts the bloom
   and the saturation (audio-in's kick envelope, 150 ms tail). __qa.lumMean: the frame's mean luminance (≥ 0.15 wanted).
@@ -82,7 +89,8 @@
     <button id="t1">Z burst</button><button id="t2">X big burst</button><button id="t3">C freeze (hold)</button><button id="t4">V scatter</button>
   </div>
   <h3>Detail</h3>
-  <div class="buttons"><button id="palette">palette: prism</button></div>
+  <div class="buttons"><button id="palette">palette: prism</button><button id="scene">scene: auto</button></div>
+  <div class="row"><label for="fieldGain">fluid light</label><input id="fieldGain" type="range" min="0" max="3" step="0.05"><output id="fieldGainOut"></output></div>
   <div class="row"><label for="dotLum">dot light</label><input id="dotLum" type="range" min="0.02" max="0.12" step="0.002"><output id="dotLumOut"></output></div>
   <div class="row"><label for="persist">persist ms</label><input id="persist" type="range" min="30" max="300" step="5"><output id="persistOut"></output></div>
   <div class="row"><label for="bloom">bloom</label><input id="bloom" type="range" min="0" max="4" step="0.05"><output id="bloomOut"></output></div>
@@ -119,7 +127,8 @@ for (const d of DETAIL) {
   else { const v = num(d.name, d.min, d.max); if (v !== null) params[d.name] = d.type === 'long' ? Math.round(v) : v; }
 }
 for (const [k, lo, hi] of [['bpm', 60, 180], ['startBar', 0, 4096]]) { const v = num(k, lo, hi); if (v !== null) params[k] = v; }
-params.conserve = q('qa') === 'conserve'; params.labels = q('labels') !== '0'; params.muted = q('muted') === '1';
+params.conserve = q('qa') === 'conserve'; params.fluidQa = q('qa') === 'fluid'; params.lattice = q('lattice') === '1024' ? 1024 : 2048;
+params.labels = q('labels') !== '0'; params.muted = q('muted') === '1';
 
 // ---------- the shared clock (#95) and audio input (#135) ----------
 // Beats come from clock.read() (heard, with the visual offset); kick and hat from audio-in. audio.frameStart(now)
@@ -158,13 +167,16 @@ window.addEventListener('keydown', e => {
   const k = 'zxcv'.indexOf(e.key.toLowerCase());
   if (k >= 0) { e.preventDefault(); pressTrigger(k + 1); }
 });
-const SLIDERS = { dotLum: 3, persist: 0, bloom: 2, sat: 2, exposure: 2, burstSize: 1, nodes: 2, bpm: 0 };
+const SLIDERS = { dotLum: 3, persist: 0, bloom: 2, sat: 2, fieldGain: 2, exposure: 2, burstSize: 1, nodes: 2, bpm: 0 };
+const SCENES = ['auto', 'F1', 'fluid'];
+$('scene').onclick = () => { params.scene = SCENES[(SCENES.indexOf(params.scene) + 1) % SCENES.length]; sync(); };
 for (const name of Object.keys(SLIDERS)) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); sync(); });
 $('palette').onclick = () => { params.palette = PALETTES[(PALETTES.indexOf(params.palette) + 1) % PALETTES.length]; sync(); };
 function sync() {
   for (let i = 1; i <= 4; i++) { $('m' + i).value = params.macro[i - 1]; $('m' + i + 'Out').textContent = macroText(i - 1); }
   for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
   $('mute').classList.toggle('on', params.muted); $('palette').textContent = `palette: ${params.palette}`;
+  $('scene').textContent = `scene: ${params.scene}`;
 }
 $('play').onclick = () => {
   if (metronome.playing) { metronome.stop(); $('play').textContent = '▶ Play'; }
@@ -176,6 +188,7 @@ const controls = () => ({
   macro: params.macro, density: densityOf(params.macro[0]), tempo: params.macro[1], sparks: params.macro[2], zoom: params.macro[3],
   palette: params.palette, dotLum: params.dotLum, persist: params.persist, core: params.core, bloom: params.bloom, sat: params.sat,
   exposure: params.exposure, burstSize: params.burstSize, nodes: params.nodes, conserve: params.conserve,
+  scene: params.scene, fieldGain: params.fieldGain, emaMs: params.emaMs,
 });
 window.__modules = { '26-lattice-gas': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
 
@@ -211,7 +224,7 @@ function draw(now) {
     lastHud = now;
     const s = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
     const bar = ((Math.floor(beats / bpb) % 16) + 16) % 16;
-    hud.textContent = `26 lattice gas · F1 particle rain · bar ${bar}/16 · ${v.stepsPerBeat} steps a beat · density ${v.density ?? '…'}${v.conserve ? ' · conserve' : ''}${v.frozen ? ' · frozen' : ''} · ${params.bpm} bpm · ${s}\n${canvas.width}×${canvas.height} · ${fps} fps`;
+    hud.textContent = `26 lattice gas · ${v.scene} (zoom ${v.zoom}, B ${v.blockB}) · ${v.lattice} · bar ${bar}/16 · ${v.stepsPerBeat} steps a beat · density ${v.density ?? '…'}${v.conserve ? ' · conserve' : ''}${v.frozen ? ' · frozen' : ''} · ${params.bpm} bpm · ${s}\n${canvas.width}×${canvas.height} · ${fps} fps`;
   }
 }
 
@@ -232,7 +245,7 @@ expose({
 AudioIn.qa(audio, window.__qa);   // beatLog, frame, beatLanes, events (Clock.qaEvents), audioIn
 if (!gl) { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2'); }
 else {
-  try { resize(); scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed, conserve: params.conserve }); }
+  try { resize(); scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed, conserve: params.conserve, lattice: params.lattice, scene: params.scene, fluidQa: params.fluidQa }); }
   catch (e) { errors.push(String(e && e.stack || e)); hud.textContent = 'init error: ' + e.message; }
   sync();
   requestAnimationFrame(frame);
