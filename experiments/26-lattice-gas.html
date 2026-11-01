@@ -1,0 +1,234 @@
+<!doctype html>
+<!--
+  26 · Lattice Gas (FHP)   (spec: VIZ research, #71; mock-ups: docs/proposals/fhp, #51)
+
+  FHP-I, the cellular automaton that becomes Navier–Stokes: particles hop along the links of a hexagonal lattice and
+  collide by rules that keep mass and momentum exactly (a head-on pair turns ±60°, a symmetric triple flips). This
+  page is scene F1, Particle rain, the micro view: about 64 × 36 sites of a 256 × 128 torus, every particle a dot
+  gliding along its link, coloured by its direction, a white spark where a collision turned it. F2–F6 come later on
+  the same engine. The scene is a #85 module (26-lattice-gas.mjs); the engine reference (node runs it) is 26-fhp.mjs.
+  The gas steps on the shared clock (clock.js): macro 2 steps a beat; the drums come from audio-in.js.
+  Music: each kick bursts particles out at a random spot, hats brighten the sparks, bar 0 of every 16-bar section
+  (#88's drop) bursts big in the middle.
+
+  Controls (#85): macro1 density (0.10–0.40 a link), macro2 steps a beat (2/4/8/16), macro3 sparks, macro4 zoom out
+  (40–112 sites across). Triggers: 1 burst (now), 2 big burst (next beat), 3 freeze (hold), 4 scatter (next beat);
+  keys Z X C V.
+  window.__qa: check() (truth 1: GPU mass and momentum exact over 40 steps on 6 lattices, the state equal to the CPU
+  reference bit for bit, the 64-entry table exhaustive; truth 3: weak-pulse sound speed vs 1/√2 over 64 rings),
+  conserveTest(), soundSpeed(), mass(), momentum(), lut, rings (bursts), step, massHistory, view, metrics, events
+  (Clock.qaEvents), beatLog / frame / beatLanes / audioIn (audio-in), setMacro(i,v), macros, pressTrigger(i,holdMs),
+  releaseTrigger(i), triggers, triggerLog, triggerEnv, forceDrop() (panic.js), bars, beats, bpm, errors.
+  ?macro1..4=0..1, ?palette=prism|ice, ?seed=, ?dotLum=, ?exposure=, ?burstSize=, ?nodes=, ?qa=conserve (no bursts,
+  source or sink: the live mass stays exact), ?startBar=, ?bpm=, ?muted=1, ?clock=metronome, ?audio=clock, ?labels=0.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>26 · Lattice Gas</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #03040a; color: #e6ebff;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 16 / 9;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #7fd6ff; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 104px; flex: none; color: #c6cde6; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 64px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #253052; border-radius: 8px;
+    background: #0e1324; color: inherit; font: inherit; }
+  button.on { background: #233a7a; border-color: #5aa0ff; }
+  a { color: #7fd6ff; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(62vw, calc(100vh * 16 / 9)); margin: 0; position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Macros</h3>
+  <div class="row"><label for="m1">1 density</label><input id="m1" type="range" min="0" max="1" step="0.01"><output id="m1Out"></output></div>
+  <div class="row"><label for="m2">2 steps a beat</label><input id="m2" type="range" min="0" max="1" step="0.01"><output id="m2Out"></output></div>
+  <div class="row"><label for="m3">3 sparks</label><input id="m3" type="range" min="0" max="1" step="0.01"><output id="m3Out"></output></div>
+  <div class="row"><label for="m4">4 zoom out</label><input id="m4" type="range" min="0" max="1" step="0.01"><output id="m4Out"></output></div>
+  <h3>Triggers</h3>
+  <div class="buttons">
+    <button id="t1">Z burst</button><button id="t2">X big burst</button><button id="t3">C freeze (hold)</button><button id="t4">V scatter</button>
+  </div>
+  <h3>Detail</h3>
+  <div class="buttons"><button id="palette">palette: prism</button></div>
+  <div class="row"><label for="dotLum">dot light</label><input id="dotLum" type="range" min="0.02" max="0.12" step="0.002"><output id="dotLumOut"></output></div>
+  <div class="row"><label for="exposure">exposure</label><input id="exposure" type="range" min="0.5" max="2" step="0.01"><output id="exposureOut"></output></div>
+  <div class="row"><label for="burstSize">burst size</label><input id="burstSize" type="range" min="2" max="8" step="0.1"><output id="burstSizeOut"></output></div>
+  <div class="row"><label for="nodes">lattice</label><input id="nodes" type="range" min="0" max="1" step="0.01"><output id="nodesOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <a href="../index.html">← all experiments</a>
+</div>
+<script>
+  // #88 drop hook, before panic.js so its forceDrop attaches at once: the drop is bar 0 of each 16-bar section
+  window.__qaNextDrop = b => window.__qaSectionDrop(b, 16, 0);
+  window.__qa = window.__qa || {};
+</script>
+<script src="panic.js"></script>
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
+<script type="module">
+import scene, { MACROS, TRIGGERS, DETAIL, PALETTES, stepsPerBeatOf, densityOf, sitesAcrossOf } from './26-lattice-gas.mjs';
+const $ = id => document.getElementById(id);
+const query = new URLSearchParams(location.search);
+const def = Object.fromEntries(DETAIL.map(d => [d.name, d.default]));
+// the live settings object: the clock reads bpm, bpb, muted and the drum patterns from it at every step
+const params = { bpm: 120, bpb: 4, muted: false, startBar: 0, labels: true, conserve: false,
+  macro: MACROS.map(m => m.default), ...def,
+  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+
+// ---------- URL settings ----------
+const q = k => query.get(k), num = (k, lo, hi) => { const v = parseFloat(q(k)); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null; };
+for (let i = 1; i <= 4; i++) { const v = num('macro' + i, 0, 1); if (v !== null) params.macro[i - 1] = v; }
+for (const d of DETAIL) {
+  if (d.values) { if (d.values.includes(q(d.name))) params[d.name] = q(d.name); }
+  else { const v = num(d.name, d.min, d.max); if (v !== null) params[d.name] = d.type === 'long' ? Math.round(v) : v; }
+}
+for (const [k, lo, hi] of [['bpm', 60, 180], ['startBar', 0, 4096]]) { const v = num(k, lo, hi); if (v !== null) params[k] = v; }
+params.conserve = q('qa') === 'conserve'; params.labels = q('labels') !== '0'; params.muted = q('muted') === '1';
+
+// ---------- the shared clock (#95) and audio input (#135) ----------
+// Beats come from clock.read() (heard, with the visual offset); kick and hat from audio-in. audio.frameStart(now)
+// opens each frame and audio.due(BEAT_LANES) follows the read: each kick it hands out is a burst in this frame, and
+// it logs every hit in __qa.beatLog for the beat-match row. Not playing: beats from performance.now at the BPM, and
+// the kicks from the pattern, so the gas never stands still.
+const metronome = Clock.create({ source: q('clock') || 'metronome', settings: params });
+const BEAT_LANES = ['kick', 'hat'];   // kick → a burst, hat → brighter sparks
+const audio = AudioIn.create({ clock: metronome, source: q('audio') || 'clock' }).start();
+let clockStart = performance.now(), lastBeats = null;
+function clockRead(now) {
+  const mb = metronome.read().beats;
+  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60) + (params.startBar + (window.__qaShift || 0)) * params.bpb;
+  return { beats, bpb: params.bpb };
+}
+// the pattern's kicks between two beat positions (16ths), when the clock isn't playing
+function patternKicks(b0, b1) {
+  if (b0 === null || b1 <= b0 || b1 - b0 > 1) return 0;
+  let n = 0; for (let k = Math.floor(b0 * 4) + 1; k <= Math.floor(b1 * 4); k++) if (params.kick[((k % 16) + 16) % 16] === 'x') n++;
+  return Math.min(n, 2);
+}
+
+// ---------- controls (#85 contract) ----------
+const macroText = i => i === 0 ? densityOf(params.macro[0]).toFixed(2) : i === 1 ? `${stepsPerBeatOf(params.macro[1])}` : i === 3 ? `${Math.round(sitesAcrossOf(params.macro[3]))}` : params.macro[i].toFixed(2);
+function setMacro(i, v) { if (!(i >= 1 && i <= 4)) return null; params.macro[i - 1] = Math.max(0, Math.min(1, +v)); sync(); return params.macro[i - 1]; }
+for (let i = 1; i <= 4; i++) $('m' + i).addEventListener('input', e => setMacro(i, parseFloat(e.target.value)));
+function pressTrigger(i, holdMs = 0) { if (!(i >= 1 && i <= 4)) return false; return scene.press(i, holdMs, performance.now()); }
+function releaseTrigger(i) { return scene.release(i, performance.now()); }
+for (const i of [1, 2, 4]) $('t' + i).onclick = () => pressTrigger(i);
+$('t3').addEventListener('pointerdown', e => { e.preventDefault(); pressTrigger(3); });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) $('t3').addEventListener(ev, () => releaseTrigger(3));
+window.addEventListener('keyup', e => { if (e.key.toLowerCase() === 'c') releaseTrigger(3); });
+window.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;   // Shift is the clock's hand-fix keys
+  if (e.target && (e.target.tagName === 'TEXTAREA' || (e.target.tagName === 'INPUT' && e.target.type === 'text'))) return;
+  const k = 'zxcv'.indexOf(e.key.toLowerCase());
+  if (k >= 0) { e.preventDefault(); pressTrigger(k + 1); }
+});
+const SLIDERS = { dotLum: 3, exposure: 2, burstSize: 1, nodes: 2, bpm: 0 };
+for (const name of Object.keys(SLIDERS)) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); sync(); });
+$('palette').onclick = () => { params.palette = PALETTES[(PALETTES.indexOf(params.palette) + 1) % PALETTES.length]; sync(); };
+function sync() {
+  for (let i = 1; i <= 4; i++) { $('m' + i).value = params.macro[i - 1]; $('m' + i + 'Out').textContent = macroText(i - 1); }
+  for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
+  $('mute').classList.toggle('on', params.muted); $('palette').textContent = `palette: ${params.palette}`;
+}
+$('play').onclick = () => {
+  if (metronome.playing) { metronome.stop(); $('play').textContent = '▶ Play'; }
+  else { metronome.start(); clockStart = performance.now(); lastBeats = null; scene.reset(); $('play').textContent = '■ Stop'; }
+};
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen()).catch(() => {}); };
+const controls = () => ({
+  macro: params.macro, density: densityOf(params.macro[0]), tempo: params.macro[1], sparks: params.macro[2], zoom: params.macro[3],
+  palette: params.palette, dotLum: params.dotLum, exposure: params.exposure, burstSize: params.burstSize, nodes: params.nodes, conserve: params.conserve,
+});
+window.__modules = { '26-lattice-gas': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
+
+// ---------- canvas, scene ----------
+const canvas = $('c'), hud = $('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false });
+const errors = [];
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(3840, Math.round(canvas.clientWidth * dpr)), h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; scene.resize(w, h); }
+}
+let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
+function frame(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt (audio clock)
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; if (window.__panicError) window.__panicError(); }
+}
+function draw(now) {
+  resize();
+  const { beats, bpb } = clockRead(now);
+  const A = audio.read();
+  const due = audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
+  const kicks = metronome.playing ? Math.min(2, due.filter(h => h.lane === 'kick').length) : patternKicks(lastBeats, beats);
+  lastBeats = beats;
+  window.__qaNowBars = beats / bpb;
+  scene.frame({ target: null, t: now / 1000, beats, bpb, bpm: params.bpm, controls: controls(), kicks, hat: A.hat, now });
+  const v = scene.qa.view;
+  Object.assign(window.__qa, { beats, bars: beats / bpb, bpm: params.bpm, view: v, metrics: scene.qa.metrics });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200 && params.labels) {
+    lastHud = now;
+    const s = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
+    const bar = ((Math.floor(beats / bpb) % 16) + 16) % 16;
+    hud.textContent = `26 lattice gas · F1 particle rain · bar ${bar}/16 · ${v.stepsPerBeat} steps a beat · density ${v.density ?? '…'}${v.conserve ? ' · conserve' : ''}${v.frozen ? ' · frozen' : ''} · ${params.bpm} bpm · ${s}\n${canvas.width}×${canvas.height} · ${fps} fps`;
+  }
+}
+
+// ---------- QA ----------
+// getters stay getters on window.__qa (Object.assign would copy their values once)
+const expose = o => { for (const [k, d] of Object.entries(Object.getOwnPropertyDescriptors(o))) Object.defineProperty(window.__qa, k, { ...d, configurable: true, enumerable: true }); };
+const S = scene.qa;
+// check() runs the truths once and keeps them (they stall the GPU for a moment; the runner reads them after its window)
+expose({
+  errors, setMacro, pressTrigger, releaseTrigger, triggers: TRIGGERS, clock: metronome,
+  get macros() { return MACROS.map((m, i) => ({ slot: m.slot, name: m.name, label: m.label, value: params.macro[i], default: m.default, shown: macroText(i) })); },
+  get triggerLog() { return S.triggerLog; }, get triggerEnv() { return S.triggerEnv; },
+  check: fresh => S.check(fresh), conserveTest: o => S.conserveTest(o), soundSpeed: o => S.soundSpeed(o),
+  mass: () => S.mass(), momentum: () => S.momentum(), lut: S.lut,
+  get rings() { return S.rings; }, get step() { return S.step; }, get massHistory() { return S.massHistory; },
+});
+AudioIn.qa(audio, window.__qa);   // beatLog, frame, beatLanes, events (Clock.qaEvents), audioIn
+if (!gl) { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2'); }
+else {
+  try { resize(); scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed, conserve: params.conserve }); }
+  catch (e) { errors.push(String(e && e.stack || e)); hud.textContent = 'init error: ' + e.message; }
+  sync();
+  requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>
