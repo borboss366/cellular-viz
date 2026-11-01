@@ -12,6 +12,7 @@
     { "name": "dense", "params": { "macro1": "1", "macro3": "1", "macro4": "0" } },
     { "name": "drop", "params": { "startBar": "13" } }
   ],
+  "shared": { "variants": ["fast"] },
   "values": {
     "truths": "__qa.check().ok",
     "t1": "__qa.check().t1.ok",
