@@ -32,6 +32,7 @@ import { sync as boardSync } from './board.mjs';
 import { runShared, experimentPage, sharedPasses } from './shared.mjs';
 import { addTodo } from './todo.mjs';
 import { audioDir, scanTracks } from './audio.mjs';
+import { settled } from './settle.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -124,6 +125,16 @@ function buildLines() {
 function latestBuilds() { const m = new Map(); for (const b of buildLines()) m.set(b.id, b); return [...m.values()]; }
 const builds = (...a) => must('node', [BUILDS_CLI, ...a], { cwd: CFG.qaHome });
 function appendBuild(b) { b.at = new Date().toISOString(); fs.appendFileSync(BUILDS_FILE, JSON.stringify(b) + '\n'); }
+// a finished build with every gated row passing and no swipe run stays "running" after builds.mjs finish: settle it to
+// ready (or failed), so /builds, the board and the reporter stop showing it as running (settle.mjs). Returns the new
+// `finish`-style result line, or the one given when nothing changed.
+function settleBuild(id, line) {
+  const b = latestBuilds().find(x => x.id === id), s = settled(b);
+  if (!s) return line;
+  b.status = s.status; b.waitingOn = s.waitingOn; appendBuild(b);
+  log(`${id} settled: ${s.status}, waiting on ${s.waitingOn}`);
+  return `${id} ${s.status} ${b.gates.filter(g => g.ok).length}/${b.gates.length}`;
+}
 
 // ---------- watching ----------
 function enqueue(job) {
@@ -339,7 +350,7 @@ async function runExperiment(job, gate) {
       fs.cpSync(path.join(tree, 'qa', swipe.dir), path.join(CFG.qaHome, 'qa', swipe.dir), { recursive: true });
       fin.push('--swipe', swipe.url);
     }
-    result = (await builds(...fin)).trim();
+    result = settleBuild(id, (await builds(...fin)).trim());
   } catch (e) {
     log(`experiment for #${job.pr} broke: ${e.message}`);
     try { await fail('the runner could prepare the experiment', e.message, 'qa-box'); } catch (e2) { log(`could not record the failure: ${e2.message}`); }
@@ -389,7 +400,7 @@ async function runBuild(job, gate) {
       log(`shared gates for ${job.page} (no own check) took ${((Date.now() - t0) / 60e3).toFixed(1)} min`);
       saveGate(fallback, gate);
       report = reportPath(fallback);
-      result = (await builds('finish', '--id', id, '--check', fallback)).trim();
+      result = settleBuild(id, (await builds('finish', '--id', id, '--check', fallback)).trim());
       return;
     }
     await builds('set', '--id', id, '--status', 'running');
@@ -415,7 +426,7 @@ async function runBuild(job, gate) {
     saveGate(dest, gate);
     report = reportPath(dest);
     const fin = await builds('finish', '--id', id, '--check', dest);
-    result = fin.trim();
+    result = settleBuild(id, fin.trim());
   } catch (e) {
     log(`build ${id} broke: ${e.message}`);
     const dir = path.join(CFG.qaHome, 'qa', job.page, 'checks', `${stamp}-runner`);
@@ -613,4 +624,9 @@ if (!fs.existsSync(BUILDS_CLI)) log(`warning: ${BUILDS_CLI} not found; set QA_HO
 log(`runner up: ${CFG.repo}, checks from ${CFG.checksRef}, authors ${CFG.authors.join(',')}, label ${CFG.label}, every ${CFG.poll} s, state ${CFG.state}, GPU idle ≤ ${GPU.idleMax} % (${GPU.file})`);
 { const a = scanTracks(CFG.audioDir); log(`tracks (QA_AUDIO_DIR ${CFG.audioDir}): ${a.present.length}/4 present${a.missing.length ? `, missing ${a.missing.join(', ')} (their gates are skipped)` : ''}`); }
 if (state.queue.length) log(`resuming ${state.queue.length} queued build(s)`);
+// builds finished before settleBuild existed (e.g. viz-155-4, viz-159-1 on 1 Nov) still say "running": settle them once
+if (!CFG.once) {
+  try { for (const b of latestBuilds()) if (settled(b)) settleBuild(b.id); }
+  catch (e) { log(`could not settle old builds: ${e.message}`); }
+}
 tick();
