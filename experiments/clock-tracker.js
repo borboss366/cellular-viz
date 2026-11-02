@@ -289,7 +289,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       return { lane, R: { broad: r3(laneLast.broad.R), low: r3(laneLast.low.R) }, n: { broad: laneLast.broad.n, low: laneLast.low.n },
         phase: { broad: r3(laneLast.broad.phase), low: r3(laneLast.low.phase) },
         Rmean: laneAcc.n ? { broad: r3(laneAcc.broad / laneAcc.n), low: r3(laneAcc.low / laneAcc.n) } : null,
-        switches: laneLog.slice(-8), side: { offset: sideOffset, moves: sideLog.slice(-4), atLock: sideAtLock, last: sideLast }, jumps: jumps.slice(-8).map(j => `${j.kind}@${j.at.toFixed(2)}`),
+        switches: laneLog.slice(-8), side: { offset: sideOffset, moves: sideLog.slice(-4), atLock: sideAtLock, last: sideLast }, lowLagMs: +(1000 * lowLag()).toFixed(1), lowLagPairs: lowLags.length, jumps: jumps.slice(-8).map(j => `${j.kind}@${j.at.toFixed(2)}`),
         afterJump: j0 === null ? [] : stateLog.filter(s => s.t >= j0).slice(0, 16).map(s => `${s.state}@${s.t.toFixed(2)}`) };
     }
     function logJump(t, kind, from, to) { const j = { type: 'jump', at: t, kind, fromBeats: from, toBeats: to }; jumps.push(j); return j; }
@@ -499,6 +499,35 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       return o;
     }
 
+    // The low lane hears a kick later than the broadband lane (its flux peaks with the kick's body, not its click):
+    // viz-183-11 steered Sandstorm on the low lane and every hit came 45–80 ms late while the broadband onsets sat on
+    // the references (bias 2.6 ms). ANALYSIS_DELAY_MS is the broadband lane's delay, so the low lane's extra lag is
+    // measured on the music itself: each low onset is paired with the nearest broadband onset within 60 ms (whichever
+    // comes first), and low onsets are moved earlier by the median of the last 32 lags (from 4 pairs on).
+    const lowLags = [];
+    const lowLag = () => lowLags.length < 4 ? 0 : median(lowLags);
+    function nearest(list, t, field) {
+      let best = null;
+      for (let i = list.length - 1; i >= 0 && list[i][field] > t - 0.1; i--) {
+        const o = list[i];
+        if (o.paired || Math.abs(o[field] - t) > 0.06) continue;
+        if (!best || Math.abs(o[field] - t) < Math.abs(best[field] - t)) best = o;
+      }
+      return best;
+    }
+    function lowLagPair(ob, ol) {
+      if (ol) {
+        ol.raw = ol.t;
+        const nb = nearest(lanes.broad.onsets, ol.raw, 't');
+        if (nb) { nb.paired = ol.paired = true; lowLags.push(ol.raw - nb.t); if (lowLags.length > 32) lowLags.shift(); }
+        ol.t = ol.raw - lowLag();
+      }
+      if (ob && !ob.paired) {
+        const nl = nearest(lanes.low.onsets, ob.t, 'raw');
+        if (nl) { nl.paired = ob.paired = true; lowLags.push(nl.raw - ob.t); if (lowLags.length > 32) lowLags.shift(); }
+      }
+    }
+
     function push(f) {
       const t = f.t;
       if (lastT !== null) { const d = t - lastT; if (d > 0 && d < 0.1) dtHop = 0.9 * dtHop + 0.1 * d; }
@@ -517,6 +546,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // onsets in both lanes, then the steering lane (R over the last laneBeats beats), then its onset steers
       const ob = detect(lanes.broad, t, f.flux, dt);
       const ol = f.low === undefined ? null : detect(lanes.low, t, f.low, dt);
+      lowLagPair(ob, ol);
       laneTick(t);
       const o = lane === 'low' ? ol : ob;
       if (o) onOnset(o.t, o.s, lanes[lane]);
