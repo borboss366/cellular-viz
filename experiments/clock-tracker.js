@@ -34,8 +34,8 @@
 //     a whole beat, and at the first lock (the higher R); never while locked or in free-run. Every switch is logged:
 //     snapshot().lane.
 //   - beat side: the low lane's resultant direction (not its R) says which half of the beat the kick is on; over ¼
-//     beat away, the model moves there (silently at the first lock, else after laneBeats beats as jump 'side') and
-//     acquisitions keep that side (snapshot().lane.side).
+//     beat away at the first lock, the model moves there silently, and acquisitions keep that side. While locked the
+//     side is only measured (snapshot().lane.side).
 //
 //   const tr = ClockTracker.createTracker();
 //   const an = ClockTracker.createAnalyzer({ sampleRate, onFrame: f => tr.push(f) });   // node / tests
@@ -254,16 +254,18 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // locked: the lane holds. viz-183-7 (Sandstorm): the lock on the low lane was right, then a sustained switch to
       // broad at 15.8 s (R 0.72 vs 0.26 over 8 beats: the loud off-beat hats line up too) dropped the lock into
       // free-run, re-acquired on the off-beat and needed an acquire jump at 24.2 s: p90 96 ms. Lanes change only while
-      // acquiring; the beat side is still checked while locked.
+      // acquiring. The beat side is decided at the first lock only; while locked it is measured, never moved
+      // (viz-183-10: a side move at 16.3 s on R 0.22 put Sandstorm back on the off-beat).
       aheadSince = null;
-      sideTick(t);
+      sideDelta(t);   // report only: side.last
     }
     // The beat side (0 or ½) comes from the low lane's resultant DIRECTION, whatever its R: the kick owns the low band,
     // so even when an off-beat bass makes the low lane's R small (Sandstorm: low flux 213 at the half beat vs 168 on
     // the tracked one, R ≈ 0.1), its mean phase still points at the kick. A mean phase over ¼ beat from the tracked
-    // beat moves the model to it: silently at the first lock, or, while locked, once it has held for laneBeats beats
-    // (a forward jump { kind: 'side' } on the next bar line, rebooked like any tracker jump). sideOffset remembers the
-    // side, so acquisitions and re-acquisitions snap the loud off-beat onsets to it and the move can't be undone.
+    // beat at the first lock moves the model to it silently (nothing is booked yet). sideOffset remembers the side, so
+    // acquisitions and re-acquisitions snap the loud off-beat onsets to it. While locked the side is only measured:
+    // on Sandstorm the low lane's direction wanders (±0.35 at R 0.22–0.40, viz-183-9/10), and a move on it is a coin
+    // toss that costs the rest of the track.
     let sideOffset = 0, sideSince = null;
     const sideLog = [];
     let sideLast = null, sideAtLock = null;   // what the side check last measured (snapshot().lane.side)
@@ -282,13 +284,6 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       else scheduled = { kind: 'side', delta: m.d, atBeat: nextBarLine(outBeats(t)) };
     }
     function sideCheck(t, atLock) { const m = sideDelta(t); if (atLock) sideAtLock = sideLast && sideLast.t === +t.toFixed(3) ? sideLast : 'no R'; if (m && !tapModel) sideMove(t, m, atLock); }
-    function sideTick(t) {   // while locked
-      if (scheduled) return;
-      const m = sideDelta(t);
-      if (!m) { sideSince = null; return; }
-      if (sideSince === null) sideSince = t;
-      else if (t - sideSince >= C.laneBeats * own.P) sideMove(t, m, false);
-    }
     function laneReport() {
       const j0 = jumps.length ? jumps[0].at : null;
       return { lane, R: { broad: r3(laneLast.broad.R), low: r3(laneLast.low.R) }, n: { broad: laneLast.broad.n, low: laneLast.low.n },
