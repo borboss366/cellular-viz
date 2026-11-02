@@ -20,7 +20,7 @@ export const superseded = (queue, job) => !queue.includes(job);
  * and built it as viz-183-14): a PR job may start only once it has been queued for settleMs, so a newer push within
  * that time replaces it in the queue first (putJob). → ms still to wait (0: go). Daily runs and swipes never wait.
  */
-export function settleLeft(job, now, settleMs) {
+export function settleWaitMs(job, now, settleMs) {
   if (!job || job.daily || job.kind === 'swipe' || !(settleMs > 0)) return 0;
   const at = Date.parse(job.at);
   return Number.isFinite(at) ? Math.max(0, at + settleMs - now) : 0;

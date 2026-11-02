@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { putJob, superseded, settleLeft } from '../queue.mjs';
+import { putJob, superseded, settleWaitMs } from '../queue.mjs';
 
 const j = (pr, page, sha) => ({ pr, page, sha });
 
@@ -37,12 +37,12 @@ test('putJob leaves the old queue untouched', () => {
 test('settle: a PR job waits settleMs after it was queued, so a newer push replaces it first; daily runs and swipes go at once', () => {
   const at = '2026-11-02T19:30:00.000Z', t0 = Date.parse(at);
   const job = { pr: 183, page: 'experiment', sha: 'aaa', kind: 'experiment', at };
-  assert.equal(settleLeft(job, t0, 60e3), 60e3);
-  assert.equal(settleLeft(job, t0 + 45e3, 60e3), 15e3);
-  assert.equal(settleLeft(job, t0 + 61e3, 60e3), 0);
-  assert.equal(settleLeft({ ...job, daily: true }, t0, 60e3), 0);
-  assert.equal(settleLeft({ ...job, kind: 'swipe' }, t0, 60e3), 0);
-  assert.equal(settleLeft(job, t0, 0), 0);
+  assert.equal(settleWaitMs(job, t0, 60e3), 60e3);
+  assert.equal(settleWaitMs(job, t0 + 45e3, 60e3), 15e3);
+  assert.equal(settleWaitMs(job, t0 + 61e3, 60e3), 0);
+  assert.equal(settleWaitMs({ ...job, daily: true }, t0, 60e3), 0);
+  assert.equal(settleWaitMs({ ...job, kind: 'swipe' }, t0, 60e3), 0);
+  assert.equal(settleWaitMs(job, t0, 0), 0);
   // the push within the settle time: the newer job takes the old one's slot, and the old one is superseded
   const { queue } = putJob([job], { ...job, sha: 'bbb', at: '2026-11-02T19:30:40.000Z' });
   assert.equal(superseded(queue, job), true);
