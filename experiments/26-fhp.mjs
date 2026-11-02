@@ -275,7 +275,7 @@ export function soundSpeedCPU({ nq = 768, nr = 768, d = 0.25, amp = 0.1, radius 
 export const FLOW_STARTS = ['vortices', 'shear', 'dipoles', 'jets', 'splash'];
 export const DYE_PATTERNS = ['bands', 'checker', 'rings', 'blobs'];
 // the main eddy of each start, in features across the torus's q axis (the dye's feature size follows it)
-export const START_EDDIES = { vortices: 8, shear: 4, dipoles: 8, jets: 6, splash: 8 };
+export const START_EDDIES = { vortices: 8, shear: 4, dipoles: 6, jets: 6, splash: 8 };   // dipoles 8 -> 6: its rings follow the bigger pairs (viz-176-1)
 
 // seed 1 (the QA seed) is the classic opening: the vortices and today's bands
 export function pickStart(seed, flow = 'auto', dye = 'auto') {
@@ -337,9 +337,9 @@ export function startFlow(kind, nq, nr, seed, { umax = 0.18 } = {}) {
     const g = t => { let s = 0; for (let j = 0; j < count; j++) { const x = wrapPi(t - ph0 - TAU * j / count) / w; s += (j % 2 ? -1 : 1) * Math.exp(-x * x); } return s; };
     fn = layered([{ m: alongQ ? 0 : 1, n: alongQ ? 1 : 0, a: 1, ph: 0, g }], R, alongQ, 0.05, nq, nr); info = { count, alongQ };
   } else if (kind === 'dipoles') {
-    // 4–6 Gaussian vortex pairs (ψ = ±Γ e^(−d²/2σ²), σ = nq / 24, 3σ apart), each heading for the next pair's centre, so
-    // they travel and collide (S2: RMS |u| ≈ 0.055 at 4 pairs)
-    const pairs = 4 + Math.floor(R() * 3), sig = nq / 24, sep = 1.5 * sig, W = nq + nr / 2, Hs = nr * S3;
+    // 4–6 Gaussian vortex pairs (ψ = ±Γ e^(−d²/2σ²), σ = nq / 19, 3σ apart), each heading for the next pair's centre, so
+    // they travel and collide (S2: RMS |u| ≈ 0.055 at 4 pairs with σ = nq / 24; viz-176-1 "a bit bigger": σ × 1.26)
+    const pairs = 4 + Math.floor(R() * 3), sig = nq / 19, sep = 1.5 * sig, W = nq + nr / 2, Hs = nr * S3;
     const centres = Array.from({ length: pairs }, () => [R() * W, R() * Hs]);
     const vort = [];
     centres.forEach((c, k) => {
