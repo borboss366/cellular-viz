@@ -129,9 +129,11 @@ for (const X of [0.10, 0.20, 0.40]) {
     // 16 + 16 + 16 bars
     const iB = s.beats.findIndex(t => Math.abs(t - b.t) < 1e-9), iR = s.beats.findIndex(t => Math.abs(t - r.t) < 1e-9);
     assert.equal(iB, 64); assert.equal(iR, 128); assert.equal(s.beats.length, 192);
-    // no transient: the largest 10 ms frame-to-frame RMS rise inside the breakdown is tiny; the pad is audible
-    const f = 0.010; let rise = 0, prev = rms(x, SR, b.t, b.t + f);
-    for (let t = b.t + f; t + f < r.t - 0.02; t += f) { const v = rms(x, SR, t, t + f); rise = Math.max(rise, v - prev); prev = v; }
+    // no transient: the largest rise of a 100 ms RMS window moved 10 ms at a time stays tiny; the pad is audible.
+    // (10 ms windows failed on the first test-pr: the A-major pad's own beating, 53–110 Hz between its sines, moves a
+    // 10 ms RMS by ~30 % with no transient at all. 100 ms averages that out; a drum hit in it still rises ~0.1.)
+    const W = 0.100, hop = 0.010; let rise = 0, prev = rms(x, SR, b.t, b.t + W);
+    for (let t = b.t + hop; t + W < r.t - 0.02; t += hop) { const v = rms(x, SR, t, t + W); rise = Math.max(rise, v - prev); prev = v; }
     assert.ok(rise < 0.005, `largest RMS rise in the breakdown ${rise}`);
     assert.ok(rms(x, SR, b.t + 2, r.t - 2) > 0.01, 'pad audible');
     // free-run phase error at the return, from beats vs a 128 BPM grid anchored on the last pre-breakdown beat

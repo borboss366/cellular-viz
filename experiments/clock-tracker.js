@@ -43,7 +43,7 @@
     acWindow: 4, refineWindow: 8, estHz: 6,
     onsetK: 2, onsetWin: 1, refractory: 0.15, floorRel: 0.15, peakTau: 10, strongRel: 0.4,
     acqConf: 0.4, lockConf: 0.5, lostConf: 0.3, acqWindow: 0.5, trackWindow: 0.25, trackGain: 0.15, driftOnsets: 4, driftMin: 0.02, confAlpha: 0.15,
-    confTau: 1.0, maxRate: 0.03, reacqJump: 0.25, reacqOnsets: 3, bpb: 4,
+    confTau: 1.0, maxRate: 0.03, refRel: 0.3, reacqJump: 0.25, reacqOnsets: 3, bpb: 4,
     escapeTempo: 0.03, escapePhase: 0.25, escapeSecs: 4, escapeConf: 0.7,
   };
 
@@ -159,7 +159,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // the tracker's own model: beats(t) = B0 + (t − T0) / P; pending = phase correction still to slew (beats)
     const own = { T0: 0, B0: 0, P: 0, pending: 0 };
     let bpm = 0, conf = 0, state = 'acquire', everLocked = false, lastConfidentBpm = 0, bigCount = 0;
-    let lastInWindow = -1e9, barOrigin = 0, reacq = [], scheduled = null;
+    let lastInWindow = -1e9, barOrigin = 0, reacq = [], scheduled = null, strongRef = 0;
     // the output: own (plus an integer relabel) or, after a tap, the tap model until the tracker overrides it
     let tapModel = null, outOffset = 0, disagreeSince = null;
     const jumps = [], stateLog = [];
@@ -253,6 +253,10 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       let mx = 0;
       for (let i = onsets.length - 1; i >= 0 && onsets[i].t > to - 2; i--) mx = Math.max(mx, onsets[i].s);
       if (s < (state === 'acquire' ? 0.7 : C.strongRel) * mx) return;
+      // ... and never anything far below the drums the lock was built on: a pad-only breakdown has no drum, so the
+      // "strongest of the last 2 s" is a pad wobble (its chord beats at 53–110 Hz) and would pass the rule above,
+      // keep the confidence up and then re-acquire on noise (#178: breakdown 0.10/0.20 jumped)
+      if (strongRef && s < C.refRel * strongRef) return;
       const target = ownBeats(to) + own.pending;   // where the model will be once the pending slew is done
       const e = frac(target);
       if (state === 'free-run') {   // collect evidence; decide once reacqOnsets strong onsets agree (R1)
@@ -278,6 +282,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(e));
       own.pending -= C.trackGain * e;
       lastInWindow = to;
+      if (state === 'locked') strongRef = strongRef ? 0.9 * strongRef + 0.1 * s : s;   // the drums' level, from locked onsets
       drift(to, Math.round(target));
       if (tapModel) {   // the output follows the tap; the PLL only nudges its phase
         const te = frac(tapBeats(to) + tapModel.pending);
