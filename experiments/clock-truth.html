@@ -1,0 +1,107 @@
+<!doctype html>
+<!--
+  clock-truth · the QA box's page for the live tracker's truths (clock PR 3c, #173; brief task 4, #95 6560018120).
+  Not a scene and not on the index: it only listens. The runner opens it with an excerpt as Chromium's fake capture
+  device (qa/runner/exp-run.mjs, kind "audio", audio[].truth): ?clock=line&audio=line&device=fake.
+
+  The excerpts start with a marker: silence, a short 2 kHz burst at 1.5 s, silence, then the music at 3 s. The
+  tracker's worklet has a rise probe (clock-tracker.js): the time of the first sample after silence, to the sample, on
+  the AudioContext clock. The first rise is the marker, so every reference time in the excerpt maps onto the
+  AudioContext clock exactly, and the truths compare the clock's booked hits (raw audio time, never visualOffsetMs:
+  #95 MUST 4) with the references. qa/runner/truth.mjs turns __qa.truth into the numbers.
+
+  ?clock=line (default) · ?audio=line · ?offset=<ms> visual offset (R4) · ?click=1 clicks on the tracked beats
+  window.__qa.truth: { rises, onsets [{t, s}] (t after ANALYSIS_DELAY_MS), samples [{t, state, conf, bpm}], hits
+  [{time, lane}], jumps, delayMs, offsetMs, startedAt }, plus __qa.tracker, __qa.audioIn, errors.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>clock truth</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #07080c; color: #dde3ee; font: 15px/1.5 ui-monospace, Menlo, monospace; }
+  #wrap { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+  #beat { width: 18vmin; height: 18vmin; border-radius: 50%; background: #2a3145; }
+  #stats { white-space: pre; text-align: left; }
+  button { font: inherit; background: #1a2234; color: #e6ecf7; border: 1px solid #2c3850; border-radius: 10px; padding: 10px 14px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="beat"></div>
+  <div id="stats">tap ▶ Play</div>
+  <button id="play">▶ Play</button>
+</div>
+<script src="clock.js"></script>
+<script src="clock-tracker.js"></script>
+<script src="audio-in.js"></script>
+<script>
+'use strict';
+const q = new URLSearchParams(location.search);
+const $ = id => document.getElementById(id);
+const errors = [];
+window.addEventListener('error', e => { if (errors.length < 20) errors.push(String(e.message)); });
+// one kick per beat: the hits are the clock's tracked beats; silent unless ?click=1
+const settings = { bpm: 120, bpb: 4, muted: false, click: q.get('click') === '1',
+  kick: 'x...x...x...x...', snare: '................', hat: '................' };
+const clock = Clock.create({ source: q.get('clock') || 'line', settings, hitStep: true });
+const audio = AudioIn.create({ clock, source: q.get('audio') || 'line' });
+const offsetMs = Number.isFinite(parseFloat(q.get('offset'))) ? parseFloat(q.get('offset')) : 0;
+const truth = { rises: [], onsets: [], samples: [], hits: [], jumps: [], delayMs: null, offsetMs, startedAt: null };
+let lastOnset = -Infinity, lastSample = -Infinity;
+
+$('play').onclick = () => {
+  if (clock.playing) return;
+  clock.start(); audio.start();
+  if (offsetMs) clock.setVisualOffset(offsetMs);
+  truth.startedAt = clock.ctx ? clock.ctx.currentTime : null;
+  $('play').textContent = 'listening';
+};
+
+function collect() {
+  const p = clock.lineProbe;
+  if (!p || !clock.ctx) return;
+  truth.delayMs = p.delayMs;
+  truth.rises = p.rises.slice();
+  const tr = p.tracker;
+  if (tr) {
+    for (const o of tr.onsets) if (o.t > lastOnset) { truth.onsets.push({ t: +o.t.toFixed(6), s: +o.s.toFixed(4) }); lastOnset = o.t; }
+    const t = clock.ctx.currentTime;
+    if (t - lastSample >= 0.05) {
+      lastSample = t;
+      truth.samples.push({ t: +t.toFixed(4), state: tr.state, conf: +tr.confidence.toFixed(3), bpm: +(tr.bpm || 0).toFixed(2) });
+      if (truth.samples.length > 20000) truth.samples.shift();
+    }
+  }
+  truth.hits = (clock.hitLog || []).map(h => ({ time: +h.time.toFixed(6), lane: h.lane }));
+  truth.jumps = clock.jumps.map(j => ({ at: j.at, kind: j.kind, origin: j.origin || null }));
+}
+
+function frame(now) {
+  audio.frameStart(now);
+  requestAnimationFrame(frame);
+  try {
+    const r = clock.read({ raw: true });
+    collect();
+    const ph = r.beats >= 0 ? r.beats - Math.floor(r.beats) : 1;
+    $('beat').style.background = `rgb(${Math.round(40 + 200 * Math.exp(-ph * 6))},${Math.round(49 + 90 * Math.exp(-ph * 6))},69)`;
+    const s = clock.trackerState;
+    $('stats').textContent = s ? `${s.state} · confidence ${s.confidence} · ${s.bpm} BPM${s.octaveLock ? ` · octave lock ${s.octaveLock}` : ''}\n`
+      + `input ${s.status}${s.error ? ' · ' + s.error : ''} · rises ${truth.rises.length} · onsets ${truth.onsets.length} · hits ${truth.hits.length}`
+      : `clock ${clock.source}${clock.fallback ? ' (' + clock.fallback + ')' : ''}`;
+  } catch (e) { if (errors.length < 20) errors.push(String(e && e.stack || e)); }
+}
+requestAnimationFrame(frame);
+
+window.__qa = { errors };
+Object.defineProperty(window.__qa, 'truth', { get: () => truth, enumerable: true });
+Object.defineProperty(window.__qa, 'tracker', { get: () => clock.trackerState, enumerable: true });
+// __qa.audioIn for the runner's device and level numbers, but no __qa.beatLog: this page draws nothing on the beat, so
+// check-shared's beat-match row is ℹ️ here (the truths measure the clock itself)
+const hooks = {}; AudioIn.qa(audio, hooks);
+Object.defineProperty(window.__qa, 'audioIn', { get: () => hooks.audioIn, enumerable: true });
+</script>
+</body>
+</html>

@@ -43,7 +43,7 @@ Check a file before pushing: `node qa/runner/experiment.mjs qa/experiments/57.js
 | `debug` | `{}` | debug probes, below |
 | `timeoutMin` | runner's | stop the whole experiment after this many minutes |
 | `kind` | `"both"` | what the run checks (#141): `"render"` (CPU: SwiftShader), `"perf"` (GPU: the 780M), `"audio"` (a real track as the page's line input, below), `"both"` (today's runs) |
-| `audio` | none | kind `"audio"` only: `{"track": "<name>", "from": s, "len": s, "noloop": true, "via": "fake"}` |
+| `audio` | none | kind `"audio"` only: `{"track": "<name>", "from": s, "len": s, "noloop": true, "via": "fake"}`, or a list of named excerpts that variants pick with `"audio": "<name>"` (one browser per excerpt). Truths (clock PR 3c, `qa/runner/truth.mjs`): `"truth": true` (marker lead + references from `<track>.ref.beats`), `"step": 1.067` (the cut resampled after it), or `{"name", "synth": "metronome", "bpm", "len"}` for truth (a) |
 | `shared` | default URL | where the shared gates run: `{"variants": ["fast"], "default": true}`, below |
 
 Unknown fields are errors, so a typo never passes silently. At most 64 runs (variants × sweep × resolutions).
@@ -76,6 +76,7 @@ answers to its parent's name). The report shows the value of every run and which
 | `audio.rowCorr.min` | the lowest Pearson of a page row with its band lane (best lag within ±100 ms), over the counted rows |
 | `audio.rowsCounted` | rows with ≥ 3 s of non-null samples (the page logs `null` while a row is empty or morphing); `audio.rowCorr.min` is taken over these only |
 | `audio.frames` | frames logged while the excerpt played |
+| `truth.*` | the live tracker's truths on a truth excerpt (`experiments/clock-truth.html`): `anchored`, `lockS`, `matched`, `phaseP50Ms`, `phaseP90Ms`, `latencyP90Ms` (raw audio time), `biasP50Ms` / `absBiasP50Ms` (R3), `rawDelayMs`, `bpm`, `refBpm`, `octave`, `relockBeats`, `confMinStep`, `confAfterStep`, `r4DiffMs` (R4, on a run with `?offset=`) |
 
 Each check script's own ✅/❌ rows become gates too, named `check-18: <its gate>`. A script that doesn't finish,
 or isn't on the checks ref, is a failed gate.

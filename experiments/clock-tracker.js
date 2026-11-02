@@ -70,7 +70,11 @@
     }
   }
 
-  function createAnalyzer({ sampleRate = 44100, fftSize = 1024, hop = 512, maxHz = 14700, onFrame } = {}) {
+  // rise probe (truths a/b/c, 3c): the time of the first sample with |x| ≥ riseLevel after ≥ riseQuiet s below
+  // riseLevel / 4, to the sample. It needs no window, so it is the waveform's own clock: the QA excerpts start with a
+  // marker burst after silence, and truth (a)'s clicks start from silence, so a rise is where the sound truly begins.
+  // Frames carry the rises since the previous frame as `rise: [t, …]` (absent when there were none).
+  function createAnalyzer({ sampleRate = 44100, fftSize = 1024, hop = 512, maxHz = 14700, onFrame, riseLevel = 0.05, riseQuiet = 0.03 } = {}) {
     const N = fftSize, H = N >> 1, hz = sampleRate / N;
     const win = new Float64Array(N);
     for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
@@ -82,7 +86,8 @@
     const ranges = [];
     for (let i = 0; i < 8; i++) ranges.push([Math.max(1, Math.floor(EDGES[i] / hz)), Math.min(H - 1, Math.ceil(EDGES[i + 1] / hz))]);
     let pos = 0, seen = 0, sinceHop = 0, first = true;
-    const frames = [];
+    const frames = [], quietNeed = Math.round(riseQuiet * sampleRate), quietLevel = riseLevel / 4;
+    let quiet = 0, rises = null;
     function frame(t) {
       for (let i = 0; i < N; i++) { re[i] = ring[(pos + i) % N] * win[i]; im[i] = 0; }   // oldest sample first
       fftInPlace(re, im);
@@ -102,6 +107,7 @@
       }
       first = false;
       const f = { t, flux: flux / wsum, bands };
+      if (rises) { f.rise = rises; rises = null; }
       if (onFrame) onFrame(f); else frames.push(f);
     }
     return {
@@ -109,6 +115,10 @@
       // x: mono samples; t0: the time of x[0] (s). Frames come out with t = the time just after their last sample.
       process(x, t0 = 0) {
         for (let i = 0; i < x.length; i++) {
+          const ax = x[i] < 0 ? -x[i] : x[i];
+          if (ax >= riseLevel) { if (quiet >= quietNeed) (rises || (rises = [])).push(t0 + i / sampleRate); quiet = 0; }
+          else if (ax < quietLevel) quiet++;
+          else quiet = 0;
           ring[pos] = x[i]; pos = (pos + 1) % N; seen++; sinceHop++;
           if (seen >= N && sinceHop >= hop) { sinceHop = 0; frame(t0 + (i + 1) / sampleRate); }
         }
