@@ -1,8 +1,27 @@
 // The shared clock (docs/CELLULAR_VIZ_BRIEF_CLOCK.md task 1; names from #95 comment 6519125441).
 // One object replaces each page's copied `metronome`. PR 1 holds the core: the metronome source (the code that
 // 11, 13 and 19 copied, moved here unchanged), read() with phase/bar/beatInBar, hand commands (fix) logged as
-// jumps, and the visual offset. PR 2 adds the file: source (below). The line source comes in PR 3; until then it
-// falls back to the metronome and says so in clock.requested / clock.fallback.
+// jumps, and the visual offset. PR 2 adds the file: source (below). PR 3b adds the line source (below).
+//
+// ?clock=line (#173; docs/CELLULAR_VIZ_BRIEF_TRACKER.md D2; #95 comment 6560018120): the live tracker
+// (clock-tracker.js, loaded next to this file when the page hasn't) listens to the line input in an AudioWorklet and
+// steers the beats; the clock still owns them. Its input is audio-in's line/mic stream when the page has one
+// (?audio=line, attached by audio-in), else the default input after 1.5 s. beats = the tracker's output + an offset
+// the hand fixes own. The drum lanes are the page's patterns laid on the tracked sixteenths (silent unless
+// settings.click, the ear check), as on file:. Nothing is booked before the first lock. clock.trackerState (and
+// __qa.tracker through audio-in) = { state: acquire|locked|free-run, confidence, octaveLock, bpm, tapped, lastJump,
+// status, error, states }.
+// Who moves the beats on line, by authority (#95):
+//   tracker  acquiring (confidence < 0.4): may jump, logged jump { kind: 'acquire', origin: 'tracker' }
+//            tracking: phase corrections as a rate change ≤ 3 % (no jump, no rebook); tempo follows
+//            after a free-run: |error| ≤ ¼ beat slews, more jumps on the next bar line ('acquire')
+//            after a tap: defers; disagreeing > 3 % / ¼ beat for > 4 s at confidence ≥ 0.7 → 'override' at a bar line
+//   tap      seeds bpm (2+ taps) and phase; the tracker only nudges the tapped grid from then on (R5)
+//   x2/half  scales the tempo and locks the octave; the estimator can't undo it unless it leaves that octave by
+//            > 20 % for > 4 s
+//   nudge    shifts the clock against the tracker (an offset); the PLL carries on underneath, so the shift stays
+//   setOne / reset  relabel only; the tracker never touches bar position
+// Every jump (tracker or hand) cancels and rebooks the clicks and future hits (#95 MUST 2); slews don't need to.
 //
 // ?clock=file:<url> (#95 "file grid", authority locked): plays the track and reads its beat grid, the sidecar
 // <url>.beatgrid.json (or ?grid=<url>): v2 { version: 2, beats: [{ ms, pos, conf }] } or v1 { bpm, firstBeatMs,
@@ -58,8 +77,28 @@
   const FIX_ORIGINS = ['fix:controller', 'fix:key', 'qa'], QUANTUM = 0.003, NO_DOUBLE = 0.020, TAP_GAP = 2, TAPS_KEPT = 5;
   // Shift + key (KeyboardEvent.code) → hand fix; clear of the pages' own keys (z x c v t b [ ] `)
   const FIX_KEYS = { KeyA: ['tap'], KeyH: ['half'], KeyD: ['x2'], Digit1: ['setOne'], Comma: ['nudge', -10], Period: ['nudge', 10], Digit0: ['reset'] };
-  const SOURCES_LATER = /^line$/;
-  const FILE_GAIN = 1, CLICK_GAIN = 0.35, FILE_LEAD = 0.05;
+  const FILE_GAIN = 1, CLICK_GAIN = 0.35, FILE_LEAD = 0.05, LINE_OWN_INPUT_MS = 1500;
+
+  // the tracker library (clock-tracker.js): already on the page, required in node, or loaded next to this file
+  const SELF_SRC = (() => { try { return root.document && root.document.currentScript ? root.document.currentScript.src : null; } catch (e) { return null; } })();
+  function trackerLibSync() {
+    if (root.ClockTracker) return root.ClockTracker;
+    if (typeof module === 'object' && module.exports && typeof require === 'function') { try { return require('./clock-tracker.js'); } catch (e) { return null; } }
+    return null;
+  }
+  function trackerLib() {
+    const sync = trackerLibSync();
+    if (sync) return Promise.resolve(sync);
+    return new Promise((resolve, reject) => {
+      const doc = root.document;
+      if (!doc || !doc.head) { reject(new Error('clock-tracker.js is not loaded')); return; }
+      const s = doc.createElement('script');
+      s.src = SELF_SRC ? new URL('clock-tracker.js', SELF_SRC).href : 'clock-tracker.js';
+      s.onload = () => (root.ClockTracker ? resolve(root.ClockTracker) : reject(new Error('clock-tracker.js loaded without ClockTracker')));
+      s.onerror = () => reject(new Error('could not load clock-tracker.js'));
+      doc.head.appendChild(s);
+    });
+  }
 
   function defaultContext() {
     const AC = root.AudioContext || root.webkitAudioContext;
@@ -150,10 +189,9 @@
     const requested = opts.source || 'metronome';
     let source = requested, fallback = null;
     const fileM = /^file:(.+)$/.exec(requested);
-    if (requested !== 'metronome' && !fileM) {
+    if (requested !== 'metronome' && requested !== 'line' && !fileM) {
       source = 'metronome';
-      fallback = SOURCES_LATER.test(requested) ? `${requested} is not built yet (clock PR 3); playing the metronome`
-        : `unknown clock source ${requested}; playing the metronome`;
+      fallback = `unknown clock source ${requested}; playing the metronome`;
       if (root.console) root.console.warn('[clock] ' + fallback);
     }
     const settings = opts.settings || {
@@ -177,10 +215,13 @@
         buffer: null, grid: null, warp: null, pos: [], bar: [], seg: null, src: null, step: 0, nudgeMs: 0, durationMs: Infinity };
     }
     const load = opts.load || loadFile;
+    // line: the tracker, its input and worklet, the hand fixes' offset (beats) and the booking position
+    const line = source === 'line' ? { status: 'idle', error: null, tracker: null, node: null, input: null, offset: 0,
+      step: null, lastBooked: -Infinity, seenJumps: 0, stateLog: [] } : null;
 
     // ---------- the metronome (as 11/13/19), moved ----------
     const clock = {
-      source, requested, fallback, settings, file,
+      source, requested, fallback, settings, file, line,
       ctx: null, master: null, bus: null, clickBus: null, analyser: null, noise: null, timer: 0, playing: false,
       nextTime: 0, step: 0, hits: [], steps: [], wave: withAnalyser ? new Float32Array(2048) : null,
       jumps: [], oneAt: 0, offsetMs: 0, hitLog: [], dueAt: 0, booked: [], taps: [], fixRejected: [],
@@ -194,8 +235,9 @@
             this.bus.connect(this.master); this.bus.connect(this.analyser);
           }
           this.master.connect(ctx.destination);
-          // file: the track goes through master (and so the analyser audio-in hangs on it); the ear-check clicks don't
-          if (file) { this.clickBus = ctx.createGain(); this.clickBus.connect(ctx.destination); }
+          // file: the track goes through master (and so the analyser audio-in hangs on it); the ear-check clicks don't.
+          // line: nothing plays but the ear-check clicks
+          if (file || line) { this.clickBus = ctx.createGain(); this.clickBus.connect(ctx.destination); }
           this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
           const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
         }
@@ -205,6 +247,7 @@
         this.gaps = []; this.lastPump = null; this.late = 0; this.lateMaxMs = 0; this.maxGapMs = 0; this.lookAhead = pumpOn ? AHEAD_MAX : AHEAD_MIN;
         this.playing = true;
         if (file) { this.fileStart(); return; }
+        if (line) { this.lineStart(); return; }
         if (useTimers) this.timer = setInterval(() => this.schedule(), 25);
         this.schedule();
       },
@@ -218,6 +261,7 @@
       },
       schedule() {
         if (file) return this.fileSchedule();
+        if (line) return this.lineSchedule();
         const ct = this.ctx.currentTime;
         while (this.nextTime < ct + this.lookAhead) {
           if (this.nextTime < ct) { this.late++; this.lateMaxMs = Math.max(this.lateMaxMs, (ct - this.nextTime) * 1000); }   // booked after its own time
@@ -315,6 +359,7 @@
       // half) never steps beats backwards or stalls them; at a steady bpm it is exactly today's number.
       baseBeats(t) {
         if (file) return this.fileBeats(t);
+        if (line) return this.lineBeats(t);
         let last = null; for (const s of this.steps) if (s.time <= t) last = s;
         return last ? last.b + Math.min(last.span, (t - last.time) / last.dur) / 4 : -1;
       },
@@ -357,6 +402,7 @@
           const k = Math.floor(beats) - this.oneAt, bpb = settings.bpb;
           out.bar = Math.floor(k / bpb); out.beatInBar = ((k % bpb) + bpb) % bpb + 1;
         }
+        if (line) { out.bpm = settings.bpm; out.confidence = line.tracker ? line.tracker.confidence : 0; }
         out.level = Math.max(out.kick, out.snare, out.hat);
         if (this.analyser && !lead) this.analyser.getFloatTimeDomainData(this.wave);
         return out;
@@ -379,6 +425,7 @@
         const at = this.now({ raw: true }), from = this.baseBeats(at);
         if (from < 0) return null;
         if (file) return this.fileFix(kind, arg, origin, at, from);
+        if (line) return this.lineFix(kind, arg, origin, at, from);
         let to = from;
         if (kind === 'nudge') {
           to = from + (Number(arg) || 0) / 1000 * settings.bpm / 60;
@@ -550,6 +597,166 @@
         if (this.jumps.length > JUMPS_KEPT) this.jumps.shift();
         return jump;
       },
+      // ---------- the line source (#173, PR 3b) ----------
+      lineStart() {
+        line.step = null; line.lastBooked = -Infinity;
+        const go = lib => {
+          if (!this.playing) return;
+          if (!line.tracker) line.tracker = opts.tracker || lib.createTracker(opts.trackerOptions || {});
+          line.seenJumps = line.tracker.jumps.length;
+          if (useTimers && !this.timer) this.timer = setInterval(() => this.schedule(), 25);
+          if (opts.lineFeed) { line.status = 'feeding'; return; }   // tests push frames with lineFrame()
+          if (line.input) this.attachInput(line.input);
+          else {
+            line.status = 'waiting';
+            setTimeout(() => { if (this.playing && !line.input) this.openLineInput(); }, LINE_OWN_INPUT_MS);
+          }
+        };
+        this.timer = 0;
+        if (opts.tracker) { go(null); return; }
+        const lib = trackerLibSync();
+        if (lib) { go(lib); return; }
+        line.status = 'loading';
+        trackerLib().then(go, e => { line.status = 'error'; line.error = String((e && e.message) || e); warnOnce('tracker', 'line source: ' + line.error); });
+      },
+      // the input the tracker listens to: audio-in hands over its line/mic stream source; else openLineInput()
+      attachInput(node) {
+        if (!line || !node) return false;
+        line.input = node;
+        if (!this.ctx || !line.tracker || opts.lineFeed) return true;   // connected when the tracker is ready
+        if (line.node) { try { node.connect(line.node); } catch (e) {} return true; }
+        const lib = root.ClockTracker || trackerLibSync();
+        if (!lib || !this.ctx.audioWorklet || typeof root.AudioWorkletNode !== 'function') {
+          line.status = 'error'; line.error = 'AudioWorklet is not available'; warnOnce('worklet', 'line source: ' + line.error);
+          return false;
+        }
+        line.status = 'starting';
+        this.ctx.audioWorklet.addModule(lib.workletUrl()).then(() => {
+          const w = line.node = new root.AudioWorkletNode(this.ctx, 'clock-tracker', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+          w.port.onmessage = e => this.lineFrame(e.data);
+          const sink = this.ctx.createGain(); sink.gain.value = 0; w.connect(sink); sink.connect(this.ctx.destination);   // keeps it pulled, silent
+          line.input.connect(w); line.status = 'listening';
+        }).catch(e => { line.status = 'error'; line.error = String((e && e.message) || e); warnOnce('worklet', 'line source: ' + line.error); });
+        return true;
+      },
+      openLineInput() {
+        const md = root.navigator && root.navigator.mediaDevices;
+        if (!md || !md.getUserMedia) { line.status = 'error'; line.error = 'getUserMedia is not available'; return; }
+        md.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
+          .then(s => { if (!line.input) this.attachInput(this.ctx.createMediaStreamSource(s)); })
+          .catch(e => { line.status = 'error'; line.error = String((e && e.message) || e); warnOnce('input', 'line source: ' + line.error); });
+      },
+      // one analysis frame { t, flux, bands } (from the worklet, or a test): the tracker steps, its jumps rebook
+      lineFrame(f) {
+        if (!line || !line.tracker || !f) return;
+        const tr = line.tracker;
+        tr.push(f);
+        for (; line.seenJumps < tr.jumps.length; line.seenJumps++) {
+          const j = tr.jumps[line.seenJumps];
+          const jump = { type: 'jump', at: j.at, kind: j.kind, fromBeats: j.fromBeats + line.offset, toBeats: j.toBeats + line.offset, origin: 'tracker' };
+          this.jumps.push(jump);
+          if (this.jumps.length > JUMPS_KEPT) this.jumps.shift();
+          if (this.ctx && this.playing) this.lineRebook();   // #95 MUST 2: tracker jumps rebook like hand fixes
+        }
+        const L = line.stateLog;
+        if (!L.length || L[L.length - 1].state !== tr.state) { L.push({ t: f.t, state: tr.state }); if (L.length > 256) L.shift(); }
+      },
+      lineBeats(t) {
+        const tr = line.tracker;
+        if (!tr || tr.hasModel === false) return -1;
+        const b = tr.beatsAt(t) + line.offset;
+        return Number.isFinite(b) && b >= 0 ? b : -1;
+      },
+      lineTime(b) { return line.tracker.timeOf(b - line.offset); },
+      // book the page's patterns on the tracked sixteenths (from the first lock on), as fileSchedule does on a grid
+      lineSchedule() {
+        const tr = line.tracker;
+        if (!tr || tr.hasModel === false || !this.ctx) return;
+        const ct = this.ctx.currentTime;
+        if (line.step === null) {
+          if (tr.state === 'acquire') return;
+          const b = this.lineBeats(ct + QUANTUM);
+          if (b < 0) return;
+          line.step = Math.floor(b * 4) + 1;
+        }
+        for (let guard = 0; guard < 512; guard++) {
+          const t = this.lineTime(line.step / 4);
+          if (!Number.isFinite(t)) break;
+          if (t <= line.lastBooked + NO_DOUBLE) { line.step++; continue; }   // the grid sped up under a booked step: never twice
+          if (t >= ct + this.lookAhead) break;
+          if (t < ct) { this.late++; this.lateMaxMs = Math.max(this.lateMaxMs, (ct - t) * 1000); }
+          this.queueLineStep(line.step, t); line.lastBooked = t; line.step++;
+        }
+        if (tr.bpm > 0) settings.bpm = Math.round(tr.bpm * 100) / 100;   // page code that reads settings.bpm sees the tempo
+        const old = ct - 1;
+        this.hits = this.hits.filter(h => h.time > old);
+        if (this.booked.length && this.booked[0].time < old) this.booked = this.booked.filter(c => c.time > old);
+      },
+      queueLineStep(step, time) {
+        const n = settings.bpb * 4, inBar = (((step - 4 * this.oneAt) % n) + n) % n;
+        for (const lane of LANES) {
+          if (settings[lane][inBar % 16] !== 'x') continue;
+          const vel = inBar === 0 ? 1 : 0.7;
+          const hit = hitStep ? { type: 'hit', lane, time, vel, step } : { type: 'hit', lane, time, vel };
+          this.hits.push(hit); this.logHit(hit);
+          if (settings.click) this.click(lane, time, vel);   // the ear check (?click=1): clicks on the tracked beats
+        }
+      },
+      // after a jump (tracker or hand): drop what was booked ahead, book again from the first sixteenth after
+      // currentTime + one quantum (≥ 20 ms after the last click left sounding)
+      lineRebook() {
+        const ct = this.ctx.currentTime, lastKept = this.dropFuture(ct);
+        line.lastBooked = lastKept;
+        const b = this.lineBeats(ct + QUANTUM);
+        if (b < 0) { line.step = null; return; }
+        let s = Math.floor(b * 4) + 1;
+        for (let guard = 0; guard < 64; guard++) {
+          const t = this.lineTime(s / 4);
+          if (t > ct + QUANTUM && t - lastKept >= NO_DOUBLE) break;
+          s++;
+        }
+        line.step = s;
+        this.schedule();
+      },
+      // hand fixes on line (authority table in the header): the tracker keeps listening underneath
+      lineFix(kind, arg, origin, at, from) {
+        const tr = line.tracker;
+        if (!tr || tr.hasModel === false) return null;
+        let to = from;
+        if (kind === 'nudge') {
+          const d = (Number(arg) || 0) / 1000 * (tr.bpm || settings.bpm) / 60;
+          line.offset += d; to = from + d;
+        } else if (kind === 'x2' || kind === 'half') {
+          tr.scaleTempo(kind === 'x2' ? 2 : 0.5, at);   // beats continuous at `at`, octave locked
+        } else if (kind === 'setOne') {
+          this.oneAt = Math.round(from);
+        } else if (kind === 'reset') {
+          line.offset -= Math.floor(from); this.oneAt = 0; to = from - Math.floor(from);
+        } else if (kind === 'tap') {
+          if (this.taps.length && at - this.taps[this.taps.length - 1] > TAP_GAP) this.taps = [];
+          this.taps.push(at); if (this.taps.length > TAPS_KEPT) this.taps.shift();
+          let bpm = tr.bpm || settings.bpm;
+          if (this.taps.length >= 2) {
+            const iv = this.taps.slice(1).map((t, i) => t - this.taps[i]).sort((a, b) => a - b), med = iv[Math.floor(iv.length / 2)];
+            if (med > 0) bpm = Math.max(30, Math.min(300, 60 / med));
+          }
+          line.offset = Math.round(line.offset);   // the tap lands a whole beat; an earlier nudge's fraction goes
+          tr.tap({ t: at, bpm });
+          to = this.lineBeats(at);
+        } else return null;
+        this.lineRebook();
+        const jump = { type: 'jump', at, kind, fromBeats: from, toBeats: to, origin };
+        this.jumps.push(jump);
+        if (this.jumps.length > JUMPS_KEPT) this.jumps.shift();
+        return jump;
+      },
+      // __qa.tracker (#95 SHOULD 8): null on other sources
+      get trackerState() {
+        if (!line) return null;
+        const s = line.tracker && line.tracker.snapshot ? line.tracker.snapshot() : { state: 'acquire', confidence: 0, octaveLock: null, bpm: 0, tapped: false, lastJump: null };
+        return { ...s, status: line.status, error: line.error, offsetBeats: +line.offset.toFixed(4), states: line.stateLog.slice(-16) };
+      },
+
       // a keydown from the page: Shift + a hand-fix key → fix(…, { origin: 'fix:key' }); anything else is ignored
       handFixKey(e) {
         if (!e || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return null;

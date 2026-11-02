@@ -163,7 +163,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // the output: own (plus an integer relabel) or, after a tap, the tap model until the tracker overrides it
     let tapModel = null, outOffset = 0, disagreeSince = null;
     const jumps = [], stateLog = [];
-    let octaveLock = null;
+    let octaveLock = null, lockOutSince = null;
+    const notes = [];
 
     const ownBeats = t => own.B0 + (t - own.T0) / own.P;
     const tapBeats = t => tapModel.B0 + (t - tapModel.T0) / tapModel.P;
@@ -231,7 +232,15 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         const q = raw / bpm;
         if (Math.abs(q - 2) < 0.12) raw /= 2; else if (Math.abs(q - 0.5) < 0.06) raw *= 2;
       }
-      if (octaveLock) { while (raw > octaveLock * 1.2) raw /= 2; while (raw < octaveLock / 1.2) raw *= 2; }   // 3b sets it
+      if (octaveLock) {   // ×2 / ÷2 by hand (3b): the estimate is read in the locked octave; it escapes only after it
+        // has left that octave by > 20 % for > 4 s (brief D2), e.g. a real tempo change, never a half-tempo estimate
+        const f = raw * Math.pow(2, Math.round(Math.log2(octaveLock / raw)));
+        if (Math.abs(f / octaveLock - 1) > 0.2) {
+          if (lockOutSince === null) lockOutSince = t;
+          else if (t - lockOutSince > 4) { notes.push({ t, kind: 'octave-release', lock: octaveLock, raw }); octaveLock = null; lockOutSince = null; }
+        } else lockOutSince = null;
+        if (octaveLock) raw = f;
+      }
       if (!own.P) {   // first estimate: anchor beat 0 on the newest strong onset
         const s = recentStrong(t, 2), o = s[s.length - 1];
         bpm = raw; own.P = 60 / raw; own.T0 = o ? o.t : t; own.B0 = 0;
@@ -395,7 +404,27 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         disagreeSince = null;
         if (scheduled && scheduled.kind === 'override') scheduled = null;
       },
-      setOctaveLock(b) { octaveLock = b || null; },
+      setOctaveLock(b) { octaveLock = b || null; lockOutSince = null; },
+      // the time at which the output reaches beat b (its current linear model; slews still pending are not in it)
+      timeOf(b) {
+        if (!own.P) return NaN;
+        if (tapModel) return tapModel.T0 + (b - tapModel.B0) * tapModel.P;
+        return own.T0 + (b - outOffset - own.B0) * own.P;
+      },
+      // ×2 / ÷2 by hand: the period changes at t with the beats continuous there, and the octave is locked (D2)
+      scaleTempo(f, t) {
+        if (!own.P || !(f > 0)) return;
+        setPeriod(own, own.P / f, t);
+        if (tapModel) setPeriod(tapModel, tapModel.P / f, t);
+        bpm = 60 / own.P; octaveLock = bpm; lockOutSince = null;
+        estHoldUntil = t + C.acWindow; recent.length = 0; bigCount = 0;
+      },
+      // __qa.tracker (#95 SHOULD 8)
+      snapshot() {
+        return { state, confidence: +conf.toFixed(3), octaveLock: octaveLock ? +octaveLock.toFixed(2) : null,
+          bpm: +(tapModel ? 60 / tapModel.P : bpm).toFixed(2), tapped: !!tapModel, lastJump: jumps[jumps.length - 1] || null };
+      },
+      get notes() { return notes; }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
       get jumps() { return jumps; }, get stateLog() { return stateLog; }, get onsets() { return onsets; },
       get state() { return state; }, get confidence() { return conf; }, get bpm() { return tapModel ? 60 / tapModel.P : bpm; },
       get ownBpm() { return bpm; }, get lastConfidentBpm() { return lastConfidentBpm; }, get tapped() { return !!tapModel; },
