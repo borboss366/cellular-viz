@@ -1215,11 +1215,11 @@ export const DETAIL = [
 ];
 // named starts (the user's #172 grade: shear and dipoles "can be saved as variant"): the exact looks he graded, picked
 // with ?start= (explicit ?seed= ?flow= ?dye= ?fieldGain= ?fieldBase= still win). Dipoles' fluid: lit 1.25x (1.85 -> 2.3,
-// viz-172-2 "a bit brighter"), then 30-40 % more on viz-176-1's grade, from the still-dye light (fieldBase 0.3 -> 0.45)
+// viz-172-2 "a bit brighter"), then 30-40 % more on viz-176-1's grade, from the still-dye light (fieldBase 0.3 -> 0.5)
 // rather than the gain, so the rise from kick stirs (the speed term) stays where it was (0.208)
 export const NAMED_STARTS = {
   shear: { seed: 1, flow: 'shear', dye: 'checker' },
-  dipoles: { seed: 1, flow: 'dipoles', dye: 'rings', fieldGain: 2.3, fieldBase: 0.45 },
+  dipoles: { seed: 1, flow: 'dipoles', dye: 'rings', fieldGain: 2.3, fieldBase: 0.5 },   // 0.45 gave 1.26x (viz-176-3 lumFluid vs 0.3); 0.5 for ~1.35x
 };
 export const stepsPerBeatOf = m => STEPS_PER_BEAT[Math.min(3, Math.floor(m * 4))];
 const smooth01 = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
