@@ -15,6 +15,7 @@ export { readExpr };
 
 export const VERSION = 1;
 export const NAME_RE = /^\d\d-[a-z0-9-]+$/;                 // qa/<id>/ folder and experiments/<page>.html
+export const PAGE_RE = /^(?:\d\d-[a-z0-9-]+|[a-z][a-z0-9-]*)$/;     // experiments/<page>.html: a numbered page, or a QA-only one (clock-truth, 3c)
 const LABEL_RE = /^[A-Za-z0-9][\w.-]{0,39}$/;
 const KEY_RE = /^[A-Za-z_][\w.-]{0,39}$/;
 const CHECK_RE = /^check-[\w-]+$/;                           // qa/check-NN[-x].mjs on CHECKS_REF
@@ -44,6 +45,23 @@ export const METRICS = {
   'audio.rowCorr.min': 'the lowest per-row Pearson of a row\'s glow with its band lane (best lag within ±100 ms), over the rows with ≥ 3 s of samples',
   'audio.frames': 'frames logged while the excerpt played',
   'audio.rowsCounted': 'rows with ≥ 3 s of non-null samples, the ones audio.rowCorr.min is taken over',
+  // the live tracker's truths (clock PR 3c, truth.mjs): an audio[] item with truth (or synth), on experiments/clock-truth.html
+  'truth.anchored': '1 when the page saw the excerpt\'s marker (the first rise), so references map onto the AudioContext clock',
+  'truth.lockS': 'seconds from the music\'s start to the tracker\'s first locked sample',
+  'truth.matched': 'share of reference beats after lock with a kick hit within half a period',
+  'truth.phaseP50Ms': 'median signed hit − reference after lock, ms (raw audio time)',
+  'truth.phaseP90Ms': '90th percentile of |hit − reference| after lock, ms',
+  'truth.latencyP90Ms': '90th percentile of the signed hit − reference (late positive), ms: the ≤ 40 ms rule in audio time',
+  'truth.biasP50Ms': 'median of detected − true onset after ANALYSIS_DELAY_MS, ms (R3)',
+  'truth.absBiasP50Ms': '|truth.biasP50Ms|, ms (R3 gate)',
+  'truth.rawDelayMs': 'truth.biasP50Ms + the delay the page subtracted: what ANALYSIS_DELAY_MS should be, ms',
+  'truth.bpm': 'the tracker\'s median bpm after lock',
+  'truth.refBpm': 'the references\' tempo (median beat period)',
+  'truth.octave': 'round(log2(bpm / refBpm)): 0 right, 1 doubled, −1 halved',
+  'truth.relockBeats': 'after the tempo step: reference beats until 4 in a row sit within 25 ms',
+  'truth.confMinStep': 'the tracker\'s lowest confidence within 8 s after the step',
+  'truth.confAfterStep': 'the tracker\'s median confidence over the last 4 s',
+  'truth.r4DiffMs': 'R4: |latency p90 at ?offset=60 − at offset 0| on the same excerpt, ms',
 };
 export const KINDS = ['render', 'perf', 'audio', 'both'];   // #141: render = CPU (SwiftShader), perf = GPU, audio = a real track as the line input
 const TOP = ['$schema', 'version', 'id', 'page', 'note', 'params', 'resolutions', 'warmup', 'seconds', 'play', 'variants', 'sweep',
@@ -76,7 +94,7 @@ export function validate(raw) {
   if (raw.version !== VERSION) errs.push(`version must be ${VERSION}`);
   if (typeof raw.id !== 'string' || !NAME_RE.test(raw.id)) errs.push('id must name the qa/ folder, like "18-little-bang"');
   const page = raw.page ?? raw.id;
-  if (typeof page !== 'string' || !NAME_RE.test(page)) errs.push('page must name experiments/<page>.html without .html, like "18-little-bang"');
+  if (typeof page !== 'string' || !PAGE_RE.test(page)) errs.push('page must name experiments/<page>.html without .html, like "18-little-bang" (or a QA-only page like "clock-truth")');
   if (raw.note !== undefined && typeof raw.note !== 'string') errs.push('note must be text');
   const params = raw.params ?? {};
   checkParams(params, 'params', errs);
@@ -97,8 +115,11 @@ export function validate(raw) {
     if (!Array.isArray(raw.variants) || !raw.variants.length) errs.push('variants must be a non-empty list of {name, params}');
     else variants = raw.variants.map((v, i) => {
       if (!isObj(v) || !LABEL_RE.test(v.name || '')) errs.push(`variants[${i}]: needs a name (letters, digits, . _ -, up to 40)`);
-      else checkParams(v.params ?? {}, `variants[${i}].params`, errs);
-      return { name: v && v.name, params: (v && v.params) || {} };
+      else {
+        checkParams(v.params ?? {}, `variants[${i}].params`, errs);
+        for (const k of Object.keys(v)) if (!['name', 'params', 'audio'].includes(k)) errs.push(`variants[${i}]: unknown field "${k}"`);
+      }
+      return { name: v && v.name, params: (v && v.params) || {}, ...(v && typeof v.audio === 'string' ? { audio: v.audio } : {}) };
     });
     const names = variants.map(v => v.name);
     if (new Set(names).size !== names.length) errs.push('variant names must be unique');
@@ -183,25 +204,48 @@ export function validate(raw) {
   // #141: what the run checks, and for kind "audio" the track excerpt the page hears as its line input
   const kind = raw.kind ?? 'both';
   if (!KINDS.includes(kind)) errs.push(`kind: one of ${KINDS.join(', ')}`);
-  let audio = null;
+  // audio: one excerpt {...}, or a list of named excerpts (3c truths) that variants pick with "audio": "<name>" (the
+  // first is the default). Each excerpt is its own fake-capture device, so exp-run.mjs opens a browser per excerpt.
+  //   {track, from, len, noloop, via}                 a track excerpt (#141)
+  //   + truth: true, step: 1.067                      a truth excerpt: marker lead, references from <track>.ref.beats,
+  //                                                   with step the same excerpt resampled after it (truth.mjs)
+  //   {synth: "metronome", bpm, len}                  truth (a): the clock's kick rendered here, onsets known exactly
+  let audio = null, audios = [];
   if (raw.audio !== undefined || kind === 'audio') {
-    const a = raw.audio;
+    const list = Array.isArray(raw.audio) ? raw.audio : [raw.audio], many = Array.isArray(raw.audio);
     if (kind !== 'audio') errs.push('audio: only with kind "audio"');
-    else if (!isObj(a)) errs.push('audio: {"track": "<name>", "from": s, "len": s, "noloop": true, "via": "fake"} for kind "audio"');
-    else {
-      for (const k of Object.keys(a)) if (!['track', 'from', 'len', 'noloop', 'via'].includes(k)) errs.push(`audio: unknown field "${k}"`);
-      audio = { track: a.track, from: a.from ?? 0, len: a.len, noloop: a.noloop ?? true, via: a.via ?? 'fake' };
-      if (!TRACKS.includes(audio.track)) errs.push(`audio.track: one of ${TRACKS.join(', ')} (in QA_AUDIO_DIR; the runs are skipped when it is missing)`);
-      if (!Number.isInteger(audio.from) || audio.from < 0 || audio.from > 3600) errs.push('audio.from: whole seconds into the track, 0–3600');
-      if (!Number.isInteger(audio.len) || audio.len < 2 || audio.len > 120) errs.push('audio.len: whole seconds of excerpt, 2–120');
-      if (typeof audio.noloop !== 'boolean') errs.push('audio.noloop: true or false');
-      if (audio.via === 'loop') errs.push('audio.via "loop" needs qa/audio-loop.sh (the next runner PR); use "fake" for now');
-      else if (audio.via !== 'fake') errs.push('audio.via: "fake" (Chromium fake capture) or "loop" (PulseAudio BlackHole-QA)');
+    else if (!list.length || list.length > 8 || !list.every(isObj)) errs.push('audio: {"track": "<name>", "from": s, "len": s, "noloop": true, "via": "fake"} for kind "audio", or a list of 1–8 named ones');
+    else list.forEach((a, i) => {
+      const w = many ? `audio[${i}]` : 'audio';
+      for (const k of Object.keys(a)) if (!['name', 'track', 'synth', 'bpm', 'from', 'len', 'noloop', 'via', 'truth', 'step'].includes(k)) errs.push(`${w}: unknown field "${k}"`);
+      const x = { name: a.name ?? (many ? null : 'default'), track: a.track ?? null, synth: a.synth ?? null, bpm: a.bpm ?? null, from: a.from ?? 0, len: a.len,
+        noloop: a.noloop ?? true, via: a.via ?? 'fake', truth: !!(a.truth || a.synth), step: a.step ?? null };
+      if (!LABEL_RE.test(x.name || '')) errs.push(`${w}.name: letters, digits, . _ -, up to 40${many ? ' (needed in a list)' : ''}`);
+      if (x.synth !== null) {
+        if (x.synth !== 'metronome') errs.push(`${w}.synth: "metronome" (truth a)`);
+        if (x.track !== null) errs.push(`${w}: synth or track, not both`);
+        if (!isNum(x.bpm, 60, 180)) errs.push(`${w}.bpm: 60–180 for synth`);
+        if (x.step !== null) errs.push(`${w}.step: only on a track excerpt`);
+      } else if (!TRACKS.includes(x.track)) errs.push(`${w}.track: one of ${TRACKS.join(', ')} (in QA_AUDIO_DIR; the runs are skipped when it is missing)`);
+      if (!Number.isInteger(x.from) || x.from < 0 || x.from > 3600) errs.push(`${w}.from: whole seconds into the track, 0–3600`);
+      if (!Number.isInteger(x.len) || x.len < 2 || x.len > 120) errs.push(`${w}.len: whole seconds of excerpt, 2–120`);
+      if (typeof x.noloop !== 'boolean') errs.push(`${w}.noloop: true or false`);
+      if (x.step !== null && !(isNum(x.step, 1.01, 1.2) && x.truth)) errs.push(`${w}.step: a tempo factor 1.01–1.2, on a truth excerpt`);
+      if (x.via === 'loop') errs.push(`${w}.via "loop" needs qa/audio-loop.sh (the next runner PR); use "fake" for now`);
+      else if (x.via !== 'fake') errs.push(`${w}.via: "fake" (Chromium fake capture) or "loop" (PulseAudio BlackHole-QA)`);
       // a noloop excerpt is checked for silence after its end, so the run has to outlast it (it starts with Play)
-      if (audio.noloop && Number.isInteger(audio.len) && isNum(warmup, 0, 120) && isNum(seconds, 0, 600) && warmup + seconds < audio.len + 1.5)
-        errs.push(`audio: warmup + seconds (${warmup + seconds}) must reach 1.5 s past the excerpt's end (len ${audio.len}) to check the silence after it`);
-    }
-  }
+      const total = Number.isInteger(x.len) ? (x.truth ? 3 : 0) + x.len + (x.step ? x.len / x.step : 0) : null;
+      if (x.noloop && total !== null && isNum(warmup, 0, 120) && isNum(seconds, 0, 600) && warmup + seconds < total + 1.5)
+        errs.push(`${w}: warmup + seconds (${warmup + seconds}) must reach 1.5 s past the excerpt's end (${+total.toFixed(1)} s) to check the silence after it`);
+      audios.push(x);
+    });
+    const names = audios.map(a => a.name);
+    if (new Set(names).size !== names.length) errs.push('audio: names must be unique');
+    for (const [i, v] of variants.entries()) if (v.audio !== undefined && !names.includes(v.audio)) errs.push(`variants[${i}].audio: one of ${names.join(', ')}`);
+    // exp.audio: the first excerpt; a single plain one keeps #141's shape {track, from, len, noloop, via}
+    const a0 = audios[0] || null;
+    audio = a0 && !many && !a0.truth ? { track: a0.track, from: a0.from, len: a0.len, noloop: a0.noloop, via: a0.via } : a0;
+  } else for (const [i, v] of variants.entries()) if (v.audio !== undefined) errs.push(`variants[${i}].audio: only with kind "audio"`);
 
   // the shared gates (check-shared: flash, comfort, GPU, beat match) run on the page's default URL after the experiment;
   // shared.variants adds a pass at each named variant's URL (worst cases like a fast bpm), shared.default: false drops
@@ -222,7 +266,7 @@ export function validate(raw) {
   }
 
   const exp = { version: VERSION, id: raw.id, page, note: raw.note || '', params, sizes, warmup, seconds, play, variants, sweep: raw.sweep || null,
-    values: isObj(values) ? values : {}, gates: Array.isArray(gates) ? gates : [], checks, record, swipe, debug: isObj(debug) ? debug : {}, timeoutMin, kind, audio, shared };
+    values: isObj(values) ? values : {}, gates: Array.isArray(gates) ? gates : [], checks, record, swipe, debug: isObj(debug) ? debug : {}, timeoutMin, kind, audio, audios, shared };
   if (!errs.length) {
     const n = expand(exp).length;
     if (n > MAX_RUNS) errs.push(`${n} runs (variants × sweep × resolutions); keep it to ${MAX_RUNS}`);
@@ -233,16 +277,17 @@ export function validate(raw) {
 
 /** variants × sweep combos (each a variant), then × resolutions → [{label, variant, size, params}] */
 export function variantsOf(exp) {
-  let out = exp.variants.map(v => ({ name: v.name, params: { ...v.params } }));
+  let out = exp.variants.map(v => ({ name: v.name, params: { ...v.params }, ...(v.audio ? { audio: v.audio } : {}) }));
   if (exp.sweep) for (const [k, vals] of Object.entries(exp.sweep)) {
-    out = out.flatMap(v => vals.map(x => ({ name: `${v.name === 'default' && exp.variants.length === 1 ? '' : v.name + '_'}${k}-${x}`.replace(/[^\w.-]+/g, '-'), base: v.base || v.name, params: { ...v.params, [k]: x } })));
+    out = out.flatMap(v => vals.map(x => ({ name: `${v.name === 'default' && exp.variants.length === 1 ? '' : v.name + '_'}${k}-${x}`.replace(/[^\w.-]+/g, '-'), base: v.base || v.name, params: { ...v.params, [k]: x }, ...(v.audio ? { audio: v.audio } : {}) })));
   }
   return out.map(v => ({ ...v, base: v.base || v.name }));
 }
 export function expand(exp) {
   const out = [];
   for (const v of variantsOf(exp)) for (const s of exp.sizes)
-    out.push({ label: `${v.name}@${s.name}`, variant: v.name, base: v.base, size: s, params: { ...exp.params, ...v.params } });
+    out.push({ label: `${v.name}@${s.name}`, variant: v.name, base: v.base, size: s, params: { ...exp.params, ...v.params },
+      ...(exp.audios && exp.audios.length ? { audio: v.audio || exp.audios[0].name } : {}) });
   return out;
 }
 export const query = params => new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString();
@@ -263,7 +308,7 @@ export function evalGates(exp, runs, { missing = [] } = {}) {
     const bar = [g.min !== undefined && `≥ ${g.min}`, g.max !== undefined && `≤ ${g.max}`, g.equals !== undefined && `= ${g.equals}`].filter(Boolean).join(' ');
     const name = g.name || `${g.metric} ${bar}${vs ? ` (${vs.join(', ')})` : ''}${rs ? ` @${rs.join(', ')}` : ''}`;
     if (g.track && missing.includes(g.track)) return { name, ok: null, skipped: true, value: `skipped: track missing (${g.track})` };
-    if (exp.audio && missing.includes(exp.audio.track) && g.metric.startsWith('audio.')) return { name, ok: null, skipped: true, value: `skipped: track missing (${exp.audio.track})` };
+    if (exp.audio && (exp.audios || []).length <= 1 && missing.includes(exp.audio.track) && g.metric.startsWith('audio.')) return { name, ok: null, skipped: true, value: `skipped: track missing (${exp.audio.track})` };
     if (!mine.length && matched.length) return { name, ok: null, skipped: true, value: `skipped: track missing (${[...new Set(matched.map(r => r.skipped))].join(', ')})` };
     if (!mine.length) return { name, ok: false, value: 'no run matches this gate' };
     const fails = [], seen = [];

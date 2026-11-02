@@ -217,7 +217,9 @@
     const load = opts.load || loadFile;
     // line: the tracker, its input and worklet, the hand fixes' offset (beats) and the booking position
     const line = source === 'line' ? { status: 'idle', error: null, tracker: null, node: null, input: null, offset: 0,
-      step: null, lastBooked: -Infinity, seenJumps: 0, stateLog: [] } : null;
+      step: null, lastBooked: -Infinity, seenJumps: 0, stateLog: [], rises: [] } : null;
+    const lineDelayMs = () => (opts.trackerOptions && Number.isFinite(opts.trackerOptions.analysisDelayMs) ? opts.trackerOptions.analysisDelayMs
+      : root.ClockTracker ? root.ClockTracker.ANALYSIS_DELAY_MS : null);
 
     // ---------- the metronome (as 11/13/19), moved ----------
     const clock = {
@@ -651,6 +653,7 @@
         if (!line || !line.tracker || !f) return;
         const tr = line.tracker;
         tr.push(f);
+        if (f.rise) for (const r of f.rise) { line.rises.push(r); if (line.rises.length > 4096) line.rises.shift(); }   // the rise probe (3c truths)
         for (; line.seenJumps < tr.jumps.length; line.seenJumps++) {
           const j = tr.jumps[line.seenJumps];
           const jump = { type: 'jump', at: j.at, kind: j.kind, fromBeats: j.fromBeats + line.offset, toBeats: j.toBeats + line.offset, origin: 'tracker' };
@@ -751,6 +754,8 @@
         return jump;
       },
       // __qa.tracker (#95 SHOULD 8): null on other sources
+      // the QA truths' view of the line source (3c, experiments/clock-truth.html): the rise probe's times and the tracker
+      get lineProbe() { return line ? { rises: line.rises, tracker: line.tracker, delayMs: lineDelayMs() } : null; },
       get trackerState() {
         if (!line) return null;
         const s = line.tracker && line.tracker.snapshot ? line.tracker.snapshot() : { state: 'acquire', confidence: 0, octaveLock: null, bpm: 0, tapped: false, lastJump: null };
