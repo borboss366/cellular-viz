@@ -36,7 +36,9 @@
 
   const EDGES = [20, 60, 120, 250, 500, 2000, 4000, 8000, 16000];   // Hz, as audio-in.js
   const BANDS = ['sub', 'kick', 'low', 'lowMid', 'mid', 'upperMid', 'presence', 'air'];
-  const ANALYSIS_DELAY_MS = 20;   // placeholder (the brief's 20–30 ms) until 3c measures it on truth (a); the one definition (R3)
+  // the one definition (R3). Measured by 3c's truth run viz-183-1 (2 Nov): raw delay 11.3 ms on truth (a)'s metronome,
+  // 12.8–16 ms on the four tracks; 12 keeps truth (a)'s bias near 0 and the tracks' within +1 … +4 ms.
+  const ANALYSIS_DELAY_MS = 12;
 
   const DEFAULTS = {
     minBpm: 60, maxBpm: 180, priorBpm: 120, priorOct: 0.7, halfLag: 0.55,
@@ -45,6 +47,7 @@
     acqConf: 0.4, lockConf: 0.5, lostConf: 0.3, acqWindow: 0.5, trackWindow: 0.25, trackGain: 0.15, driftOnsets: 4, driftMin: 0.02, confAlpha: 0.15,
     confTau: 1.0, maxRate: 0.03, refRel: 0.3, reacqJump: 0.25, reacqOnsets: 3, bpb: 4,
     escapeTempo: 0.03, escapePhase: 0.25, escapeSecs: 4, escapeConf: 0.7,
+    offbeatBeats: 8, offbeatWin: 0.12, offbeatRatio: 1.5,
   };
 
   // ---------------------------------------------------------------- analysis (worklet and node)
@@ -83,6 +86,7 @@
     const wt = new Float64Array(nBins);
     let wsum = 0;
     for (let k = 0; k < nBins; k++) { const f = k * hz; wt[k] = f < 150 ? 3 : f < 500 ? 1.5 : 1; wsum += wt[k]; }
+    const lowBins = Math.max(2, Math.ceil(150 / hz));   // bins 1 … < 150 Hz: the low flux the off-beat check compares
     const ranges = [];
     for (let i = 0; i < 8; i++) ranges.push([Math.max(1, Math.floor(EDGES[i] / hz)), Math.min(H - 1, Math.ceil(EDGES[i + 1] / hz))]);
     let pos = 0, seen = 0, sinceHop = 0, first = true;
@@ -95,12 +99,13 @@
     function frame(t) {
       for (let i = 0; i < N; i++) { re[i] = ring[(pos + i) % N] * win[i]; im[i] = 0; }   // oldest sample first
       fftInPlace(re, im);
-      let flux = 0;
+      let flux = 0, low = 0;
       const bands = {};
       for (let k = 0; k < H; k++) {
         const mag = Math.hypot(re[k], im[k]) / (N / 4);   // a full-scale sine reads ≈ 1
         const c = Math.log1p(100 * mag);
         if (k < nBins && !first) flux += wt[k] * Math.max(0, c - prev[k]);
+        if (k >= 1 && k < lowBins && !first) low += Math.max(0, c - prev[k]);   // the kick's own band (beat or off-beat)
         prev[k] = c; re[k] = mag;   // keep the magnitude for the bands
       }
       for (let i = 0; i < 8; i++) {
@@ -110,7 +115,7 @@
         bands[BANDS[i]] = 10 * Math.log10(s / Math.max(1, b - a + 1) + 1e-20);
       }
       first = false;
-      const f = { t, flux: flux / wsum, bands };
+      const f = { t, flux: flux / wsum, low, bands };
       if (rises) { f.rise = rises; rises = null; }
       if (onFrame) onFrame(f); else frames.push(f);
     }
@@ -186,7 +191,35 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     const ownBeats = t => own.B0 + (t - own.T0) / own.P;
     const tapBeats = t => tapModel.B0 + (t - tapModel.T0) / tapModel.P;
     const outBeats = t => !own.P ? 0 : tapModel ? tapBeats(t) : ownBeats(t) + outOffset;
-    function setState(s, t) { if (s !== state) { state = s; stateLog.push({ t, state: s }); } }
+    function setState(s, t) { if (s !== state) { state = s; stateLog.push({ t, state: s }); if (s !== 'locked') offReset(true); } }
+
+    // Beat or off-beat (3c truth (b), viz-183-1: Sandstorm locked steadily half a beat off, p50 −210 ms at 440 ms a
+    // beat). The broadband flux of a trance off-beat (open hat + bass) can beat the kick's, and the PLL holds any phase
+    // it acquired. Kicks own the low band, so while locked with the drums in the window, the strongest low-band flux
+    // (bins under 150 Hz) near phase 0 and near phase ½ is kept per beat; when the half-beat side holds more than
+    // offbeatRatio × the beat side over offbeatBeats beats, the model moves half a beat at the next beat line, logged as
+    // jump { kind: 'offbeat' } (it rebooks like any tracker jump). Once per lock: never back and forth.
+    const obRing = [];
+    let obBeat = null, obCur = null, obDone = false;
+    function offReset(all) { obRing.length = 0; obBeat = null; obCur = null; if (all) obDone = false; }
+    function offbeatCheck(f, t) {
+      if (f.low === undefined || state !== 'locked' || !own.P || scheduled || tapModel || obDone) return;
+      const ph = ownBeats(t - delay), k = Math.floor(ph), u = ph - k;
+      if (obBeat !== k) {
+        if (obCur && t - lastInWindow < 1.5 * own.P) { obRing.push(obCur); if (obRing.length > C.offbeatBeats) obRing.shift(); }
+        obBeat = k; obCur = { on: 0, off: 0 };
+      }
+      if (u < C.offbeatWin || u > 1 - C.offbeatWin) obCur.on = Math.max(obCur.on, f.low);
+      else if (Math.abs(u - 0.5) < C.offbeatWin) obCur.off = Math.max(obCur.off, f.low);
+      if (obRing.length < C.offbeatBeats) return;
+      let on = 0, off = 0;
+      for (const b of obRing) { on += b.on; off += b.off; }
+      if (off > 0 && off > C.offbeatRatio * on) {
+        scheduled = { kind: 'offbeat', delta: 0.5, atBeat: Math.floor(outBeats(t)) + 1 };
+        notes.push({ t, kind: 'offbeat', on: +on.toFixed(3), off: +off.toFixed(3) });
+        obDone = true; offReset(false);
+      }
+    }
     function logJump(t, kind, from, to) { const j = { type: 'jump', at: t, kind, fromBeats: from, toBeats: to }; jumps.push(j); return j; }
     function setPeriod(m, P, t) { if (m.P) { m.B0 = m.B0 + (t - m.T0) / m.P; m.T0 = t; } m.P = P; }
     const nextBarLine = b => barOrigin + C.bpb * (Math.floor((b - barOrigin) / C.bpb + 1e-9) + 1);
@@ -360,6 +393,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (scheduled && own.P && outBeats(t) >= scheduled.atBeat) {
         const from = outBeats(t);
         if (scheduled.kind === 'acquire') { own.B0 += scheduled.delta; own.pending = 0; conf = C.lockConf; lastInWindow = t; setState('locked', t); }
+        else if (scheduled.kind === 'offbeat') { own.B0 += scheduled.delta; own.pending = 0; lastInWindow = t; }
         else { outOffset = Math.round(tapBeats(t) - ownBeats(t)); tapModel = null; disagreeSince = null; }
         logJump(t, scheduled.kind, from, outBeats(t));
         scheduled = null;
@@ -395,6 +429,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         setState('free-run', t); reacq = [];
         if (lastConfidentBpm) { bpm = lastConfidentBpm; setPeriod(own, 60 / bpm, t); }
       }
+      offbeatCheck(f, t);
       // tap escape: the tracker's own model disagrees with the tap for > escapeSecs at high confidence → override
       if (tapModel && !scheduled) {
         const dTempo = Math.abs(tapModel.P / own.P - 1), dPhase = Math.abs(frac(tapBeats(t) - ownBeats(t)));
