@@ -135,13 +135,16 @@ test('81-stomp-clap: reported (octave predicted double, never gated)', () => {
 
 test('step-120-128: re-lock ≤ 8 beats after the step', () => {
   const s = render('step-120-128', { sr: SR }), o = run(s);
+  const bias = phaseStats(o, s, { to: 30 }).bias;   // the analysis delay, from the steady part before the step
   const after = o.errs.filter(x => x.t >= 30);
-  // re-lock: the first true beat after the step from which the next 4 beats all sit within 0.05 beat
+  // re-lock: the first true beat after the step from which the next 4 beats all sit within 0.05 beat (around the bias)
   let relock = -1;
-  for (let k = 0; k + 4 <= after.length; k++) if (after.slice(k, k + 4).every(x => Math.abs(x.e) <= 0.05)) { relock = k; break; }
+  for (let k = 0; k + 4 <= after.length; k++) if (after.slice(k, k + 4).every(x => Math.abs(x.e - bias) <= 0.05)) { relock = k; break; }
   const st = phaseStats(o, s, { from: 30 + 8 * 0.46875 });
-  console.log(fmt(s, o, st, `, re-lock after ${relock} beats`));
-  assert.ok(relock >= 0 && relock <= 8, `re-lock ${relock}`);
+  const trace = after.slice(0, 20).map(x => (x.e - bias).toFixed(3)).join(' ');
+  const detail = `re-lock after ${relock} beats; error per beat after the step (beats, bias ${bias.toFixed(3)} removed): ${trace}; bpm ${o.tr.ownBpm.toFixed(2)}`;
+  console.log(fmt(s, o, st, `, ${detail}`));
+  assert.ok(relock >= 0 && relock <= 8, detail);
   assert.ok(Math.abs(o.tr.ownBpm - 128) <= 1, `bpm ${o.tr.ownBpm}`);
   assert.ok(o.monotonic);
 });
@@ -169,12 +172,13 @@ for (const X of [0.10, 0.20, 0.40]) {
     const after = o.errs.filter(x => x.t >= tR + 16 * Pend).map(x => Math.abs(x.e - bias) * Pend * 1000);
     const states = o.tr.stateLog.filter(x => x.t > tB).map(x => x.state);
     console.log(`breakdown-${X.toFixed(2)}: jumps after the breakdown ${late.map(j => `${j.kind}@${j.at.toFixed(2)} (${j.fromBeats.toFixed(3)}→${j.toBeats.toFixed(3)})`).join(', ') || 'none'}, ms after 4 bars max ${Math.max(...after).toFixed(1)} p90 ${pct(after, 0.9).toFixed(1)}, states ${states.join('→')}, bpm ${o.tr.ownBpm.toFixed(2)}`);
+    const detail = `jumps ${late.map(j => `${j.kind}@${j.at.toFixed(2)} (${j.fromBeats.toFixed(3)}→${j.toBeats.toFixed(3)})`).join(', ') || 'none'}; ms after 4 bars max ${Math.max(...after).toFixed(1)} p90 ${pct(after, 0.9).toFixed(1)}; first 24 beats after the return (ms): ${o.errs.filter(x => x.t >= tR).slice(0, 24).map(x => ((x.e - bias) * Pend * 1000).toFixed(0)).join(' ')}; states ${states.join('→')}; monotonic ${o.monotonic}; bpm ${o.tr.ownBpm.toFixed(2)}`;
     if (X < 0.25) {
-      assert.equal(late.length, 0, 'no jump');
-      assert.ok(o.monotonic, 'beats monotonic');
-      assert.ok(Math.max(...after) <= 25, `phase within 4 bars: max ${Math.max(...after)} ms`);
+      assert.equal(late.length, 0, `no jump: ${detail}`);
+      assert.ok(o.monotonic, `beats monotonic: ${detail}`);
+      assert.ok(Math.max(...after) <= 25, `phase within 4 bars: ${detail}`);
     } else {
-      assert.equal(late.filter(j => j.kind === 'acquire').length, 1, 'exactly one acquire jump');
+      assert.equal(late.filter(j => j.kind === 'acquire').length, 1, `exactly one acquire jump: ${detail}`);
       const j = late.find(x => x.kind === 'acquire'), onBar = Math.abs(frac((j.fromBeats - o.tr.barOrigin) / 4)) * 4;
       assert.ok(onBar <= 0.05, `jump ${onBar.toFixed(3)} beat from a bar line`);
     }

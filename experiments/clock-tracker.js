@@ -42,7 +42,7 @@
     minBpm: 60, maxBpm: 180, priorBpm: 120, priorOct: 0.7, halfLag: 0.55,
     acWindow: 4, refineWindow: 8, estHz: 6,
     onsetK: 2, onsetWin: 1, refractory: 0.15, floorRel: 0.15, peakTau: 10, strongRel: 0.4,
-    acqConf: 0.4, lockConf: 0.5, lostConf: 0.3, acqWindow: 0.5, trackWindow: 0.25, trackGain: 0.15, confAlpha: 0.15,
+    acqConf: 0.4, lockConf: 0.5, lostConf: 0.3, acqWindow: 0.5, trackWindow: 0.25, trackGain: 0.15, driftOnsets: 4, driftMin: 0.02, confAlpha: 0.15,
     confTau: 1.0, maxRate: 0.03, reacqJump: 0.25, reacqOnsets: 3, bpb: 4,
     escapeTempo: 0.03, escapePhase: 0.25, escapeSecs: 4, escapeConf: 0.7,
   };
@@ -237,6 +237,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         bpm = raw; own.P = 60 / raw; own.T0 = o ? o.t : t; own.B0 = 0;
         return;
       }
+      if (t < estHoldUntil) return;   // the drift follower just set the period; the window still holds the old tempo
       if (Math.abs(raw - bpm) / bpm > 0.1) { if (++bigCount < 6) return; bpm = raw; }   // a real change holds for ~1 s
       else { bigCount = 0; bpm = 0.7 * bpm + 0.3 * raw; }
       setPeriod(own, 60 / bpm, t);
@@ -277,10 +278,38 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(e));
       own.pending -= C.trackGain * e;
       lastInWindow = to;
+      drift(to, Math.round(target));
       if (tapModel) {   // the output follows the tap; the PLL only nudges its phase
         const te = frac(tapBeats(to) + tapModel.pending);
         if (Math.abs(te) <= C.trackWindow) tapModel.pending -= C.trackGain * te;
       }
+    }
+
+    // Tempo-step follower (#178 test-pr 1: the 120 → 128 step took 18 beats to re-lock, because the 4 s
+    // autocorrelation window lags a step by ~4 s while the phase error piles up at 6.7 % a beat). The period seen
+    // by the last driftOnsets in-window onsets (a line through onset time vs beat index; independent of the PLL's
+    // own corrections) replaces the period at once when it differs by more than driftMin, and the estimator's
+    // blend waits one window so the lagging autocorrelation can't pull it back. The phase error already piled up
+    // is then slewed under the 3 % rule like any other correction (no step).
+    const recent = [];
+    let estHoldUntil = -1e9;
+    function drift(to, k) {
+      if (recent.length && k <= recent[recent.length - 1].k) recent.length = 0;   // a relabel or jump: start over
+      recent.push({ t: to, k });
+      while (recent.length > C.driftOnsets) recent.shift();
+      if (recent.length < C.driftOnsets || recent[recent.length - 1].k - recent[0].k < C.driftOnsets - 1) return;
+      const n = recent.length, mk = recent.reduce((a, o) => a + o.k, 0) / n, mt = recent.reduce((a, o) => a + o.t, 0) / n;
+      let sxy = 0, sxx = 0;
+      for (const o of recent) { sxy += (o.k - mk) * (o.t - mt); sxx += (o.k - mk) ** 2; }
+      const P = sxx > 0 ? sxy / sxx : own.P;
+      let res = 0;
+      for (const o of recent) res = Math.max(res, Math.abs(o.t - (mt + (o.k - mk) * P)));
+      if (!(P > 0) || res > 0.1 * P || Math.abs(P / own.P - 1) <= C.driftMin) return;
+      setPeriod(own, P, to);
+      bpm = 60 / P; estHoldUntil = to + C.acWindow; bigCount = 0;
+      const e = frac(ownBeats(to) + own.pending);   // the phase error left at the new period, slewed from here
+      own.pending -= e;
+      // the window is kept: while it still straddles the step each new onset refines the period again
     }
 
     function slew(m, dt) {   // apply the pending correction as a rate change of at most maxRate
