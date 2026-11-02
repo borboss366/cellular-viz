@@ -172,3 +172,52 @@ test('R4 pairing: the ?offset run finds its offset-0 partner on the same excerpt
   const p2 = TR.r4Diffs([real('a-metronome@1080p', 'metronome', {}, 1.6), real('b-sandstorm@1080p', 'sandstorm', {}, -189.7), real('a-offset60@1080p', 'metronome', { offset: 60 }, 1.6)]);
   assert.deepEqual(p2, [{ label: 'a-offset60@1080p', base: 'a-metronome@1080p', a: 1.6, b: 1.6, diff: 0, candidates: ['a-metronome@1080p'] }]);
 });
+
+test('fitGrid: beats indexed gap by gap; a jittered steady grid fits within its jitter, a long excerpt never slips an index', () => {
+  const grid = Array.from({ length: 60 }, (_, k) => 3 + k * 60 / 136.36);
+  const jit = grid.map((r, k) => r + (k % 2 ? 0.004 : -0.004));
+  const f = TR.fitGrid(jit);
+  console.log(`fitGrid: 60 beats at 136.36 BPM with ±4 ms jitter → r ${f.resMs.toFixed(2)} ms, period ${(f.period * 1000).toFixed(3)} ms`);
+  assert.ok(f.resMs >= 3.9 && f.resMs <= 4.1, `r ${f.resMs}`);
+  assert.deepEqual(f.ks, grid.map((_, k) => k), 'one index per beat');
+  const missed = jit.filter((_, k) => k !== 20);   // Beat This! missed a beat: the index skips it
+  const g = TR.fitGrid(missed);
+  assert.equal(g.ks[20], 21); assert.ok(g.resMs < 4.2, `r with a missed beat ${g.resMs}`);
+});
+
+test('truthMetrics basis: the fitted grid when Beat This! sits on a line (its jitter leaves), Beat This! when it doesn\'t', () => {
+  const grid = Array.from({ length: 48 }, (_, k) => TR.LEAD_S + 0.001 + k * 0.44);
+  const refs = grid.map((r, k) => r + (k % 2 ? 0.004 : -0.004));   // Beat This!'s ±4 ms jitter around a steady grid
+  const T = fakeLog(grid, { shift: 0, jit: 0, lockAfter: 2 });     // hits exactly on the true grid
+  const m = TR.truthMetrics(T, { refs, markerAt: TR.markerRise(SR) });
+  console.log(`fit: basis ${m.basis}, r ${m.fitResMs} ms, p90 ${m.phaseP90Ms} ms (against Beat This! it would be ~4)`);
+  assert.equal(m.basis, 'fit'); assert.ok(m.fitResMs >= 3.9 && m.fitResMs <= 4.1, `r ${m.fitResMs}`);
+  assert.ok(m.phaseP90Ms <= 0.5, `p90 against the fit ${m.phaseP90Ms}`);
+  // a live drummer: the tempo drifts by ~10 % over the excerpt, far off any line
+  const drift = Array.from({ length: 48 }, (_, k) => TR.LEAD_S + 0.001 + k * 0.5 + 0.0006 * k * k);
+  const d = TR.truthMetrics(fakeLog(drift, { shift: 0, jit: 0, lockAfter: 2 }), { refs: drift, markerAt: TR.markerRise(SR) });
+  console.log(`drift: basis ${d.basis}, r ${d.fitResMs} ms`);
+  assert.equal(d.basis, 'beatthis'); assert.ok(d.fitResMs > TR.FIT_MAX_MS, `r ${d.fitResMs}`);
+  assert.equal(d.phaseP90Ms, 0);
+});
+
+test('truthMetrics: from lock + 4 beats to a beat before the clip end, ±1 s around jumps out; unexcluded numbers, jump count, trace', () => {
+  const refs = Array.from({ length: 40 }, (_, k) => TR.LEAD_S + 0.001 + k * 0.5);
+  const T = fakeLog(refs, { shift: 0, jit: 0, lockAfter: 2 }), off = 7.25;
+  const jt = off + refs[25] + 0.01;                                 // a jump just after beat 25: hits within 1 s are 120 ms off
+  T.jumps = [{ kind: 'side', at: jt }, { kind: 'side', at: off + refs[39] + 3 }];   // the second one in the silence after the clip
+  T.hits.forEach(h => { if (Math.abs(h.time - jt) < 1) h.time += 0.12; });
+  const m = TR.truthMetrics(T, { refs, markerAt: TR.markerRise(SR) });
+  console.log(`clean p90 ${m.phaseP90Ms} ms (${m.measured} beats, ${m.excluded} out) · unexcluded p90 ${m.phaseP90AllMs} ms · jumps ${m.jumpCount} · lock ${m.lockS} s`);
+  assert.equal(m.phaseP90Ms, 0, 'the jump\'s second either side is left out');
+  assert.ok(m.phaseP90AllMs >= 100, `unexcluded p90 ${m.phaseP90AllMs}`);
+  assert.equal(m.jumpCount, 1, 'a jump after the clip end does not count');
+  assert.equal(m.trace.filter(x => x.why === 'settle').length, 4, 'the first 4 beats after the lock settle');
+  assert.equal(m.trace.filter(x => x.why === 'jump').length, 4, 'beats within 1 s of the jump (23 … 26)');
+  assert.ok(m.trace.every(x => 'errMs' in x && 'used' in x && 't' in x));
+  const g = TR.truthGateMetrics(m);
+  assert.equal('truth.trace' in g, false); assert.equal(g['truth.jumpCount'], 1);
+  // with the clip's end known (endAt), the window stops one beat before it
+  const e = TR.truthMetrics(T, { refs, markerAt: TR.markerRise(SR), endAt: refs[30] + 0.25 });
+  assert.ok(e.trace.every(x => x.t <= refs[30] - 0.25 + 1e-3), 'nothing measured in the last beat of the clip');
+});

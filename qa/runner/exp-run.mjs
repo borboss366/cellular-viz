@@ -121,7 +121,7 @@ async function makeTruthExcerpt(a) {
       const cut = await decodeCut(a); sr = cut.sr;
       made = TRUTH.trackTruth(TRUTH.toMono(cut.pcm, cut.ch), sr, parseRefBeats(fs.readFileSync(refFile, 'utf8')), a.from, a.len, a.step);
     }
-    writeAtomic(side, JSON.stringify({ v: 1, sr, refs: made.refs.map(t => +t.toFixed(6)), markerAt: TRUTH.markerRise(sr), stepAt: made.stepAt, lead: TRUTH.LEAD_S }));
+    writeAtomic(side, JSON.stringify({ v: 1, sr, refs: made.refs.map(t => +t.toFixed(6)), markerAt: TRUTH.markerRise(sr), stepAt: made.stepAt, lead: TRUTH.LEAD_S, endAt: +(made.mono.length / sr).toFixed(6) }));
     writeAtomic(dest, wavBytes(padSilence(TRUTH.toInt16Stereo(made.mono), sr, 2), sr, 2));
     note(`audio: made ${truthName(a)} (${(made.mono.length / sr).toFixed(1)} s + ${PAD_S} s silence, ${made.refs.length} reference beats${made.stepAt ? `, step ×${a.step} at ${made.stepAt.toFixed(2)} s` : ''})`);
   }
@@ -203,8 +203,9 @@ async function measure(browser, run) {
       const T = await page.evaluate(() => (window.__qa && window.__qa.truth ? JSON.parse(JSON.stringify(window.__qa.truth)) : null)).catch(() => null);
       const tm = TRUTH.truthMetrics(T, x.truth);
       Object.assign(r.metrics, TRUTH.truthGateMetrics(tm));
-      r.truth = tm;
-      note(`${r.label} truth: ${tm.anchored ? `lock ${tm.lockS ?? '–'} s · phase p50 ${tm.phaseP50Ms ?? '–'} / p90 ${tm.phaseP90Ms ?? '–'} ms · latency p90 ${tm.latencyP90Ms ?? '–'} ms · bias p50 ${tm.biasP50Ms ?? '–'} ms (raw delay ${tm.rawDelayMs ?? '–'} ms) · bpm ${tm.bpm ?? '–'} vs ref ${tm.refBpm ?? '–'} (octave ${tm.octave ?? '–'})${x.truth.stepAt ? ` · relock ${tm.relockBeats ?? 'never'} beats, conf min ${tm.confMinStep ?? '–'} → ${tm.confAfterStep ?? '–'}` : ''} · matched ${tm.matched ?? '–'} · jumps ${JSON.stringify(tm.jumps)}` : 'no marker seen (no rise): the page never heard the excerpt'}`);
+      const { trace: _trace, ...tmHead } = tm;   // the per-beat trace goes to the debug JSON only
+      r.truth = tmHead;
+      note(`${r.label} truth: ${tm.anchored ? `lock ${tm.lockS ?? '–'} s · basis ${tm.basis ?? '–'} (fit residual r ${tm.fitResMs ?? '–'} ms) · phase p50 ${tm.phaseP50Ms ?? '–'} / p90 ${tm.phaseP90Ms ?? '–'} ms from lock + 4 beats, ±1 s around jumps out (${tm.measured ?? '–'} beats, ${tm.excluded ?? '–'} out) · unexcluded p50 ${tm.phaseP50AllMs ?? '–'} / p90 ${tm.phaseP90AllMs ?? '–'} ms · ${tm.jumpCount} jumps · latency p90 ${tm.latencyP90Ms ?? '–'} ms · bias p50 ${tm.biasP50Ms ?? '–'} ms (raw delay ${tm.rawDelayMs ?? '–'} ms) · bpm ${tm.bpm ?? '–'} vs ref ${tm.refBpm ?? '–'} (octave ${tm.octave ?? '–'})${x.truth.stepAt ? ` · relock ${tm.relockBeats ?? 'never'} beats, conf min ${tm.confMinStep ?? '–'} → ${tm.confAfterStep ?? '–'}` : ''} · matched ${tm.matched ?? '–'} · jumps ${JSON.stringify(tm.jumps)}` : 'no marker seen (no rise): the page never heard the excerpt'}`);
       fs.writeFileSync(path.join(OUT, 'debug', `truth-${safe(r.label)}.json`), JSON.stringify({ metrics: tm, ref: x.truth, log: T }));
     }
     if (A) {   // the audio gates' numbers: the page's per-frame log against the offline analysis of the excerpt
