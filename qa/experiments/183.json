@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "id": "00-clock-truth",
+  "kind": "audio",
+  "note": "Clock PR 3c (#173, brief task 4, #95 6560018120): the live tracker's truths on the box. experiments/clock-truth.html listens with ?clock=line&audio=line to each excerpt through Chromium's fake capture; each excerpt starts with a marker the worklet's rise probe pins to the AudioContext clock, so the clock's booked kicks (raw audio time) are compared with the references to the sample. (a) the metronome rendered here (onsets exact): phase p90 <= 15 ms and latency p90 <= 40 ms hard; R3 onset bias report-only until ANALYSIS_DELAY_MS is measured from this run and committed; R4 offset +60 vs 0 within 1 ms. (b) the four tracks vs Beat This!: Sandstorm hard (phase p90 <= 35 ms), the rest report-only; predicted octaves: Sandstorm 136.4, Voodoo People 150.0, Teardrop 153.8 (doubled), Hot 96.8 or 193.6. (c) Sandstorm then the same 16 s resampled x1.067: relock and the confidence dip, report-only.",
+  "page": "clock-truth",
+  "params": { "clock": "line" },
+  "resolutions": ["1080p"],
+  "warmup": 1,
+  "seconds": 40,
+  "audio": [
+    { "name": "metronome", "synth": "metronome", "bpm": 120, "len": 24 },
+    { "name": "sandstorm", "track": "darude-sandstorm", "from": 30, "len": 24, "truth": true },
+    { "name": "voodoo", "track": "prodigy-voodoo-people", "from": 60, "len": 24, "truth": true },
+    { "name": "teardrop", "track": "massive-attack-teardrop", "from": 60, "len": 24, "truth": true },
+    { "name": "hot", "track": "james-brown", "from": 30, "len": 24, "truth": true },
+    { "name": "step", "track": "darude-sandstorm", "from": 30, "len": 16, "truth": true, "step": 1.067 }
+  ],
+  "variants": [
+    { "name": "a-metronome", "audio": "metronome" },
+    { "name": "a-offset60", "audio": "metronome", "params": { "offset": 60 } },
+    { "name": "b-sandstorm", "audio": "sandstorm" },
+    { "name": "b-voodoo", "audio": "voodoo" },
+    { "name": "b-teardrop", "audio": "teardrop" },
+    { "name": "b-hot", "audio": "hot" },
+    { "name": "c-step", "audio": "step" }
+  ],
+  "values": {
+    "status": "__qa.tracker ? __qa.tracker.status : null",
+    "state": "__qa.tracker ? __qa.tracker.state : null",
+    "device": "__qa.audioIn && __qa.audioIn.device ? __qa.audioIn.device.label : null",
+    "offsetMs": "__qa.truth ? __qa.truth.offsetMs : null",
+    "jumps": "__qa.truth ? __qa.truth.jumps.map(j => j.kind).join() : null",
+    "lane": "__qa.tracker && __qa.tracker.lane ? __qa.tracker.lane.lane : null",
+    "laneR": "__qa.tracker && __qa.tracker.lane ? __qa.tracker.lane.R : null",
+    "laneReport": "__qa.tracker ? __qa.tracker.lane : null"
+  },
+  "gates": [
+    { "metric": "truth.anchored", "equals": 1, "name": "every excerpt was heard: the marker's rise seen on the AudioContext clock" },
+    { "metric": "truth.phaseP90Ms", "max": 15, "variant": ["a-metronome"], "name": "truth (a): phase p90 <= 15 ms after lock" },
+    { "metric": "truth.latencyP90Ms", "max": 40, "variant": ["a-metronome"], "name": "truth (a): latency p90 <= 40 ms (raw audio time)" },
+    { "metric": "truth.absBiasP50Ms", "max": 5, "variant": ["a-metronome"], "name": "R3: |onset bias p50| <= 5 ms after ANALYSIS_DELAY_MS (12 ms, measured by viz-183-1)" },
+    { "metric": "truth.matched", "min": 0.9, "variant": ["a-metronome"], "report": true, "name": "truth (a): >= 90 % of beats after lock have a kick" },
+    { "metric": "truth.r4DiffMs", "max": 1, "variant": ["a-offset60"], "name": "R4: latency p90 at visual offset +60 equals offset 0 within 1 ms" },
+    { "metric": "truth.phaseP90Ms", "max": 35, "variant": ["b-sandstorm"], "name": "truth (b) Sandstorm: phase p90 <= 35 ms after lock (the only hard (b) gate)" },
+    { "metric": "truth.phaseP90Ms", "max": 35, "variant": ["b-voodoo", "b-teardrop", "b-hot"], "report": true, "name": "truth (b) Voodoo People, Teardrop, Hot: phase p90 <= 35 ms (report-only)" },
+    { "metric": "truth.octave", "equals": 0, "variant": ["b-sandstorm", "b-voodoo"], "report": true, "name": "truth (b): Sandstorm and Voodoo People in their own octave (prediction; the bpm itself is the next row)" },
+    { "metric": "truth.bpm", "min": 132.3, "max": 140.5, "variant": ["b-sandstorm"], "report": true, "name": "truth (b) Sandstorm: bpm within 3 % of 136.4" },
+    { "metric": "truth.bpm", "min": 145.5, "max": 154.5, "variant": ["b-voodoo"], "report": true, "name": "truth (b) Voodoo People: bpm within 3 % of 150" },
+    { "metric": "truth.octave", "equals": 1, "variant": ["b-teardrop"], "report": true, "name": "truth (b): Teardrop octave-doubled to ~153.8 (prediction; the ÷2 button's demo)" },
+    { "metric": "truth.relockBeats", "max": 8, "variant": ["c-step"], "report": true, "name": "truth (c): relock <= 8 beats after the x1.067 step" },
+    { "metric": "truth.confMinStep", "max": 0.6, "variant": ["c-step"], "report": true, "name": "truth (c): confidence drops at the step" },
+    { "metric": "truth.confAfterStep", "min": 0.5, "variant": ["c-step"], "report": true, "name": "truth (c): confidence recovers after the step" },
+    { "metric": "errors", "max": 0 }
+  ],
+  "record": { "stills": 1 }
+}
