@@ -74,7 +74,8 @@ for (const [name, make] of Object.entries(GRIDS)) {
     const side = toSidecar(ref);
     assert.equal(side.version, 2);
     assert.ok(side.beats.every(b => b.conf === 1), 'conf is 1.0 on every beat (Beat This! gives none)');
-    side.beats.forEach((b, k) => { assert.ok(Math.abs(b.ms - rows[k][0] * 1000) < 0.001); assert.equal(b.pos, rows[k][1]); });
+    // against the time the TSV actually holds (5 decimals, as tsv() writes it)
+    side.beats.forEach((b, k) => { assert.ok(Math.abs(b.ms - Number(rows[k][0].toFixed(5)) * 1000) < 0.001, `${name}: beat ${k} ms`); assert.equal(b.pos, rows[k][1]); });
     const { ctx, c } = fileRig(JSON.parse(JSON.stringify(side)), rows.at(-1)[0] + 2);
     c.start();
     const seg = c.file.seg;
