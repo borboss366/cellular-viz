@@ -25,6 +25,14 @@
 //     ≥ 0.7, the output switches back at the next bar line: jump { kind: 'override' }.
 //   - ANALYSIS_DELAY_MS (#95 MUST 3): one constant for every track, subtracted from onset times. This value is a
 //     placeholder; 3c measures it on truth (a) (median detected − true onset) and commits it (truth R3).
+//   - steering lane (3c, reviewer fix of 2 Nov, #173; replaces viz-183-1 … 4's off-beat rules): onsets are picked in two
+//     lanes, the broadband flux and the low-band flux (< 150 Hz), each with its own threshold, floor and refractory.
+//     The lane whose onsets sit closest to one phase at the tracked period (amplitude-weighted circular resultant R
+//     over the last 8 beats) steers the PLL, the lock and strongRef; the tempo autocorrelation stays on the broadband
+//     flux. R picks the lane, the PLL picks the phase in it. Lanes switch only at acquire / re-acquire, or while
+//     locked when the other lane's R stays higher for 8 whole beats (that switch re-acquires through free-run, so a
+//     phase change lands on a bar line as in R1). With < 4 onsets in a lane's window its R is undefined and the lane
+//     holds (breakdowns, dropouts). Every switch is logged: snapshot().lane.
 //
 //   const tr = ClockTracker.createTracker();
 //   const an = ClockTracker.createAnalyzer({ sampleRate, onFrame: f => tr.push(f) });   // node / tests
@@ -47,7 +55,7 @@
     acqConf: 0.4, lockConf: 0.5, lostConf: 0.3, acqWindow: 0.5, trackWindow: 0.25, trackGain: 0.15, driftOnsets: 4, driftMin: 0.02, confAlpha: 0.15,
     confTau: 1.0, maxRate: 0.03, refRel: 0.3, reacqJump: 0.25, reacqOnsets: 3, bpb: 4,
     escapeTempo: 0.03, escapePhase: 0.25, escapeSecs: 4, escapeConf: 0.7,
-    offbeatBeats: 8, offbeatWin: 0.12, offbeatRatio: 1.5, offbeatLowLean: 1.1, offbeatHighRatio: 1.5, offbeatFirst: 4, offbeatWait: 3,
+    laneBeats: 8, laneMinOnsets: 4,
   };
 
   // ---------------------------------------------------------------- analysis (worklet and node)
@@ -86,8 +94,7 @@
     const wt = new Float64Array(nBins);
     let wsum = 0;
     for (let k = 0; k < nBins; k++) { const f = k * hz; wt[k] = f < 150 ? 3 : f < 500 ? 1.5 : 1; wsum += wt[k]; }
-    const lowBins = Math.max(2, Math.ceil(150 / hz));   // bins 1 … < 150 Hz: the low flux the off-beat check compares
-    const highBin = Math.round(5000 / hz);              // bins ≥ 5 kHz: hats (reported next to the low flux, 3c)
+    const lowBins = Math.max(2, Math.ceil(150 / hz));   // bins 1 … < 150 Hz: the low lane's flux (3c)
     const ranges = [];
     for (let i = 0; i < 8; i++) ranges.push([Math.max(1, Math.floor(EDGES[i] / hz)), Math.min(H - 1, Math.ceil(EDGES[i + 1] / hz))]);
     let pos = 0, seen = 0, sinceHop = 0, first = true;
@@ -100,14 +107,13 @@
     function frame(t) {
       for (let i = 0; i < N; i++) { re[i] = ring[(pos + i) % N] * win[i]; im[i] = 0; }   // oldest sample first
       fftInPlace(re, im);
-      let flux = 0, low = 0, high = 0;
+      let flux = 0, low = 0;
       const bands = {};
       for (let k = 0; k < H; k++) {
         const mag = Math.hypot(re[k], im[k]) / (N / 4);   // a full-scale sine reads ≈ 1
         const c = Math.log1p(100 * mag);
         if (k < nBins && !first) flux += wt[k] * Math.max(0, c - prev[k]);
-        if (k >= 1 && k < lowBins && !first) low += Math.max(0, c - prev[k]);   // the kick's own band (beat or off-beat)
-        if (k >= highBin && k < nBins && !first) high += Math.max(0, c - prev[k]);
+        if (k >= 1 && k < lowBins && !first) low += Math.max(0, c - prev[k]);   // the kick's own band
         prev[k] = c; re[k] = mag;   // keep the magnitude for the bands
       }
       for (let i = 0; i < 8; i++) {
@@ -117,7 +123,7 @@
         bands[BANDS[i]] = 10 * Math.log10(s / Math.max(1, b - a + 1) + 1e-20);
       }
       first = false;
-      const f = { t, flux: flux / wsum, low, high: high / Math.max(1, nBins - highBin), bands };
+      const f = { t, flux: flux / wsum, low, bands };
       if (rises) { f.rise = rises; rises = null; }
       if (onFrame) onFrame(f); else frames.push(f);
     }
@@ -176,10 +182,12 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
   function createTracker(options = {}) {
     const C = { ...DEFAULTS, ...options };
     const delay = (options.analysisDelayMs ?? ANALYSIS_DELAY_MS) / 1000;
-    // history of frames (time, flux, threshold) and onsets; trimmed to the longest window
-    const ft = [], fv = [], fthr = [];
-    const onsets = [];
-    let dtHop = 512 / 44100, lastT = null, lastEst = -1e9, peakEnv = 0, lastOnsetT = -1e9;
+    // onset lanes (3c): each keeps its frames (time, flux, threshold) and onsets, trimmed to the longest window, and
+    // picks onsets from its own flux (broad: frame.flux, low: frame.low); the tempo autocorrelation reads broad's
+    const mkLane = name => ({ name, ft: [], fv: [], fthr: [], peakEnv: 0, lastOnsetT: -1e9, onsets: [] });
+    const lanes = { broad: mkLane('broad'), low: mkLane('low') };
+    const fv = lanes.broad.fv;
+    let dtHop = 512 / 44100, lastT = null, lastEst = -1e9;
     // the tracker's own model: beats(t) = B0 + (t − T0) / P; pending = phase correction still to slew (beats)
     const own = { T0: 0, B0: 0, P: 0, pending: 0 };
     let bpm = 0, conf = 0, state = 'acquire', everLocked = false, lastConfidentBpm = 0, bigCount = 0;
@@ -193,70 +201,63 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     const ownBeats = t => own.B0 + (t - own.T0) / own.P;
     const tapBeats = t => tapModel.B0 + (t - tapModel.T0) / tapModel.P;
     const outBeats = t => !own.P ? 0 : tapModel ? tapBeats(t) : ownBeats(t) + outOffset;
-    function setState(s, t) { if (s !== state) { state = s; stateLog.push({ t, state: s }); if (s !== 'locked') offReset(true); } }
+    function setState(s, t) { if (s !== state) { state = s; stateLog.push({ t, state: s }); if (s === 'locked') laneHold = false; } }
 
-    // Beat or off-beat (3c truth (b), viz-183-1: Sandstorm locked steadily half a beat off, p50 −210 ms at 440 ms a
-    // beat). The broadband flux of a trance off-beat (open hat + bass) can beat the kick's, and the PLL holds any phase
-    // it acquired. Kicks own the low band, so while locked with the drums in the window, the strongest low-band flux
-    // (bins under 150 Hz) near phase 0 and near phase ½ is kept per beat; when the half-beat side holds more than
-    // offbeatRatio × the beat side over offbeatBeats beats, the model moves half a beat at the next beat line, logged as
-    // jump { kind: 'offbeat' } (it rebooks like any tracker jump). Once per lock: never back and forth.
-    // viz-183-4: the move fired ~20 s into Sandstorm's 24 s, too late to help, and the PLL had nothing to stop the next
-    // acquisition from snapping back. So the evidence is collected from the first acquisition on, the first lock waits
-    // (≤ offbeatWait s) for offbeatFirst beats of it and decides there (a silent move, nothing is booked yet), and
-    // acqOffset (0 or ½) remembers the side: acquisitions and re-acquisitions snap the strong onsets to it.
-    const obRing = [];
-    let obBeat = null, obCur = null, obDone = false, acqOffset = 0, lockWaitSince = null;
-    function offReset(all) { obRing.length = 0; obBeat = null; obCur = null; if (all) obDone = false; }
-    // what the check saw (snapshot().offbeat, the 3c truth run's report): low and high flux by the model's phase in 8
-    // bins over every locked frame (hist*After: after a move), beats kept and dropped (no drums in the window), the
-    // last decision's sums, when and why it fired
-    const z8 = () => [0, 0, 0, 0, 0, 0, 0, 0];
-    const obStats = { frames: 0, noLow: 0, hist: z8(), histHigh: z8(), histAfter: z8(), histHighAfter: z8(), kept: 0, dropped: 0, checks: 0,
-      on: null, off: null, hon: null, hoff: null, fired: 0, firedAt: null, rule: null, atLock: null, acqOffset: 0 };
-    function offbeatSums() {
-      let on = 0, off = 0, hon = 0, hoff = 0;
-      for (const b of obRing) { on += b.on; off += b.off; hon += b.hon; hoff += b.hoff; }
-      obStats.checks++; obStats.on = +on.toFixed(3); obStats.off = +off.toFixed(3); obStats.hon = +hon.toFixed(3); obStats.hoff = +hoff.toFixed(3);
-      return { on, off, hon, hoff };
-    }
-    // the low band alone (the kick clearly on the half beat), or the low band leaning to the half beat while the hats
-    // (≥ 5 kHz) sit on the tracked beat: a trance off-beat (open hat + bass) against a kick on the half beat. viz-183-3,
-    // Sandstorm locked 208 ms early: low half/beat 1.32 (under 1.5 alone), high beat/half ≈ 2.7 over the run.
-    function offbeatRule({ on, off, hon, hoff }) {
-      if (off > 0 && off > C.offbeatRatio * on) return 'low';
-      if (off > C.offbeatLowLean * on && hon > C.offbeatHighRatio * hoff && hon > 0) return 'low+hats';
-      return null;
-    }
-    function offbeatMove(t, rule, s, now) {
-      obStats.fired++; obStats.firedAt = +t.toFixed(3); obStats.rule = rule; obStats.atLock = now;
-      notes.push({ t, kind: 'offbeat', rule, atLock: now, on: +s.on.toFixed(3), off: +s.off.toFixed(3), hon: +s.hon.toFixed(3), hoff: +s.hoff.toFixed(3) });
-      obDone = true; offReset(false);
-      acqOffset = acqOffset ? 0 : 0.5; obStats.acqOffset = acqOffset;
-      if (now) { own.B0 += 0.5; own.pending = 0; }   // before the first lock: nothing booked, no jump to log
-      else scheduled = { kind: 'offbeat', delta: 0.5, atBeat: Math.floor(outBeats(t)) + 1 };
-    }
-    function offbeatCheck(f, t) {
-      const first = state === 'acquire' && !everLocked;   // the first acquisition only collects; the lock decides
-      if (!own.P || !(state === 'locked' || first)) return;
-      if (f.low === undefined) { obStats.noLow++; return; }
-      const ph = ownBeats(t - delay), k = Math.floor(ph), u = ph - k, bin = Math.min(7, Math.floor(u * 8));
-      if (state === 'locked') {
-        obStats.frames++;
-        (obStats.fired ? obStats.histAfter : obStats.hist)[bin] += f.low; (obStats.fired ? obStats.histHighAfter : obStats.histHigh)[bin] += f.high || 0;
+    // ---- steering lane (3c reviewer fix, 2 Nov; replaces viz-183-1 … 4's off-beat rules). viz-183-4's loop: after the
+    // half-beat move the kicks failed the amplitude gates (strongRef was built on the off-beat), nothing landed in the
+    // window, confidence decayed and re-acquisition went back to the loudest onset. Now the lane whose onsets are
+    // concentrated in phase steers, and strongRef comes from that lane only.
+    let lane = 'broad', aheadSince = null, laneHold = false, laneReadyAt = null, laneDecided = false;
+    const laneLog = [], laneLast = { broad: { R: null, n: 0, phase: null }, low: { R: null, n: 0, phase: null } };
+    const laneAcc = { broad: 0, low: 0, n: 0 };   // mean R per lane while locked (the run's report)
+    const r3 = x => x === null || x === undefined ? null : +x.toFixed(3);
+    // amplitude-weighted circular resultant of a lane's onsets over the last laneBeats beats at the tracked period
+    // (a few loud kicks outweigh many soft hats): R 1 = every onset on one phase, 0 = spread; phase = the mean onset
+    // phase in beats (0 = the tracked beat, ±0.5 = the off-beat)
+    function laneStat(ln, t) {
+      const from = t - C.laneBeats * own.P;
+      let c = 0, s = 0, w = 0, n = 0;
+      for (let i = ln.onsets.length - 1; i >= 0 && ln.onsets[i].t > from; i--) {
+        const o = ln.onsets[i], th = 2 * Math.PI * ownBeats(o.t);
+        c += o.s * Math.cos(th); s += o.s * Math.sin(th); w += o.s; n++;
       }
-      if (scheduled || tapModel || obDone) return;
-      if (obBeat !== k) {
-        if (obCur && t - lastInWindow < 1.5 * own.P) { obRing.push(obCur); obStats.kept++; if (obRing.length > C.offbeatBeats) obRing.shift(); }
-        else if (obCur) obStats.dropped++;
-        obBeat = k; obCur = { on: 0, off: 0, hon: 0, hoff: 0 };
+      if (n < C.laneMinOnsets || !(w > 0)) return { R: null, n, phase: null };
+      return { R: Math.hypot(c, s) / w, n, phase: Math.atan2(s, c) / (2 * Math.PI) };
+    }
+    function switchLane(t, to, why) {
+      laneLog.push({ t: +t.toFixed(3), from: lane, to, why, state, R: { broad: r3(laneLast.broad.R), low: r3(laneLast.low.R) } });
+      notes.push({ t, kind: 'lane', from: lane, to, why });
+      lane = to; strongRef = 0; aheadSince = null; reacq = [];
+    }
+    function laneTick(t) {
+      if (!own.P) return;
+      if (laneReadyAt === null) laneReadyAt = t + C.laneBeats * own.P;   // the first lock waits at most this for R
+      const b = laneStat(lanes.broad, t), l = laneStat(lanes.low, t);
+      laneLast.broad = b; laneLast.low = l;
+      if (b.R === null || l.R === null) { aheadSince = null; return; }   // < laneMinOnsets in a window: hold the lane
+      laneDecided = true;
+      if (state === 'locked') { laneAcc.broad += b.R; laneAcc.low += l.R; laneAcc.n++; }
+      const other = lane === 'broad' ? 'low' : 'broad', better = laneLast[other].R > laneLast[lane].R;
+      if (tapModel) { aheadSince = null; return; }
+      if (state !== 'locked') {   // acquire / re-acquire: the lane with the higher R (held after a sustained switch)
+        aheadSince = null;
+        if (better && !laneHold) switchLane(t, other, everLocked ? 're-acquire' : 'acquire');
+        return;
       }
-      const hi = f.high || 0;
-      if (u < C.offbeatWin || u > 1 - C.offbeatWin) { obCur.on = Math.max(obCur.on, f.low); obCur.hon = Math.max(obCur.hon, hi); }
-      else if (Math.abs(u - 0.5) < C.offbeatWin) { obCur.off = Math.max(obCur.off, f.low); obCur.hoff = Math.max(obCur.hoff, hi); }
-      if (first || obRing.length < C.offbeatBeats) return;
-      const s = offbeatSums(), rule = offbeatRule(s);
-      if (rule) offbeatMove(t, rule, s, false);
+      if (!better) { aheadSince = null; return; }
+      if (aheadSince === null) aheadSince = t;
+      else if (t - aheadSince >= C.laneBeats * own.P) {   // higher for laneBeats whole beats: switch and re-acquire on it
+        switchLane(t, other, 'sustained');
+        laneHold = true; setState('free-run', t);   // R1's path: ≤ ¼ beat slews, more jumps on the next bar line
+      }
+    }
+    function laneReport() {
+      const j0 = jumps.length ? jumps[0].at : null;
+      return { lane, R: { broad: r3(laneLast.broad.R), low: r3(laneLast.low.R) }, n: { broad: laneLast.broad.n, low: laneLast.low.n },
+        phase: { broad: r3(laneLast.broad.phase), low: r3(laneLast.low.phase) },
+        Rmean: laneAcc.n ? { broad: r3(laneAcc.broad / laneAcc.n), low: r3(laneAcc.low / laneAcc.n) } : null,
+        switches: laneLog.slice(-8), jumps: jumps.slice(-8).map(j => `${j.kind}@${j.at.toFixed(2)}`),
+        afterJump: j0 === null ? [] : stateLog.filter(s => s.t >= j0).slice(0, 16).map(s => `${s.state}@${s.t.toFixed(2)}`) };
     }
     function logJump(t, kind, from, to) { const j = { type: 'jump', at: t, kind, fromBeats: from, toBeats: to }; jumps.push(j); return j; }
     function setPeriod(m, P, t) { if (m.P) { m.B0 = m.B0 + (t - m.T0) / m.P; m.T0 = t; } m.P = P; }
@@ -311,6 +312,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     }
     function recentStrong(t, secs) {
       let mx = 0;
+      const onsets = lanes[lane].onsets;   // the steering lane's
       for (let i = onsets.length - 1; i >= 0 && onsets[i].t > t - secs; i--) mx = Math.max(mx, onsets[i].s);
       return onsets.filter(o => o.t > t - secs && o.s >= C.strongRel * mx);
     }
@@ -341,23 +343,19 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     }
 
     // ---- phase
-    function onOnset(to, s) {
-      onsets.push({ t: to, s });
-      while (onsets.length && onsets[0].t < to - Math.max(C.refineWindow, 10)) onsets.shift();
+    function onOnset(to, s, ln) {   // an onset of the steering lane `ln` (its own list already holds it)
       if (!own.P) return;
-      // only strong onsets steer: ≥ strongRel of the strongest of the last 2 s (≥ 0.7 while acquiring, so an
-      // off-beat hat can never pull the first lock half a beat away)
+      // only strong onsets steer: ≥ strongRel of the lane's strongest of the last 2 s (≥ 0.7 while acquiring)
       let mx = 0;
-      for (let i = onsets.length - 1; i >= 0 && onsets[i].t > to - 2; i--) mx = Math.max(mx, onsets[i].s);
+      for (let i = ln.onsets.length - 1; i >= 0 && ln.onsets[i].t > to - 2; i--) mx = Math.max(mx, ln.onsets[i].s);
       if (s < (state === 'acquire' ? 0.7 : C.strongRel) * mx) return;
-      // ... and never anything far below the drums the lock was built on: a pad-only breakdown has no drum, so the
-      // "strongest of the last 2 s" is a pad wobble (its chord beats at 53–110 Hz) and would pass the rule above,
-      // keep the confidence up and then re-acquire on noise (#178: breakdown 0.10/0.20 jumped)
+      // ... and never anything far below the drums the lock was built on (strongRef: this lane's locked onsets): a
+      // pad-only breakdown's "strongest of the last 2 s" is a pad wobble and would pass the rule above (#178)
       if (strongRef && s < C.refRel * strongRef) return;
       const target = ownBeats(to) + own.pending;   // where the model will be once the pending slew is done
-      const e = frac(target), ea = frac(target + acqOffset);   // ea: acquisitions snap the strong onsets to the side the off-beat check chose
+      const e = frac(target);
       if (state === 'free-run') {   // collect evidence; decide once reacqOnsets strong onsets agree (R1)
-        reacq.push(ea);
+        reacq.push(e);
         if (reacq.length < C.reacqOnsets) return;
         const em = median(reacq);
         reacq = [];
@@ -366,20 +364,21 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         return;
       }
       if (state === 'acquire') {
-        if (scheduled || Math.abs(ea) > C.acqWindow) return;   // a bar-line jump is already decided: wait for it
-        conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(ea));
+        if (scheduled) return;   // a bar-line jump is already decided: wait for it
+        // acquisition snaps to the lane's amplitude-weighted mean phase over the last laneBeats beats, not to the
+        // loudest single onset: two clusters half a beat apart resolve to the heavier one, the same way every run.
+        // Too few onsets for R: this onset, as before.
+        const st = laneStat(ln, to), ea = st.R !== null ? frac(st.phase + own.pending) : e;
+        if (Math.abs(ea) > C.acqWindow) return;
+        conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(frac(e - ea)));   // this onset vs the snapped phase
         const from = outBeats(to);
         own.B0 -= ea; own.pending = 0;   // gain 1: snap
         if (everLocked && Math.abs(ea) > 1e-6) logJump(to, 'acquire', from, outBeats(to));
         lastInWindow = to;
         if (conf >= C.lockConf) {
           if (!everLocked) {
-            // the first lock waits (≤ offbeatWait s) for offbeatFirst beats of beat/off-beat evidence, then decides it
-            if (obRing.length < C.offbeatFirst && !tapModel) {
-              if (lockWaitSince === null) lockWaitSince = to;
-              if (to - lockWaitSince < C.offbeatWait) return;
-            }
-            if (obRing.length >= C.offbeatFirst && !obDone && !tapModel) { const sm = offbeatSums(), rule = offbeatRule(sm); if (rule) offbeatMove(to, rule, sm, true); }
+            // the lane is chosen before the first lock (both R defined), or after laneBeats beats of a known period
+            if (!laneDecided && !tapModel && !(laneReadyAt !== null && to >= laneReadyAt)) return;
             everLocked = true; barOrigin = Math.round(ownBeats(to));
           }
           setState('locked', to);
@@ -432,6 +431,33 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (Math.abs(m.pending) < 1e-9) m.pending = 0;
     }
 
+    // one lane's onset picking: the frame's value joins the lane's history; an adaptive threshold over the last onsetWin
+    // seconds (mean + onsetK sigma), the floor (floorRel of the slow peak envelope) and the refractory decide whether the
+    // previous frame was an onset; its time is refined by a parabola. Returns { t, s } or null.
+    function detect(ln, t, x, dt) {
+      const fv = ln.fv;
+      ln.ft.push(t); fv.push(x);
+      const nWin = Math.max(4, Math.round(C.onsetWin / dtHop));
+      let m = 0, v = 0, c = 0;
+      for (let i = Math.max(0, fv.length - nWin); i < fv.length; i++) { m += fv[i]; c++; }
+      m /= c;
+      for (let i = Math.max(0, fv.length - nWin); i < fv.length; i++) v += (fv[i] - m) ** 2;
+      ln.fthr.push(m + C.onsetK * Math.sqrt(v / c));
+      ln.peakEnv = Math.max(x, ln.peakEnv * Math.exp(-dt / C.peakTau));
+      const keep = Math.round(Math.max(C.acWindow, C.onsetWin) / dtHop) + 8;
+      if (fv.length > 2 * keep) { const d = fv.length - keep; ln.ft.splice(0, d); ln.fthr.splice(0, d); fv.splice(0, d); }
+      const n = fv.length;
+      if (n < 3) return null;
+      const a = fv[n - 3], b = fv[n - 2], cc = fv[n - 1], tb = ln.ft[n - 2];
+      if (!(b > ln.fthr[n - 2] && b >= a && b > cc && b > C.floorRel * ln.peakEnv && tb - ln.lastOnsetT >= C.refractory)) return null;
+      const d2 = a - 2 * b + cc, off = d2 < 0 ? Math.max(-0.5, Math.min(0.5, 0.5 * (a - cc) / d2)) : 0;
+      ln.lastOnsetT = tb;
+      const o = { t: tb + off * dtHop - delay, s: b };
+      ln.onsets.push(o);
+      while (ln.onsets.length && ln.onsets[0].t < o.t - Math.max(C.refineWindow, 10)) ln.onsets.shift();
+      return o;
+    }
+
     function push(f) {
       const t = f.t;
       if (lastT !== null) { const d = t - lastT; if (d > 0 && d < 0.1) dtHop = 0.9 * dtHop + 0.1 * d; }
@@ -442,35 +468,18 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (scheduled && own.P && outBeats(t) >= scheduled.atBeat) {
         const from = outBeats(t);
         if (scheduled.kind === 'acquire') { own.B0 += scheduled.delta; own.pending = 0; conf = C.lockConf; lastInWindow = t; setState('locked', t); }
-        else if (scheduled.kind === 'offbeat') { own.B0 += scheduled.delta; own.pending = 0; lastInWindow = t; }
         else { outOffset = Math.round(tapBeats(t) - ownBeats(t)); tapModel = null; disagreeSince = null; }
         logJump(t, scheduled.kind, from, outBeats(t));
         scheduled = null;
       }
-      // onset strength history and an adaptive threshold over the last onsetWin seconds
-      ft.push(t); fv.push(f.flux);
-      const nWin = Math.max(4, Math.round(C.onsetWin / dtHop));
-      let m = 0, v = 0, c = 0;
-      for (let i = Math.max(0, fv.length - nWin); i < fv.length; i++) { m += fv[i]; c++; }
-      m /= c;
-      for (let i = Math.max(0, fv.length - nWin); i < fv.length; i++) v += (fv[i] - m) ** 2;
-      fthr.push(m + C.onsetK * Math.sqrt(v / c));
-      peakEnv = Math.max(f.flux, peakEnv * Math.exp(-dt / C.peakTau));
-      const keep = Math.round(Math.max(C.acWindow, C.onsetWin) / dtHop) + 8;
-      if (fv.length > 2 * keep) { ft.splice(0, fv.length - keep); fthr.splice(0, fv.length - keep); fv.splice(0, fv.length - keep); }
-      // the previous frame is an onset if it is a local peak over its threshold and the floor
-      const n = fv.length;
-      if (n >= 3) {
-        const a = fv[n - 3], b = fv[n - 2], cc = fv[n - 1], tb = ft[n - 2];
-        if (b > fthr[n - 2] && b >= a && b > cc && b > C.floorRel * peakEnv && tb - lastOnsetT >= C.refractory) {
-          const d = a - 2 * b + cc, off = d < 0 ? Math.max(-0.5, Math.min(0.5, 0.5 * (a - cc) / d)) : 0;
-          const to = tb + off * dtHop - delay;
-          lastOnsetT = tb;
-          onOnset(to, b);
-        }
-      }
+      // onsets in both lanes, then the steering lane (R over the last laneBeats beats), then its onset steers
+      const ob = detect(lanes.broad, t, f.flux, dt);
+      const ol = f.low === undefined ? null : detect(lanes.low, t, f.low, dt);
+      laneTick(t);
+      const o = lane === 'low' ? ol : ob;
+      if (o) onOnset(o.t, o.s, lanes[lane]);
       // tempo at ~estHz, not in free-run (no drums: keep lastConfidentBpm)
-      if (t - lastEst >= 1 / C.estHz && state !== 'free-run' && t - lastOnsetT < 1.5) { lastEst = t; applyTempo(estimate(t), t); }
+      if (t - lastEst >= 1 / C.estHz && state !== 'free-run' && t - lanes.broad.lastOnsetT < 1.5) { lastEst = t; applyTempo(estimate(t), t); }
       // confidence decays while no onset lands in the window; locked → free-run below lostConf
       if (own.P && t - lastInWindow > 2 * own.P) conf *= Math.exp(-dt / C.confTau);
       if (state === 'locked' && conf >= C.acqConf) lastConfidentBpm = bpm;
@@ -478,7 +487,6 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         setState('free-run', t); reacq = [];
         if (lastConfidentBpm) { bpm = lastConfidentBpm; setPeriod(own, 60 / bpm, t); }
       }
-      offbeatCheck(f, t);
       // tap escape: the tracker's own model disagrees with the tap for > escapeSecs at high confidence → override
       if (tapModel && !scheduled) {
         const dTempo = Math.abs(tapModel.P / own.P - 1), dPhase = Math.abs(frac(tapBeats(t) - ownBeats(t)));
@@ -524,11 +532,10 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       snapshot() {
         return { state, confidence: +conf.toFixed(3), octaveLock: octaveLock ? +octaveLock.toFixed(2) : null,
           bpm: +(tapModel ? 60 / tapModel.P : bpm).toFixed(2), tapped: !!tapModel, lastJump: jumps[jumps.length - 1] || null,
-          offbeat: { ...obStats, hist: obStats.hist.map(x => +x.toFixed(2)), histHigh: obStats.histHigh.map(x => +x.toFixed(2)),
-            histAfter: obStats.histAfter.map(x => +x.toFixed(2)), histHighAfter: obStats.histHighAfter.map(x => +x.toFixed(2)), ratio: obStats.on ? +(obStats.off / obStats.on).toFixed(3) : null } };
+          lane: laneReport() };
       },
       get notes() { return notes; }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
-      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get onsets() { return onsets; },
+      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, laneReport,
       get state() { return state; }, get confidence() { return conf; }, get bpm() { return tapModel ? 60 / tapModel.P : bpm; },
       get ownBpm() { return bpm; }, get lastConfidentBpm() { return lastConfidentBpm; }, get tapped() { return !!tapModel; },
       get barOrigin() { return barOrigin; },

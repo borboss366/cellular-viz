@@ -31,7 +31,9 @@
     "device": "__qa.audioIn && __qa.audioIn.device ? __qa.audioIn.device.label : null",
     "offsetMs": "__qa.truth ? __qa.truth.offsetMs : null",
     "jumps": "__qa.truth ? __qa.truth.jumps.map(j => j.kind).join() : null",
-    "offbeat": "__qa.tracker ? __qa.tracker.offbeat : null"
+    "lane": "__qa.tracker && __qa.tracker.lane ? __qa.tracker.lane.lane : null",
+    "laneR": "__qa.tracker && __qa.tracker.lane ? __qa.tracker.lane.R : null",
+    "laneReport": "__qa.tracker ? __qa.tracker.lane : null"
   },
   "gates": [
     { "metric": "truth.anchored", "equals": 1, "name": "every excerpt was heard: the marker's rise seen on the AudioContext clock" },

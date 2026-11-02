@@ -58,7 +58,10 @@ function phaseStats(o, s, { from = 0, to = Infinity, settle = 8, bias = null } =
   const b = bias ?? (sig.length ? pct(sig, 0.5) : 0), e = sig.map(x => Math.abs(x - b));
   return { n: e.length, bias: b, p50: pct(e, 0.5), p90: pct(e, 0.9), max: e.length ? Math.max(...e) : NaN };
 }
-const fmt = (s, o, st, extra = '') => `${s.name}: bpm ${o.tr.ownBpm.toFixed(2)} (true ${[].concat(s.bpm).join('→')}), lock ${o.lockT === null ? 'never' : o.lockT.toFixed(2) + ' s'}, bias ${(st.bias * 60000 / [].concat(s.bpm).slice(-1)[0]).toFixed(1)} ms, phase p50 ${st.p50.toFixed(4)} p90 ${st.p90.toFixed(4)} max ${st.max.toFixed(4)} beat (n ${st.n}), jumps ${o.tr.jumps.map(j => j.kind).join(',') || 'none'}${extra}`;
+// the steering lane (3c): which lane, R per lane (now and mean while locked), every switch
+const laneStr = tr => { const L = tr.laneReport(); return `lane ${L.lane} (R broad ${L.R.broad} low ${L.R.low}; mean while locked ${L.Rmean ? `${L.Rmean.broad}/${L.Rmean.low}` : '–'}; switches ${L.switches.map(x => `${x.from}→${x.to} ${x.why}@${x.t}`).join(', ') || 'none'})`; };
+const sustained = tr => tr.laneLog.filter(x => x.why === 'sustained');
+const fmt = (s, o, st, extra = '') => `${s.name}: bpm ${o.tr.ownBpm.toFixed(2)} (true ${[].concat(s.bpm).join('→')}), lock ${o.lockT === null ? 'never' : o.lockT.toFixed(2) + ' s'}, bias ${(st.bias * 60000 / [].concat(s.bpm).slice(-1)[0]).toFixed(1)} ms, phase p50 ${st.p50.toFixed(4)} p90 ${st.p90.toFixed(4)} max ${st.max.toFixed(4)} beat (n ${st.n}), jumps ${o.tr.jumps.map(j => j.kind).join(',') || 'none'}, ${laneStr(o.tr)}${extra}`;
 
 // ---------------------------------------------------------------- task 1: analysis
 test('analysis: a click stream gives a flux peak in the first two frames that hold each click', () => {
@@ -115,6 +118,7 @@ for (const name of ['128-steady', '127.3-steady', 'humanize-10ms']) {
     assert.ok(Math.abs(o.tr.ownBpm - s.bpm) <= 1, `bpm ${o.tr.ownBpm} vs ${s.bpm}`);
     assert.ok(st.p90 <= 0.03, `phase p90 ${st.p90}`);
     assert.ok(o.monotonic, 'beats monotonic');
+    assert.equal(sustained(o.tr).length, 0, `no lane flip mid-lock on a steady track: ${laneStr(o.tr)}`);
   });
 }
 
@@ -171,6 +175,7 @@ for (const X of [0.10, 0.20, 0.40]) {
     const bias = phaseStats(o, s, { to: tB }).bias;   // the analysis delay, from this run's own steady part
     const after = o.errs.filter(x => x.t >= tR + 16 * Pend).map(x => Math.abs(x.e - bias) * Pend * 1000);
     const states = o.tr.stateLog.filter(x => x.t > tB).map(x => x.state);
+    console.log(`breakdown-${X.toFixed(2)}: ${laneStr(o.tr)}`);
     console.log(`breakdown-${X.toFixed(2)}: jumps after the breakdown ${late.map(j => `${j.kind}@${j.at.toFixed(2)} (${j.fromBeats.toFixed(3)}→${j.toBeats.toFixed(3)})`).join(', ') || 'none'}, ms after 4 bars max ${Math.max(...after).toFixed(1)} p90 ${pct(after, 0.9).toFixed(1)}, states ${states.join('→')}, bpm ${o.tr.ownBpm.toFixed(2)}`);
     const detail = `jumps ${late.map(j => `${j.kind}@${j.at.toFixed(2)} (${j.fromBeats.toFixed(3)}→${j.toBeats.toFixed(3)})`).join(', ') || 'none'}; ms after 4 bars max ${Math.max(...after).toFixed(1)} p90 ${pct(after, 0.9).toFixed(1)}; first 24 beats after the return (ms): ${o.errs.filter(x => x.t >= tR).slice(0, 24).map(x => ((x.e - bias) * Pend * 1000).toFixed(0)).join(' ')}; states ${states.join('→')}; monotonic ${o.monotonic}; bpm ${o.tr.ownBpm.toFixed(2)}`;
     if (X < 0.25) {
@@ -223,4 +228,40 @@ test('R5 tap escape: a correct tap gives no override for 32 bars', () => {
   assert.ok((s.duration - 0.6 - tTap) / (4 * P) >= 32, 'the track runs 32 bars past the tap');
   assert.equal(ov.length, 0, 'no override');
   assert.ok(o.tr.tapped, 'the output still follows the tap');
+});
+
+// ---------------------------------------------------------------- 3c: the steering lane on an off-beat bass
+// The reviewer's risk (#173, 2 Nov): R picks the lane, not the phase in it. A trance off-beat bass in the low band
+// (here a kick-like 45–60 Hz hit at 0.9 of the kick, Sandstorm's low band is ~1.08 kick/bass) plus loud open hats on
+// the off-beat and soft closed hats on the beat. Reported: which lane wins, R per lane, and where the lock sits
+// against the kicks (bias 0 = on the kick, ±0.5 = on the off-beat). Gated only on what the selector promises: it
+// locks, beats never rewind, and the lane flips mid-lock at most once.
+test('lane: off-beat bass + open hats on the off-beat (reported; hysteresis gated)', () => {
+  const bpm = 128, P = 60 / bpm, seconds = 40, beats = [], hits = [];
+  for (let t = 0.5; t < seconds - 0.6; t += P) beats.push(t);
+  beats.forEach(t => {
+    hits.push({ t, lane: 'kick', vel: 1 });
+    hits.push({ t: t + P / 2, lane: 'kick', vel: 0.9 });   // the off-beat bass
+    hits.push({ t: t + P / 2, lane: 'hat', vel: 1 });      // open hat on the off-beat
+    hits.push({ t, lane: 'hat', vel: 0.4 });               // closed hat on the beat
+  });
+  const samples = renderHits(hits, seconds, SR, 777);
+  let m = 0; for (const v of samples) m = Math.max(m, Math.abs(v));
+  for (let i = 0; i < samples.length; i++) samples[i] *= 0.8 / m;
+  const s = { name: 'offbeat-bass-128', sr: SR, duration: seconds, samples, beats, bpm };
+  const o = run(s), st = phaseStats(o, s), L = o.tr.laneReport();
+  const side = Math.abs(st.bias) < 0.125 ? 'on the kick' : Math.abs(Math.abs(st.bias) - 0.5) < 0.125 ? 'on the off-beat' : 'between';
+  console.log(fmt(s, o, st, `, lock ${side} (bias ${st.bias.toFixed(3)} beat), lane phases broad ${L.phase.broad} low ${L.phase.low}, after jumps ${L.afterJump.join(' ') || '\u2013'}`));
+  assert.ok(o.lockT !== null, 'locks');
+  assert.ok(o.monotonic, 'beats monotonic after the first lock');
+  assert.ok(sustained(o.tr).length <= 1, `at most one lane flip mid-lock: ${laneStr(o.tr)}`);
+});
+
+test('lane: snapshot().lane carries the lane, R per lane, switches and the states after jumps', () => {
+  const s = render('128-steady', { sr: SR }), o = run(s), L = o.tr.snapshot().lane;
+  assert.ok(L.lane === 'broad' || L.lane === 'low');
+  assert.ok(L.R.broad === null || (L.R.broad >= 0 && L.R.broad <= 1));
+  assert.ok(L.R.low === null || (L.R.low >= 0 && L.R.low <= 1));
+  assert.ok(Array.isArray(L.switches) && Array.isArray(L.afterJump) && Array.isArray(L.jumps));
+  assert.equal('offbeat' in o.tr.snapshot(), false, 'the off-beat rules are gone');
 });
