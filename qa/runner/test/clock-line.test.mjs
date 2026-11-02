@@ -116,8 +116,9 @@ test('R2 rebook: an acquire jump at 174 BPM with 150 ms frames leaves no click o
 
 test('R4 timebase: visual offset 0 and +60 ms give the same hit times and raw beats', () => {
   const A = stubClock(128), B = stubClock(128, { offset: 60 });
-  for (let i = 0; i < 40; i++) { A.step(50); B.step(50); }
-  assert.ok(A.c.hitLog.length > 20);
+  // 10 s at 128 (~21 beats, ~10 hits a bar): 40 steps (2 s, ~1 bar) were too short for > 20 hits on #180's first test-pr
+  for (let i = 0; i < 200; i++) { A.step(50); B.step(50); }
+  assert.ok(A.c.hitLog.length > 20, `hits logged in 10 s: ${A.c.hitLog.length}`);
   assert.deepEqual(B.c.hitLog.map(h => h.time), A.c.hitLog.map(h => h.time));
   assert.equal(B.c.read({ raw: true }).beats, A.c.read({ raw: true }).beats);
   assert.ok(Math.abs(B.c.read().beats - A.c.read().beats - 0.060 * 128 / 60) < 1e-9, 'only the visual read moves');

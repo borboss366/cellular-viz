@@ -258,14 +258,15 @@ test('beats keep running forward after x2 and half (no backwards step)', () => {
   assert.ok(n > 600);
 });
 
-test('sources not built yet fall back to the metronome and say so', () => {
+test('unknown sources fall back to the metronome and say so', () => {
   const orig = console.warn; const warned = []; console.warn = m => warned.push(m);
   try {
-    for (const src of ['line', 'nonsense']) {   // file: is built since clock PR 2 (clock-file.test.mjs)
+    // file: is built since clock PR 2 (clock-file.test.mjs), line: since clock PR 3b (clock-line.test.mjs)
+    for (const src of ['nonsense']) {
       const c = Clock.create({ source: src, audioContext: fakeContext, timers: false });
       assert.equal(c.source, 'metronome'); assert.equal(c.requested, src); assert.ok(c.fallback);
     }
-    assert.equal(warned.length, 2);
+    assert.equal(warned.length, 1, `warnings: ${JSON.stringify(warned)}`);
     const m = Clock.create({ audioContext: fakeContext, timers: false });
     assert.equal(m.source, 'metronome'); assert.equal(m.fallback, null);
     assert.equal(m.settings.bpm, 120); assert.equal(m.read().beats, -1, 'not started: beats −1 as today');
