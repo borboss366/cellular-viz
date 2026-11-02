@@ -35,6 +35,11 @@
   The look (#155 ruling): every frame's dots go into a persistence buffer that decays with persist (100 ms), so a
   passing dot leaves a short comet and the screen holds a steady neon glow, plus a bloom; the kick lifts the bloom
   and the saturation (audio-in's kick envelope, 150 ms tail). __qa.lumMean: the frame's mean luminance (≥ 0.15 wanted).
+  Random starts (#165 grade): without ?seed= the page picks a random 32-bit seed and writes it into the address bar,
+  so a reload or a copied link brings the same look back. The seed picks the flow start (?flow=vortices|shear|dipoles|
+  jets|splash) and the dye (?dye=bands|checker|rings|blobs); seed 1 is the classic opening (vortices, bands). Each
+  section's drop fades in a new dye over 1 bar; the flow changes only with a new start (the 🎲 button reloads with a
+  new seed). __qa.seed, __qa.start, check().start: S1–S4.
   ?macro1..4=0..1, ?palette=prism|ice, ?seed=, ?dotLum=, ?persist=, ?core=, ?bloom=, ?sat=, ?exposure=, ?burstSize=, ?nodes=, ?qa=conserve (no bursts,
   source or sink: the live mass stays exact), ?startBar=, ?bpm=, ?muted=1, ?clock=metronome, ?audio=clock, ?labels=0.
 -->
@@ -96,6 +101,7 @@
   </div>
   <h3>Detail</h3>
   <div class="buttons"><button id="palette">palette: prism</button><button id="scene">scene: auto</button></div>
+  <div class="buttons"><button id="newStart">🎲 new start</button><button id="flow">flow: auto</button><button id="dye">dye: auto</button></div>
   <div class="row"><label for="fieldGain">fluid light</label><input id="fieldGain" type="range" min="0" max="3" step="0.05"><output id="fieldGainOut"></output></div>
   <div class="row"><label for="dotLum">dot light</label><input id="dotLum" type="range" min="0.02" max="0.12" step="0.002"><output id="dotLumOut"></output></div>
   <div class="row"><label for="persist">persist ms</label><input id="persist" type="range" min="30" max="300" step="5"><output id="persistOut"></output></div>
@@ -135,6 +141,11 @@ for (const d of DETAIL) {
 for (const [k, lo, hi] of [['bpm', 60, 180], ['startBar', 0, 4096]]) { const v = num(k, lo, hi); if (v !== null) params[k] = v; }
 params.conserve = q('qa') === 'conserve'; params.fluidQa = q('qa') === 'fluid'; params.splashQa = q('qa') === 'splash'; params.lattice = q('lattice') === '1024' ? 1024 : 2048;
 params.labels = q('labels') !== '0'; params.muted = q('muted') === '1';
+// a random start on every load without ?seed= (QA pins seed=1); the seed goes into the address bar, so a reload or a
+// copied link brings the same look back
+function randomSeed() { const a = new Uint32Array(1); (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : (a[0] = Math.random() * 4294967296); return a[0] || 1; }
+function withParams(set) { const u = new URL(location.href); for (const [k, v] of Object.entries(set)) u.searchParams.set(k, String(v)); return u; }
+if (!query.has('seed')) { params.seed = randomSeed(); try { history.replaceState(history.state, '', withParams({ seed: params.seed })); } catch (e) {} }
 
 // ---------- the shared clock (#95) and audio input (#135) ----------
 // Beats come from clock.read() (heard, with the visual offset); kick and hat from audio-in. audio.frameStart(now)
@@ -178,11 +189,16 @@ const SCENES = ['auto', 'F1', 'fluid'];
 $('scene').onclick = () => { params.scene = SCENES[(SCENES.indexOf(params.scene) + 1) % SCENES.length]; sync(); };
 for (const name of Object.keys(SLIDERS)) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); sync(); });
 $('palette').onclick = () => { params.palette = PALETTES[(PALETTES.indexOf(params.palette) + 1) % PALETTES.length]; sync(); };
+// a new start re-seeds the gas, so it reloads (restarting a lattice gas mid-run would send a shock through it)
+const valuesOf = name => DETAIL.find(d => d.name === name).values, next = (list, v) => list[(list.indexOf(v) + 1) % list.length];
+$('newStart').onclick = () => location.replace(withParams({ seed: randomSeed() }));
+$('flow').onclick = () => location.replace(withParams({ flow: next(valuesOf('flow'), params.flow) }));
+$('dye').onclick = () => location.replace(withParams({ dye: next(valuesOf('dye'), params.dye) }));
 function sync() {
   for (let i = 1; i <= 4; i++) { $('m' + i).value = params.macro[i - 1]; $('m' + i + 'Out').textContent = macroText(i - 1); }
   for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
   $('mute').classList.toggle('on', params.muted); $('palette').textContent = `palette: ${params.palette}`;
-  $('scene').textContent = `scene: ${params.scene}`;
+  $('scene').textContent = `scene: ${params.scene}`; $('flow').textContent = `flow: ${params.flow}`; $('dye').textContent = `dye: ${params.dye}`;
 }
 $('play').onclick = () => {
   if (metronome.playing) { metronome.stop(); $('play').textContent = '▶ Play'; }
@@ -230,7 +246,8 @@ function draw(now) {
     lastHud = now;
     const s = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
     const bar = ((Math.floor(beats / bpb) % 16) + 16) % 16;
-    hud.textContent = `26 lattice gas · ${v.scene} (zoom ${v.zoom}, B ${v.blockB}) · ${v.lattice} · bar ${bar}/16 · ${v.stepsPerBeat} steps a beat · density ${v.density ?? '…'}${v.conserve ? ' · conserve' : ''}${v.frozen ? ' · frozen' : ''} · ${params.bpm} bpm · ${s}\n${canvas.width}×${canvas.height} · ${fps} fps`;
+    const st0 = scene.qa.start;
+    hud.textContent = `26 lattice gas · seed ${params.seed} · ${st0.flow} / ${st0.dyeNow} · ${v.scene} (zoom ${v.zoom}, B ${v.blockB}) · ${v.lattice} · bar ${bar}/16 · ${v.stepsPerBeat} steps a beat · density ${v.density ?? '…'}${v.conserve ? ' · conserve' : ''}${v.frozen ? ' · frozen' : ''} · ${params.bpm} bpm · ${s}\n${canvas.width}×${canvas.height} · ${fps} fps`;
   }
 }
 
@@ -247,12 +264,13 @@ expose({
   mass: () => S.mass(), momentum: () => S.momentum(), lut: S.lut,
   get rings() { return S.rings; }, get step() { return S.step; }, get massHistory() { return S.massHistory; },
   get lumMean() { return S.lumMean; }, get lumHistory() { return S.lumHistory; },
+  get seed() { return S.seed; }, get start() { return S.start; }, startTruths: () => S.startTruths(),
   splash: () => S.splashSummary(), get splashLog() { return S.splashLog; }, mixHalfTime: (mix, o) => S.mixHalfTime(mix, o), mixLive: () => S.mixLive(),
 });
 AudioIn.qa(audio, window.__qa);   // beatLog, frame, beatLanes, events (Clock.qaEvents), audioIn
 if (!gl) { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2'); }
 else {
-  try { resize(); scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed, conserve: params.conserve, lattice: params.lattice, scene: params.scene, fluidQa: params.fluidQa, splashQa: params.splashQa }); }
+  try { resize(); scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed, conserve: params.conserve, lattice: params.lattice, scene: params.scene, fluidQa: params.fluidQa, splashQa: params.splashQa, flow: params.flow, dye: params.dye }); }
   catch (e) { errors.push(String(e && e.stack || e)); hud.textContent = 'init error: ' + e.message; }
   sync();
   requestAnimationFrame(frame);

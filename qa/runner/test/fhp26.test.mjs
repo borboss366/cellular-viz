@@ -153,3 +153,64 @@ test('F2 mixing: twice the vortices per axis (16 modes, |m|, |n| ≤ 12) keep |u
     assert.ok(peak <= 0.2 && peak >= 0.17, `seed ${seed}: peak |u| ${peak.toFixed(4)}`);
   }
 });
+
+// ---------- random starts (#165 grade; VIZ research's ruling: S1–S4) ----------
+test('starts: seed 1 is the classic opening, and the seeds reach every flow start and dye pattern', () => {
+  assert.deepEqual(F.pickStart(1), { flow: 'vortices', dye: 'bands', flowFixed: false, dyeFixed: false });
+  assert.deepEqual(F.pickStart(7, 'jets', 'rings'), { flow: 'jets', dye: 'rings', flowFixed: true, dyeFixed: true });
+  const flows = new Set(), dyes = new Set();
+  for (let s = 2; s < 200; s++) { const p = F.pickStart(s); flows.add(p.flow); dyes.add(p.dye); }
+  assert.deepEqual([...flows].sort(), [...F.FLOW_STARTS].sort());
+  assert.deepEqual([...dyes].sort(), [...F.DYE_PATTERNS].sort());
+  const legacy = F.dyeFor(1, 0, F.pickStart(1), 2048, 1152);
+  assert.equal(legacy.c, 0); assert.equal(legacy.kx, 5); assert.equal(legacy.ky, 3); assert.equal(legacy.hue, 0.6);
+});
+
+test('starts S1/S2/S3: every flow start keeps |u| <= 0.18, mean 0, exact zero momentum; all but splash divergence-free', () => {
+  const nq = 512, nr = 288, rows = [];
+  for (const kind of F.FLOW_STARTS) for (const seed of [3, 11]) {
+    const L = F.startLattice(kind, nq, nr, 0.25, seed, { umax: 0.18 }), s = L.stats;
+    assert.ok(s.maxU <= 0.18 + 1e-6, `${kind} ${seed}: max |u| ${s.maxU}`);
+    assert.ok(s.meanU < 1e-6, `${kind} ${seed}: mean u ${s.meanU}`);
+    assert.deepEqual(s.latticeP.map(x => x + 0), [0, 0], `${kind} ${seed}: lattice momentum`);
+    if (kind === 'splash') { assert.equal(s.maxU, 0); assert.ok(s.rhoRms > 0.02, `splash bumps ${s.rhoRms}`); }
+    else {
+      assert.ok(s.divCurl < 0.05, `${kind} ${seed}: div/curl ${s.divCurl}`);
+      assert.ok(s.rmsU >= 0.05, `${kind} ${seed}: RMS |u| ${s.rmsU}`);
+      const D = F.dyeFor(seed, 0, { flow: kind, dye: 'bands' }, nq, nr);
+      assert.ok(F.dyeChange(L.field, D, nq, nr) > 0.02, `${kind}: the dye moves`);
+    }
+    rows.push({ kind, seed, maxU: s.maxU, rmsU: s.rmsU, divCurl: s.divCurl, turns: s.turns, rhoRms: s.rhoRms });
+  }
+  console.table(rows);
+});
+
+test('starts S4: the same seed gives the same lattice; zeroMomentum keeps mass and ends at exactly 0', () => {
+  for (const kind of F.FLOW_STARTS) {
+    const a = F.startLattice(kind, 256, 144, 0.25, 9), b = F.startLattice(kind, 256, 144, 0.25, 9), c = F.startLattice(kind, 256, 144, 0.25, 10);
+    assert.equal(F.latticeHash(a.S), F.latticeHash(b.S), kind);
+    assert.notEqual(F.latticeHash(a.S), F.latticeHash(c.S), kind);
+  }
+  const S = F.randomLattice(200, 120, 0.25, 4), m0 = F.massMomentum(S);
+  F.zeroMomentum(S, 200, 120, 4);
+  const m1 = F.massMomentum(S);
+  assert.equal(m1.mass, m0.mass); assert.deepEqual([m1.pq + 0, m1.pr + 0], [0, 0]);
+});
+
+test('dye: a new pattern each section (auto), the same pattern with new hues when chosen; patterns wrap seamlessly', () => {
+  const start = F.pickStart(5);
+  for (let n = 1; n < 12; n++) assert.notEqual(F.dyeFor(5, n, start, 2048, 1152).pat, F.dyeFor(5, n - 1, start, 2048, 1152).pat, `section ${n}`);
+  const fixed = { ...F.pickStart(5, 'auto', 'rings') };
+  for (let n = 0; n < 6; n++) assert.equal(F.dyeFor(5, n, fixed, 2048, 1152).name, 'rings');
+  for (let pat = 0; pat < 4; pat++) {
+    const D = { ...F.dyeFor(8, 3, start, 2048, 1152), pat };
+    let du = 0, dv = 0, inner = 0;
+    for (let k = 0; k < 400; k++) {
+      const t = (k + 0.5) / 400, e = 1e-7, sum = (a, b) => a.reduce((s, x, i) => s + Math.abs(x - b[i]), 0);
+      du += sum(F.dyeAt(1 - e, t, D, [2048, 1152]), F.dyeAt(0, t, D, [2048, 1152]));
+      dv += sum(F.dyeAt(t, 1 - e, D, [2048, 1152]), F.dyeAt(t, 0, D, [2048, 1152]));
+      inner += sum(F.dyeAt(0.5 - e, t, D, [2048, 1152]), F.dyeAt(0.5, t, D, [2048, 1152]));
+    }
+    assert.ok(du / 400 < 0.01 && dv / 400 < 0.01, `pattern ${pat}: seam ${(du / 400).toFixed(4)}, ${(dv / 400).toFixed(4)} (inner ${(inner / 400).toFixed(4)})`);
+  }
+});

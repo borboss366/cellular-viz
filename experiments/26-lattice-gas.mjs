@@ -282,26 +282,50 @@ const VS2 = `#version 300 es
 out vec2 vUv;
 void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = p; gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
 // F2's dye, in torus coordinates (uv = (q / NQ, r / NR), wrapping): carried backwards along the block velocity by
-// this frame's steps (screen → axial: dq = vx − vy / √3, dr = 2 vy / √3), and drawn slowly back toward its bands
+// this frame's steps (screen → axial: dq = vx − vy / √3, dr = 2 vy / √3), and drawn slowly back toward its pattern.
+// pattern() is 26-fhp.mjs's dyeAt (the same numbers): 0 bands, 1 checker, 2 rings, 3 blobs; uPatA = (kx, ky, hue,
+// colours or 0 for seed 1's classic bands), uPatB = (Kx, Ky, radius in sites, phase); all periodic on the torus
 const ADVECT = `#version 300 es
 precision highp float;
+precision highp int;
 uniform sampler2D uDyeOld, uEma;
 uniform vec2 uLat;
 uniform float uSteps, uReseed;
+uniform int uPat; uniform vec4 uPatA, uPatB; uniform uint uPatSalt;
 in vec2 vUv; out vec4 o;
 vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
-vec3 bands(vec2 uv) {
-  float t = uv.x * 5.0 + uv.y * 3.0 + 0.25 * sin(6.2831853 * uv.y * 2.0);
-  float g = smoothstep(0.08, 0.3, abs(fract(t) - 0.5) * 2.0);   // dark gaps between the colours
-  vec3 c = hue(fract(floor(t) * 0.37 + 0.6)) * vec3(0.55, 0.30, 0.95) + vec3(0.02);
-  return c * g;
+vec3 tint(float h) { return hue(h) * vec3(0.55, 0.30, 0.95) + vec3(0.02); }
+uint hsh(uint x) { x ^= x >> 16u; x *= 0x7feb352du; x ^= x >> 15u; x *= 0x846ca68bu; x ^= x >> 16u; return x; }
+float cellRand(vec2 c, uint k) { return float(hsh((uint(c.x) * 73856093u) ^ (uint(c.y) * 19349663u) ^ uPatSalt ^ k) & 0xffffu) / 65535.0; }
+float cellDist(vec2 a) { float dq = a.x * uLat.x / uPatB.x, dr = a.y * uLat.y / uPatB.y; return length(vec2(dq + dr * 0.5, dr * 0.8660254)); }
+vec3 pattern(vec2 uv) {
+  uv = fract(uv);
+  if (uPat == 0) {   // bands, dark gaps between the colours
+    float t = uv.x * uPatA.x + uv.y * uPatA.y + 0.25 * sin(6.2831853 * uv.y * 2.0 + uPatB.w);
+    float g = smoothstep(0.08, 0.3, abs(fract(t) - 0.5) * 2.0), n = floor(t);
+    float h = uPatA.w > 0.5 ? uPatA.z + mod(n, uPatA.w) / uPatA.w : fract(n * 0.37 + uPatA.z);
+    return tint(h) * g;
+  }
+  vec2 p = uv * uPatB.xy, c = floor(p), f = p - c;
+  if (uPat == 1) {   // checker, 3 hues
+    float e = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
+    return tint(uPatA.z + mod(c.x + c.y, 3.0) / 3.0) * smoothstep(0.02, 0.08, e);
+  }
+  if (uPat == 2) {   // rings: 3 a cell
+    float d = cellDist(f - 0.5), w = uPatB.z / 3.0, n = floor(d / w);
+    float g = smoothstep(0.08, 0.3, abs(fract(d / w) - 0.5) * 2.0) * (1.0 - smoothstep(uPatB.z * 0.9, uPatB.z, d));
+    return tint(uPatA.z + cellRand(c, 1u) * 0.33 + n / 3.0) * g;
+  }
+  vec2 j = (vec2(cellRand(c, 2u), cellRand(c, 3u)) - 0.5) * 0.2;   // blobs
+  float rr = uPatB.z * (0.6 + 0.4 * cellRand(c, 4u)), d = cellDist(f - 0.5 - j);
+  return tint(uPatA.z + cellRand(c, 5u)) * (1.0 - smoothstep(0.8 * rr, rr, d));
 }
 void main() {
   vec4 e = textureLod(uEma, vUv, 0.0);
   vec2 v = e.gb / max(e.r, 1.0e-3);
   vec2 ax = vec2(v.x - v.y / 1.7320508, v.y * 2.0 / 1.7320508);
   vec3 d = texture(uDyeOld, vUv - ax * uSteps / uLat).rgb;
-  o = vec4(mix(d, bands(vUv), uReseed), 1.0);
+  o = vec4(mix(d, pattern(vUv), uReseed), 1.0);
 }`;
 // the bloom: the persistence buffer box-averaged down to 1/8 (every source pixel counts, so moving dots don't
 // shimmer in it), then a 13-tap Gaussian each way (σ ≈ 4.5 texels ≈ 1 site at 64 sites across)
@@ -454,7 +478,7 @@ export function createScene() {
   // lattice (?lattice=2048|1024), scene (auto | F1 | fluid), fluidQa (?qa=fluid: F2 fully zoomed out, no stirs,
   // bursts or drops, for truth 4 and the GPU budget)
   // splashQa (?qa=splash): no kick bursts; a measured burst in the middle every 2 beats (C1–C3)
-  function init(g, { width = 1, height = 1, seed = 1, conserve = false, lattice: lat = 2048, scene = 'auto', fluidQa = false, splashQa = false } = {}) {
+  function init(g, { width = 1, height = 1, seed = 1, conserve = false, lattice: lat = 2048, scene = 'auto', fluidQa = false, splashQa = false, flow = 'auto', dye = 'auto' } = {}) {
     st.splashQa = !!splashQa;
     gl = g; W = width; H = height; st.seed = seed >>> 0 || 1; st.rng = F.rng(st.seed * 7919 + 13); st.conserve = !!conserve;
     [NQ, NR] = LATTICES[lat] || LATTICES[2048]; st.scene = scene; st.fluidQa = !!fluidQa;
@@ -469,15 +493,21 @@ export function createScene() {
     program('dens', DENS, []);
     program('block8', BLOCK8, ['uSrc']);
     program('ema', EMA, ['uPrevE', 'uCur', 'uA']);
-    program('advect', ADVECT, ['uDyeOld', 'uEma', 'uLat', 'uSteps', 'uReseed'], VS2);
+    program('advect', ADVECT, ['uDyeOld', 'uEma', 'uLat', 'uSteps', 'uReseed', 'uPat', 'uPatA', 'uPatB', 'uPatSalt'], VS2);
     program('down', DOWN, ['uSrc', 'uTexel'], VS2);
     program('blur', BLUR, ['uSrc', 'uStep'], VS2);
     program('comp', COMP, ['uAcc', 'uBloom', 'uRes', 'uCore', 'uBloomGain', 'uGain', 'uSat', 'uExposure']);
     fx.half = !!gl.getExtension('EXT_color_buffer_float');
     lumPbo = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, lumPbo); gl.bufferData(gl.PIXEL_PACK_BUFFER, LUM_W * LUM_H * 4, gl.STREAM_READ); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-    // the gas starts in the low-Mach equilibrium of a few large vortices, so the zoom out finds a flow to show
-    // #165 "mix faster": about twice the vortices per axis (16 modes up to |m|, |n| ≤ 12), |u| ≤ 0.18 (FHP: ≤ 0.2)
-    live = lattice(NQ, NR, F.flowLattice(NQ, NR, 0.25, st.seed, { umax: 0.18, count: 16, kMax: 12 }).S);
+    // the gas starts in the low-Mach equilibrium of a flow, so the zoom out finds one to show. #165 grade ("random
+    // starting configurations"): the flow start and the dye pattern are picked from the seed (?flow=, ?dye= fix them);
+    // seed 1 is the classic opening: 16 vortex modes up to |m|, |n| ≤ 12 and the bands. |u| ≤ 0.18 (FHP: ≤ 0.2), the
+    // mean momentum exactly 0 (S1)
+    st.start = F.pickStart(st.seed, flow, dye);
+    const t0 = performance.now(), L0 = F.startLattice(st.start.flow, NQ, NR, 0.25, st.seed, { umax: 0.18 });
+    st.dyeN = 0; st.dye = F.dyeFor(st.seed, 0, st.start, NQ, NR); st.dyeFade = null; st.dyeLog = [];
+    st.startStats = { ...L0.stats, info: L0.info, dyeChange: +F.dyeChange(L0.field, st.dye, NQ, NR).toFixed(4), hash: F.latticeHash(L0.S), ms: Math.round(performance.now() - t0) };
+    live = lattice(NQ, NR, L0.S);
     if (fx.half) {   // F2 needs float render targets (the block sums are signed); without them F2 shows the particles only
       fl.coarse = flTex(NQ / 8, NR / 8, false);
       fl.ema = [flTex(NQ / 8, NR / 8, true), flTex(NQ / 8, NR / 8, true)];
@@ -505,6 +535,11 @@ export function createScene() {
     if (mips) gl.generateMipmap(gl.TEXTURE_2D);
     return { t, f, w, h, mips, levels: mips ? Math.floor(Math.log2(Math.max(w, h))) + 1 : 1 };
   }
+  // the dye's pattern (st.dye from F.dyeFor: the opening's, then a new one each section)
+  function setPattern(u) {
+    const D = st.dye;
+    gl.uniform1i(u.uPat, D.pat); gl.uniform4f(u.uPatA, D.kx, D.ky, D.hue, D.c); gl.uniform4f(u.uPatB, D.Kx, D.Ky, D.rad, D.phase); gl.uniform1ui(u.uPatSalt, D.salt >>> 0);
+  }
   // F2's per-frame passes: block sums → time average (+ mipmaps) → dye carried by n steps of the flow
   // mix (#165): the dye's time-lapse factor, 1–6× (the gas is unchanged; the dye moves mix steps for each one)
   function fluidPasses(dt, n, emaMs, mix = 1) {
@@ -530,7 +565,7 @@ export function createScene() {
       gl.useProgram(P.advect);
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dOld.t); gl.uniform1i(U.advect.uDyeOld, 0);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, next.t); gl.uniform1i(U.advect.uEma, 1);
-      gl.uniform2f(U.advect.uLat, NQ, NR); gl.uniform1f(U.advect.uSteps, total / k); gl.uniform1f(U.advect.uReseed, s === k - 1 ? st.reseed : 0);
+      gl.uniform2f(U.advect.uLat, NQ, NR); gl.uniform1f(U.advect.uSteps, total / k); gl.uniform1f(U.advect.uReseed, s === k - 1 ? st.reseed : 0); setPattern(U.advect);
       gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
       fl.di = 1 - fl.di;
@@ -736,7 +771,7 @@ export function createScene() {
       gl.bindFramebuffer(gl.FRAMEBUFFER, dst.f); gl.viewport(0, 0, dst.w, dst.h); gl.useProgram(P.advect);
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.t); gl.uniform1i(U.advect.uDyeOld, 0);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, ema.t); gl.uniform1i(U.advect.uEma, 1);
-      gl.uniform2f(U.advect.uLat, NQ, NR); gl.uniform1f(U.advect.uSteps, steps); gl.uniform1f(U.advect.uReseed, reseed);
+      gl.uniform2f(U.advect.uLat, NQ, NR); gl.uniform1f(U.advect.uSteps, steps); gl.uniform1f(U.advect.uReseed, reseed); setPattern(U.advect);
       gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
     };
@@ -777,7 +812,7 @@ export function createScene() {
       let s = 0, s2 = 0; for (let k = 0; k < w * h; k++) { const m = (px[4 * k] + px[4 * k + 1] + px[4 * k + 2]) / 3; s += m; s2 += m * m; }
       const N = w * h, v = s2 / N - (s / N) * (s / N), at = st.mixPendingBars - M.dropBars;
       M.last = v; M.lastBars = +at.toFixed(3); if (M.samples.length < 200) M.samples.push([+at.toFixed(3), +v.toExponential(3)]);
-      if (at <= 0.5) { if (v > M.peak) { M.peak = v; M.peakBars = at; } }
+      if (at <= 1.25) { if (v > M.peak) { M.peak = v; M.peakBars = at; } }   // the new dye fades in over 1 bar (was 0.5: a fast refresh)
       else if (M.halfBars === null && M.peak > 0 && v <= M.peak / 2) M.halfBars = +(at - M.peakBars).toFixed(3);
     }
     if (st.mixPending || st.frameNo % 6 || bars - M.dropBars > 6) return;
@@ -949,10 +984,15 @@ export function createScene() {
       const c = viewCentreAxial(), d = sitesAcross / 12;
       burst(c[0], c[1], 1.6 * ctl.burstSize, 0.85, 'drop', now);   // 12.8 sites (was 2.2 × 4 = 8.8)
       stir(c[0] - d, c[1], sitesAcross / 10, 0.6, 'drop', now); stir(c[0] + d, c[1], sitesAcross / 10, -0.6, 'drop', now);
-      st.reseed = 0.15;
+      // a new dye each section (VIZ research's ruling): the next seeded pattern, crossfaded in over 1 bar (the dye is
+      // passive, so mix(old, new) is honest; the flow is only re-seeded per load)
+      st.dyeN++; st.dye = F.dyeFor(st.seed, st.dyeN, st.start, NQ, NR); st.dyeFade = { from: bars };
+      st.dyeLog.push({ n: st.dyeN, bars: +bars.toFixed(3), pattern: st.dye.name }); if (st.dyeLog.length > 64) st.dyeLog.shift();
       st.mixLive = { dropBars: bars, peak: 0, peakBars: null, halfBars: null, last: null, lastBars: null, samples: [] };   // T5 live
     }
     st.lastSection = section; st.lastBeats = beats;
+    // the section's new dye fades in over 1 bar: ~95 % of it (Σ = 3) at an even rate, so no flash step
+    if (st.dyeFade && bars - st.dyeFade.from < 1) st.reseed = Math.max(0.0015, 1 - Math.exp(-3 * dt / (60 * bpb / Math.max(1, bpm))));
     if (fl.coarse) fluidPasses(dt, n, ctl.emaMs, ctl.mix);   // every frame: the dye and the average stay continuous
     if (fl.blk && st.mixLive) mixLiveSample(bars);
     if (fl.dens && contrast > 0 && dotsW > 0.005) pass('dens', live.a, fl.dens);
@@ -1066,6 +1106,27 @@ export function createScene() {
       theory: +theory.toFixed(4),
       relErr: +((speed - theory) / theory).toFixed(4), rings: centres.length, amp, r1, r2, profile: Array.from(prof.E, v => +v.toFixed(4)) };
   }
+  // the start truths (VIZ research's ruling on the #165 grade), on the CPU. S1: max |u| ≤ 0.2 and the mean momentum
+  // 0 (the field's < 1e-3, the particles' exactly). S2 (not static): RMS |u| ≥ 0.05 and one beat of the start's
+  // flow changes the dye picture by ≥ 10 % (splash: report-only, it starts at rest). S3: RMS div / RMS curl of
+  // the field's 16-site blocks < 0.05 (not splash). S4: the same seed gives the same lattice (twice, 256 × 144),
+  // and the next seed a different flow start or dye (its field or its pattern differ).
+  function startTruths() {
+    const s = st.startStats, kind = st.start.flow, splash = kind === 'splash', n = [256, 144];
+    const a = F.startLattice(kind, n[0], n[1], 0.25, st.seed), b = F.startLattice(kind, n[0], n[1], 0.25, st.seed);
+    const nextSeed = (st.seed % 4294967295) + 1, other = F.pickStart(nextSeed, st.start.flowFixed ? st.start.flow : 'auto', st.start.dyeFixed ? st.start.dye : 'auto');
+    const o = F.startLattice(other.flow, n[0], n[1], 0.25, nextSeed);
+    const fieldKey = f => { let h = 0x811c9dc5; for (const arr of [f.ux, f.uy, f.rho || []]) for (let k = 0; k < arr.length; k += 7) { h ^= Math.round(arr[k] * 1e5) & 0xffff; h = Math.imul(h, 0x01000193) >>> 0; } return h >>> 0; };
+    const dyeKey = (seed, start) => JSON.stringify(F.dyeFor(seed, 0, start, NQ, NR));
+    const same = F.latticeHash(a.S) === F.latticeHash(b.S) && dyeKey(st.seed, st.start) === dyeKey(st.seed, F.pickStart(st.seed, st.start.flowFixed ? kind : 'auto', st.start.dyeFixed ? st.start.dye : 'auto'));
+    const differ = other.flow !== kind || other.dye !== st.start.dye || fieldKey(o.field) !== fieldKey(a.field) || dyeKey(nextSeed, other) !== dyeKey(st.seed, st.start);
+    const s1 = s.maxU <= 0.2 + 1e-6 && s.meanU < 1e-3 && s.latticeMeanU < 1e-3;
+    const s2 = splash ? null : s.rmsU >= 0.05 && s.dyeChange >= 0.1;
+    const s3 = splash ? null : s.divCurl !== null && s.divCurl < 0.05;
+    return { seed: st.seed, flow: kind, dye: st.start.dye, s1ok: s1, s2ok: s2, s3ok: s3, s4ok: same && differ, same, differ,
+      maxU: s.maxU, meanU: s.meanU, latticeMeanU: s.latticeMeanU, latticeP: s.latticeP, turns: s.turns, rmsU: s.rmsU, rhoRms: s.rhoRms,
+      dyeChange: s.dyeChange, divCurl: s.divCurl, info: s.info, ms: s.ms, nextSeed, next: `${other.flow}/${other.dye}` };
+  }
   function check(fresh = false) {
     if (fresh || !st.qaCache.t1) st.qaCache.t1 = conserveTest();
     if (fresh || !st.qaCache.t3) st.qaCache.t3 = soundSpeed();
@@ -1088,8 +1149,9 @@ export function createScene() {
       st.qaCache.t5 = { t5: d, t5ok: d && d.halfBars !== null ? d.halfBars <= 2 : false,
         t6: { lo, hi, ratio: ratio === null ? null : +ratio.toFixed(2), lowerBound: !!(lo && !lo.halfFrames) }, t6ok: ratio !== null && ratio >= 3 };
     }
+    if (fresh || !st.qaCache.start) st.qaCache.start = startTruths();
     const splash = splashSummary();
-    return { t1: st.qaCache.t1, t3: st.qaCache.t3, t4: st.qaCache.t4, t4live: st.qaCache.t4live, t5: st.qaCache.t5, splash, lut: { ok: lut.ok, changed: lut.changed },
+    return { start: st.qaCache.start, t1: st.qaCache.t1, t3: st.qaCache.t3, t4: st.qaCache.t4, t4live: st.qaCache.t4live, t5: st.qaCache.t5, splash, lut: { ok: lut.ok, changed: lut.changed },
       ok: st.qaCache.t1.ok && st.qaCache.t3.ok && st.qaCache.t4.ok !== false && lut.ok };
   }
 
@@ -1106,6 +1168,8 @@ export function createScene() {
       conserveTest, soundSpeed, check, coarse, fluidTest, mixHalfTime, splashSummary,
       get splashLog() { return st.splashLog; }, mixLive: mixLiveSummary,
       get zoom() { return st.zoom; }, get lattice() { return [NQ, NR]; },
+      get seed() { return st.seed; }, startTruths,
+      get start() { return st.start ? { seed: st.seed, flow: st.start.flow, dye: st.start.dye, dyeNow: st.dye.name, dyeN: st.dyeN, stats: st.startStats, dyeLog: st.dyeLog } : { seed: st.seed }; },
     },
   };
 }
@@ -1126,7 +1190,9 @@ export const TRIGGERS = [
 ];
 export const DETAIL = [
   { name: 'palette', type: 'long', values: PALETTES, default: 'prism' },
-  { name: 'seed', type: 'long', default: 1, min: 1, max: 1e6 },
+  { name: 'seed', type: 'long', default: 1, min: 1, max: 4294967295 },   // the page picks a random one when ?seed= is missing
+  { name: 'flow', type: 'long', values: ['auto', ...F.FLOW_STARTS], default: 'auto' },   // the flow start (auto: from the seed)
+  { name: 'dye', type: 'long', values: ['auto', ...F.DYE_PATTERNS], default: 'auto' },    // the opening's dye (auto: from the seed, a new one each section)
   { name: 'dotLum', type: 'float', default: 0.058, min: 0.02, max: 0.12 },   // a dot's own step: kept under 0.1 (flash)
   { name: 'persist', type: 'float', default: 100, min: 30, max: 300 },       // ms: the persistence buffer's decay τ
   { name: 'core', type: 'float', default: 1, min: 0, max: 2 },
