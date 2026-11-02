@@ -202,7 +202,7 @@ uniform vec4 uBurst;     // world x, y, radius, envelope
 // F2: the fluid layer (the time-averaged block velocity at block size 8 · 2^uLod, carried dye on top)
 uniform sampler2D uEma, uDye;
 uniform vec2 uLat;       // NQ, NR
-uniform float uDotsW, uFieldW, uLod, uFieldGain;
+uniform float uDotsW, uFieldW, uLod, uFieldGain, uFieldBase;
 out vec4 o;
 vec2 worldOf(ivec2 a) { return vec2(float(a.x) + 0.5 * float(a.y), float(a.y) * S3); }
 void tri(vec2 w, out ivec2 a, out ivec2 b, out ivec2 c) {
@@ -261,7 +261,9 @@ void main() {
     vec4 e = textureLod(uEma, uv, uLod);
     float sp = length(e.gb / max(e.r, 1.0e-3));
     // the speed term capped at |u| 0.2 (viz-171-3: a 1.8× kick stir lifted it within the 150 ms average, a 0.30 rise)
-    col += textureLod(uDye, uv, 0.0).rgb * (0.3 + 4.0 * min(sp, 0.2)) * uFieldGain * uFieldW;   // ~2.8x viz-165-2 (fluid L 0.065)
+    // uFieldBase (0.3) lights the dye where it barely moves: it brightens the steady fluid without adding to the rise
+    // that a kick stir's speed jump gives (that comes only from the speed term)
+    col += textureLod(uDye, uv, 0.0).rgb * (uFieldBase + 4.0 * min(sp, 0.2)) * uFieldGain * uFieldW;   // ~2.8x viz-165-2 (fluid L 0.065)
   }
   vec2 bd = w - uBurst.xy;
   col += vec3(0.020, 0.012, 0.030) * uBurst.w * exp(-dot(bd, bd) / max(1.0, uBurst.z * uBurst.z));
@@ -487,7 +489,7 @@ export function createScene() {
     program('edit', EDIT, ['uMode', 'uC', 'uR', 'uP', 'uKey']);
     program('reduce', REDUCE, []);
     program('pack', PACK, []);
-    program('dots', DOTS, ['uPrev', 'uCam', 'uRes', 'uScale', 'uF', 'uSpark', 'uNode', 'uDecay', 'uHue', 'uBurst', 'uEma', 'uDye', 'uLat', 'uDotsW', 'uFieldW', 'uLod', 'uFieldGain',
+    program('dots', DOTS, ['uPrev', 'uCam', 'uRes', 'uScale', 'uF', 'uSpark', 'uNode', 'uDecay', 'uHue', 'uBurst', 'uEma', 'uDye', 'uLat', 'uDotsW', 'uFieldW', 'uLod', 'uFieldGain', 'uFieldBase',
       'uDens', 'uMeanRho', 'uKnee', 'uScaleE', 'uSplash', 'uDotScale', 'uDesat', 'uB', 'uBH']);
     program('coarse', COARSE, []);
     program('dens', DENS, []);
@@ -1017,7 +1019,7 @@ export function createScene() {
     gl.uniform3fv(u.uHue, new Float32Array(huesAt(ctl.palette, ctl.dotLum).flat()));
     gl.uniform4f(u.uBurst, st.burstAt[0], st.burstAt[1], st.burstAt[2], st.burstEnv * (1 - decay));
     gl.uniform2f(u.uLat, NQ, NR); gl.uniform1f(u.uDotsW, dotsW); gl.uniform1f(u.uFieldW, fieldW * (1 - decay));
-    gl.uniform1f(u.uLod, Math.max(0, lod)); gl.uniform1f(u.uFieldGain, ctl.fieldGain);
+    gl.uniform1f(u.uLod, Math.max(0, lod)); gl.uniform1f(u.uFieldGain, ctl.fieldGain); gl.uniform1f(u.uFieldBase, ctl.fieldBase ?? 0.3);
     // the splash layer: excess over the mean particles a site (from the mass readback), a knee at ~2σ of a 4 × 4 block
     // (σ = √(6 d (1 − d)) / 4), the dots at 100 % → 25 % and desaturated as the knob goes 0 → 1
     const dMean = st.mass === null ? ctl.density : st.mass / (6 * NQ * NR), sigma4 = Math.sqrt(6 * dMean * (1 - dMean)) / 4;
@@ -1207,15 +1209,17 @@ export const DETAIL = [
   { name: 'maxSpb', type: 'long', default: 96, min: 64, max: 128 },          // F2's steps a beat at full zoom-out
   { name: 'scene', type: 'long', values: ['auto', 'F1', 'fluid'], default: 'auto' },
   { name: 'fieldGain', type: 'float', default: 1.85, min: 0, max: 3 },   // viz-171-4 fluid L 0.117 with the capped speed term and per-distance passes   // 1.3 → 1.45 (viz-171-3 fluid L 0.138–0.146, speed term now capped)          // F2: the fluid layer's brightness
+  { name: 'fieldBase', type: 'float', default: 0.3, min: 0, max: 1 },     // F2: the dye's light where the flow is still (the speed term adds up to 0.8)
   { name: 'emaMs', type: 'float', default: 150, min: 20, max: 2000 },        // F2: the block velocity's time average τ
   { name: 'nodes', type: 'float', default: 0.5, min: 0, max: 1 },
 ];
 // named starts (the user's #172 grade: shear and dipoles "can be saved as variant"): the exact looks he graded, picked
-// with ?start= (explicit ?seed= ?flow= ?dye= ?fieldGain= still win). Dipoles' fluid is lit 1.25x (1.85 -> 2.3): "Make it
-// a bit brighter" (viz-172-2)
+// with ?start= (explicit ?seed= ?flow= ?dye= ?fieldGain= ?fieldBase= still win). Dipoles' fluid: lit 1.25x (1.85 -> 2.3,
+// viz-172-2 "a bit brighter"), then 30-40 % more on viz-176-1's grade, from the still-dye light (fieldBase 0.3 -> 0.45)
+// rather than the gain, so the rise from kick stirs (the speed term) stays where it was (0.208)
 export const NAMED_STARTS = {
   shear: { seed: 1, flow: 'shear', dye: 'checker' },
-  dipoles: { seed: 1, flow: 'dipoles', dye: 'rings', fieldGain: 2.3 },
+  dipoles: { seed: 1, flow: 'dipoles', dye: 'rings', fieldGain: 2.3, fieldBase: 0.45 },
 };
 export const stepsPerBeatOf = m => STEPS_PER_BEAT[Math.min(3, Math.floor(m * 4))];
 const smooth01 = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };

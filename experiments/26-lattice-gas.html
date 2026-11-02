@@ -41,7 +41,7 @@
   section's drop fades in a new dye over 1 bar; the flow changes only with a new start (the 🎲 button reloads with a
   new seed). __qa.seed, __qa.start, check().start: S1–S4.
   Named starts (#172 grade): ?start=shear (seed 1, shear, checker) and ?start=dipoles (seed 1, dipoles, rings, fluid
-  light 2.3) bring back the graded looks; the start: button cycles them. __qa.preset.
+  light 2.3, still-dye light ?fieldBase= 0.45) bring back the graded looks; the start: button cycles them. __qa.preset.
   ?macro1..4=0..1, ?palette=prism|ice, ?seed=, ?dotLum=, ?persist=, ?core=, ?bloom=, ?sat=, ?exposure=, ?burstSize=, ?nodes=, ?qa=conserve (no bursts,
   source or sink: the live mass stays exact), ?startBar=, ?bpm=, ?muted=1, ?clock=metronome, ?audio=clock, ?labels=0.
 -->
@@ -201,7 +201,7 @@ $('newStart').onclick = () => { const u = withParams({ seed: randomSeed() }); u.
 const NAMED = ['none', ...Object.keys(NAMED_STARTS)];
 $('named').onclick = () => {
   const u = new URL(location.href), n = next(NAMED, params.start);
-  for (const k of ['start', 'seed', 'flow', 'dye', 'fieldGain']) u.searchParams.delete(k);
+  for (const k of ['start', 'seed', 'flow', 'dye', 'fieldGain', 'fieldBase']) u.searchParams.delete(k);
   if (n !== 'none') u.searchParams.set('start', n);
   location.replace(u);
 };
@@ -224,7 +224,7 @@ const controls = () => ({
   macro: params.macro, density: densityOf(params.macro[0]), tempo: params.macro[1], splash: params.macro[2], mix: mixOf(params.macro[3]), sparks: params.sparks, zoom: params.zoom,
   palette: params.palette, dotLum: params.dotLum, persist: params.persist, core: params.core, bloom: params.bloom, sat: params.sat,
   exposure: params.exposure, burstSize: params.burstSize, nodes: params.nodes, conserve: params.conserve,
-  scene: params.scene, fieldGain: params.fieldGain, emaMs: params.emaMs, splashGain: params.splashGain, force: params.force, maxSpb: params.maxSpb,
+  scene: params.scene, fieldGain: params.fieldGain, fieldBase: params.fieldBase, emaMs: params.emaMs, splashGain: params.splashGain, force: params.force, maxSpb: params.maxSpb,
 });
 window.__modules = { '26-lattice-gas': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
 
@@ -278,7 +278,7 @@ expose({
   mass: () => S.mass(), momentum: () => S.momentum(), lut: S.lut,
   get rings() { return S.rings; }, get step() { return S.step; }, get massHistory() { return S.massHistory; },
   get lumMean() { return S.lumMean; }, get lumHistory() { return S.lumHistory; },
-  get seed() { return S.seed; }, get start() { return S.start; }, get preset() { return params.start; }, get fieldGain() { return params.fieldGain; }, startTruths: () => S.startTruths(),
+  get seed() { return S.seed; }, get start() { return S.start; }, get preset() { return params.start; }, get fieldGain() { return params.fieldGain; }, get fieldBase() { return params.fieldBase; }, startTruths: () => S.startTruths(),
   splash: () => S.splashSummary(), get splashLog() { return S.splashLog; }, mixHalfTime: (mix, o) => S.mixHalfTime(mix, o), mixLive: () => S.mixLive(),
 });
 AudioIn.qa(audio, window.__qa);   // beatLog, frame, beatLanes, events (Clock.qaEvents), audioIn
