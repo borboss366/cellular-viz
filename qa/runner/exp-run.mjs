@@ -154,7 +154,7 @@ async function measure(browser, run) {
     page, browser, run, value, state: {}, shared, t: 0, frames: null, note: s => note(`${run.label} ${k}: ${s}`),
     path: name => path.join(OUT, 'debug', name), write: (name, data) => fs.writeFileSync(path.join(OUT, 'debug', name), data) } }));
   const call = async (phase, extra = {}) => { for (const { k, p, ctx } of probes) if (p[phase]) { Object.assign(ctx, extra); try { await p[phase](ctx); } catch (e) { note(`${run.label} probe ${k}.${phase}: ${e.message}`); } } };
-  const r = { label: run.label, variant: run.variant, base: run.base, size: run.size, audio: run.audio || null, params: run.params, url: `${exp.page}.html?${query(run.params)}`, metrics: { gpuBusy: busy }, values: {}, stills: [] };
+  const r = { label: run.label, variant: run.variant, base: run.base, size: run.size, audio: run.audio || null, excerpt: run.audio || null, params: run.params, url: `${exp.page}.html?${query(run.params)}`, metrics: { gpuBusy: busy }, values: {}, stills: [] };
   try {
     await call('init');
     await page.goto(`${BASE}?${query(run.params)}`, { waitUntil: 'load', timeout: 60e3 });
@@ -267,7 +267,7 @@ if (exp.seconds > 0) {
       const skip = missing.includes(run.params.track) ? run.params.track : a && a.track && missing.includes(a.track) ? a.track : a && !x ? (a.track || a.synth) : null;
       if (skip) {   // never a fail: the user hasn't copied that track to the box yet (or its excerpt could not be made)
         note(`${run.label}: skipped, ${a && !x && !missing.includes(skip) ? 'no excerpt' : 'track missing'} (${skip})`);
-        runs.push({ label: run.label, variant: run.variant, base: run.base, size: run.size, audio: run.audio || null, params: run.params, skipped: skip, metrics: {}, values: {}, stills: [], errors: [] });
+        runs.push({ label: run.label, variant: run.variant, base: run.base, size: run.size, audio: run.audio || null, excerpt: run.audio || null, params: run.params, skipped: skip, metrics: {}, values: {}, stills: [], errors: [] });
         continue;
       }
       if (!browser) browser = await chromium.launch({ args: x ? [...flags, ...audioFlags(x)] : flags, env });

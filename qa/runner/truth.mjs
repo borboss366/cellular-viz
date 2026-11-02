@@ -198,10 +198,13 @@ export function r4Diffs(runs) {
   const off = r => Number(r && r.params ? r.params.offset : 0) || 0;
   const lat = r => (r && r.metrics && Number.isFinite(r.metrics['truth.latencyP90Ms']) ? r.metrics['truth.latencyP90Ms'] : null);
   const sizeOf = r => (r && r.size ? r.size.name ?? null : null);
+  // the excerpt's name: exp-run keeps it as `excerpt`, because measure() overwrites `audio` with the run's audio
+  // numbers (an object per run, so two runs never compared equal: viz-183-4 noted "none" next to a-metronome)
+  const exOf = r => (r.excerpt !== undefined ? r.excerpt : typeof r.audio === 'string' ? r.audio : null);
   const out = [];
   for (const r of runs || []) {
     if (!r || r.skipped || !off(r)) continue;
-    const cands = runs.filter(o => o && o !== r && !o.skipped && !off(o) && (o.audio ?? null) === (r.audio ?? null) && sizeOf(o) === sizeOf(r));
+    const cands = runs.filter(o => o && o !== r && !o.skipped && !off(o) && exOf(o) === exOf(r) && sizeOf(o) === sizeOf(r));
     const base = cands.find(o => lat(o) !== null) || cands[0] || null;
     const a = lat(r), b = base ? lat(base) : null;
     out.push({ label: r.label, base: base ? base.label : null, a, b, diff: a !== null && b !== null ? +Math.abs(a - b).toFixed(2) : null,

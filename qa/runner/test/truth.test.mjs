@@ -166,4 +166,9 @@ test('R4 pairing: the ?offset run finds its offset-0 partner on the same excerpt
   // a partner without a latency (never locked) gives null, and says who it was
   const q = TR.r4Diffs([run('x@1080p', 'm', {}, null), run('y@1080p', 'm', { offset: 60 }, 2)])[0];
   assert.equal(q.diff, null); assert.equal(q.base, 'x@1080p');
+  // as exp-run really leaves them (viz-183-4): `audio` overwritten with each run's audio numbers (a fresh object),
+  // the excerpt's name in `excerpt`; and a different excerpt at offset 0 is not a partner
+  const real = (label, ex, params, lat) => ({ ...run(label, ex, params, lat), audio: { status: 'live', logged: 900 }, excerpt: ex });
+  const p2 = TR.r4Diffs([real('a-metronome@1080p', 'metronome', {}, 1.6), real('b-sandstorm@1080p', 'sandstorm', {}, -189.7), real('a-offset60@1080p', 'metronome', { offset: 60 }, 1.6)]);
+  assert.deepEqual(p2, [{ label: 'a-offset60@1080p', base: 'a-metronome@1080p', a: 1.6, b: 1.6, diff: 0, candidates: ['a-metronome@1080p'] }]);
 });
