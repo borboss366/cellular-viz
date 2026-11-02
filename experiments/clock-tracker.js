@@ -289,7 +289,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       return { lane, R: { broad: r3(laneLast.broad.R), low: r3(laneLast.low.R) }, n: { broad: laneLast.broad.n, low: laneLast.low.n },
         phase: { broad: r3(laneLast.broad.phase), low: r3(laneLast.low.phase) },
         Rmean: laneAcc.n ? { broad: r3(laneAcc.broad / laneAcc.n), low: r3(laneAcc.low / laneAcc.n) } : null,
-        switches: laneLog.slice(-8), side: { offset: sideOffset, moves: sideLog.slice(-4), atLock: sideAtLock, last: sideLast }, lowLagMs: +(1000 * lowLag()).toFixed(1), lowLagPairs: lowLags.length, jumps: jumps.slice(-8).map(j => `${j.kind}@${j.at.toFixed(2)}`),
+        switches: laneLog.slice(-8), side: { offset: sideOffset, moves: sideLog.slice(-4), atLock: sideAtLock, last: sideLast }, lowLagMs: +(1000 * lowLag()).toFixed(1), lowLagPairs: lowLags.length,
+        pairLagMs: lowLags.length ? +(1000 * median(lowLags)).toFixed(1) : null, beatLag: { n: [broadE.length, lowE.length],
+          broadMs: broadE.length && own.P ? +(1000 * median(broadE) * own.P).toFixed(1) : null, lowMs: lowE.length && own.P ? +(1000 * median(lowE) * own.P).toFixed(1) : null }, jumps: jumps.slice(-8).map(j => `${j.kind}@${j.at.toFixed(2)}`),
         afterJump: j0 === null ? [] : stateLog.filter(s => s.t >= j0).slice(0, 16).map(s => `${s.state}@${s.t.toFixed(2)}`) };
     }
     function logJump(t, kind, from, to) { const j = { type: 'jump', at: t, kind, fromBeats: from, toBeats: to }; jumps.push(j); return j; }
@@ -505,7 +507,20 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // measured on the music itself: each low onset is paired with the nearest broadband onset within 60 ms (whichever
     // comes first), and low onsets are moved earlier by the median of the last 32 lags (from 4 pairs on).
     const lowLags = [];
-    const lowLag = () => lowLags.length < 4 ? 0 : median(lowLags);
+    // viz-183-12: the paired lag (35.9 ms) moved Sandstorm's p50 only 45 → 39 ms: pairs within 60 ms seem to catch the
+    // off-beat bass against the hats, not the kick (whose body may peak later). While locked the lag is therefore
+    // measured where it matters, at the beat: the median phase (raw, uncorrected) of the low onsets inside the
+    // tracking window minus that of the broadband onsets inside it, both against the model, times the period.
+    // The pairs serve until both lanes have 4 such onsets.
+    const lowE = [], broadE = [];
+    const lowLag = () => (lowE.length >= 4 && broadE.length >= 4 && own.P) ? (median(lowE) - median(broadE)) * own.P
+      : lowLags.length < 4 ? 0 : median(lowLags);
+    function beatLag(ob, ol) {   // while locked: the onsets near the beat, per lane
+      if (state !== 'locked' || !own.P) return;
+      const keep = (a, x) => { if (Math.abs(x) < C.trackWindow) { a.push(x); if (a.length > 32) a.shift(); } };
+      if (ob) keep(broadE, frac(ownBeats(ob.t) + own.pending));
+      if (ol) keep(lowE, frac(ownBeats(ol.raw ?? ol.t) + own.pending));   // called before lowLagPair: ol.t is still raw
+    }
     function nearest(list, t, field) {
       let best = null;
       for (let i = list.length - 1; i >= 0 && list[i][field] > t - 0.1; i--) {
@@ -546,6 +561,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // onsets in both lanes, then the steering lane (R over the last laneBeats beats), then its onset steers
       const ob = detect(lanes.broad, t, f.flux, dt);
       const ol = f.low === undefined ? null : detect(lanes.low, t, f.low, dt);
+      beatLag(ob, ol);    // before the low onset's time is corrected by lowLagPair
       lowLagPair(ob, ol);
       laneTick(t);
       const o = lane === 'low' ? ol : ob;
