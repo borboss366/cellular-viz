@@ -133,7 +133,18 @@ export function describe(infos) {
 export function serveAudio(req, res, dir) {
   const u = new URL(req.url, 'http://x');
   if (!u.pathname.startsWith('/qa-audio/')) return false;
-  const t = findTrack(decodeURIComponent(u.pathname.slice('/qa-audio/'.length)), dir);
+  const rest = decodeURIComponent(u.pathname.slice('/qa-audio/'.length));
+  // the track's rehearsal grid (#173): /qa-audio/<track>[.<ext>].beatgrid.json → <dir>/<track>.beatgrid.json, made
+  // by qa/beatgrid.mjs from Beat This!'s .ref.beats. Beat times only, no audio.
+  if (rest.endsWith('.beatgrid.json')) {
+    const g = findTrack(rest.slice(0, -'.beatgrid.json'.length), dir), p = g && path.join(dir, g.name + '.beatgrid.json');
+    if (!p || !fs.existsSync(p)) { res.writeHead(404, { 'content-type': 'text/plain' }); res.end('grid missing'); return true; }
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    if (req.method === 'HEAD') { res.end(); return true; }
+    fs.createReadStream(p).pipe(res);
+    return true;
+  }
+  const t = findTrack(rest, dir);
   if (!t) { res.writeHead(404, { 'content-type': 'text/plain' }); res.end('track missing'); return true; }
   const size = fs.statSync(t.path).size, type = TYPES[t.ext], m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
   const head = { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'no-store' };
