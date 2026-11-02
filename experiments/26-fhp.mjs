@@ -196,6 +196,20 @@ export function flowLattice(nq, nr, d, seed, opts = {}) {
   const field = flowField(nq, nr, seed, opts);
   return { S: latticeFromFlow(field, nq, nr, d, seed), modes: field.modes, scale: field.scale };
 }
+// F2's stirring (#165 "mix faster"): a Kolmogorov body force along link `axis` (0, 1, 2), its strength sin(…) varying
+// only across that link, so it is divergence-free; k periods across q, periodic on the nq × nr torus when k nr / nq
+// is whole (k 16 on 2048 × 1152 and 1024 × 576, 4 on truth 4's 512²). The page's STEP shader computes the same (uForce).
+export function forceAt(axis, q, r, nq, nr, phase = 0, k = 16) {
+  const arg = k / nq * (axis === 0 ? r : axis === 1 ? q + r : q);
+  return Math.sin(2 * Math.PI * arg + phase);
+}
+// one site's forcing flip (CPU mirror of the shader): with probability amp · |s| a particle on the link against the
+// force moves to the empty link along it (u01: the site's uniform draw)
+export function forceFlip(s, axis, f, amp, u01) {
+  if (!(u01 < amp * Math.abs(f))) return s;
+  const along = 1 << (f > 0 ? axis : axis + 3), against = 1 << (f > 0 ? axis + 3 : axis);
+  return (s & against) && !(s & along) ? (s & ~against) | along : s;
+}
 // RMS divergence and curl of a coarse velocity field on a w × h grid of blocks, each B sites a side in q and r
 // (periodic). V: [vx, vy] per block, row-major (row = r). Central differences, then the screen chain rule above.
 export function divCurl(V, w, h, B) {
