@@ -25,7 +25,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { gpuGate, unlock as gpuUnlock, GPU, renderHolders, watchForeign, closeTail } from './gpu.mjs';
-import { putJob, superseded } from './queue.mjs';
+import { putJob, superseded, settleLeft } from './queue.mjs';
 import { loadFile, query as toQuery } from './experiment.mjs';
 import { historyEntry, commitPaths, reportFiles, buildDirs, messageFor } from './post.mjs';
 import { sync as boardSync } from './board.mjs';
@@ -48,6 +48,7 @@ const CFG = {
   checksRef: flag('checks-ref', env('CHECKS_REF', 'main')),
   authors: flag('authors', env('RUNNER_AUTHORS', 'borboss366')).split(',').map(s => s.trim()).filter(Boolean),
   poll: Math.max(30, +flag('poll', env('RUNNER_POLL', '120')) || 120),
+  settle: Math.max(0, +env('RUNNER_SETTLE', '60') || 0),   // s a PR job waits after queueing, so a quick re-push replaces it (queue.mjs settleLeft)
   listen: flag('listen', env('RUNNER_LISTEN', '127.0.0.1:8788')),
   socket: flag('socket', env('RUNNER_SOCKET', '')),
   state: path.resolve(flag('state', env('RUNNER_STATE', path.join(os.homedir(), '.cache', 'cellular-viz-runner')))),
@@ -644,6 +645,15 @@ async function work() {
       // GitHub is still polled while the gate waits (up to GPU_WAIT_MIN), so a PR whose head moves overnight gets its
       // queued jobs swapped to the new commit; the job at the gate then gives way to its replacement (#94, 28 Oct).
       const gone = () => superseded(state.queue, job);
+      // settle: a PR job starts only once it has waited CFG.settle s in the queue, then one more poll, so a push
+      // made within that time replaces it (8fa90b5, an empty commit, was built as viz-183-14 a minute before 3679f19)
+      const left = settleLeft(job, Date.now(), CFG.settle * 1000);
+      if (left > 0) {
+        await new Promise(r => setTimeout(r, left));
+        await poll().catch(e => log(`poll: ${e.message}`));
+        if (stopping) break;
+        if (gone()) { log(`#${job.pr} ${job.page} @${job.sha.slice(0, 7)} replaced while settling (newer commit or label); next job`); continue; }
+      }
       let polling = null;
       const pollTimer = setInterval(() => {
         if (polling) return;

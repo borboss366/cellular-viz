@@ -79,8 +79,12 @@ answers to its parent's name). The report shows the value of every run and which
 | `truth.anchored` | 1 when the page saw the excerpt's marker (the first rise), so references map onto the AudioContext clock |
 | `truth.lockS` | seconds from the music's start to the tracker's first locked sample |
 | `truth.matched` | share of reference beats after lock with a kick hit within half a period |
-| `truth.phaseP50Ms` | median signed hit − reference after lock, ms (raw audio time) |
-| `truth.phaseP90Ms` | 90th percentile of abs(hit − reference) after lock, ms |
+| `truth.phaseP50Ms` | median signed hit − reference from lock + 4 beats to one beat before the clip end, ±1 s around jumps left out, ms (raw audio time); against the fitted grid when `truth.fitResMs` ≤ 10, else Beat This! |
+| `truth.phaseP90Ms` | 90th percentile of abs(hit − reference), same beats and basis as `truth.phaseP50Ms`, ms |
+| `truth.phaseP50AllMs` | the same median from the lock itself, nothing left out, ms |
+| `truth.phaseP90AllMs` | the same p90 from the lock itself, nothing left out, ms |
+| `truth.fitResMs` | RMS residual r of a straight line through the references over the measured span (beats indexed gap by gap), ms; ≤ 10: basis 'fit' |
+| `truth.jumpCount` | clock jumps (tracker and hand) up to one beat before the clip end |
 | `truth.latencyP90Ms` | 90th percentile of the signed hit − reference (late positive), ms: the ≤ 40 ms rule in audio time |
 | `truth.biasP50Ms` | median of detected − true onset after ANALYSIS_DELAY_MS, ms (R3) |
 | `truth.absBiasP50Ms` | abs(`truth.biasP50Ms`), ms (R3 gate) |
