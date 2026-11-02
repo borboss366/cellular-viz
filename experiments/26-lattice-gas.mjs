@@ -1210,6 +1210,13 @@ export const DETAIL = [
   { name: 'emaMs', type: 'float', default: 150, min: 20, max: 2000 },        // F2: the block velocity's time average τ
   { name: 'nodes', type: 'float', default: 0.5, min: 0, max: 1 },
 ];
+// named starts (the user's #172 grade: shear and dipoles "can be saved as variant"): the exact looks he graded, picked
+// with ?start= (explicit ?seed= ?flow= ?dye= ?fieldGain= still win). Dipoles' fluid is lit 1.25x (1.85 -> 2.3): "Make it
+// a bit brighter" (viz-172-2)
+export const NAMED_STARTS = {
+  shear: { seed: 1, flow: 'shear', dye: 'checker' },
+  dipoles: { seed: 1, flow: 'dipoles', dye: 'rings', fieldGain: 2.3 },
+};
 export const stepsPerBeatOf = m => STEPS_PER_BEAT[Math.min(3, Math.floor(m * 4))];
 const smooth01 = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 // F2's song (16-bar sections, #71 "build: zoom; drop: fully zoomed out"): bars 0–3 the fluid (landing after the
