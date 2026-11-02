@@ -47,7 +47,7 @@
     acqConf: 0.4, lockConf: 0.5, lostConf: 0.3, acqWindow: 0.5, trackWindow: 0.25, trackGain: 0.15, driftOnsets: 4, driftMin: 0.02, confAlpha: 0.15,
     confTau: 1.0, maxRate: 0.03, refRel: 0.3, reacqJump: 0.25, reacqOnsets: 3, bpb: 4,
     escapeTempo: 0.03, escapePhase: 0.25, escapeSecs: 4, escapeConf: 0.7,
-    offbeatBeats: 8, offbeatWin: 0.12, offbeatRatio: 1.5,
+    offbeatBeats: 8, offbeatWin: 0.12, offbeatRatio: 1.5, offbeatLowLean: 1.1, offbeatHighRatio: 1.5,
   };
 
   // ---------------------------------------------------------------- analysis (worklet and node)
@@ -206,7 +206,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     function offReset(all) { obRing.length = 0; obBeat = null; obCur = null; if (all) obDone = false; }
     // what the check saw (snapshot().offbeat, the 3c truth run's report): low flux by the model's phase in 8 bins over
     // every locked frame, beats kept and dropped (no drums in the window), the last decision's sums
-    const obStats = { frames: 0, noLow: 0, hist: [0, 0, 0, 0, 0, 0, 0, 0], histHigh: [0, 0, 0, 0, 0, 0, 0, 0], kept: 0, dropped: 0, checks: 0, on: null, off: null, fired: 0 };
+    const obStats = { frames: 0, noLow: 0, hist: [0, 0, 0, 0, 0, 0, 0, 0], histHigh: [0, 0, 0, 0, 0, 0, 0, 0], kept: 0, dropped: 0, checks: 0, on: null, off: null, hon: null, hoff: null, fired: 0 };
     function offbeatCheck(f, t) {
       if (state !== 'locked' || !own.P) return;
       if (f.low === undefined) { obStats.noLow++; return; }
@@ -216,18 +216,24 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (obBeat !== k) {
         if (obCur && t - lastInWindow < 1.5 * own.P) { obRing.push(obCur); obStats.kept++; if (obRing.length > C.offbeatBeats) obRing.shift(); }
         else if (obCur) obStats.dropped++;
-        obBeat = k; obCur = { on: 0, off: 0 };
+        obBeat = k; obCur = { on: 0, off: 0, hon: 0, hoff: 0 };
       }
-      if (u < C.offbeatWin || u > 1 - C.offbeatWin) obCur.on = Math.max(obCur.on, f.low);
-      else if (Math.abs(u - 0.5) < C.offbeatWin) obCur.off = Math.max(obCur.off, f.low);
+      const hi = f.high || 0;
+      if (u < C.offbeatWin || u > 1 - C.offbeatWin) { obCur.on = Math.max(obCur.on, f.low); obCur.hon = Math.max(obCur.hon, hi); }
+      else if (Math.abs(u - 0.5) < C.offbeatWin) { obCur.off = Math.max(obCur.off, f.low); obCur.hoff = Math.max(obCur.hoff, hi); }
       if (obRing.length < C.offbeatBeats) return;
-      let on = 0, off = 0;
-      for (const b of obRing) { on += b.on; off += b.off; }
-      obStats.checks++; obStats.on = +on.toFixed(3); obStats.off = +off.toFixed(3);
-      if (off > 0 && off > C.offbeatRatio * on) {
+      let on = 0, off = 0, hon = 0, hoff = 0;
+      for (const b of obRing) { on += b.on; off += b.off; hon += b.hon; hoff += b.hoff; }
+      obStats.checks++; obStats.on = +on.toFixed(3); obStats.off = +off.toFixed(3); obStats.hon = +hon.toFixed(3); obStats.hoff = +hoff.toFixed(3);
+      // the low band alone (the kick clearly on the half beat), or the low band leaning to the half beat while the hats
+      // (≥ 5 kHz) sit on the tracked beat: a trance off-beat (open hat + bass) against a kick on the half beat. viz-183-3,
+      // Sandstorm locked 208 ms early: low half/beat 1.32 (under 1.5 alone), high beat/half ≈ 2.7 over the run.
+      const lowOnly = off > 0 && off > C.offbeatRatio * on;
+      const withHats = off > C.offbeatLowLean * on && hon > C.offbeatHighRatio * hoff && hon > 0;
+      if (lowOnly || withHats) {
         obStats.fired++;
         scheduled = { kind: 'offbeat', delta: 0.5, atBeat: Math.floor(outBeats(t)) + 1 };
-        notes.push({ t, kind: 'offbeat', on: +on.toFixed(3), off: +off.toFixed(3) });
+        notes.push({ t, kind: 'offbeat', rule: lowOnly ? 'low' : 'low+hats', on: +on.toFixed(3), off: +off.toFixed(3), hon: +hon.toFixed(3), hoff: +hoff.toFixed(3) });
         obDone = true; offReset(false);
       }
     }
