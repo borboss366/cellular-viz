@@ -266,8 +266,10 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // side, so acquisitions and re-acquisitions snap the loud off-beat onsets to it and the move can't be undone.
     let sideOffset = 0, sideSince = null;
     const sideLog = [];
+    let sideLast = null, sideAtLock = null;   // what the side check last measured (snapshot().lane.side)
     function sideDelta(t) {
       const l = laneStat(lanes.low, t);
+      if (l.R !== null) sideLast = { t: +t.toFixed(3), phase: r3(l.phase), R: r3(l.R), n: l.n };
       if (l.R === null || Math.abs(l.phase) <= 0.25) return null;
       const d = -l.phase;
       return { d: d < 0 ? d + 1 : d, l };   // always forward: beats never run back
@@ -279,7 +281,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (atLock) { own.B0 += m.d; own.pending = 0; }   // before the first lock: nothing booked, no jump to log
       else scheduled = { kind: 'side', delta: m.d, atBeat: nextBarLine(outBeats(t)) };
     }
-    function sideCheck(t, atLock) { const m = sideDelta(t); if (m && !tapModel) sideMove(t, m, atLock); }
+    function sideCheck(t, atLock) { const m = sideDelta(t); if (atLock) sideAtLock = sideLast && sideLast.t === +t.toFixed(3) ? sideLast : 'no R'; if (m && !tapModel) sideMove(t, m, atLock); }
     function sideTick(t) {   // while locked
       if (scheduled) return;
       const m = sideDelta(t);
@@ -292,7 +294,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       return { lane, R: { broad: r3(laneLast.broad.R), low: r3(laneLast.low.R) }, n: { broad: laneLast.broad.n, low: laneLast.low.n },
         phase: { broad: r3(laneLast.broad.phase), low: r3(laneLast.low.phase) },
         Rmean: laneAcc.n ? { broad: r3(laneAcc.broad / laneAcc.n), low: r3(laneAcc.low / laneAcc.n) } : null,
-        switches: laneLog.slice(-8), side: { offset: sideOffset, moves: sideLog.slice(-4) }, jumps: jumps.slice(-8).map(j => `${j.kind}@${j.at.toFixed(2)}`),
+        switches: laneLog.slice(-8), side: { offset: sideOffset, moves: sideLog.slice(-4), atLock: sideAtLock, last: sideLast }, jumps: jumps.slice(-8).map(j => `${j.kind}@${j.at.toFixed(2)}`),
         afterJump: j0 === null ? [] : stateLog.filter(s => s.t >= j0).slice(0, 16).map(s => `${s.state}@${s.t.toFixed(2)}`) };
     }
     function logJump(t, kind, from, to) { const j = { type: 'jump', at: t, kind, fromBeats: from, toBeats: to }; jumps.push(j); return j; }
@@ -401,12 +403,16 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       }
       if (state === 'acquire') {
         if (scheduled) return;   // a bar-line jump is already decided: wait for it
-        // acquisition snaps to this onset, on the side the low lane chose (sideOffset). 21124d7 snapped to the lane's
-        // weighted mean phase instead; with both R low after a breakdown (~0.15 / 0.08) that mean is noise and
-        // re-locked a fraction of a beat off (R1 0.20 / 0.40 jumped again on #183's test-pr).
-        const ea = frac(e + sideOffset);
+        // The first acquisition snaps to the steering lane's amplitude-weighted mean phase over the last laneBeats
+        // beats (viz-183-7: that put Sandstorm on the kick; snapping to single onsets, viz-183-8, put it back on the
+        // loud off-beat). Re-acquisitions snap to this onset: after a breakdown both R are low (~0.15 / 0.08), the mean
+        // is noise and re-locked a fraction of a beat off (R1 0.20 / 0.40 on 21124d7's test-pr). Both on the side the
+        // low lane chose (sideOffset).
+        const st = everLocked ? null : laneStat(ln, to), byMean = !!(st && st.R !== null);
+        const ea = byMean ? frac(st.phase + own.pending + sideOffset) : frac(e + sideOffset);
         if (Math.abs(ea) > C.acqWindow) return;
-        conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(ea));
+        const ce = byMean ? frac(e + sideOffset - ea) : ea;   // this onset against the phase it snaps to
+        conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(ce));
         const from = outBeats(to);
         own.B0 -= ea; own.pending = 0;   // gain 1: snap
         if (everLocked && Math.abs(ea) > 1e-6) logJump(to, 'acquire', from, outBeats(to));
