@@ -15,6 +15,7 @@ export { readExpr };
 
 export const VERSION = 1;
 export const NAME_RE = /^\d\d-[a-z0-9-]+$/;                 // qa/<id>/ folder and experiments/<page>.html
+export const PAGE_RE = /^(?:\d\d-[a-z0-9-]+|[a-z][a-z0-9-]*)$/;     // experiments/<page>.html: a numbered page, or a QA-only one (clock-truth, 3c)
 const LABEL_RE = /^[A-Za-z0-9][\w.-]{0,39}$/;
 const KEY_RE = /^[A-Za-z_][\w.-]{0,39}$/;
 const CHECK_RE = /^check-[\w-]+$/;                           // qa/check-NN[-x].mjs on CHECKS_REF
@@ -93,7 +94,7 @@ export function validate(raw) {
   if (raw.version !== VERSION) errs.push(`version must be ${VERSION}`);
   if (typeof raw.id !== 'string' || !NAME_RE.test(raw.id)) errs.push('id must name the qa/ folder, like "18-little-bang"');
   const page = raw.page ?? raw.id;
-  if (typeof page !== 'string' || !NAME_RE.test(page)) errs.push('page must name experiments/<page>.html without .html, like "18-little-bang"');
+  if (typeof page !== 'string' || !PAGE_RE.test(page)) errs.push('page must name experiments/<page>.html without .html, like "18-little-bang" (or a QA-only page like "clock-truth")');
   if (raw.note !== undefined && typeof raw.note !== 'string') errs.push('note must be text');
   const params = raw.params ?? {};
   checkParams(params, 'params', errs);

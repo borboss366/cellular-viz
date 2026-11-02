@@ -120,9 +120,11 @@ test('truth (a) end to end in node: the analysis and the tracker on the rendered
   for (const r of refs) { const t = t0 + r, b = Math.round(tr.beatsAt(t)); if (Number.isFinite(b)) hits.push({ time: tr.timeOf(b), lane: 'kick' }); }
   const m = TR.truthMetrics({ rises, hits, samples, onsets: tr.onsets.map(o => ({ t: o.t, s: o.s })), jumps: tr.jumps, delayMs: CT.ANALYSIS_DELAY_MS }, { refs, markerAt: TR.markerRise(SR) });
   console.log(`node truth (a): lock ${m.lockS} s · phase p50 ${m.phaseP50Ms} / p90 ${m.phaseP90Ms} ms · bias p50 ${m.biasP50Ms} ms · raw delay ${m.rawDelayMs} ms · bpm ${m.bpm} (ref ${m.refBpm}) · matched ${m.matched}`);
-  assert.equal(m.anchored, true);
+  const states = {}; for (const s of samples) states[s.state] = (states[s.state] || 0) + 1;
+  console.log(`node truth (a): ${rises.length} rises (first ${rises.length ? (rises[0] - t0).toFixed(5) : '–'} s, marker ${TR.markerRise(SR).toFixed(5)} s) · ${tr.onsets.length} onsets · ${hits.length} hits · states ${JSON.stringify(states)} · jumps ${tr.jumps.length}`);
+  assert.equal(m.anchored, true, `anchored: ${rises.length} rises`);
   assert.ok(Math.abs(rises[0] - t0 - TR.markerRise(SR)) < 1e-9, 'the first rise is the marker, to the sample');
-  assert.ok(m.lockS !== null && m.lockS < 8, `locks within 8 s (${m.lockS})`);
+  assert.ok(m.lockS !== null && m.lockS < 8, `locks within 8 s (${m.lockS}; states ${JSON.stringify(states)})`);
   assert.ok(Math.abs(m.bpm - 120) <= 1, `bpm ${m.bpm}`);
   assert.ok(Number.isFinite(m.rawDelayMs) && Math.abs(m.rawDelayMs) < 60, `raw delay ${m.rawDelayMs} ms (the box measures the real one)`);
   void P;
@@ -131,7 +133,7 @@ test('truth (a) end to end in node: the analysis and the tracker on the rendered
 test('experiment files: a list of named excerpts, variants pick one, a plain single excerpt keeps its shape', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'truth-exp-')), f = path.join(dir, 'x.json');
   const write = o => { fs.writeFileSync(f, JSON.stringify(o)); return loadFile(f); };
-  const base = { version: 1, id: 'clock-truth', kind: 'audio', resolutions: ['1080p'], warmup: 1, seconds: 40, gates: [{ metric: 'truth.phaseP90Ms', max: 15 }] };
+  const base = { version: 1, id: '00-clock-truth', page: 'clock-truth', kind: 'audio', resolutions: ['1080p'], warmup: 1, seconds: 40, gates: [{ metric: 'truth.phaseP90Ms', max: 15 }] };
   const ok = write({ ...base, audio: [{ name: 'a', synth: 'metronome', bpm: 120, len: 20 }, { name: 'step', track: 'darude-sandstorm', from: 30, len: 16, truth: true, step: 1.067 }],
     variants: [{ name: 'metronome', audio: 'a' }, { name: 'step', audio: 'step' }, { name: 'r4', audio: 'a', params: { offset: 60 } }] });
   assert.deepEqual(ok.errors, []);

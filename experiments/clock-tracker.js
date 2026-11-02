@@ -87,7 +87,11 @@
     for (let i = 0; i < 8; i++) ranges.push([Math.max(1, Math.floor(EDGES[i] / hz)), Math.min(H - 1, Math.ceil(EDGES[i + 1] / hz))]);
     let pos = 0, seen = 0, sinceHop = 0, first = true;
     const frames = [], quietNeed = Math.round(riseQuiet * sampleRate), quietLevel = riseLevel / 4;
-    let quiet = 0, rises = null;
+    // A sound starts with a ramp (a click's attack, the marker's raised-cosine edge) whose first samples sit between
+    // riseLevel / 4 and riseLevel: the first sample over riseLevel / 4 after riseQuiet s of quiet arms the probe for 5 ms,
+    // and the first sample over riseLevel while armed is the rise (3c: an armed-less version missed every ramp).
+    const rampMax = Math.round(0.005 * sampleRate);
+    let quiet = 0, armed = 0, rises = null;
     function frame(t) {
       for (let i = 0; i < N; i++) { re[i] = ring[(pos + i) % N] * win[i]; im[i] = 0; }   // oldest sample first
       fftInPlace(re, im);
@@ -116,9 +120,12 @@
       process(x, t0 = 0) {
         for (let i = 0; i < x.length; i++) {
           const ax = x[i] < 0 ? -x[i] : x[i];
-          if (ax >= riseLevel) { if (quiet >= quietNeed) (rises || (rises = [])).push(t0 + i / sampleRate); quiet = 0; }
-          else if (ax < quietLevel) quiet++;
-          else quiet = 0;
+          if (ax < quietLevel) { quiet++; if (armed > 0) armed--; }
+          else {
+            if (quiet >= quietNeed) armed = rampMax; else if (armed > 0) armed--;
+            quiet = 0;
+            if (ax >= riseLevel) { if (armed > 0) (rises || (rises = [])).push(t0 + i / sampleRate); armed = 0; }
+          }
           ring[pos] = x[i]; pos = (pos + 1) % N; seen++; sinceHop++;
           if (seen >= N && sinceHop >= hop) { sinceHop = 0; frame(t0 + (i + 1) / sampleRate); }
         }

@@ -76,7 +76,22 @@ answers to its parent's name). The report shows the value of every run and which
 | `audio.rowCorr.min` | the lowest Pearson of a page row with its band lane (best lag within ±100 ms), over the counted rows |
 | `audio.rowsCounted` | rows with ≥ 3 s of non-null samples (the page logs `null` while a row is empty or morphing); `audio.rowCorr.min` is taken over these only |
 | `audio.frames` | frames logged while the excerpt played |
-| `truth.*` | the live tracker's truths on a truth excerpt (`experiments/clock-truth.html`): `anchored`, `lockS`, `matched`, `phaseP50Ms`, `phaseP90Ms`, `latencyP90Ms` (raw audio time), `biasP50Ms` / `absBiasP50Ms` (R3), `rawDelayMs`, `bpm`, `refBpm`, `octave`, `relockBeats`, `confMinStep`, `confAfterStep`, `r4DiffMs` (R4, on a run with `?offset=`) |
+| `truth.anchored` | 1 when the page saw the excerpt's marker (the first rise), so references map onto the AudioContext clock |
+| `truth.lockS` | seconds from the music's start to the tracker's first locked sample |
+| `truth.matched` | share of reference beats after lock with a kick hit within half a period |
+| `truth.phaseP50Ms` | median signed hit − reference after lock, ms (raw audio time) |
+| `truth.phaseP90Ms` | 90th percentile of abs(hit − reference) after lock, ms |
+| `truth.latencyP90Ms` | 90th percentile of the signed hit − reference (late positive), ms: the ≤ 40 ms rule in audio time |
+| `truth.biasP50Ms` | median of detected − true onset after ANALYSIS_DELAY_MS, ms (R3) |
+| `truth.absBiasP50Ms` | abs(`truth.biasP50Ms`), ms (R3 gate) |
+| `truth.rawDelayMs` | truth.biasP50Ms + the delay the page subtracted: what ANALYSIS_DELAY_MS should be, ms |
+| `truth.bpm` | the tracker's median bpm after lock |
+| `truth.refBpm` | the references' tempo (median beat period) |
+| `truth.octave` | round(log2(bpm / refBpm)): 0 right, 1 doubled, −1 halved |
+| `truth.relockBeats` | after the tempo step: reference beats until 4 in a row sit within 25 ms |
+| `truth.confMinStep` | the tracker's lowest confidence within 8 s after the step |
+| `truth.confAfterStep` | the tracker's median confidence over the last 4 s |
+| `truth.r4DiffMs` | R4: abs(latency p90 at `?offset=60` − at offset 0) on the same excerpt, ms |
 
 Each check script's own ✅/❌ rows become gates too, named `check-18: <its gate>`. A script that doesn't finish,
 or isn't on the checks ref, is a failed gate.
