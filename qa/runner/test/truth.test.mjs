@@ -149,3 +149,37 @@ test('experiment files: a list of named excerpts, variants pick one, a plain sin
   assert.equal(expand(plain.exp)[0].audio, 'default');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('truthMetrics basis: a fitted grid when Beat This! sits on a line (its jitter leaves), Beat This! when it doesn\'t', () => {
+  const grid = Array.from({ length: 48 }, (_, k) => TR.LEAD_S + 0.001 + k * 0.44);
+  const refs = grid.map((r, k) => r + (k % 2 ? 0.004 : -0.004));   // Beat This!'s ±4 ms jitter around a steady grid
+  const T = fakeLog(grid, { shift: 0, jit: 0, lockAfter: 2 });     // hits exactly on the true grid
+  const m = TR.truthMetrics(T, { refs, markerAt: TR.markerRise(SR) });
+  console.log(`fit: basis ${m.basis}, residual ${m.fitResMs} ms, p90 ${m.phaseP90Ms} ms, against Beat This! it would be ~4`);
+  assert.equal(m.basis, 'fit'); assert.ok(m.fitResMs >= 3.9 && m.fitResMs <= 4.1, `residual ${m.fitResMs}`);
+  assert.ok(m.phaseP90Ms <= 0.5, `p90 against the fit ${m.phaseP90Ms}`);
+  // a live drummer: the tempo drifts by 6 % over the excerpt, far off any line
+  const drift = Array.from({ length: 48 }, (_, k) => TR.LEAD_S + 0.001 + k * 0.5 + 0.0006 * k * k);
+  const d = TR.truthMetrics(fakeLog(drift, { shift: 0, jit: 0, lockAfter: 2 }), { refs: drift, markerAt: TR.markerRise(SR) });
+  assert.equal(d.basis, 'beatthis'); assert.ok(d.fitResMs > TR.FIT_MAX_MS, `residual ${d.fitResMs}`);
+  assert.equal(d.phaseP90Ms, 0);
+});
+
+test('truthMetrics: from lock + 4 beats, ±1 s around jumps left out; the unexcluded numbers, jump count and trace next to it', () => {
+  const refs = Array.from({ length: 40 }, (_, k) => TR.LEAD_S + 0.001 + k * 0.5);
+  const T = fakeLog(refs, { shift: 0, jit: 0, lockAfter: 2 }), off = 7.25;
+  const jt = off + refs[25] + 0.01;                                // a jump just after beat 25: the hits within 1 s are off by 120 ms
+  T.jumps = [{ kind: 'side', at: jt }];
+  T.hits.forEach(h => { if (Math.abs(h.time - jt) < 1) h.time += 0.12; });
+  const m = TR.truthMetrics(T, { refs, markerAt: TR.markerRise(SR) });
+  console.log(`clean p90 ${m.phaseP90Ms} ms (${m.measured} beats, ${m.excluded} out) · unexcluded p90 ${m.phaseP90AllMs} ms · jumps ${m.jumpCount} · lock ${m.lockS} s`);
+  assert.equal(m.phaseP90Ms, 0, 'the jump\'s second either side is left out');
+  assert.ok(m.phaseP90AllMs >= 100, `unexcluded p90 ${m.phaseP90AllMs}`);
+  assert.equal(m.jumpCount, 1);
+  const settle = m.trace.filter(x => x.why === 'settle'), jump = m.trace.filter(x => x.why === 'jump');
+  assert.equal(settle.length, 4, 'the first 4 beats after the lock settle');
+  assert.equal(jump.length, 4, "beats within 1 s of the jump (23 … 26)");
+  assert.ok(m.trace.every(x => 'errMs' in x && 'used' in x && 't' in x));
+  assert.equal('truth.trace' in TR.truthGateMetrics(m), false);
+  assert.equal(TR.truthGateMetrics(m)['truth.jumpCount'], 1);
+});

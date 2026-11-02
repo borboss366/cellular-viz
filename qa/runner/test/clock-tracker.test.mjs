@@ -59,7 +59,7 @@ function phaseStats(o, s, { from = 0, to = Infinity, settle = 8, bias = null } =
   return { n: e.length, bias: b, p50: pct(e, 0.5), p90: pct(e, 0.9), max: e.length ? Math.max(...e) : NaN };
 }
 // the steering lane (3c): which lane, R per lane (now and mean while locked), every switch
-const laneStr = tr => { const L = tr.laneReport(); return `lane ${L.lane} (R broad ${L.R.broad} low ${L.R.low}; mean while locked ${L.Rmean ? `${L.Rmean.broad}/${L.Rmean.low}` : '–'}; switches ${L.switches.map(x => `${x.from}→${x.to} ${x.why}@${x.t}`).join(', ') || 'none'})`; };
+const laneStr = tr => { const L = tr.laneReport(), sd = L.side; return `timing broad; R broad ${L.R.broad} (half-period ${L.R2.broad}) low ${L.R.low} (half-period ${L.R2.low}); side offset ${sd.offset}${sd.hand ? ' (hand)' : ''}, at lock ${JSON.stringify(sd.atLock)}, moves ${sd.moves.map(m => `${m.why}@${m.t}`).join(', ') || 'none'}`; };
 const sustained = tr => tr.laneLog.filter(x => x.why === 'sustained');
 const fmt = (s, o, st, extra = '') => `${s.name}: bpm ${o.tr.ownBpm.toFixed(2)} (true ${[].concat(s.bpm).join('→')}), lock ${o.lockT === null ? 'never' : o.lockT.toFixed(2) + ' s'}, bias ${(st.bias * 60000 / [].concat(s.bpm).slice(-1)[0]).toFixed(1)} ms, phase p50 ${st.p50.toFixed(4)} p90 ${st.p90.toFixed(4)} max ${st.max.toFixed(4)} beat (n ${st.n}), jumps ${o.tr.jumps.map(j => j.kind).join(',') || 'none'}, ${laneStr(o.tr)}${extra}`;
 
@@ -118,7 +118,7 @@ for (const name of ['128-steady', '127.3-steady', 'humanize-10ms']) {
     assert.ok(Math.abs(o.tr.ownBpm - s.bpm) <= 1, `bpm ${o.tr.ownBpm} vs ${s.bpm}`);
     assert.ok(st.p90 <= 0.03, `phase p90 ${st.p90}`);
     assert.ok(o.monotonic, 'beats monotonic');
-    assert.equal(sustained(o.tr).length, 0, `no lane flip mid-lock on a steady track: ${laneStr(o.tr)}`);
+    assert.equal(o.tr.jumps.filter(j => j.kind === 'side').length, 0, `no side move on a steady track: ${laneStr(o.tr)}`);
   });
 }
 
@@ -235,7 +235,7 @@ test('R5 tap escape: a correct tap gives no override for 32 bars', () => {
 // (here a kick-like 45–60 Hz hit at 0.9 of the kick, Sandstorm's low band is ~1.08 kick/bass) plus loud open hats on
 // the off-beat and soft closed hats on the beat. Reported: which lane wins, R per lane, and where the lock sits
 // against the kicks (bias 0 = on the kick, ±0.5 = on the off-beat). Gated only on what the selector promises: it
-// locks, beats never rewind, and the lane flips mid-lock at most once.
+// locks, beats never rewind, and the side moves at most once while locked (timing is broadband; the low lane picks the side).
 test('lane: off-beat bass + open hats on the off-beat (reported; hysteresis gated)', () => {
   const bpm = 128, P = 60 / bpm, seconds = 40, beats = [], hits = [];
   for (let t = 0.5; t < seconds - 0.6; t += P) beats.push(t);
@@ -254,7 +254,7 @@ test('lane: off-beat bass + open hats on the off-beat (reported; hysteresis gate
   console.log(fmt(s, o, st, `, lock ${side} (bias ${st.bias.toFixed(3)} beat), lane phases broad ${L.phase.broad} low ${L.phase.low}, after jumps ${L.afterJump.join(' ') || '\u2013'}`));
   assert.ok(o.lockT !== null, 'locks');
   assert.ok(o.monotonic, 'beats monotonic after the first lock');
-  assert.ok(sustained(o.tr).length <= 1, `at most one lane flip mid-lock: ${laneStr(o.tr)}`);
+  assert.ok(o.tr.jumps.filter(j => j.kind === 'side').length <= 1, `at most one side move while locked: ${laneStr(o.tr)}`);
 });
 
 test('lane: snapshot().lane carries the lane, R per lane, switches and the states after jumps', () => {

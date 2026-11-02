@@ -195,3 +195,23 @@ test('the metronome and file: sources are untouched by the line code (no tracker
   const u = Clock.create({ source: 'nope', audioContext: () => fakeContext(), timers: false, keys: false });
   assert.equal(u.source, 'metronome'); assert.match(u.fallback, /unknown clock source/);
 });
+
+test('fix(\'flip\') (Shift+F / controller): half a beat at the next bar line, logged with its origin, rebooked; the side check leaves it', () => {
+  const s = render('128-steady', { sr: SR }), tF = s.beats.find(t => t >= 12);
+  let sched = null, rejected = null;
+  const { c, log } = runLine(s, { at: [{ t: tF, fn: c => { rejected = c.fix('flip', { origin: 'gesture:leap' }); sched = c.fix('flip', { origin: 'fix:key' }); } }] });
+  const flips = c.jumps.filter(j => j.kind === 'flip'), sides = c.jumps.filter(j => j.kind === 'side');
+  const after = log.filter(x => x.t > tF + 4 * 60 / 128 + 1).map(x => Math.abs(x.e));
+  const medAfter = after.slice().sort((a, b) => a - b)[after.length >> 1];
+  console.log(`flip: scheduled ${JSON.stringify(sched)}, jumps ${c.jumps.map(j => `${j.kind}/${j.origin}@${j.at.toFixed(2)}`).join(', ')}, |phase| at true beats after it ${medAfter.toFixed(3)} beat`);
+  assert.equal(rejected, null, 'a gesture never flips');
+  assert.ok(sched && sched.type === 'flip-scheduled' && sched.origin === 'fix:key');
+  assert.equal(flips.length, 1, 'one flip');
+  assert.equal(flips[0].origin, 'fix:key');
+  assert.ok(Math.abs(flips[0].toBeats - flips[0].fromBeats - 0.5) < 1e-6, `half a beat: ${flips[0].fromBeats} → ${flips[0].toBeats}`);
+  const onBar = Math.abs(frac((flips[0].fromBeats - c.line.offset - c.line.tracker.barOrigin) / 4)) * 4;
+  assert.ok(onBar <= 0.05, `on a bar line (${onBar.toFixed(3)} beat off)`);
+  assert.equal(sides.length, 0, 'the side check does not undo a hand flip');
+  assert.ok(medAfter > 0.4, `the clock now sits on the off-beat (${medAfter})`);
+  assert.equal(c.trackerState.lane.side.hand, true);
+});

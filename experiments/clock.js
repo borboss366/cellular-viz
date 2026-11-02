@@ -45,11 +45,13 @@
 //   metronome.hitsDue(lanes)     → hits whose time ≤ now() not handed out yet; each hit is handed out once per clock
 //   metronome.jumps              → hand commands: [{ type: 'jump', at, kind, fromBeats, toBeats }]
 //   metronome.fix(kind, arg, { origin }) → kind: 'tap' | 'nudge' (arg ms, + = clock ahead) | 'x2' | 'half' | 'setOne' | 'reset'
+//                                  | 'flip' (line only: half a beat at the next bar line, the tracker on the other side
+//                                  of the beat; logged as jump { kind: 'flip', origin } when it lands, then rebooked)
 //                                  acts only for origin 'fix:controller' | 'fix:key' | 'qa' (beat authority, #95 31 Oct);
 //                                  any other origin is a no-op logged in fixRejected (__qa.fixRejected)
 //   metronome.nextBeatAt() / .nextBarAt() → read-only: the clock time (now() timeline) of the next beat / bar line
 //   Hand-fix keys (Shift only; without Shift nothing touches the clock): Shift+A tap, Shift+H ÷2, Shift+D ×2,
-//   Shift+1 set the 1, Shift+, / Shift+. nudge −10 / +10 ms, Shift+0 reset. The same commands come from the
+//   Shift+1 set the 1, Shift+, / Shift+. nudge −10 / +10 ms, Shift+0 reset, Shift+F flip (line). The same commands come from the
 //   controller's Shift buttons as origin 'fix:controller' (#85 layout).
 //   metronome.setVisualOffset(ms) / .visualOffsetMs   → −100 … +200 ms, + = visuals earlier (#95 6498683963)
 //   metronome.now()              → the clock's time on the audio clock that the visuals show now (heard + offset)
@@ -76,7 +78,7 @@
   const AHEAD_MIN = 0.1, AHEAD_MAX = 0.25, GAPS_KEPT = 120, GAPS_MIN = 10, PUMP_MIN_MS = 4;
   const FIX_ORIGINS = ['fix:controller', 'fix:key', 'qa'], QUANTUM = 0.003, NO_DOUBLE = 0.020, TAP_GAP = 2, TAPS_KEPT = 5;
   // Shift + key (KeyboardEvent.code) → hand fix; clear of the pages' own keys (z x c v t b [ ] `)
-  const FIX_KEYS = { KeyA: ['tap'], KeyH: ['half'], KeyD: ['x2'], Digit1: ['setOne'], Comma: ['nudge', -10], Period: ['nudge', 10], Digit0: ['reset'] };
+  const FIX_KEYS = { KeyA: ['tap'], KeyH: ['half'], KeyD: ['x2'], Digit1: ['setOne'], Comma: ['nudge', -10], Period: ['nudge', 10], Digit0: ['reset'], KeyF: ['flip'] };
   const FILE_GAIN = 1, CLICK_GAIN = 0.35, FILE_LEAD = 0.05, LINE_OWN_INPUT_MS = 1500;
 
   // the tracker library (clock-tracker.js): already on the page, required in node, or loaded next to this file
@@ -656,7 +658,7 @@
         if (f.rise) for (const r of f.rise) { line.rises.push(r); if (line.rises.length > 4096) line.rises.shift(); }   // the rise probe (3c truths)
         for (; line.seenJumps < tr.jumps.length; line.seenJumps++) {
           const j = tr.jumps[line.seenJumps];
-          const jump = { type: 'jump', at: j.at, kind: j.kind, fromBeats: j.fromBeats + line.offset, toBeats: j.toBeats + line.offset, origin: 'tracker' };
+          const jump = { type: 'jump', at: j.at, kind: j.kind, fromBeats: j.fromBeats + line.offset, toBeats: j.toBeats + line.offset, origin: j.origin || 'tracker' };
           this.jumps.push(jump);
           if (this.jumps.length > JUMPS_KEPT) this.jumps.shift();
           if (this.ctx && this.playing) this.lineRebook();   // #95 MUST 2: tracker jumps rebook like hand fixes
@@ -726,6 +728,14 @@
         const tr = line.tracker;
         if (!tr || tr.hasModel === false) return null;
         let to = from;
+        if (kind === 'flip') {   // scheduled in the tracker: the jump (origin kept) is logged and rebooked by lineFrame
+          if (!tr.flip) return null;
+          const s = tr.flip(at, origin);
+          if (!s) return null;
+          const pending = { type: 'flip-scheduled', at, kind, atBeats: s.atBeat + line.offset, origin };
+          line.flipPending = pending;
+          return pending;
+        }
         if (kind === 'nudge') {
           const d = (Number(arg) || 0) / 1000 * (tr.bpm || settings.bpm) / 60;
           line.offset += d; to = from + d;

@@ -115,8 +115,16 @@ function nearest(xs, t, tol) {
  * refs (excerpt s), markerAt (excerpt s of the marker's first sample ≥ the probe level) and stepAt:
  *   anchored        the marker was seen (the first rise); offset = rise − markerAt maps excerpt time onto the clock
  *   lockS           seconds from the music's start to the tracker's first 'locked' sample
- *   phase*Ms        hit − ref at each reference beat from lock on (to the end, or to the step), nearest kick hit within
- *                   ±½ period: p50 signed, p90 of |err|; matched = refs with a hit / refs after lock
+ *   basis / fitResMs  the references are fitted with a straight line (beat index → time) over the measured span; when
+ *                   the fit's RMS residual fitResMs ≤ FIT_MAX_MS the hits are measured against the fitted grid (basis
+ *                   'fit': Beat This!'s own jitter leaves the number), above it against Beat This! directly ('beatthis':
+ *                   a live drummer, Hot)
+ *   phase*Ms        hit − ref at each reference beat from lock + LOCK_SETTLE_BEATS on (to the end, or to the step),
+ *                   leaving out ±JUMP_GUARD_S around every jump; nearest kick hit within ±½ period: p50 signed, p90 of
+ *                   |err|; matched = refs with a hit / refs measured
+ *   phaseP50AllMs / phaseP90AllMs  the same from the lock itself with nothing left out, printed next to the clean
+ *                   numbers with jumpCount and lockS, so the exclusions can't flatter a jumpy run
+ *   trace           per reference beat from the lock: { t (excerpt s), errMs, used, why } (the debug JSON only)
  *   latencyP90Ms    p90 of the signed hit − ref (late is positive): the "≤ 40 ms" in raw audio time (#95 MUST 4)
  *   biasP50Ms       median of (detected onset − true onset), the tracker's onsets after ANALYSIS_DELAY_MS (R3)
  *   rawDelayMs      biasP50Ms + delayMs: the value ANALYSIS_DELAY_MS should hold
@@ -124,10 +132,29 @@ function nearest(xs, t, tol) {
  *   relockBeats     after the step: beats until 4 reference beats in a row sit within 25 ms (null: never)
  *   confMinStep / confAfterStep  confidence: the lowest within 8 s after the step, the median of the last 4 s
  */
+export const FIT_MAX_MS = 10, LOCK_SETTLE_BEATS = 4, JUMP_GUARD_S = 1;
+
+/** least-squares line through the references (index from the median period): { at(k), k(t), resMs } or null */
+export function fitGrid(R) {
+  if (R.length < 4) return null;
+  const P = med(R.slice(1).map((x, i) => x - R[i]).filter(d => d > 0.2 && d < 2));
+  if (!P) return null;
+  const ks = R.map(r => Math.round((r - R[0]) / P)), n = R.length;
+  const mk = ks.reduce((a, b) => a + b, 0) / n, mt = R.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0, sxx = 0;
+  for (let i = 0; i < n; i++) { sxy += (ks[i] - mk) * (R[i] - mt); sxx += (ks[i] - mk) ** 2; }
+  if (!(sxx > 0)) return null;
+  const b = sxy / sxx, a = mt - b * mk;
+  let ss = 0;
+  for (let i = 0; i < n; i++) ss += (R[i] - (a + b * ks[i])) ** 2;
+  return { fitted: ks.map(k => a + b * k), resMs: 1000 * Math.sqrt(ss / n), period: b };
+}
+
 export function truthMetrics(T, { refs, markerAt, stepAt = null, lead = LEAD_S } = {}) {
   const out = { anchored: false, rises: T && T.rises ? T.rises.length : 0, hits: 0, onsets: 0, lockS: null, matched: null,
     phaseP50Ms: null, phaseP90Ms: null, latencyP90Ms: null, biasP50Ms: null, rawDelayMs: null, delayMs: T ? T.delayMs ?? null : null,
-    bpm: null, refBpm: null, octave: null, relockBeats: null, confMinStep: null, confAfterStep: null, jumps: {} };
+    bpm: null, refBpm: null, octave: null, relockBeats: null, confMinStep: null, confAfterStep: null, jumps: {},
+    basis: null, fitResMs: null, phaseP50AllMs: null, phaseP90AllMs: null, jumpCount: 0, measured: null, excluded: null, trace: [] };
   if (!T || !Array.isArray(T.rises) || !T.rises.length || !Array.isArray(refs) || refs.length < 2) return out;
   out.anchored = true;
   const offset = T.rises[0] - markerAt, at = x => x + offset;
@@ -135,6 +162,8 @@ export function truthMetrics(T, { refs, markerAt, stepAt = null, lead = LEAD_S }
   const hits = (T.hits || []).filter(h => h.lane === 'kick').map(h => h.time).sort((a, b) => a - b);
   out.hits = hits.length; out.onsets = (T.onsets || []).length;
   for (const j of T.jumps || []) out.jumps[j.kind] = (out.jumps[j.kind] || 0) + 1;
+  out.jumpCount = (T.jumps || []).length;
+  const jumpAt = (T.jumps || []).map(j => j.at).filter(Number.isFinite);
   const S = (T.samples || []).filter(s => s.t >= musicAt);
   const lock = S.find(s => s.state === 'locked');
   const periods = R.slice(1).map((x, i) => x - R[i]).filter(d => d > 0.2 && d < 2);
@@ -144,16 +173,30 @@ export function truthMetrics(T, { refs, markerAt, stepAt = null, lead = LEAD_S }
   out.lockS = r2(lock.t - musicAt);
   // phase and latency: from lock to the end, or to the step (the step's numbers are relock and confidence)
   const until = stepT === null ? Infinity : stepT;
-  const errs = [], lastHit = hits.length ? hits[hits.length - 1] : -Infinity;
-  let due = 0;
-  for (const r of R) {
-    if (r < lock.t || r >= until || r > lastHit) continue;
+  const lastHit = hits.length ? hits[hits.length - 1] : -Infinity;
+  // the basis: the fitted grid when Beat This!'s beats sit on a line within FIT_MAX_MS (RMS), else Beat This! itself
+  const span = R.filter(r => r >= musicAt && r < until), fit = fitGrid(span);
+  out.fitResMs = fit ? r1(fit.resMs) : null;
+  const useFit = !!(fit && fit.resMs <= FIT_MAX_MS);
+  out.basis = useFit ? 'fit' : 'beatthis';
+  const basis = useFit ? fit.fitted : span;
+  const from = lock.t + LOCK_SETTLE_BEATS * (P || 0.5);
+  const errs = [], all = [];
+  let due = 0, excl = 0;
+  for (const r of basis) {
+    if (r < lock.t || r > lastHit) continue;
+    const h = nearest(hits, r, (P || 0.5) / 2), e = h === null ? null : 1000 * (h - r);
+    if (e !== null) all.push(e);
+    const why = r < from ? 'settle' : jumpAt.some(j => Math.abs(j - r) <= JUMP_GUARD_S) ? 'jump' : null;
+    out.trace.push({ t: r2(r - offset), errMs: r1(e), used: !why, why });
+    if (why) { excl++; continue; }
     due++;
-    const h = nearest(hits, r, (P || 0.5) / 2);
-    if (h !== null) errs.push(1000 * (h - r));
+    if (e !== null) errs.push(e);
   }
+  out.measured = due; out.excluded = excl;
   out.matched = due ? r2(errs.length / due) : null;
   out.phaseP50Ms = r1(med(errs)); out.phaseP90Ms = r1(q(errs.map(Math.abs), 0.9)); out.latencyP90Ms = r1(q(errs, 0.9));
+  out.phaseP50AllMs = r1(med(all)); out.phaseP90AllMs = r1(q(all.map(Math.abs), 0.9));
   // R3: the detected onsets (already minus delayMs) against the true onsets within 60 ms
   const Rs = R.slice().sort((a, b) => a - b), bias = [];
   for (const o of T.onsets || []) { const r = nearest(Rs, o.t, 0.06); if (r !== null) bias.push(1000 * (o.t - r)); }
@@ -181,7 +224,7 @@ export function truthMetrics(T, { refs, markerAt, stepAt = null, lead = LEAD_S }
 /** the gate metrics (experiment.mjs METRICS 'truth.*') */
 export function truthGateMetrics(m) {
   const o = {};
-  for (const k of ['anchored', 'lockS', 'matched', 'phaseP50Ms', 'phaseP90Ms', 'latencyP90Ms', 'biasP50Ms', 'rawDelayMs', 'bpm', 'refBpm', 'octave', 'relockBeats', 'confMinStep', 'confAfterStep'])
+  for (const k of ['anchored', 'lockS', 'matched', 'phaseP50Ms', 'phaseP90Ms', 'latencyP90Ms', 'biasP50Ms', 'rawDelayMs', 'bpm', 'refBpm', 'octave', 'relockBeats', 'confMinStep', 'confAfterStep', 'fitResMs', 'phaseP50AllMs', 'phaseP90AllMs', 'jumpCount'])
     o['truth.' + k] = typeof m[k] === 'boolean' ? (m[k] ? 1 : 0) : m[k];
   o['truth.absBiasP50Ms'] = m.biasP50Ms === null ? null : Math.abs(m.biasP50Ms);
   return o;
