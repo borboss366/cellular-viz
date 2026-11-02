@@ -278,11 +278,12 @@ if (exp.seconds > 0) {
   }
   // R4 (#95 6560018120): a truth run at ?offset=N and its partner at offset 0 (same excerpt and size) must give the
   // same latency numbers within 1 ms, because the gate is measured in raw audio time
-  for (const r of runs) {
-    if (!r.truth || !Number(r.params.offset)) continue;
-    const base = runs.find(o => o !== r && o.truth && !Number(o.params.offset) && o.size.name === r.size.name && o.audio === r.audio);
-    const a = r.metrics['truth.latencyP90Ms'], b = base ? base.metrics['truth.latencyP90Ms'] : null;
-    r.metrics['truth.r4DiffMs'] = Number.isFinite(a) && Number.isFinite(b) ? +Math.abs(a - b).toFixed(2) : null;
+  // (truth.mjs r4Diffs, tested in node; every pairing is noted, so a null says which side was missing)
+  for (const p of TRUTH.r4Diffs(runs)) {
+    const r = runs.find(o => o.label === p.label);
+    if (!r || !r.truth) continue;
+    r.metrics['truth.r4DiffMs'] = p.diff;
+    note(`R4 ${p.label}: latency p90 ${p.a ?? '–'} ms vs ${p.base ?? 'no partner'} ${p.b ?? '–'} ms → diff ${p.diff ?? '–'} ms (offset-0 runs on this excerpt and size: ${p.candidates.join(', ') || 'none'})`);
   }
 }
 server.close();

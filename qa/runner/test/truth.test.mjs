@@ -149,3 +149,21 @@ test('experiment files: a list of named excerpts, variants pick one, a plain sin
   assert.equal(expand(plain.exp)[0].audio, 'default');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('R4 pairing: the ?offset run finds its offset-0 partner on the same excerpt and size (viz-183-1 left it null)', () => {
+  const size = { name: '1080p', w: 1920, h: 1080 };
+  // shaped like exp-run's results: the runner adds audio=line and device to every audio run's params
+  const run = (label, audio, params, lat) => ({ label, variant: label.split('@')[0], base: label.split('@')[0], size, audio,
+    params: { audio: 'line', device: 'fake', clock: 'line', ...params }, truth: { anchored: true }, metrics: { 'truth.latencyP90Ms': lat } });
+  const runs = [run('a-metronome@1080p', 'metronome', {}, -6.4), run('a-offset60@1080p', 'metronome', { offset: 60 }, -6.1),
+    run('b-sandstorm@1080p', 'sandstorm', {}, 216.4), { label: 'b-hot@1080p', size, audio: 'hot', params: {}, skipped: 'james-brown', metrics: {} }];
+  const p = TR.r4Diffs(runs);
+  assert.equal(p.length, 1);
+  assert.deepEqual(p[0], { label: 'a-offset60@1080p', base: 'a-metronome@1080p', a: -6.1, b: -6.4, diff: 0.3, candidates: ['a-metronome@1080p'] });
+  // the offset given as a string (a URL value) pairs the same; no partner → null with no candidates
+  assert.equal(TR.r4Diffs([run('x@1080p', 'm', {}, 1), run('y@1080p', 'm', { offset: '60' }, 1.5)])[0].diff, 0.5);
+  assert.deepEqual(TR.r4Diffs([run('y@1080p', 'm', { offset: 60 }, 1.5)])[0], { label: 'y@1080p', base: null, a: 1.5, b: null, diff: null, candidates: [] });
+  // a partner without a latency (never locked) gives null, and says who it was
+  const q = TR.r4Diffs([run('x@1080p', 'm', {}, null), run('y@1080p', 'm', { offset: 60 }, 2)])[0];
+  assert.equal(q.diff, null); assert.equal(q.base, 'x@1080p');
+});
