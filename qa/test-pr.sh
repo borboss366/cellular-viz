@@ -92,8 +92,14 @@ else
   grep -E '^not ok|# SKIP|^# (tests|suites|pass|fail|cancelled|skipped|todo|duration_ms)' "$OUT" | sed 's/^ *//'
   if [ $RC -ne 0 ]; then
     FAIL=1
-    echo "-- first failure:"
-    awk '/^ *not ok/{p=1} p{print; if (++n >= 25) exit}' "$OUT"
+    # every failure with its location and assertion message (not the stack), so one run gives the whole picture
+    echo "-- failures:"
+    awk '/^ *not ok/ { inf = 1; print; next }
+         inf && /^ *(location|error|expected|actual|operator):/ { print; next }
+         inf && /^ *(stack:|\.\.\.$)/ { inf = 0 }' "$OUT" | sed 's/^ *//' | head -n 200
+    # what the tests printed (console.log lands as TAP comments): per-scenario numbers, measured values
+    echo "-- test output:"
+    grep -E '^ *# ' "$OUT" | grep -vE '^ *# (Subtest:|tests |suites |pass |fail |cancelled |skipped |todo |duration_ms )' | sed 's/^ *//' | head -n 150
   fi
   rm -f "$OUT"
 fi
