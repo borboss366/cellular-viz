@@ -17,6 +17,7 @@ import { loadFile, expand, query, evalGates, gatesFromMd, checkMd, readExpr, MET
 import { PROBES } from './probes.mjs';
 import { readGpuBusy } from './gpu.mjs';
 import { audioDir, serveAudio, tracksUsed, trackInfo, describe } from './audio.mjs';
+import { ensureGrids } from '../beatgrid.mjs';
 import { excerptPath, excerptName, wavBytes, readWav, analyse, audioMetrics, audioGateMetrics, writeAtomic, padSilence, PAD_S, ROW_MIN_S, DEVICE } from './audiocheck.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 && i + 1 < process.argv.length ? process.argv[i + 1] : d; };
@@ -36,6 +37,9 @@ process.env.QA_AUDIO_DIR = AUDIO_DIR;   // the check scripts below inherit it
 const tracks = await Promise.all(tracksUsed(exp).map(n => trackInfo(n, AUDIO_DIR)));
 const missing = tracks.filter(t => t.missing).map(t => t.name);
 if (tracks.length) note(`tracks: ${describe(tracks)}`);
+// the rehearsal grids (#173): each <track>.ref.beats (Beat This!, qa/ref-beats.sh) → <track>.beatgrid.json when the
+// grid is missing or older; served at /qa-audio/<track>.beatgrid.json for the clock's file: source. Hand edits kept.
+if (tracks.length) for (const g of ensureGrids(AUDIO_DIR)) note(g.error ? `grid ${g.name}: ${g.error}` : `grid ${g.name}: ${g.beats} beats from Beat This!${g.orphaned ? `, ${g.orphaned} orphaned edits` : ''}`);
 
 // ---- static server: the PR's experiments/ folder (or the old one under /old/) ----
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.glsl': 'text/plain' };

@@ -144,5 +144,16 @@ test('serveAudio: /qa-audio/<fixed name> only, with Range; everything else falls
     r = await fetch(`${base}/qa-audio/..%2Fsecret.flac`); assert.equal(r.status, 404); await r.text();
     r = await fetch(`${base}/qa-audio/not-a-track`); assert.equal(r.status, 404); await r.text();
     r = await fetch(`${base}/13-flow-lab.html`); assert.equal(r.status, 418); await r.text();
+    // the rehearsal grid (#173): <dir>/<track>.beatgrid.json, with or without the track's extension in the URL
+    r = await fetch(`${base}/qa-audio/darude-sandstorm.beatgrid.json`); assert.equal(r.status, 404); await r.text();
+    fs.writeFileSync(path.join(dir, 'darude-sandstorm.beatgrid.json'), '{"version":2,"beats":[{"ms":0,"pos":1,"conf":1},{"ms":440,"pos":2,"conf":1}]}');
+    try {
+      for (const u of ['darude-sandstorm.beatgrid.json', 'darude-sandstorm.flac.beatgrid.json']) {
+        r = await fetch(`${base}/qa-audio/${u}`);
+        assert.equal(r.status, 200, u); assert.equal(r.headers.get('content-type'), 'application/json');
+        assert.equal((await r.json()).beats.length, 2);
+      }
+      r = await fetch(`${base}/qa-audio/not-a-track.beatgrid.json`); assert.equal(r.status, 404); await r.text();
+    } finally { fs.rmSync(path.join(dir, 'darude-sandstorm.beatgrid.json'), { force: true }); }
   } finally { server.close(); }
 });
