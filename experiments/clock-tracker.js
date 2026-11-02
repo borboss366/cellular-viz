@@ -29,11 +29,10 @@
 //     lanes, the broadband flux and the low-band flux (< 150 Hz), each with its own threshold, floor and refractory.
 //     The lane whose onsets sit closest to one phase at the tracked period (amplitude-weighted circular resultant R
 //     over the last 8 beats) steers the PLL, the lock and strongRef; the tempo autocorrelation stays on the broadband
-//     flux. R picks the lane, the PLL picks the phase in it. Lanes switch only at acquire / re-acquire, or while
-//     locked when the other lane's R stays higher for 8 whole beats (that switch re-acquires through free-run, so a
-//     phase change lands on a bar line as in R1). With < 4 onsets in a lane's window its R is undefined and the lane
-//     holds (breakdowns, dropouts). Every switch is logged: snapshot().lane. The lanes never switch in free-run, and
-//     while acquiring only after the other lane led for a whole beat.
+//     flux. R picks the lane, the PLL picks the phase in it. With < 4 onsets in a lane's window its R is undefined
+//     and the lane holds (breakdowns, dropouts). The lanes switch only while acquiring, after the other lane led for
+//     a whole beat, and at the first lock (the higher R); never while locked or in free-run. Every switch is logged:
+//     snapshot().lane.
 //   - beat side: the low lane's resultant direction (not its R) says which half of the beat the kick is on; over ¼
 //     beat away, the model moves there (silently at the first lock, else after laneBeats beats as jump 'side') and
 //     acquisitions keep that side (snapshot().lane.side).
@@ -252,13 +251,12 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         else if (t - aheadSince >= own.P) switchLane(t, other, everLocked ? 're-acquire' : 'acquire');
         return;
       }
+      // locked: the lane holds. viz-183-7 (Sandstorm): the lock on the low lane was right, then a sustained switch to
+      // broad at 15.8 s (R 0.72 vs 0.26 over 8 beats: the loud off-beat hats line up too) dropped the lock into
+      // free-run, re-acquired on the off-beat and needed an acquire jump at 24.2 s: p90 96 ms. Lanes change only while
+      // acquiring; the beat side is still checked while locked.
+      aheadSince = null;
       sideTick(t);
-      if (!better) { aheadSince = null; return; }
-      if (aheadSince === null) aheadSince = t;
-      else if (t - aheadSince >= C.laneBeats * own.P) {   // higher for laneBeats whole beats: switch and re-acquire on it
-        switchLane(t, other, 'sustained');
-        laneHold = true; setState('free-run', t);   // R1's path: ≤ ¼ beat slews, more jumps on the next bar line
-      }
     }
     // The beat side (0 or ½) comes from the low lane's resultant DIRECTION, whatever its R: the kick owns the low band,
     // so even when an off-beat bass makes the low lane's R small (Sandstorm: low flux 213 at the half beat vs 168 on
