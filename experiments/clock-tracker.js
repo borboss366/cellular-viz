@@ -47,7 +47,7 @@
     acqConf: 0.4, lockConf: 0.5, lostConf: 0.3, acqWindow: 0.5, trackWindow: 0.25, trackGain: 0.15, driftOnsets: 4, driftMin: 0.02, confAlpha: 0.15,
     confTau: 1.0, maxRate: 0.03, refRel: 0.3, reacqJump: 0.25, reacqOnsets: 3, bpb: 4,
     escapeTempo: 0.03, escapePhase: 0.25, escapeSecs: 4, escapeConf: 0.7,
-    offbeatBeats: 8, offbeatWin: 0.12, offbeatRatio: 1.5, offbeatLowLean: 1.1, offbeatHighRatio: 1.5,
+    offbeatBeats: 8, offbeatWin: 0.12, offbeatRatio: 1.5, offbeatLowLean: 1.1, offbeatHighRatio: 1.5, offbeatFirst: 4, offbeatWait: 3,
   };
 
   // ---------------------------------------------------------------- analysis (worklet and node)
@@ -201,17 +201,50 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // (bins under 150 Hz) near phase 0 and near phase ½ is kept per beat; when the half-beat side holds more than
     // offbeatRatio × the beat side over offbeatBeats beats, the model moves half a beat at the next beat line, logged as
     // jump { kind: 'offbeat' } (it rebooks like any tracker jump). Once per lock: never back and forth.
+    // viz-183-4: the move fired ~20 s into Sandstorm's 24 s, too late to help, and the PLL had nothing to stop the next
+    // acquisition from snapping back. So the evidence is collected from the first acquisition on, the first lock waits
+    // (≤ offbeatWait s) for offbeatFirst beats of it and decides there (a silent move, nothing is booked yet), and
+    // acqOffset (0 or ½) remembers the side: acquisitions and re-acquisitions snap the strong onsets to it.
     const obRing = [];
-    let obBeat = null, obCur = null, obDone = false;
+    let obBeat = null, obCur = null, obDone = false, acqOffset = 0, lockWaitSince = null;
     function offReset(all) { obRing.length = 0; obBeat = null; obCur = null; if (all) obDone = false; }
-    // what the check saw (snapshot().offbeat, the 3c truth run's report): low flux by the model's phase in 8 bins over
-    // every locked frame, beats kept and dropped (no drums in the window), the last decision's sums
-    const obStats = { frames: 0, noLow: 0, hist: [0, 0, 0, 0, 0, 0, 0, 0], histHigh: [0, 0, 0, 0, 0, 0, 0, 0], kept: 0, dropped: 0, checks: 0, on: null, off: null, hon: null, hoff: null, fired: 0 };
+    // what the check saw (snapshot().offbeat, the 3c truth run's report): low and high flux by the model's phase in 8
+    // bins over every locked frame (hist*After: after a move), beats kept and dropped (no drums in the window), the
+    // last decision's sums, when and why it fired
+    const z8 = () => [0, 0, 0, 0, 0, 0, 0, 0];
+    const obStats = { frames: 0, noLow: 0, hist: z8(), histHigh: z8(), histAfter: z8(), histHighAfter: z8(), kept: 0, dropped: 0, checks: 0,
+      on: null, off: null, hon: null, hoff: null, fired: 0, firedAt: null, rule: null, atLock: null, acqOffset: 0 };
+    function offbeatSums() {
+      let on = 0, off = 0, hon = 0, hoff = 0;
+      for (const b of obRing) { on += b.on; off += b.off; hon += b.hon; hoff += b.hoff; }
+      obStats.checks++; obStats.on = +on.toFixed(3); obStats.off = +off.toFixed(3); obStats.hon = +hon.toFixed(3); obStats.hoff = +hoff.toFixed(3);
+      return { on, off, hon, hoff };
+    }
+    // the low band alone (the kick clearly on the half beat), or the low band leaning to the half beat while the hats
+    // (≥ 5 kHz) sit on the tracked beat: a trance off-beat (open hat + bass) against a kick on the half beat. viz-183-3,
+    // Sandstorm locked 208 ms early: low half/beat 1.32 (under 1.5 alone), high beat/half ≈ 2.7 over the run.
+    function offbeatRule({ on, off, hon, hoff }) {
+      if (off > 0 && off > C.offbeatRatio * on) return 'low';
+      if (off > C.offbeatLowLean * on && hon > C.offbeatHighRatio * hoff && hon > 0) return 'low+hats';
+      return null;
+    }
+    function offbeatMove(t, rule, s, now) {
+      obStats.fired++; obStats.firedAt = +t.toFixed(3); obStats.rule = rule; obStats.atLock = now;
+      notes.push({ t, kind: 'offbeat', rule, atLock: now, on: +s.on.toFixed(3), off: +s.off.toFixed(3), hon: +s.hon.toFixed(3), hoff: +s.hoff.toFixed(3) });
+      obDone = true; offReset(false);
+      acqOffset = acqOffset ? 0 : 0.5; obStats.acqOffset = acqOffset;
+      if (now) { own.B0 += 0.5; own.pending = 0; }   // before the first lock: nothing booked, no jump to log
+      else scheduled = { kind: 'offbeat', delta: 0.5, atBeat: Math.floor(outBeats(t)) + 1 };
+    }
     function offbeatCheck(f, t) {
-      if (state !== 'locked' || !own.P) return;
+      const first = state === 'acquire' && !everLocked;   // the first acquisition only collects; the lock decides
+      if (!own.P || !(state === 'locked' || first)) return;
       if (f.low === undefined) { obStats.noLow++; return; }
-      const ph = ownBeats(t - delay), k = Math.floor(ph), u = ph - k;
-      obStats.frames++; obStats.hist[Math.min(7, Math.floor(u * 8))] += f.low; obStats.histHigh[Math.min(7, Math.floor(u * 8))] += f.high || 0;
+      const ph = ownBeats(t - delay), k = Math.floor(ph), u = ph - k, bin = Math.min(7, Math.floor(u * 8));
+      if (state === 'locked') {
+        obStats.frames++;
+        (obStats.fired ? obStats.histAfter : obStats.hist)[bin] += f.low; (obStats.fired ? obStats.histHighAfter : obStats.histHigh)[bin] += f.high || 0;
+      }
       if (scheduled || tapModel || obDone) return;
       if (obBeat !== k) {
         if (obCur && t - lastInWindow < 1.5 * own.P) { obRing.push(obCur); obStats.kept++; if (obRing.length > C.offbeatBeats) obRing.shift(); }
@@ -221,21 +254,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const hi = f.high || 0;
       if (u < C.offbeatWin || u > 1 - C.offbeatWin) { obCur.on = Math.max(obCur.on, f.low); obCur.hon = Math.max(obCur.hon, hi); }
       else if (Math.abs(u - 0.5) < C.offbeatWin) { obCur.off = Math.max(obCur.off, f.low); obCur.hoff = Math.max(obCur.hoff, hi); }
-      if (obRing.length < C.offbeatBeats) return;
-      let on = 0, off = 0, hon = 0, hoff = 0;
-      for (const b of obRing) { on += b.on; off += b.off; hon += b.hon; hoff += b.hoff; }
-      obStats.checks++; obStats.on = +on.toFixed(3); obStats.off = +off.toFixed(3); obStats.hon = +hon.toFixed(3); obStats.hoff = +hoff.toFixed(3);
-      // the low band alone (the kick clearly on the half beat), or the low band leaning to the half beat while the hats
-      // (≥ 5 kHz) sit on the tracked beat: a trance off-beat (open hat + bass) against a kick on the half beat. viz-183-3,
-      // Sandstorm locked 208 ms early: low half/beat 1.32 (under 1.5 alone), high beat/half ≈ 2.7 over the run.
-      const lowOnly = off > 0 && off > C.offbeatRatio * on;
-      const withHats = off > C.offbeatLowLean * on && hon > C.offbeatHighRatio * hoff && hon > 0;
-      if (lowOnly || withHats) {
-        obStats.fired++;
-        scheduled = { kind: 'offbeat', delta: 0.5, atBeat: Math.floor(outBeats(t)) + 1 };
-        notes.push({ t, kind: 'offbeat', rule: lowOnly ? 'low' : 'low+hats', on: +on.toFixed(3), off: +off.toFixed(3), hon: +hon.toFixed(3), hoff: +hoff.toFixed(3) });
-        obDone = true; offReset(false);
-      }
+      if (first || obRing.length < C.offbeatBeats) return;
+      const s = offbeatSums(), rule = offbeatRule(s);
+      if (rule) offbeatMove(t, rule, s, false);
     }
     function logJump(t, kind, from, to) { const j = { type: 'jump', at: t, kind, fromBeats: from, toBeats: to }; jumps.push(j); return j; }
     function setPeriod(m, P, t) { if (m.P) { m.B0 = m.B0 + (t - m.T0) / m.P; m.T0 = t; } m.P = P; }
@@ -334,9 +355,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // keep the confidence up and then re-acquire on noise (#178: breakdown 0.10/0.20 jumped)
       if (strongRef && s < C.refRel * strongRef) return;
       const target = ownBeats(to) + own.pending;   // where the model will be once the pending slew is done
-      const e = frac(target);
+      const e = frac(target), ea = frac(target + acqOffset);   // ea: acquisitions snap the strong onsets to the side the off-beat check chose
       if (state === 'free-run') {   // collect evidence; decide once reacqOnsets strong onsets agree (R1)
-        reacq.push(e);
+        reacq.push(ea);
         if (reacq.length < C.reacqOnsets) return;
         const em = median(reacq);
         reacq = [];
@@ -345,13 +366,24 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         return;
       }
       if (state === 'acquire') {
-        if (scheduled || Math.abs(e) > C.acqWindow) return;   // a bar-line jump is already decided: wait for it
-        conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(e));
+        if (scheduled || Math.abs(ea) > C.acqWindow) return;   // a bar-line jump is already decided: wait for it
+        conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(ea));
         const from = outBeats(to);
-        own.B0 -= e; own.pending = 0;   // gain 1: snap
-        if (everLocked && Math.abs(e) > 1e-6) logJump(to, 'acquire', from, outBeats(to));
+        own.B0 -= ea; own.pending = 0;   // gain 1: snap
+        if (everLocked && Math.abs(ea) > 1e-6) logJump(to, 'acquire', from, outBeats(to));
         lastInWindow = to;
-        if (conf >= C.lockConf) { setState('locked', to); if (!everLocked) { everLocked = true; barOrigin = Math.round(ownBeats(to)); } }
+        if (conf >= C.lockConf) {
+          if (!everLocked) {
+            // the first lock waits (≤ offbeatWait s) for offbeatFirst beats of beat/off-beat evidence, then decides it
+            if (obRing.length < C.offbeatFirst && !tapModel) {
+              if (lockWaitSince === null) lockWaitSince = to;
+              if (to - lockWaitSince < C.offbeatWait) return;
+            }
+            if (obRing.length >= C.offbeatFirst && !obDone && !tapModel) { const sm = offbeatSums(), rule = offbeatRule(sm); if (rule) offbeatMove(to, rule, sm, true); }
+            everLocked = true; barOrigin = Math.round(ownBeats(to));
+          }
+          setState('locked', to);
+        }
         return;
       }
       if (Math.abs(e) > C.trackWindow) return;
@@ -492,7 +524,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       snapshot() {
         return { state, confidence: +conf.toFixed(3), octaveLock: octaveLock ? +octaveLock.toFixed(2) : null,
           bpm: +(tapModel ? 60 / tapModel.P : bpm).toFixed(2), tapped: !!tapModel, lastJump: jumps[jumps.length - 1] || null,
-          offbeat: { ...obStats, hist: obStats.hist.map(x => +x.toFixed(2)), histHigh: obStats.histHigh.map(x => +x.toFixed(2)), ratio: obStats.on ? +(obStats.off / obStats.on).toFixed(3) : null } };
+          offbeat: { ...obStats, hist: obStats.hist.map(x => +x.toFixed(2)), histHigh: obStats.histHigh.map(x => +x.toFixed(2)),
+            histAfter: obStats.histAfter.map(x => +x.toFixed(2)), histHighAfter: obStats.histHighAfter.map(x => +x.toFixed(2)), ratio: obStats.on ? +(obStats.off / obStats.on).toFixed(3) : null } };
       },
       get notes() { return notes; }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
       get jumps() { return jumps; }, get stateLog() { return stateLog; }, get onsets() { return onsets; },
