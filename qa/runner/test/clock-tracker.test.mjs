@@ -252,7 +252,7 @@ test('lane: off-beat bass + open hats on the off-beat (reported; hysteresis gate
   const o = run(s), st = phaseStats(o, s), L = o.tr.laneReport();
   const side = Math.abs(st.bias) < 0.125 ? 'on the kick' : Math.abs(Math.abs(st.bias) - 0.5) < 0.125 ? 'on the off-beat' : 'between';
   console.log(fmt(s, o, st, `, lock ${side} (bias ${st.bias.toFixed(3)} beat), lane phases broad ${L.phase.broad} low ${L.phase.low}, after jumps ${L.afterJump.join(' ') || '\u2013'}`));
-  assert.ok(o.lockT !== null, 'locks');
+  assert.ok(o.lockT !== null, `locks: the first lock counts only broadband onsets within ±¼ beat of the low lane's phase, so the off-beat hats can't hold the confidence at ~0.5 (3679f19 never locked here): ${laneStr(o.tr)}`);
   assert.ok(o.monotonic, 'beats monotonic after the first lock');
   assert.ok(o.tr.jumps.filter(j => j.kind === 'side').length <= 1, `at most one side move while locked: ${laneStr(o.tr)}`);
 });

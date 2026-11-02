@@ -18,6 +18,8 @@
   ],
   "variants": [
     { "name": "a-metronome", "audio": "metronome" },
+    { "name": "a-metronome-2", "audio": "metronome" },
+    { "name": "a-metronome-3", "audio": "metronome" },
     { "name": "a-offset60", "audio": "metronome", "params": { "offset": 60 } },
     { "name": "b-sandstorm", "audio": "sandstorm" },
     { "name": "b-voodoo", "audio": "voodoo" },
@@ -37,10 +39,10 @@
   },
   "gates": [
     { "metric": "truth.anchored", "equals": 1, "name": "every excerpt was heard: the marker's rise seen on the AudioContext clock" },
-    { "metric": "truth.phaseP90Ms", "max": 15, "variant": ["a-metronome"], "name": "truth (a): phase p90 <= 15 ms after lock" },
-    { "metric": "truth.latencyP90Ms", "max": 40, "variant": ["a-metronome"], "name": "truth (a): latency p90 <= 40 ms (raw audio time)" },
-    { "metric": "truth.absBiasP50Ms", "max": 5, "variant": ["a-metronome"], "name": "R3: |onset bias p50| <= 5 ms after ANALYSIS_DELAY_MS (12 ms, measured by viz-183-1)" },
-    { "metric": "truth.matched", "min": 0.9, "variant": ["a-metronome"], "report": true, "name": "truth (a): >= 90 % of beats after lock have a kick" },
+    { "metric": "truth.phaseP90Ms", "max": 15, "variant": ["a-metronome", "a-metronome-2", "a-metronome-3"], "name": "truth (a): phase p90 <= 15 ms after lock" },
+    { "metric": "truth.latencyP90Ms", "max": 40, "variant": ["a-metronome", "a-metronome-2", "a-metronome-3"], "name": "truth (a): latency p90 <= 40 ms (raw audio time)" },
+    { "metric": "truth.absBiasP50Ms", "max": 5, "variant": ["a-metronome", "a-metronome-2", "a-metronome-3"], "name": "R3: |onset bias p50| <= 5 ms after ANALYSIS_DELAY_MS (12 ms, measured by viz-183-1)" },
+    { "metric": "truth.matched", "min": 0.9, "variant": ["a-metronome", "a-metronome-2", "a-metronome-3"], "report": true, "name": "truth (a): >= 90 % of beats after lock have a kick" },
     { "metric": "truth.r4DiffMs", "max": 1, "variant": ["a-offset60"], "name": "R4: latency p90 at visual offset +60 equals offset 0 within 1 ms" },
     { "metric": "truth.phaseP90Ms", "max": 35, "variant": ["b-sandstorm"], "name": "truth (b) Sandstorm: phase p90 <= 35 ms after lock (the only hard (b) gate)" },
     { "metric": "truth.phaseP90Ms", "max": 35, "variant": ["b-voodoo", "b-teardrop", "b-hot"], "report": true, "name": "truth (b) Voodoo People, Teardrop, Hot: phase p90 <= 35 ms (report-only)" },
