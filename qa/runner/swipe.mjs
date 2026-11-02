@@ -35,7 +35,7 @@ const expReport = b => /\/runs\/[^/]+-pr\d+\/check\.md$/.test(String(b.report ||
 export function swipeCandidates(builds, { now = Date.now() } = {}) {
   const newest = new Map();
   for (const b of builds) {
-    if (!b || !b.pr) continue;
+    if (!b || !b.pr || b.kind === 'daily') continue;   // daily runs on main (daily.mjs) are measurements, never graded
     const cur = newest.get(b.pr);
     if (!cur || String(b.started || b.at || '') > String(cur.started || cur.at || '')) newest.set(b.pr, b);
   }

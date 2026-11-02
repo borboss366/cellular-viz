@@ -1,0 +1,6 @@
+{
+ "note": "Experiment files the runner re-runs once a UTC day at main's head (daily.mjs). 159: the 16b audio gates, flipped to hard on 8 Nov 2026 if >= 3 clean runs 2-8 Nov (#95 6564383139); remove it after the flip.",
+ "experiments": [159],
+ "fromUtc": 8,
+ "toUtc": 20
+}
