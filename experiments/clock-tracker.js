@@ -87,6 +87,7 @@
     let wsum = 0;
     for (let k = 0; k < nBins; k++) { const f = k * hz; wt[k] = f < 150 ? 3 : f < 500 ? 1.5 : 1; wsum += wt[k]; }
     const lowBins = Math.max(2, Math.ceil(150 / hz));   // bins 1 … < 150 Hz: the low flux the off-beat check compares
+    const highBin = Math.round(5000 / hz);              // bins ≥ 5 kHz: hats (reported next to the low flux, 3c)
     const ranges = [];
     for (let i = 0; i < 8; i++) ranges.push([Math.max(1, Math.floor(EDGES[i] / hz)), Math.min(H - 1, Math.ceil(EDGES[i + 1] / hz))]);
     let pos = 0, seen = 0, sinceHop = 0, first = true;
@@ -99,13 +100,14 @@
     function frame(t) {
       for (let i = 0; i < N; i++) { re[i] = ring[(pos + i) % N] * win[i]; im[i] = 0; }   // oldest sample first
       fftInPlace(re, im);
-      let flux = 0, low = 0;
+      let flux = 0, low = 0, high = 0;
       const bands = {};
       for (let k = 0; k < H; k++) {
         const mag = Math.hypot(re[k], im[k]) / (N / 4);   // a full-scale sine reads ≈ 1
         const c = Math.log1p(100 * mag);
         if (k < nBins && !first) flux += wt[k] * Math.max(0, c - prev[k]);
         if (k >= 1 && k < lowBins && !first) low += Math.max(0, c - prev[k]);   // the kick's own band (beat or off-beat)
+        if (k >= highBin && k < nBins && !first) high += Math.max(0, c - prev[k]);
         prev[k] = c; re[k] = mag;   // keep the magnitude for the bands
       }
       for (let i = 0; i < 8; i++) {
@@ -115,7 +117,7 @@
         bands[BANDS[i]] = 10 * Math.log10(s / Math.max(1, b - a + 1) + 1e-20);
       }
       first = false;
-      const f = { t, flux: flux / wsum, low, bands };
+      const f = { t, flux: flux / wsum, low, high: high / Math.max(1, nBins - highBin), bands };
       if (rises) { f.rise = rises; rises = null; }
       if (onFrame) onFrame(f); else frames.push(f);
     }
@@ -202,11 +204,18 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     const obRing = [];
     let obBeat = null, obCur = null, obDone = false;
     function offReset(all) { obRing.length = 0; obBeat = null; obCur = null; if (all) obDone = false; }
+    // what the check saw (snapshot().offbeat, the 3c truth run's report): low flux by the model's phase in 8 bins over
+    // every locked frame, beats kept and dropped (no drums in the window), the last decision's sums
+    const obStats = { frames: 0, noLow: 0, hist: [0, 0, 0, 0, 0, 0, 0, 0], histHigh: [0, 0, 0, 0, 0, 0, 0, 0], kept: 0, dropped: 0, checks: 0, on: null, off: null, fired: 0 };
     function offbeatCheck(f, t) {
-      if (f.low === undefined || state !== 'locked' || !own.P || scheduled || tapModel || obDone) return;
+      if (state !== 'locked' || !own.P) return;
+      if (f.low === undefined) { obStats.noLow++; return; }
       const ph = ownBeats(t - delay), k = Math.floor(ph), u = ph - k;
+      obStats.frames++; obStats.hist[Math.min(7, Math.floor(u * 8))] += f.low; obStats.histHigh[Math.min(7, Math.floor(u * 8))] += f.high || 0;
+      if (scheduled || tapModel || obDone) return;
       if (obBeat !== k) {
-        if (obCur && t - lastInWindow < 1.5 * own.P) { obRing.push(obCur); if (obRing.length > C.offbeatBeats) obRing.shift(); }
+        if (obCur && t - lastInWindow < 1.5 * own.P) { obRing.push(obCur); obStats.kept++; if (obRing.length > C.offbeatBeats) obRing.shift(); }
+        else if (obCur) obStats.dropped++;
         obBeat = k; obCur = { on: 0, off: 0 };
       }
       if (u < C.offbeatWin || u > 1 - C.offbeatWin) obCur.on = Math.max(obCur.on, f.low);
@@ -214,7 +223,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (obRing.length < C.offbeatBeats) return;
       let on = 0, off = 0;
       for (const b of obRing) { on += b.on; off += b.off; }
+      obStats.checks++; obStats.on = +on.toFixed(3); obStats.off = +off.toFixed(3);
       if (off > 0 && off > C.offbeatRatio * on) {
+        obStats.fired++;
         scheduled = { kind: 'offbeat', delta: 0.5, atBeat: Math.floor(outBeats(t)) + 1 };
         notes.push({ t, kind: 'offbeat', on: +on.toFixed(3), off: +off.toFixed(3) });
         obDone = true; offReset(false);
@@ -474,7 +485,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // __qa.tracker (#95 SHOULD 8)
       snapshot() {
         return { state, confidence: +conf.toFixed(3), octaveLock: octaveLock ? +octaveLock.toFixed(2) : null,
-          bpm: +(tapModel ? 60 / tapModel.P : bpm).toFixed(2), tapped: !!tapModel, lastJump: jumps[jumps.length - 1] || null };
+          bpm: +(tapModel ? 60 / tapModel.P : bpm).toFixed(2), tapped: !!tapModel, lastJump: jumps[jumps.length - 1] || null,
+          offbeat: { ...obStats, hist: obStats.hist.map(x => +x.toFixed(2)), histHigh: obStats.histHigh.map(x => +x.toFixed(2)), ratio: obStats.on ? +(obStats.off / obStats.on).toFixed(3) : null } };
       },
       get notes() { return notes; }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
       get jumps() { return jumps; }, get stateLog() { return stateLog; }, get onsets() { return onsets; },
