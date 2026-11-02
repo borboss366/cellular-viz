@@ -186,3 +186,26 @@ export function truthGateMetrics(m) {
   o['truth.absBiasP50Ms'] = m.biasP50Ms === null ? null : Math.abs(m.biasP50Ms);
   return o;
 }
+
+/**
+ * R4 (#95 6560018120): each truth run at ?offset=N (N ≠ 0) against its partner at offset 0 on the same excerpt and
+ * size; the latency p90 must agree within 1 ms, because it is measured in raw audio time. Pure, so the pairing is
+ * tested in node (viz-183-1 left truth.r4DiffMs null with both runs measured: the inline pairing never found the
+ * partner). runs: exp-run's run results ({label, params, audio, size, metrics, skipped?}).
+ * → [{ label, base, a, b, diff, candidates }]: a, b the two latency p90s (ms), diff |a − b| (null when one is missing)
+ */
+export function r4Diffs(runs) {
+  const off = r => Number(r && r.params ? r.params.offset : 0) || 0;
+  const lat = r => (r && r.metrics && Number.isFinite(r.metrics['truth.latencyP90Ms']) ? r.metrics['truth.latencyP90Ms'] : null);
+  const sizeOf = r => (r && r.size ? r.size.name ?? null : null);
+  const out = [];
+  for (const r of runs || []) {
+    if (!r || r.skipped || !off(r)) continue;
+    const cands = runs.filter(o => o && o !== r && !o.skipped && !off(o) && (o.audio ?? null) === (r.audio ?? null) && sizeOf(o) === sizeOf(r));
+    const base = cands.find(o => lat(o) !== null) || cands[0] || null;
+    const a = lat(r), b = base ? lat(base) : null;
+    out.push({ label: r.label, base: base ? base.label : null, a, b, diff: a !== null && b !== null ? +Math.abs(a - b).toFixed(2) : null,
+      candidates: cands.map(o => o.label) });
+  }
+  return out;
+}
