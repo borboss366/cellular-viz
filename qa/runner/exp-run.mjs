@@ -121,7 +121,7 @@ async function makeTruthExcerpt(a) {
       const cut = await decodeCut(a); sr = cut.sr;
       made = TRUTH.trackTruth(TRUTH.toMono(cut.pcm, cut.ch), sr, parseRefBeats(fs.readFileSync(refFile, 'utf8')), a.from, a.len, a.step);
     }
-    writeAtomic(side, JSON.stringify({ v: 1, sr, refs: made.refs.map(t => +t.toFixed(6)), markerAt: TRUTH.markerRise(sr), stepAt: made.stepAt, lead: TRUTH.LEAD_S }));
+    writeAtomic(side, JSON.stringify({ v: 1, sr, refs: made.refs.map(t => +t.toFixed(6)), markerAt: TRUTH.markerRise(sr), stepAt: made.stepAt, lead: TRUTH.LEAD_S, endAt: +(made.mono.length / sr).toFixed(6) }));
     writeAtomic(dest, wavBytes(padSilence(TRUTH.toInt16Stereo(made.mono), sr, 2), sr, 2));
     note(`audio: made ${truthName(a)} (${(made.mono.length / sr).toFixed(1)} s + ${PAD_S} s silence, ${made.refs.length} reference beats${made.stepAt ? `, step ×${a.step} at ${made.stepAt.toFixed(2)} s` : ''})`);
   }
@@ -154,7 +154,7 @@ async function measure(browser, run) {
     page, browser, run, value, state: {}, shared, t: 0, frames: null, note: s => note(`${run.label} ${k}: ${s}`),
     path: name => path.join(OUT, 'debug', name), write: (name, data) => fs.writeFileSync(path.join(OUT, 'debug', name), data) } }));
   const call = async (phase, extra = {}) => { for (const { k, p, ctx } of probes) if (p[phase]) { Object.assign(ctx, extra); try { await p[phase](ctx); } catch (e) { note(`${run.label} probe ${k}.${phase}: ${e.message}`); } } };
-  const r = { label: run.label, variant: run.variant, base: run.base, size: run.size, audio: run.audio || null, params: run.params, url: `${exp.page}.html?${query(run.params)}`, metrics: { gpuBusy: busy }, values: {}, stills: [] };
+  const r = { label: run.label, variant: run.variant, base: run.base, size: run.size, audio: run.audio || null, excerpt: run.audio || null, params: run.params, url: `${exp.page}.html?${query(run.params)}`, metrics: { gpuBusy: busy }, values: {}, stills: [] };
   try {
     await call('init');
     await page.goto(`${BASE}?${query(run.params)}`, { waitUntil: 'load', timeout: 60e3 });
@@ -203,8 +203,9 @@ async function measure(browser, run) {
       const T = await page.evaluate(() => (window.__qa && window.__qa.truth ? JSON.parse(JSON.stringify(window.__qa.truth)) : null)).catch(() => null);
       const tm = TRUTH.truthMetrics(T, x.truth);
       Object.assign(r.metrics, TRUTH.truthGateMetrics(tm));
-      r.truth = tm;
-      note(`${r.label} truth: ${tm.anchored ? `lock ${tm.lockS ?? '–'} s · phase p50 ${tm.phaseP50Ms ?? '–'} / p90 ${tm.phaseP90Ms ?? '–'} ms · latency p90 ${tm.latencyP90Ms ?? '–'} ms · bias p50 ${tm.biasP50Ms ?? '–'} ms (raw delay ${tm.rawDelayMs ?? '–'} ms) · bpm ${tm.bpm ?? '–'} vs ref ${tm.refBpm ?? '–'} (octave ${tm.octave ?? '–'})${x.truth.stepAt ? ` · relock ${tm.relockBeats ?? 'never'} beats, conf min ${tm.confMinStep ?? '–'} → ${tm.confAfterStep ?? '–'}` : ''} · matched ${tm.matched ?? '–'} · jumps ${JSON.stringify(tm.jumps)}` : 'no marker seen (no rise): the page never heard the excerpt'}`);
+      const { trace: _trace, ...tmHead } = tm;   // the per-beat trace goes to the debug JSON only
+      r.truth = tmHead;
+      note(`${r.label} truth: ${tm.anchored ? `lock ${tm.lockS ?? '–'} s · basis ${tm.basis ?? '–'} (fit residual r ${tm.fitResMs ?? '–'} ms) · phase p50 ${tm.phaseP50Ms ?? '–'} / p90 ${tm.phaseP90Ms ?? '–'} ms from lock + 4 beats, ±1 s around jumps out (${tm.measured ?? '–'} beats, ${tm.excluded ?? '–'} out) · unexcluded p50 ${tm.phaseP50AllMs ?? '–'} / p90 ${tm.phaseP90AllMs ?? '–'} ms · ${tm.jumpCount} jumps · latency p90 ${tm.latencyP90Ms ?? '–'} ms · bias p50 ${tm.biasP50Ms ?? '–'} ms (raw delay ${tm.rawDelayMs ?? '–'} ms) · bpm ${tm.bpm ?? '–'} vs ref ${tm.refBpm ?? '–'} (octave ${tm.octave ?? '–'})${x.truth.stepAt ? ` · relock ${tm.relockBeats ?? 'never'} beats, conf min ${tm.confMinStep ?? '–'} → ${tm.confAfterStep ?? '–'}` : ''} · matched ${tm.matched ?? '–'} · jumps ${JSON.stringify(tm.jumps)}` : 'no marker seen (no rise): the page never heard the excerpt'}`);
       fs.writeFileSync(path.join(OUT, 'debug', `truth-${safe(r.label)}.json`), JSON.stringify({ metrics: tm, ref: x.truth, log: T }));
     }
     if (A) {   // the audio gates' numbers: the page's per-frame log against the offline analysis of the excerpt
@@ -267,7 +268,7 @@ if (exp.seconds > 0) {
       const skip = missing.includes(run.params.track) ? run.params.track : a && a.track && missing.includes(a.track) ? a.track : a && !x ? (a.track || a.synth) : null;
       if (skip) {   // never a fail: the user hasn't copied that track to the box yet (or its excerpt could not be made)
         note(`${run.label}: skipped, ${a && !x && !missing.includes(skip) ? 'no excerpt' : 'track missing'} (${skip})`);
-        runs.push({ label: run.label, variant: run.variant, base: run.base, size: run.size, audio: run.audio || null, params: run.params, skipped: skip, metrics: {}, values: {}, stills: [], errors: [] });
+        runs.push({ label: run.label, variant: run.variant, base: run.base, size: run.size, audio: run.audio || null, excerpt: run.audio || null, params: run.params, skipped: skip, metrics: {}, values: {}, stills: [], errors: [] });
         continue;
       }
       if (!browser) browser = await chromium.launch({ args: x ? [...flags, ...audioFlags(x)] : flags, env });
@@ -278,11 +279,12 @@ if (exp.seconds > 0) {
   }
   // R4 (#95 6560018120): a truth run at ?offset=N and its partner at offset 0 (same excerpt and size) must give the
   // same latency numbers within 1 ms, because the gate is measured in raw audio time
-  for (const r of runs) {
-    if (!r.truth || !Number(r.params.offset)) continue;
-    const base = runs.find(o => o !== r && o.truth && !Number(o.params.offset) && o.size.name === r.size.name && o.audio === r.audio);
-    const a = r.metrics['truth.latencyP90Ms'], b = base ? base.metrics['truth.latencyP90Ms'] : null;
-    r.metrics['truth.r4DiffMs'] = Number.isFinite(a) && Number.isFinite(b) ? +Math.abs(a - b).toFixed(2) : null;
+  // (truth.mjs r4Diffs, tested in node; every pairing is noted, so a null says which side was missing)
+  for (const p of TRUTH.r4Diffs(runs)) {
+    const r = runs.find(o => o.label === p.label);
+    if (!r || !r.truth) continue;
+    r.metrics['truth.r4DiffMs'] = p.diff;
+    note(`R4 ${p.label}: latency p90 ${p.a ?? '–'} ms vs ${p.base ?? 'no partner'} ${p.b ?? '–'} ms → diff ${p.diff ?? '–'} ms (offset-0 runs on this excerpt and size: ${p.candidates.join(', ') || 'none'})`);
   }
 }
 server.close();

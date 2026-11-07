@@ -408,6 +408,10 @@ function step(drawBrush) {
 const clockQuery = new URLSearchParams(location.search);
 const clock = Clock.create({ source: clockQuery.get('clock') || 'metronome' });
 const audio = AudioIn.create({ clock, source: clockQuery.get('audio') || 'clock' });
+// QA: the clock booking counter (#148) for check-shared's hard clockLate row (#95 6704930372). Only clockLate: no
+// __qa.beatLog here, so the beat-match row stays ℹ️ (wiring only). The clock is never started, so late stays 0.
+window.__qa = window.__qa || {};
+Object.defineProperty(window.__qa, 'clockLate', { get: () => clock.lateStats, configurable: true, enumerable: true });
 let clockState = clock.read();   // { beats, bars, phase, bpm, … }, read again at the top of every frame
 
 let frames = 0, fps = 0, lastFpsTime = performance.now();
