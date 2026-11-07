@@ -786,6 +786,8 @@ function frame(now) {
 // clock port, wiring only (as 01, 02, 05): no __qa.beatLog, because this page has no beat grid, so check-shared's
 // beat-match row is ℹ️ (VIZ research's ruling on #146). The shared input's state is still exposed for QA.
 window.__qa = window.__qa || {};
+// QA: the clock booking counter (#148) for check-shared's hard clockLate row (#95 6704930372); no beatLog, as above.
+Object.defineProperty(window.__qa, 'clockLate', { get: () => clock.lateStats, configurable: true, enumerable: true });
 Object.defineProperty(window.__qa, 'frame', { get: () => micIn.frame, configurable: true, enumerable: true });
 Object.defineProperty(window.__qa, 'audioIn', { get: () => ({ source: micIn.source, requested: micIn.requested, fallback: micIn.fallback,
   status: micIn.status, error: micIn.error, warning: micIn.warning, device: micIn.device, wiringOnly: true }), configurable: true, enumerable: true });

@@ -34,6 +34,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { NAME as CLOCK_LATE, clockLateRow, loadsClock } from './clock-late.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
@@ -359,6 +360,8 @@ if (only !== 'flash') {
   // clock booking (#148): steps booked after their own time (should be 0), worst frame gap, look-ahead in force
   res.clockLate = await page.evaluate(() => { const c = window.__qa && window.__qa.clockLate; return c ? JSON.parse(JSON.stringify(c)) : null; })
     .catch(e => ({ err: String(e && e.message || e) }));
+  // whether the page loads the shared clock (a missing __qa.clockLate fails only there; clock-late.mjs)
+  res.clockOn = await page.evaluate(() => [...document.scripts].map(s => s.getAttribute('src') || '')).then(loadsClock).catch(() => null);
   await page.close();
 }
 
@@ -506,13 +509,12 @@ if (res.flash) {
       ` · lag p50 ${q(lags, 0.5) ?? '–'} · max ${lags.length ? Math.max(...lags).toFixed(1) : '–'} ms${src}`);
   }
 }
-// clock booking row (report-only, #148): late should stay 0; look-ahead is clamp(2 × p95 frame gap, 100, 250) ms
+// clock booking row (#148), hard since 7 Nov (#95 6704881403): late must be 0, and a page on clock.js must report it;
+// a page not on the clock is n/a. Hard on every page like beat match (no pre-#88 downgrade). Look-ahead is
+// clamp(2 × p95 frame gap, 100, 250) ms.
 {
-  const c = res.clockLate;
-  add('clock booking under long frames (__qa.clockLate, #148, report-only)', null, c === undefined ? 'not measured (flash-only run)'
-    : c === null ? 'no __qa.clockLate (page not on clock.js, or clock.js from before #148)'
-    : c.err ? `could not read __qa.clockLate: ${c.err}`
-    : `late ${c.late}${c.late ? ` (worst ${c.lateMaxMs} ms)` : ''} · max frame gap ${c.maxGapMs} ms · look-ahead ${c.lookAheadMs} ms`);
+  const r = clockLateRow(res.clockLate, res.clockOn);
+  rows.push(`| ${CLOCK_LATE} | ${r.pass === null ? 'ℹ️' : ok(r.pass)} | ${String(r.detail).replace(/[|\n]/g, ' ')} |`);
 }
 add('#88 gating for this page', null, gated ? (legacy ? 'gated: page from before #88 that has __qa.forceDrop' : 'gated: new scene') : 'report-only: page from before #88 without __qa.forceDrop');
 add('page errors', errors.length === 0, errors.length ? errors.slice(0, 3).join(' / ') : 'none');
