@@ -73,7 +73,7 @@ Every PR1 hard gate (Q5–Q10) rides on C1–C3, not on the real tracks. The rea
 
 ## 17 The mix recipes (made by the box, not by hand)
 
-The box's Python mix tool builds mixes from the committed recipe list: two tracks by corpus id, two cut windows, a fade and a mode. Truth is **derived** from the two single-track references plus arithmetic, and never detected on the mixed file (R12). The output is a derived render, never a source track.
+The box's mix tool builds mixes from the committed recipe list: two tracks by corpus id, two cut windows, a fade and a mode. Truth is **derived** from the two single-track references plus arithmetic, and never detected on the mixed file (R12). The output is a derived render, never a source track.
 
 Per cut window the truth is a least-squares straight grid through the reference beats: `fitMode: "linear"` when residual RMS is 5 ms or less and window drift is under 0.3 %, else an 8-beat moving fit (`"piecewise"`). Hard self-check: refitting the written truth deviates by 1 ms at most.
 
