@@ -16,6 +16,37 @@ export const EXTS = ['.flac', '.wav', '.m4a', '.mp3'];   // the order a name is 
 export const TYPES = { '.flac': 'audio/flac', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.mp3': 'audio/mpeg' };
 const LOSSY = new Set(['.m4a', '.mp3']);
 
+// Source tracks vs renders (#188 PR1a): one rule in qa/render-names.json, shared with qa/ref_beats.py.
+export const RENDER_RULE = JSON.parse(fs.readFileSync(new URL('../render-names.json', import.meta.url), 'utf8'));
+const RENDER_RES = RENDER_RULE.renderPatterns.map(p => new RegExp(p));
+
+/** a file name the runner or a script rendered (excerpt, truth clip, metronome, playlist, sidecar), not a source track */
+export function isRender(name) {
+  return RENDER_RES.some(r => r.test(String(name)));
+}
+
+/** a top-level file name that is a source track: an audio extension (any case), not hidden, not a render */
+export function isSourceTrack(name) {
+  const n = String(name), ext = path.extname(n).toLowerCase();
+  return !n.startsWith('.') && RENDER_RULE.audioExts.includes(ext) && n.length > ext.length && !isRender(n);
+}
+
+/**
+ * every source track at the top of dir (subfolders such as renders/ are not read), sorted by stem:
+ * [{ stem, file, ext }]. Two files with one stem (x.flac and x.mp3) give one entry, the first in audioExts order.
+ */
+export function sourceTracks(dir) {
+  let files = [];
+  try { files = fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isFile()).map(d => d.name); } catch { return []; }
+  const by = new Map();
+  for (const f of files.filter(isSourceTrack)) {
+    const ext = path.extname(f), stem = f.slice(0, -ext.length), rank = RENDER_RULE.audioExts.indexOf(ext.toLowerCase());
+    const old = by.get(stem);
+    if (!old || rank < old.rank || (rank === old.rank && f < old.file)) by.set(stem, { stem, file: f, ext: ext.toLowerCase(), rank });
+  }
+  return [...by.values()].sort((a, b) => (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0)).map(({ stem, file, ext }) => ({ stem, file, ext }));
+}
+
 /** the folder: an explicit path, else $QA_AUDIO_DIR, else the default */
 export function audioDir(explicit) {
   const e = process.env.QA_AUDIO_DIR;

@@ -7,6 +7,11 @@
 # QA box types it the same way every time, from the runner's clone (RUNNER_HOME):
 #   sh /path/to/cellular-viz-runner/qa/ref-beats.sh            # tracks with no or stale reference files
 #   sh /path/to/cellular-viz-runner/qa/ref-beats.sh --force    # all tracks again
+#   sh /path/to/cellular-viz-runner/qa/ref-beats.sh --list     # only list the source tracks it would take (no venv)
+#
+# Source tracks (#188 PR1a): every audio file at the top of the folder that is not a render, by qa/render-names.json
+# (the same rule as isRender() in qa/runner/audio.mjs). At the end, qa/beatgrid.mjs (ensureGrids) turns each new or
+# changed <stem>.ref.beats into <stem>.beatgrid.json, keeping any grid-editor edits already in it.
 #
 # No apt, nothing outside the bind mount: the venv, pip cache and model checkpoint live under
 # /home/puggie/pi-durable-worker/data/qa-audio (survives a container recreate); the outputs go next to the tracks.
@@ -21,7 +26,8 @@ VENV=$DATA/.venv-beatthis
 MODEL=${REF_BEATS_MODEL:-final0}
 export TORCH_HOME="$DATA/.models" PIP_CACHE_DIR="$DATA/.cache/pip" PIP_DISABLE_PIP_VERSION_CHECK=1
 FORCE=
-case "${1:-}" in --force) FORCE=--force ;; '') ;; *) echo "usage: sh qa/ref-beats.sh [--force]" >&2; exit 2 ;; esac
+LIST=
+case "${1:-}" in --force) FORCE=--force ;; --list) LIST=1 ;; '') ;; *) echo "usage: sh qa/ref-beats.sh [--force | --list]" >&2; exit 2 ;; esac
 
 die() { echo "ref-beats.sh: $*" >&2; exit 1; }
 
@@ -29,6 +35,7 @@ die() { echo "ref-beats.sh: $*" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || die "no python3 on PATH (the runner's container has Python 3.11; is this the right shell?)"
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' || die "$(python3 -V 2>&1) is too old: Beat This! needs Python 3.9+"
 [ -d "$TRACKS" ] || die "no tracks folder $TRACKS (set QA_AUDIO_DIR)"
+if [ -n "$LIST" ]; then exec python3 "$HERE/ref_beats.py" --dir "$TRACKS" --list; fi
 mkdir -p "$TORCH_HOME" "$PIP_CACHE_DIR" "$DATA/.cache"
 
 reach() {   # every URL must answer (any HTTP status counts as reachable)
@@ -92,4 +99,18 @@ fi
 
 # ---- run it, holding the GPU lock so it never overlaps a build ---------------------------------------------------
 reach https://cloud.cp.jku.at/ 2>/dev/null || echo "note: cloud.cp.jku.at (the checkpoint host) does not answer; fine if $MODEL is already cached in $TORCH_HOME"
-exec nice -n 10 sh "$HERE/gpu-lock.sh" ref-beats "$PY" "$HERE/ref_beats.py" --dir "$TRACKS" --model "$MODEL" $FORCE
+RC=0
+nice -n 10 sh "$HERE/gpu-lock.sh" ref-beats "$PY" "$HERE/ref_beats.py" --dir "$TRACKS" --model "$MODEL" $FORCE || RC=$?
+
+# ---- the rehearsal grids: <stem>.ref.beats → <stem>.beatgrid.json (new or changed ones only; edits kept) -----------
+# Runs even when a track failed above, so the ones that worked get their grid.
+if command -v node >/dev/null 2>&1; then
+  echo "grids (qa/beatgrid.mjs --dir):"
+  node "$HERE/beatgrid.mjs" --dir "$TRACKS" || { echo "ref-beats.sh: the converter failed (see above)" >&2; [ "$RC" -ne 0 ] || RC=1; }
+  n=$(ls "$TRACKS" | grep -c '\.beatgrid\.json$' || true)
+  echo "grids: $n <stem>.beatgrid.json in $TRACKS"
+else
+  echo "ref-beats.sh: no node on PATH, so no grids were made; exp-run makes them on the next audio build" >&2
+  [ "$RC" -ne 0 ] || RC=1
+fi
+exit "$RC"

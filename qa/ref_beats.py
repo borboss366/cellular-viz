@@ -1,31 +1,57 @@
 #!/usr/bin/env python3
 """Reference beat grids for the clock's truth (b) (#95): Beat This! on the CPU for each private track.
 
-Run it through qa/ref-beats.sh (the venv, the GPU lock and the checks live there). For each fixed track name in the
-folder: <name>.ref.beats (time<TAB>beat-in-bar, 1 = downbeat) and <name>.ref.json (track sha256, model, versions,
-counts). A track whose .ref.json has the same sha256 and model is skipped unless --force. Report-only reference: the
-gridder is compared against it, it gates nothing. The audio is read in place and never copied.
+Run it through qa/ref-beats.sh (the venv, the GPU lock and the checks live there). For each source track in the
+folder (#188 PR1a: every audio file at the top of the folder that is not a render, by the rule in
+qa/render-names.json, shared with qa/runner/audio.mjs): <stem>.ref.beats (time<TAB>beat-in-bar, 1 = downbeat) and
+<stem>.ref.json (track sha256, model, versions, counts). A track whose .ref.json has the same sha256 and model is
+skipped unless --force, so new uploads are the only ones run. Report-only reference: the gridder is compared against
+it, it gates nothing. The audio is read in place and never copied.
+
+  --list   print the source tracks it would take (stem<TAB>file), one a line, and exit: no torch, no model
 """
 import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from importlib import metadata
 
-# the fixed names, as qa/runner/audio.mjs
-TRACKS = ['darude-sandstorm', 'prodigy-voodoo-people', 'massive-attack-teardrop', 'james-brown']
-EXTS = ['.flac', '.wav', '.m4a', '.mp3']   # the order a name is looked up in
+# the one source-vs-render rule, as qa/runner/audio.mjs reads it
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'render-names.json')) as _f:
+    RULE = json.load(_f)
+EXTS = RULE['audioExts']   # also the order one stem's files are preferred in
+RENDER_RES = [re.compile(p) for p in RULE['renderPatterns']]
 LOSSY = {'.m4a', '.mp3'}
 
 
-def find(folder, name):
-    for ext in EXTS:
-        p = os.path.join(folder, name + ext)
-        if os.path.isfile(p):
-            return p, ext
-    return None, None
+def is_render(name):
+    return any(r.search(name) for r in RENDER_RES)
+
+
+def is_source_track(name):
+    ext = os.path.splitext(name)[1].lower()
+    return not name.startswith('.') and ext in EXTS and len(name) > len(ext) and not is_render(name)
+
+
+def source_tracks(folder):
+    """[(stem, path, ext)] for every source track at the top of folder, sorted by stem; as sourceTracks() in audio.mjs"""
+    try:
+        files = [e.name for e in os.scandir(folder) if e.is_file()]
+    except OSError:
+        return []
+    by = {}
+    for f in files:
+        if not is_source_track(f):
+            continue
+        ext = os.path.splitext(f)[1]
+        stem, rank = f[:-len(ext)], EXTS.index(ext.lower())
+        old = by.get(stem)
+        if old is None or rank < old[2] or (rank == old[2] and f < old[0]):
+            by[stem] = (f, ext.lower(), rank)
+    return [(stem, os.path.join(folder, by[stem][0]), by[stem][1]) for stem in sorted(by)]
 
 
 def sha256(path):
@@ -48,7 +74,15 @@ def main():
     ap.add_argument('--dir', required=True, help='the private tracks folder (QA_AUDIO_DIR)')
     ap.add_argument('--model', default='final0', help='Beat This! checkpoint (default final0)')
     ap.add_argument('--force', action='store_true', help='redo tracks whose reference is up to date')
+    ap.add_argument('--list', action='store_true', help='print the source tracks (stem<TAB>file) and exit')
     a = ap.parse_args()
+
+    tracks = source_tracks(a.dir)
+    if a.list:
+        for stem, path, _ in tracks:
+            print(f'{stem}\t{os.path.basename(path)}')
+        return 0
+    print(f'{len(tracks)} source tracks in {a.dir}')
 
     import numpy as np
     import soundfile as sf
@@ -58,11 +92,7 @@ def main():
 
     torch.set_num_threads(max(1, (os.cpu_count() or 2) - 1))   # leave a core for the viewer
     a2b, done, failed = None, 0, 0
-    for name in TRACKS:
-        path, ext = find(a.dir, name)
-        if not path:
-            print(f'{name}: no file in {a.dir}, skipped')
-            continue
+    for name, path, ext in tracks:
         out, meta_path = os.path.join(a.dir, name + '.ref.beats'), os.path.join(a.dir, name + '.ref.json')
         digest = sha256(path)
         if not a.force and os.path.isfile(out) and os.path.isfile(meta_path):
