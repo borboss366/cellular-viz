@@ -69,7 +69,7 @@ export const METRICS = {
 };
 export const KINDS = ['render', 'perf', 'audio', 'both'];   // #141: render = CPU (SwiftShader), perf = GPU, audio = a real track as the line input
 const TOP = ['$schema', 'version', 'id', 'page', 'note', 'params', 'resolutions', 'warmup', 'seconds', 'play', 'variants', 'sweep',
-  'values', 'gates', 'checks', 'record', 'swipe', 'debug', 'timeoutMin', 'kind', 'audio', 'shared'];
+  'values', 'gates', 'checks', 'record', 'swipe', 'debug', 'timeoutMin', 'kind', 'audio', 'shared', 'renders', 'privacy'];
 const MAX_RUNS = 64;
 
 const isObj = x => x !== null && typeof x === 'object' && !Array.isArray(x);
@@ -269,8 +269,12 @@ export function validate(raw) {
     }
   }
 
+  // #188 PR1b: renders: true makes the conductor renders (renders.mjs) in QA_AUDIO_DIR/renders/ before the runs;
+  // privacy: true logs every request and adds the Q10 row (privacy.mjs: POST only to same-origin /log)
+  for (const k of ['renders', 'privacy']) if (raw[k] !== undefined && typeof raw[k] !== 'boolean') errs.push(`${k} must be true or false`);
   const exp = { version: VERSION, id: raw.id, page, note: raw.note || '', params, sizes, warmup, seconds, play, variants, sweep: raw.sweep || null,
-    values: isObj(values) ? values : {}, gates: Array.isArray(gates) ? gates : [], checks, record, swipe, debug: isObj(debug) ? debug : {}, timeoutMin, kind, audio, audios, shared };
+    values: isObj(values) ? values : {}, gates: Array.isArray(gates) ? gates : [], checks, record, swipe, debug: isObj(debug) ? debug : {}, timeoutMin, kind, audio, audios, shared,
+    renders: raw.renders === true, privacy: raw.privacy === true };
   if (!errs.length) {
     const n = expand(exp).length;
     if (n > MAX_RUNS) errs.push(`${n} runs (variants × sweep × resolutions); keep it to ${MAX_RUNS}`);

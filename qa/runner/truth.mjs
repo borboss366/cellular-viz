@@ -47,10 +47,11 @@ export function markerRise(sr, level = 0.05) {
 
 /**
  * truth (a): the clock's kick (150 → 60 Hz in 80 ms, 3 ms attack, decay τ 0.15 s) on every beat at bpm for len
- * seconds, after the marker lead → { mono, refs (excerpt s: each click's first sample ≥ level, the true onset) }
+ * seconds, after the marker lead → { mono, refs (excerpt s: each click's first sample ≥ level, the true onset) }.
+ * lead: false leaves the marker lead out (the conductor's playlist tracks, renders.mjs): the first click is at 0.
  */
-export function synthMetronome(sr, bpm, len, { vel = 0.7, accent = 1, bpb = 4, level = 0.05 } = {}) {
-  const lead = markerLead(sr), n = Math.round(len * sr), out = new Float32Array(lead.length + n);
+export function synthMetronome(sr, bpm, len, { vel = 0.7, accent = 1, bpb = 4, level = 0.05, lead: withLead = true } = {}) {
+  const lead = withLead ? markerLead(sr) : new Float32Array(0), n = Math.round(len * sr), out = new Float32Array(lead.length + n);
   out.set(lead);
   const period = 60 / bpm, dur = TAU_KICK * 4, refs = [];
   for (let k = 0; k * period < len - dur; k++) {
