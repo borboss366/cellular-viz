@@ -18,6 +18,8 @@ import { PROBES } from './probes.mjs';
 import { readGpuBusy } from './gpu.mjs';
 import { audioDir, serveAudio, tracksUsed, trackInfo, describe } from './audio.mjs';
 import { ensureGrids, parseRefBeats } from '../beatgrid.mjs';
+import { ensureRenders } from './renders.mjs';
+import { handleWrite, privacyRow } from './privacy.mjs';
 import * as TRUTH from './truth.mjs';
 import { excerptPath, excerptName, wavBytes, readWav, analyse, audioMetrics, audioGateMetrics, writeAtomic, padSilence, PAD_S, ROW_MIN_S, DEVICE } from './audiocheck.mjs';
 
@@ -41,10 +43,20 @@ if (tracks.length) note(`tracks: ${describe(tracks)}`);
 // the rehearsal grids (#173): each <track>.ref.beats (Beat This!, qa/ref-beats.sh) → <track>.beatgrid.json when the
 // grid is missing or older; served at /qa-audio/<track>.beatgrid.json for the clock's file: source. Hand edits kept.
 if (tracks.length) for (const g of ensureGrids(AUDIO_DIR)) note(g.error ? `grid ${g.name}: ${g.error}` : `grid ${g.name}: ${g.beats} beats from Beat This!${g.orphaned ? `, ${g.orphaned} orphaned edits` : ''}`);
+// the conductor truths' node renders (#188 PR1b): metronomes with exact grids and the Q7 playlist, in renders/
+if (exp.renders) { try { const made = ensureRenders(AUDIO_DIR); note(made.length ? `renders: made ${made.join(', ')}` : 'renders: up to date'); } catch (e) { note(`renders: ${e.message}`); } }
+// Q10 (#188): every request the server sees, the page's requests to other origins and its WebSockets
+const REQS = [];
+let ORIGIN = null;
 
 // ---- static server: the PR's experiments/ folder (or the old one under /old/) ----
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.glsl': 'text/plain' };
 const server = http.createServer((req, res) => {
+  if (exp.privacy) {   // writes: only a same-origin POST /log of JSON lines ≤ 64 KB is taken (privacy.mjs); GETs are logged
+    if (handleWrite(req, res, { serverOrigin: ORIGIN, record: e => REQS.push(e),
+      onLines: t => fs.appendFileSync(path.join(OUT, 'debug', 'conductor-log.jsonl'), t) })) return;
+    REQS.push({ type: 'http', method: req.method, path: new URL(req.url, 'http://x').pathname, ok: true });
+  }
   if (serveAudio(req, res, AUDIO_DIR)) return;   // /qa-audio/<name>: the fixed track names only
   const rel = decodeURIComponent(new URL(req.url, 'http://x').pathname).replace(/^\/+/, '');
   const p = path.resolve(EXP_DIR, rel);
@@ -53,6 +65,7 @@ const server = http.createServer((req, res) => {
   fs.createReadStream(p).pipe(res);
 });
 await new Promise(r => server.listen(0, '127.0.0.1', r));
+ORIGIN = `http://127.0.0.1:${server.address().port}`;
 const BASE = `http://127.0.0.1:${server.address().port}/${exp.page}.html`;
 
 // ---- browser: the same GPU set-up as qa/run.mjs (kind "render": SwiftShader, the CPU renderer, #141) ----
@@ -150,6 +163,10 @@ async function measure(browser, run) {
   const page = await browser.newPage({ viewport: { width: run.size.w, height: run.size.h }, deviceScaleFactor: 1 });
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
+  if (exp.privacy) {
+    page.on('request', q => { const u = q.url(); if (/^(data|blob|about):/.test(u)) return; let o; try { o = new URL(u).origin; } catch { o = u.slice(0, 40); } if (o !== ORIGIN) REQS.push({ type: 'request', origin: o, run: run.label }); });
+    page.on('websocket', ws => REQS.push({ type: 'ws', url: ws.url(), run: run.label }));
+  }
   const probes = Object.entries(exp.debug).map(([k, value]) => ({ k, p: PROBES[k], ctx: {
     page, browser, run, value, state: {}, shared, t: 0, frames: null, note: s => note(`${run.label} ${k}: ${s}`),
     path: name => path.join(OUT, 'debug', name), write: (name, data) => fs.writeFileSync(path.join(OUT, 'debug', name), data) } }));
@@ -345,6 +362,11 @@ if (exp.swipe) {
 // ---- 4. results ----
 const gates = [...evalGates(exp, runs, { missing }), ...checks.flatMap(c => c.gates)];
 // --swipe-optional: the runner's default swipe (the file asked for none): a failed recording is a note, not a fail
+if (exp.privacy) {
+  const row = privacyRow(REQS);
+  fs.writeFileSync(path.join(OUT, 'debug', 'requests.jsonl'), REQS.map(e => JSON.stringify(e)).join('\n') + (REQS.length ? '\n' : ''));
+  gates.push({ name: 'Q10 privacy: POST only to same-origin /log (JSON lines, ≤ 64 KB), no other origin, no WebSocket', ...row });
+}
 if (exp.swipe && !swipe) gates.push({ name: 'swipe run recorded', ...(arg('swipe-optional') ? { ok: null, skipped: true } : { ok: false }), value: notes.filter(n => n.startsWith('swipe')).join(' / ') || 'failed' });
 if (!gates.length) gates.push({ name: 'the experiment ran', ok: runs.length > 0 || checks.length > 0, value: `${runs.length} runs` });
 const info = [['PR', `#${PR} @${SHA.slice(0, 7)}`], ['GPU', hasGpu ? `${renderNode} (ANGLE gl-egl)` : 'none: software GL, fps not comparable'],
