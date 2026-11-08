@@ -49,7 +49,7 @@ Every PR1 hard gate (Q5–Q10) rides on C1–C3, not on the real tracks. The rea
 | 1 | Darude – Sandstorm | 136 (label) | trance, off-beat bass | the known side lock (viz-183-16) | kick-side lock from acquisition, no hand fix; p90 of the error reported, the gate is 90 % or more in | T2, gate |
 | 2 | The Prodigy – Voodoo People | 128 (label) | breakbeat, syncopated kicks | the kick is not the anchor | lock within 4 bars on the backbeat; one flip or tap allowed | T10-b, report-only |
 | 3 | Massive Attack – Teardrop | 78 (label) | sparse trip-hop, half-time feel | octave-double predicted | a halving that then HOLDS is the pass; octaveFlips 0 | T8, report-only |
-| 4 | James Brown – (title to fill in) | 97 (label) | live drums, loud eighth hats | the octave trap on a real band | octave error likely until the half-lag override lands; a hand fix of ÷2 should hold | T3-b, report-only |
+| 4 | James Brown – Hot | 97 (label) | live drums, loud eighth hats | the octave trap on a real band | octave error likely until the half-lag override lands; a hand fix of ÷2 should hold | T3-b, report-only |
 | 5 | Daft Punk – One More Time | 122.9 (fit) | filtered house, long breakdown | free-run and re-lock | free-run through the breakdown at tempo, re-lock within 2 bars when the kick returns, jumps 0 | T5, gate |
 | 6 | Underworld – Born Slippy | 140.0 (fit, core pending) | beatless intro then relentless 4/4 | lock from nothing | lock within 4 bars after the kick-entry mark, then constant; also the fast end of the range | T4, gate |
 | 7 | Eric Prydz – Opus | 126.0 (fit, core pending) | nine-minute build | honest confidence under a slow build | no false lock before the kick, constant tempo after | T1, gate |
