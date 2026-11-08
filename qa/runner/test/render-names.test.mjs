@@ -23,6 +23,7 @@ const SOURCE_SHAPES = [
   'artist-title.flac', 'dj-name-track-name-original-mix.flac', 'artist-feat-other-title-2024.flac',
   'artist-title-(extended-mix).flac', 'a.b.c-title.flac', 'artist-title-128bpm.flac', 'artist-title-v2.flac',
   'other-artist-title.FLAC', 'live-drummer-session.wav', 'set-recording-part-1.mp3',
+  'artist-title-1999-2001.flac', 'artist-title-remix.flac', 'another-artist-title.wav',   // a year span is not a .NN-NN. render
 ];
 // renders the runner and scripts made: excerpts (audiocheck v1/v2), truth clips (.t1, with .x<step>), synth truth,
 // metronome/playlist renders, and the sidecars next to them
@@ -84,6 +85,31 @@ test('ref_beats.py --list takes the same tracks as sourceTracks (Python and JS a
     assert.deepEqual(got, EXPECTED, 'Python lists the same source tracks, in the same order, as audio.mjs');
     assert.deepEqual(got, A.sourceTracks(dir).map(x => [x.stem, x.file]));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// The real folder on the QA box (QA_AUDIO_DIR, else the default path): only when it exists, so it runs under test-pr
+// on the box and skips anywhere else. It prints and asserts counts only: no file name reaches a log or git.
+test('the real tracks folder: every .flac kept, every render and sidecar skipped, Python agrees (counts only)', (t) => {
+  const dir = A.audioDir();
+  let files;
+  try { files = fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isFile()).map(d => d.name); }
+  catch { t.skip('no tracks folder here (it exists only on the QA box)'); return; }
+  const kept = A.sourceTracks(dir), keptFiles = new Set(kept.map(k => k.file));
+  const flacs = files.filter(f => !f.startsWith('.') && path.extname(f).toLowerCase() === '.flac');
+  const flacsDropped = flacs.filter(f => !keptFiles.has(f)).length;
+  const rendersKept = kept.filter(k => A.isRender(k.file)).length;
+  const sidecarsKept = kept.filter(k => /\.(ref|beatgrid)\./.test(k.file)).length;
+  const skipped = files.length - kept.length;
+  t.diagnostic(`real folder: kept ${kept.length} · skipped ${skipped} · flac ${flacs.length} · renders ${files.filter(A.isRender).length}`);
+  assert.equal(flacsDropped, 0, `${flacsDropped} .flac file(s) not kept`);
+  assert.equal(rendersKept, 0, `${rendersKept} render(s) kept`);
+  assert.equal(sidecarsKept, 0, `${sidecarsKept} sidecar(s) kept`);
+  const r = spawnSync('python3', [path.join(ROOT, 'qa', 'ref_beats.py'), '--dir', dir, '--list'], { encoding: 'utf8' });
+  if (r.error && r.error.code === 'ENOENT') { t.diagnostic('no python3: the real-folder agreement is not checked'); return; }
+  assert.equal(r.status, 0, 'ref_beats.py --list failed on the real folder');
+  const py = r.stdout.split('\n').filter(Boolean).map(l => l.split('\t')[1]);
+  const same = py.length === kept.length && py.every((f, i) => f === kept[i].file);
+  assert.ok(same, `Python lists ${py.length} tracks, JS ${kept.length}, and they differ`);
 });
 
 test('the rule file: both sides read qa/render-names.json, and its patterns compile', () => {
