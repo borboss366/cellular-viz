@@ -24,6 +24,10 @@ const SOURCE_SHAPES = [
   'artist-title-(extended-mix).flac', 'a.b.c-title.flac', 'artist-title-128bpm.flac', 'artist-title-v2.flac',
   'other-artist-title.FLAC', 'live-drummer-session.wav', 'set-recording-part-1.mp3',
   'artist-title-1999-2001.flac', 'artist-title-remix.flac', 'another-artist-title.wav',   // a year span is not a .NN-NN. render
+  // the user's own files to come (a crossfade mix, a DJ-set excerpt): kept as long as they have one dot and no
+  // metronome-/playlist- prefix; the words may appear inside the name
+  'crossfade-mix-124-128.flac', 'dj-set-excerpt-10min.wav', 'user-mix-2026-11-08.flac', 'my-playlist-mix.flac',
+  'set-with-metronome-intro.flac',
 ];
 // renders the runner and scripts made: excerpts (audiocheck v1/v2), truth clips (.t1, with .x<step>), synth truth,
 // metronome/playlist renders, and the sidecars next to them
