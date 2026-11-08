@@ -4,8 +4,11 @@
 //
 //   metronome-<bpm>-<len>.wav            the clock's kick on every beat (truth.mjs synthMetronome, no marker lead):
 //                                        48 kHz 16-bit stereo, the first click at 0, a bar accent every 4 beats
-//   metronome-<bpm>-<len>.beatgrid.json  its grid, sidecar v2 like qa/beatgrid.mjs writes: each click's first sample
-//                                        ≥ 0.05 (the true onset) in ms, pos 1–4, conf 1; source.from "render"
+//   metronome-<bpm>-<len>.beatgrid.json  its grid, sidecar v2 like qa/beatgrid.mjs writes: the click schedule (each
+//                                        click's start sample) plus the first click's onset (its first sample ≥ 0.05),
+//                                        so the grid is exactly periodic; pos 1–4, conf 1; source.from "render".
+//                                        Every click has the same level (no bar accent: pos marks the bar), so they
+//                                        all rise alike; the previous click's tail moves the 0.05 crossing by < 0.25 ms.
 //   playlist-120-128.json                Q7: 120 BPM, a cut to 128 BPM, then an 8 s crossfade back to 120 BPM
 //
 // A playlist entry plays its track from position 0 for playS seconds. Its `in` is the transition into it:
@@ -26,8 +29,10 @@ export const metronomeName = (bpm, len) => `metronome-${bpm}-${len}`;
 
 /** a metronome at bpm for len seconds → { name, pcm (Int16 stereo), sr, grid (sidecar v2) } */
 export function renderMetronome(bpm, len, sr = SR) {
-  const { mono, refs } = synthMetronome(sr, bpm, len, { lead: false, bpb: BPB });
-  const grid = toSidecar(refs.map((t, i) => ({ t, n: (i % BPB) + 1 })), { source: { from: 'render', bpm, len, sr } });
+  const vel = 0.7, { mono, refs } = synthMetronome(sr, bpm, len, { lead: false, bpb: BPB, vel, accent: vel });
+  const onset = refs.length ? refs[0] : 0, period = 60 / bpm;   // the first click has no tail before it: its onset is clean
+  const beats = refs.map((_, k) => ({ t: Math.round(k * period * sr) / sr + onset, n: (k % BPB) + 1 }));
+  const grid = toSidecar(beats, { source: { from: 'render', bpm, len, sr, onsetMs: +(onset * 1000).toFixed(3) } });
   return { name: metronomeName(bpm, len), pcm: toInt16Stereo(mono), sr, grid };
 }
 

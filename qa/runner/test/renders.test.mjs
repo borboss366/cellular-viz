@@ -26,12 +26,16 @@ test('renderMetronome 128: an exact grid, one beat every 60/128 s from 0, pos 1-
   assert.equal(r.pcm.length, 2 * 20 * R.SR, 'stereo, len seconds, no lead');
 });
 
-test('the grid sits on the audio: each beat is the first sample at or above 0.05', () => {
-  const r = R.renderMetronome(120, 4);
-  for (const { ms } of r.grid.beats) {
-    const i = Math.round(ms * R.SR / 1000);
-    assert.ok(Math.abs(r.pcm[2 * i]) / 32768 >= 0.05 - 1e-3, `sample at ${ms} ms reaches the level`);
-    assert.ok(Math.abs(r.pcm[2 * (i - 1)]) / 32768 < 0.05, `the sample before ${ms} ms is still under it`);
+test('the grid sits on the audio: each click first reaches 0.05 within 0.25 ms of its grid beat', () => {
+  for (const bpm of [120, 128]) {
+    const r = R.renderMetronome(bpm, 8);
+    assert.ok(r.grid.source.onsetMs > 0 && r.grid.source.onsetMs < 2, `onset ${r.grid.source.onsetMs} ms`);
+    for (const [k, { ms }] of r.grid.beats.entries()) {
+      let i = Math.max(0, Math.round((ms - 1) * R.SR / 1000));   // 1 ms before the beat: only the last tail (< 0.04) there
+      while (i < r.pcm.length / 2 && Math.abs(r.pcm[2 * i]) / 32768 < 0.05) i++;
+      const at = i * 1000 / R.SR;
+      assert.ok(Math.abs(at - ms) <= 0.25, `${bpm} beat ${k}: first sample over 0.05 at ${at.toFixed(3)} ms, grid ${ms} ms`);
+    }
   }
 });
 
