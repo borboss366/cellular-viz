@@ -36,6 +36,13 @@ test('corpus.json: one row per short id, every field the scorer reads, of the ri
       assert.ok(ids.includes(r.twinOf), `${w}: twinOf names a corpus id`);
       assert.equal(r.lossy, true, `${w}: a twin is the lossy copy`);
     }
+    if (r.markAt !== undefined) {   // R13: marks by ear, snapped to a reference beat (qa/marks-apply.mjs)
+      assert.ok(r.markAt && typeof r.markAt === 'object' && !Array.isArray(r.markAt), `${w}: markAt is an object`);
+      for (const [name, m] of Object.entries(r.markAt)) {
+        assert.ok(Number.isInteger(m.beat) && m.beat >= 0 && typeof m.atMs === 'number' && m.atMs >= 0, `${w}: markAt.${name} beat / atMs`);
+        assert.ok(['key', 'typed'].includes(m.markSource), `${w}: markAt.${name}.markSource`);
+      }
+    }
     if (r.alignLagMethod !== undefined) {   // R14: what mix-make measured (alignFields), with both files' sha256
       assert.equal(r.alignLagMethod, 'xcorr', `${w}: alignLagMethod`);
       assert.ok(Number.isInteger(r.alignLagSamples) && Number.isInteger(r.alignLagRate) && r.alignLagRate > 0, `${w}: alignLagSamples / alignLagRate`);

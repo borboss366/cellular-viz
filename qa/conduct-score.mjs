@@ -16,7 +16,7 @@
 // Session log schema v1, one JSON object per line, each with `type` and `ctx` (AudioContext seconds):
 //   session  { v: 1, id, startedAt, input: 'line:page' | 'line' }
 //   latency  { outputLatency, baseLatency, clockLatency (s), visualOffsetMs, analysisDelayMs, sampleRate }
-//   track    { idx, event: 'load' | 'play' | 'pause' | 'resume' | 'end', file?, posMs? }
+//   track    { idx, event: 'load' | 'play' | 'pause' | 'resume' | 'end', file?, id?, posMs? }   id: the corpus id (R9)
 //   pair     { idx, posMs }                                  every 5 s while a track plays
 //   xfade    { from, to, event: 'start' | 'end', mode?: 'A' | 'B' }   a page crossfade (unmatched: mode B by default)
 //   beat     { src: 'clock' | 'shadow', beatInBar? }         an output beat (clock) or a shadow-tracker beat
@@ -24,7 +24,8 @@
 //   fix      { id, kind, arg?, origin, idx?, landedCtx? }    kind: tap | half | x2 | flip | nudge | set1 | reset
 //   jump     { kind, origin, fromBeats, toBeats }            every clock.jumps entry
 //   state    { src?, from, to }
-//   mark     { idx, name, trackMs }                          key M (R13), e.g. kickIn, transition1
+//   mark     { idx, name, trackMs, beat?, atMs?, rawMs?, markSource? }   key M (R13), e.g. kickIn, transition1, bar1:
+//            snapped to reference beat `beat` (qa/marks.mjs), trackMs = atMs; rawMs the press; qa/marks-apply.mjs applies them
 //   key      { shown }                                       the answer-key lamp (R7: the gate run needs 0 s)
 import fs from 'node:fs';
 import path from 'node:path';
