@@ -129,6 +129,9 @@ test('R15: 120.00 within 0.1 % with (a) 5 % deleted, (b) 5 % inserted, (c) a 3 s
     assert.ok(near(f.bpmFitCore, 120, 1e-3), `(${k}) bpmFitCore ${f.bpmFitCore}`);
     assert.equal(f.gridSuspect, want[k], `(${k}) gridSuspect ${f.gridSuspect} (${f.suspectWhy}; inlierFrac ${f.inlierFrac}, extraFrac ${f.extraFrac})`);
     assert.ok(f.driftCore !== null && f.driftCore < 0.05, `(${k}) driftCore ${f.driftCore}: outliers and gaps are masked`);
+    // longFrac (#188 6736790656): long IBIs are legitimate (intros, breakdowns, misses), report-only, never a flag
+    if (k === 'a' || k === 'c') assert.ok(f.longFrac > 0 && f.extraFrac === 0, `(${k}) longFrac ${f.longFrac}, extraFrac ${f.extraFrac}`);
+    else assert.ok(f.extraFrac > 0.02 && f.longFrac === 0, `(${k}) extraFrac ${f.extraFrac}, longFrac ${f.longFrac}`);
   }
 });
 

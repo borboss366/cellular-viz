@@ -5,7 +5,7 @@
 // rehearsal grid are one file.
 //
 //   { version: 2, fields: 2, beats: [{ ms, pos, conf }], edits: [...], source: {...}, orphaned: [...],
-//     bpmFit, bpmFitCore, bpmTheilSen, inlierFrac, extraFrac, gridSuspect, suspectWhy, driftCore,
+//     bpmFit, bpmFitCore, bpmTheilSen, inlierFrac, extraFrac, longFrac, gridSuspect, suspectWhy, driftCore,
 //     fitResidualRms, fitResidualMax, beatsPerBar, barSuspect, frameMs: 20,
 //     barOk: false, barOkCleared: null }          (the summary fields: gridFields below; #188, R15)
 //
@@ -58,10 +58,11 @@ const quantile = (sorted, q) => {
 
 /**
  * the robust tempo of beat times ts (s, ascending) → null under 4 beats, else
- *   { bpm, period, medIbi, lo, hi, n, inlierFrac, extraFrac, bpmTheilSen, rmsMs, maxMs, suspect, why }
+ *   { bpm, period, medIbi, lo, hi, n, inlierFrac, extraFrac, longFrac, bpmTheilSen, rmsMs, maxMs, suspect, why }
  * - bpm = 60 / mean of the inlier IBIs (within ±INLIER_TOL of the median IBI).
  * - inlierFrac: inlier IBIs / all IBIs. extraFrac: IBIs shorter than the band / all IBIs, i.e. beats that should not
- *   be there (doubled runs, spurious off-beats); long ones (a missed beat, a gap) are harmless and not counted.
+ *   be there (doubled runs, spurious off-beats). longFrac: IBIs longer than the band / all IBIs (missed beats, gaps,
+ *   beatless intros and breakdowns): legitimate, so report-only (#188 6736790656), never part of gridSuspect.
  * - bpmTheilSen: the median of pairwise slopes inside the inlier runs (consecutive beats whose IBIs are all
  *   inliers, so the index inside a run is exact), pairs 4–256 beats apart; null when no run is long enough.
  * - rmsMs / maxMs: residuals of every inlier run against its own least-squares line.
@@ -102,11 +103,12 @@ export function robustTempo(ts) {
     }
   }
   const tsPeriod = slopes.length ? median(slopes) : NaN, bpm = 60 / period, bpmTheilSen = tsPeriod > 0 ? 60 / tsPeriod : null;
-  const inlierFrac = kept.length / ibis.length, extraFrac = ibis.filter(d => d < lo).length / ibis.length, why = [];
+  const inlierFrac = kept.length / ibis.length, why = [];
+  const extraFrac = ibis.filter(d => d < lo).length / ibis.length, longFrac = ibis.filter(d => d > hi).length / ibis.length;
   if (inlierFrac < INLIER_MIN) why.push('inlierFrac');
   if (extraFrac > EXTRA_MAX) why.push('extra beats');
   if (bpmTheilSen !== null && Math.abs(bpm - bpmTheilSen) / bpmTheilSen > TS_AGREE) why.push('Theil-Sen');
-  return { bpm, period, medIbi, lo, hi, n: ts.length, inlierFrac, extraFrac, bpmTheilSen,
+  return { bpm, period, medIbi, lo, hi, n: ts.length, inlierFrac, extraFrac, longFrac, bpmTheilSen,
     rmsMs: cnt ? Math.sqrt(ss / cnt) : null, maxMs: cnt ? maxMs : null, suspect: why.length > 0, why };
 }
 
@@ -138,7 +140,8 @@ function driftOf(ts, confs, fit) {
  *   bpmFit          robustTempo over every beat
  *   bpmFitCore      robustTempo over the core: the track minus its first and last CORE_TRIM_S seconds (beatless
  *                   intros and fade-outs make the gridder invent tempo), null when the core has < 16 beats
- *   bpmTheilSen, inlierFrac, extraFrac, gridSuspect, suspectWhy   of the core fit (the whole track without a core)
+ *   bpmTheilSen, inlierFrac, extraFrac, longFrac (report-only), gridSuspect, suspectWhy   of the core fit (the
+ *                   whole track without a core)
  *   driftCore       see driftOf; gridSuspect or driftCore > 20 % makes the tempo n/a for gating (qa/corpus.mjs)
  *   fitResidualRms/Max  ms, the inlier runs against their own lines (core, else whole)
  *   beatsPerBar     beats / downbeats (pos 1), null without downbeats; barSuspect outside 3.95–4.05
@@ -159,6 +162,7 @@ export function gridFields(beats) {
     bpmTheilSen: res ? r3(res.bpmTheilSen) : null,
     inlierFrac: res ? +res.inlierFrac.toFixed(4) : null,
     extraFrac: res ? +res.extraFrac.toFixed(4) : null,
+    longFrac: res ? +res.longFrac.toFixed(4) : null,
     gridSuspect: res ? res.suspect : true,
     suspectWhy: res ? res.why : ['too few beats'],
     driftCore,
