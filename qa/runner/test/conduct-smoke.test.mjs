@@ -45,15 +45,41 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
   const srv = http.createServer(S.createHandler({ tracksDir: tracks, sessionsDir: sessions }));
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${srv.address().port}`;
+  // the launch exp-run uses for a CPU-rendered page (kind "render": SwiftShader, no GPU contention with the runner), plus
+  // the fake media flags of its audio runs so nothing waits on a device or a permission prompt
   const env = { ...process.env }, libRoot = path.join(os.homedir(), 'qa-libs/root');
   const libs = [path.join(libRoot, 'usr/lib/x86_64-linux-gnu'), path.join(libRoot, 'lib/x86_64-linux-gnu')].filter(p => fs.existsSync(p));
   if (libs.length) env.LD_LIBRARY_PATH = [...libs, env.LD_LIBRARY_PATH].filter(Boolean).join(':');
-  const browser = await pw.chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'], env });
-  const errors = [];
+  const args = ['--autoplay-policy=no-user-gesture-required', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
+    '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
+  const diag = [], errors = [];
+  const note = s => { diag.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${s}`.slice(0, 300)); if (diag.length > 80) diag.shift(); };
+  const t0 = Date.now();
+  const browser = await pw.chromium.launch({ args, env });
+  browser.on('disconnected', () => note('browser disconnected'));
   try {
     const page = await browser.newPage();
-    page.on('pageerror', e => errors.push(String(e && e.message || e)));
+    page.on('pageerror', e => { errors.push(String(e && e.message || e)); note(`pageerror ${e && e.message || e}`); });
+    page.on('console', m => note(`console.${m.type()} ${m.text()}`));
+    page.on('crash', () => note('page crashed'));
+    page.on('close', () => note('page closed'));
+    page.on('requestfailed', r => note(`requestfailed ${new URL(r.url()).pathname} ${r.failure() && r.failure().errorText}`));
+    page.on('response', r => { if (r.status() >= 400) note(`HTTP ${r.status()} ${new URL(r.url()).pathname}`); });
+    try { await smoke(page); } catch (e) {
+      console.log(`# conductor smoke failed: ${String(e && e.message || e).split('\n')[0]}`);
+      for (const l of diag) console.log(`# conductor smoke diag: ${l}`);
+      throw e;
+    }
+  } finally {
+    await browser.close().catch(() => {});
+    await new Promise(r => srv.close(r));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+
+  async function smoke(page) {
+    note(`goto ${base}/ (server listening on ${srv.address().port})`);
     await page.goto(`${base}/`, { timeout: 30e3 });
+    note('loaded');
     await page.waitForFunction(() => window.__qa && window.__qa.conductor && window.__qa.conductor.tracks.length > 0, null, { timeout: 15e3 });
     const id = await page.evaluate(async () => {
       const c = window.__qa.conductor;
@@ -97,9 +123,7 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
     assert.equal(bar1[1].beat, bar1[0].beat + 1);
     assert.ok(barOk && mk.some(r => r.name === 'barOk'), 'Shift+S on the bar lamp (A7b)');
     assert.ok(mk.filter(r => r.name === 'barOk').every(r => r.beat % 4 === 0), 'barOk lands on a "1" (pos 1 = every 4th beat here)');
-  } finally {
-    await browser.close();
-    await new Promise(r => srv.close(r));
-    fs.rmSync(root, { recursive: true, force: true });
+    const late = await page.evaluate(() => window.__qa.clockLate);
+    assert.ok(late && typeof late.late === 'number', `__qa.clockLate is exposed (check-shared's row): ${JSON.stringify(late)}`);
   }
 });

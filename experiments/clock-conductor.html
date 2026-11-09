@@ -356,6 +356,8 @@ window.__qa = Object.assign(window.__qa || {}, { conductor: {
     decks: decks.map(d => ({ track: d.track && d.track.idx, playing: d.playing, posMs: d.track ? Math.round(d.playing ? posMs(d) : d.offsetS * 1000) : null, bar1: d.bar1 })),
     tracker: clock.trackerState, shadow: { bpm: shadow.bpm, state: shadow.state, confidence: shadow.confidence } }),
 } });
+// QA: the clock booking counter (#148) for check-shared's hard clockLate row (#95 6704930372), as on every page on the clock
+Object.defineProperty(window.__qa, 'clockLate', { get: () => clock.lateStats, configurable: true, enumerable: true });
 </script>
 </body>
 </html>
