@@ -36,6 +36,14 @@ test('corpus.json: one row per short id, every field the scorer reads, of the ri
       assert.ok(ids.includes(r.twinOf), `${w}: twinOf names a corpus id`);
       assert.equal(r.lossy, true, `${w}: a twin is the lossy copy`);
     }
+    if (r.alignLagMethod !== undefined) {   // R14: what mix-make measured (alignFields), with both files' sha256
+      assert.equal(r.alignLagMethod, 'xcorr', `${w}: alignLagMethod`);
+      assert.ok(Number.isInteger(r.alignLagSamples) && Number.isInteger(r.alignLagRate) && r.alignLagRate > 0, `${w}: alignLagSamples / alignLagRate`);
+      assert.ok(Math.abs(r.alignLagMs - r.alignLagSamples / r.alignLagRate * 1000) < 0.001, `${w}: alignLagMs matches samples / rate`);
+      assert.ok(Math.abs(r.alignLagMs) <= 30, `${w}: |alignLag| <= 30 ms`);
+      assert.ok(r.alignSha && /^[0-9a-f]{64}$/.test(r.alignSha.ref) && /^[0-9a-f]{64}$/.test(r.alignSha.lossy), `${w}: alignSha.ref / .lossy are sha256`);
+      assert.ok(r.twinOf, `${w}: alignLag is only for a twin`);
+    }
   }
 });
 
