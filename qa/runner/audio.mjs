@@ -167,7 +167,7 @@ export function serveAudio(req, res, dir) {
   if (!u.pathname.startsWith('/qa-audio/')) return false;
   const rest = decodeURIComponent(u.pathname.slice('/qa-audio/'.length));
   // node renders for the conductor truths (#188 PR1b, renders.mjs): /qa-audio/renders/<file> from <dir>/renders/,
-  // only metronome-/playlist- names with a .wav or .json ending, no paths
+  // only metronome-/playlist-/mix- names with a .wav or .json ending, no paths
   if (rest.startsWith('renders/')) {
     const f = rest.slice('renders/'.length), p = path.join(dir, 'renders', f);
     if (!RENDER_FILE_RE.test(f) || !fs.existsSync(p)) { res.writeHead(404, { 'content-type': 'text/plain' }); res.end('render missing'); return true; }
@@ -188,7 +188,7 @@ export function serveAudio(req, res, dir) {
   return sendFile(req, res, t.path, TYPES[t.ext]);
 }
 
-export const RENDER_FILE_RE = /^(metronome|playlist)-[a-z0-9.-]+\.(wav|json)$/;
+export const RENDER_FILE_RE = /^(metronome|playlist|mix)-[a-z0-9.-]+\.(wav|json)$/;
 
 /** one file with Range support (an <audio> element seeks with it); always true */
 function sendFile(req, res, file, type) {

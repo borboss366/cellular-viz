@@ -1,5 +1,5 @@
 {
-  "note": "Which files in the private tracks folder (QA_AUDIO_DIR) are source tracks and which are renders (#188 PR1a). One rule, read by qa/runner/audio.mjs (isRender, sourceTracks) and qa/ref_beats.py (source_tracks), so JS and Python never disagree. A source track is a file at the top of the folder with one of audioExts (any case), not hidden, whose name matches none of renderPatterns. Patterns are plain regexes valid in both JS and Python re, tried with search() on the whole file name. Renders: <track>.<from>-<len>.wav and .v2.wav excerpts (audiocheck.mjs), .t1.wav truth excerpts and their .x<step> variants (exp-run.mjs), metronome-/playlist- renders, and the .ref/.beatgrid sidecars.",
+  "note": "Which files in the private tracks folder (QA_AUDIO_DIR) are source tracks and which are renders (#188 PR1a). One rule, read by qa/runner/audio.mjs (isRender, sourceTracks) and qa/ref_beats.py (source_tracks), so JS and Python never disagree. A source track is a file at the top of the folder with one of audioExts (any case), not hidden, whose name matches none of renderPatterns. Patterns are plain regexes valid in both JS and Python re, tried with search() on the whole file name. Renders: <track>.<from>-<len>.wav and .v2.wav excerpts (audiocheck.mjs), .t1.wav truth excerpts and their .x<step> variants (exp-run.mjs), metronome-/playlist- renders, mix- renders (qa/mix-make.mjs), and the .ref/.beatgrid sidecars.",
   "audioExts": [".flac", ".wav", ".m4a", ".mp3"],
   "renderPatterns": [
     "\\.t1\\.",
@@ -8,6 +8,7 @@
     "\\.x\\d+(?:\\.\\d+)?\\.",
     "^metronome-",
     "^playlist-",
+    "^mix-",
     "\\.ref\\.",
     "\\.beatgrid\\."
   ]
