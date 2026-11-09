@@ -80,7 +80,7 @@ test('mode A: ratio from the window fits, a 16-bar fade on the outgoing grid, th
   assert.equal(M.mixSidecar(b, { barOkOut: true, barOkIn: false }).barOk, false);
 });
 
-test('R16: excessRms = √(rms² − frameMs²/12), ≤ 5 ms; refusals: < 64 inliers, masked span, excess, drift, mode A incoming gridSuspect', () => {
+test('R16/R17: excessRms = √(rms² − frameMs²/12), reported; refusals: < 64 inliers, masked span, drift, mode A incoming gridSuspect', () => {
   assert.ok(Math.abs(M.excessRms(Math.sqrt(400 / 12 + 25), 20) - 5) < 1e-9, '7.63 ms at 20 ms frames is 5 ms of misfit');
   assert.equal(M.excessRms(5, 20), 0, 'under the frame floor: none');
   assert.ok(Math.abs(M.excessRms(5, 0) - 5) < 1e-12, 'unquantised: all of it');
@@ -211,4 +211,57 @@ test('the box: Playwright resolves for qa/mix-make.sh from the runner settings\'
   const home = line.slice('QA_HOME='.length).trim().replace(/^(['"])(.*)\1$/, '$2');
   const pw = M.loadPlaywright({ QA_HOME: home });   // only QA_HOME, as mix-make.sh sets it; never PLAYWRIGHT_DIR here
   assert.equal(typeof pw.chromium?.launch, 'function', 'playwright.chromium.launch');
+});
+
+// R17 (#188 6740153327): the first real run refused One More Time 60–150 s on excessRms 8.19 ms > 5 (rms 10.02 ms), the
+// Beat This! jitter every clean grid shows. Steadiness is now tested in the tempo domain; excessRms is reported only.
+test('R17: ~8 ms detector jitter is not refused (excessRms reported, excessFloor); refusals: extraFrac, inlierFrac, 25 ms jitter guard', () => {
+  let seed = 12345;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;   // Park–Miller: exact in doubles
+  const gauss = s => { let x = 0; for (let i = 0; i < 12; i++) x += rnd(); return (x - 6) * s; };
+  const jittered = (bpm, lenS, sMs) => { const out = [], P = 60 / bpm; for (let t = 0.25; t < lenS; t += P) out.push(q20(t + gauss(sMs) / 1000) * 1000); return grid(out); };
+  const OUTJ = jittered(123, 200, 8), INJ = jittered(126, 450, 8);
+  const f = M.windowFit(OUTJ.beats, 60, 150);
+  assert.ok(f.rmsMs > 8.5 && f.rmsMs < 11.5, `rms like One More Time's 10.0 ms: ${f.rmsMs}`);
+  assert.ok(f.excessRms > 5, `excessRms over the old 5 ms limit: ${f.excessRms}`);
+  assert.equal(f.fitMode, 'linear', `drift ${f.driftPct} % decides, not rms`);
+  assert.ok(f.driftPct < 0.05, `halves drift sits far under 0.3 %: ${f.driftPct}`);
+  assert.ok(typeof f.blockDriftPct16 === 'number' && f.blockDriftPct16 > 0, `16-beat block range reported only: ${f.blockDriftPct16}`);
+  assert.ok(f.blockDrift64Pct < 0.1, `64-beat block range (R17a) sits under its limit: ${f.blockDrift64Pct}`);
+  assert.ok(f.driftNoisePct > 0.005 && f.driftNoisePct < 0.03, `halves noise ~0.011 % from rms and count: ${f.driftNoisePct}`);
+  assert.deepEqual(M.windowRefusals(f), [], 'nothing refuses a clean jittered window');
+  for (const r of [RECIPE_A, RECIPE_B]) {
+    const p = M.planMix(r, OUTJ, INJ);
+    assert.equal(M.selfCheck(p, M.mixSidecar(p).beats.map(b => b.ms)).ok, true, `${r.mode}: the ≤ 1 ms self-check holds on a jittered source`);
+    assert.ok(near(p.out.fit.bpm, 123, 5e-4) && near(p.in.fit.bpm, 126, 5e-4), `the fit averages the jitter: ${p.out.fit.bpm} / ${p.in.fit.bpm}`);
+    assert.equal(p.out.fit.limits.excessRms, 'report-only (R17)');
+  }
+  const base = { n: 100, masked: [], rmsMs: 10, driftPct: 0.01, inlierFrac: 0.99, extraFrac: 0.01 };
+  assert.deepEqual(M.windowRefusals(base), []);
+  assert.match(M.windowRefusals({ ...base, rmsMs: 30 }).join('; '), /jitter: rms 30 ms > 25/);
+  assert.match(M.windowRefusals({ ...base, extraFrac: 0.05 }).join('; '), /extraFrac 0\.05 > 0\.02/);
+  assert.match(M.windowRefusals({ ...base, inlierFrac: 0.85 }).join('; '), /inlierFrac 0\.85 < 0\.9/);
+  assert.deepEqual(M.windowRefusals({ ...base, driftPct: 0.5 }, { strict: false }), [], 'allowDrift skips only the drift test');
+  assert.deepEqual(M.excessFloor([8.19, 7.9, null, 7.95]), { n: 3, median: 7.95, min: 7.9, max: 8.19 });
+  assert.equal(M.excessFloor([]), null);
+});
+
+// R17a (6740224377): the halves test is blind to curvature; 64-beat blocks catch a window that speeds up and comes back.
+test('R17a: a curved window (equal halves, ~0.55 % 64-beat block spread) refuses with drift; the noise floor is logged', () => {
+  const curved = (bpm, amp, t0, t1, lenS) => {
+    const out = [];
+    for (let t = 0.25; t < lenS;) { out.push(t * 1000); const x = Math.min(1, Math.max(0, (t - t0) / (t1 - t0))); t += 60 / (bpm * (1 + amp * Math.sin(Math.PI * x))); }
+    return grid(out);
+  };
+  const C = curved(123, 0.012, 60, 150, 200), f = M.windowFit(C.beats, 60, 150);
+  assert.ok(f.driftPct < 0.1, `the halves see (almost) nothing: ${f.driftPct} %`);
+  assert.ok(f.blockDrift64Pct >= 0.3, `64-beat blocks see the bulge: ${f.blockDrift64Pct} %`);
+  assert.equal(f.fitMode, 'piecewise');
+  assert.match(M.windowRefusals(f).join('; '), /drift [\d.]+ % ≥ 0\.3 \(64-beat blocks\) \(noise [\d.]+ %\)/);
+  assert.throws(() => M.planMix(RECIPE_B, C, IN), /refused: out one-more-time 60–150 s: drift .*64-beat blocks/);
+  assert.deepEqual(M.windowRefusals(f, { strict: false }), [], 'allowDrift (R16a) is the only way to a piecewise window');
+  const short = M.windowFit(C.beats, 60, 110);
+  assert.equal(short.blockDrift64Pct, null, `under 128 inliers (${short.n}) the halves test alone decides`);
+  assert.equal(M.blockRangePct([{ k: 0, t: 0 }, { k: 1, t: 0.5 }], 64, 0.5), null);
+  assert.ok(Math.abs(M.driftNoisePct(10, 184, 60 / 123) - 0.0113) < 0.0005, `halves noise at 10 ms, 184 beats, 123 BPM: ${M.driftNoisePct(10, 184, 60 / 123)}`);
 });

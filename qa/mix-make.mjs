@@ -8,7 +8,7 @@
 //   node qa/mix-make.mjs [--dir <tracks dir>] [--only <name>] [--plan] [--verify] [--force]   (qa/mix-make.sh: no args)
 //
 // R12: the truth of a mix is derived, never detected. Per cut window the reference beats get a fitted grid (A1′,
-// never a median): `linear` when the fit's excessRms (R16) is ≤ 5 ms and the tempo drifts < 0.3 % over the window, else
+// never a median): `linear` when the tempo drifts < 0.3 % over the window (R17: drift only; excessRms is reported), else
 // `piecewise` (an 8-beat moving linear fit, only for a side marked allowDrift). The mix's beats are those grids mapped through the cut, the
 // resample and the start time; ref_beats.py never sees a mix.
 //   mode A (T13, beat-matched): the incoming track is resampled by ratio = bpmFit(out window) / bpmFit(in window)
@@ -37,14 +37,35 @@ import { loadCorpus, loadMap } from './corpus.mjs';
 import { alignLagCheck, alignFields, alignNeeded } from './conduct-score.mjs';
 
 export const SR = 48000, RENDERS = 'renders', PREFIX = 'mix-';
-// R16 (#188 6738446518): the fit limit is the misfit ON TOP of the gridder's frame noise (uniform on frameMs: σ =
-// frameMs/√12, 5.77 ms at 20 ms): excessRms = √(max(0, rms² − frameMs²/12)) ≤ 5 ms (= rms 7.63 ms at 20 ms frames).
-// A window is refused (R16) with fewer than 64 inlier beats, any masked span (R15's mask: a 16-IBI window with > 25 %
-// outlier IBIs, a gap > 1.8 × the median IBI, or a beat under 0.5 confidence), excessRms > 5 ms or drift ≥ 0.3 %,
-// and mode A's incoming window also when it is gridSuspect (R15's rules over the window's own beats). A side with
-// allowDrift: true in mixes.json (never mode A's incoming) skips the excessRms/drift refusal and is fitted piecewise
-// (6728321330: drifting sources are welcome as mode A's outgoing side and in mode B).
-export const EXCESS_RMS_MS = 5, LINEAR_DRIFT_PCT = 0.3, MIN_INLIERS = 64, FRAME_MS_DEFAULT = 20;
+// R16 (#188 6738446518): excessRms is the misfit ON TOP of the gridder's frame noise (uniform on frameMs: σ =
+// frameMs/√12, 5.77 ms at 20 ms): excessRms = √(max(0, rms² − frameMs²/12)). A window is refused with fewer than 64
+// inlier beats, any masked span (R15's mask: a 16-IBI window with > 25 % outlier IBIs, a gap > 1.8 × the median IBI,
+// or a beat under 0.5 confidence), drift ≥ 0.3 %, and mode A's incoming window also when it is gridSuspect (R15's
+// rules over the window's own beats). A side with allowDrift: true in mixes.json (never mode A's incoming) skips the
+// drift refusal and is fitted piecewise (6728321330: drifting sources are welcome as mode A's outgoing side and in B).
+// R17 (#188 6740153327): Beat This!'s own localisation jitter is ~8 ms on top of the frame (One More Time reads rms 10.0
+// ms, excessRms 8.19), so a residual limit measures the detector, not the music. excessRms is REPORTED only (and an
+// excessFloor across the run's windows); steadiness is tested in the tempo domain: drift < 0.3 %, ≥ 64 inliers, no
+// masked span, extraFrac ≤ 2 %, inlierFrac ≥ 0.9 (over the window's own beats), mode A's incoming gridSuspect false,
+// and one crude guard: residual rms > 25 ms refuses as `jitter`. Drift is the second half's tempo against the first
+// (~0.011 % noise at σ 10 ms over 90 s) and, R17a (6740224377), the range of the 64-beat block tempos when the window
+// holds ≥ 2 full blocks (~0.023 % noise; catches curvature the halves miss). The 16-beat block range (blockDriftPct16,
+// ~0.35 % noise) is reported only, and driftNoisePct (the halves test's noise from the window's own rms and count)
+// sits beside every drift number. Without allowDrift a window that fails drift is refused, so `piecewise` is only ever
+// the allowDrift escape hatch (R16a).
+export const LINEAR_DRIFT_PCT = 0.3, MIN_INLIERS = 64, FRAME_MS_DEFAULT = 20, JITTER_RMS_MS = 25, EXTRA_FRAC_MAX = 0.02, INLIER_FRAC_MIN = 0.9;
+export const BLOCK_REPORT = 16, BLOCK_GATE = 64;
+/** max − min of the fitted tempos of consecutive `size`-beat blocks, % of the period b (null with < 2 full blocks) */
+export function blockRangePct(kept, size, b) {
+  const bpms = [];
+  for (let i = 0; i + size <= kept.length; i += size) bpms.push(60 / lsq(kept.slice(i, i + size)).b);
+  return bpms.length >= 2 ? 100 * (Math.max(...bpms) - Math.min(...bpms)) / (60 / b) : null;
+}
+/** the halves test's 1σ noise, % of the period: √2 · σ / √Σ(k−k̄)² per half (n/2 beats), σ = the residual rms */
+export function driftNoisePct(rmsMs, n, b) {
+  const m = n >> 1, s = m * (m * m - 1) / 12;
+  return s > 0 ? 100 * Math.SQRT2 * (rmsMs / 1000) / Math.sqrt(s) / b : null;
+}
 export const MASK = { window: 16, outlierMax: 0.25, tol: 0.125, gapX: 1.8, confMin: 0.5 };
 export const PIECE_HALF = 4, SELF_CHECK_MS = 1;
 /** R16: the residual RMS above the frame-quantisation floor (ms) */
@@ -53,6 +74,7 @@ export const MIXES_FILE = fileURLToPath(new URL('./mixes.json', import.meta.url)
 const num = x => typeof x === 'number' && Number.isFinite(x);
 const r3 = x => (num(x) ? Math.round(x * 1000) / 1000 : null);
 const r6 = x => (num(x) ? Math.round(x * 1e6) / 1e6 : null);
+const r4 = x => (num(x) ? Math.round(x * 1e4) / 1e4 : null);
 
 function lsq(pts) {   // t = a + b·k over [{k, t}]
   const n = pts.length, mk = pts.reduce((s, p) => s + p.k, 0) / n, mt = pts.reduce((s, p) => s + p.t, 0) / n;
@@ -90,10 +112,11 @@ export function windowFit(beatsMs, fromS, toS, { frameMs = FRAME_MS_DEFAULT } = 
   let { a, b } = lsq(kept);
   const stats = () => {
     const res = kept.map(p => (p.t - (a + b * p.k)) * 1000), half = kept.length >> 1, f1 = lsq(kept.slice(0, half)), f2 = lsq(kept.slice(half));
-    return { rmsMs: Math.sqrt(res.reduce((x, r) => x + r * r, 0) / res.length), maxMs: Math.max(...res.map(Math.abs)), driftPct: 100 * Math.abs(60 / f2.b - 60 / f1.b) / (60 / b) };
+    return { rmsMs: Math.sqrt(res.reduce((x, r) => x + r * r, 0) / res.length), maxMs: Math.max(...res.map(Math.abs)), driftPct: 100 * Math.abs(60 / f2.b - 60 / f1.b) / (60 / b),
+      blockDrift64Pct: blockRangePct(kept, BLOCK_GATE, b) };
   };
   let st = stats();
-  const fitMode = excessRms(st.rmsMs, frameMs) <= EXCESS_RMS_MS && st.driftPct < LINEAR_DRIFT_PCT ? 'linear' : 'piecewise';
+  const fitMode = st.driftPct < LINEAR_DRIFT_PCT && !(st.blockDrift64Pct >= LINEAR_DRIFT_PCT) ? 'linear' : 'piecewise';
   if (fitMode === 'linear') {
     const all = kept;
     kept = kept.filter(p => Math.abs(p.t - (a + b * p.k)) <= b / 8);
@@ -101,7 +124,8 @@ export function windowFit(beatsMs, fromS, toS, { frameMs = FRAME_MS_DEFAULT } = 
     ({ a, b } = lsq(kept));
     st = stats();
   }
-  const { rmsMs, maxMs, driftPct } = st;
+  const { driftPct, blockDrift64Pct } = st;
+  let { rmsMs, maxMs } = st;
   const kMax = kept[kept.length - 1].k;
   const at = fitMode === 'linear' ? k => a + b * k : k => {
     let w = PIECE_HALF, around;
@@ -109,6 +133,11 @@ export function windowFit(beatsMs, fromS, toS, { frameMs = FRAME_MS_DEFAULT } = 
     const f = lsq(around);
     return f.a + f.b * k;
   };
+  if (fitMode === 'piecewise') {   // the residual is against the fit actually used: a drift is not jitter (R17's 25 ms guard)
+    const res = kept.map(p => (p.t - at(p.k)) * 1000);
+    rmsMs = Math.sqrt(res.reduce((x, r) => x + r * r, 0) / res.length); maxMs = Math.max(...res.map(Math.abs));
+  }
+  const blockDriftPct16 = blockRangePct(kept, BLOCK_REPORT, b), noisePct = driftNoisePct(rmsMs, kept.length, b);   // report only (R17a)
   // R15's mask over the window's raw beats: 16-IBI spans with > 25 % outlier IBIs, a gap, or a low-confidence beat
   const ibis = ts.slice(1).map((t, i) => t - ts[i]), med = rt.medIbi, out = d => d < med * (1 - MASK.tol) || d > med * (1 + MASK.tol);
   const masked = [];
@@ -122,19 +151,24 @@ export function windowFit(beatsMs, fromS, toS, { frameMs = FRAME_MS_DEFAULT } = 
     if (last && from <= last.toS + 1e-9) { last.toS = to; for (const y of why) if (!last.why.includes(y)) last.why.push(y); }
     else masked.push({ fromS: from, toS: to, why });
   }
-  return { a, b, bpm: 60 / b, kMax, kept, at, rmsMs, maxMs, excessRms: excessRms(rmsMs, frameMs), frameMs, driftPct, fitMode, n: kept.length, total: ts.length,
-    masked, windowSuspect: rt.suspect, windowSuspectWhy: rt.why };
+  return { a, b, bpm: 60 / b, kMax, kept, at, rmsMs, maxMs, excessRms: excessRms(rmsMs, frameMs), frameMs, driftPct, blockDrift64Pct, blockDriftPct16, driftNoisePct: noisePct, fitMode, n: kept.length, total: ts.length,
+    masked, inlierFrac: rt.inlierFrac, extraFrac: rt.extraFrac, windowSuspect: rt.suspect, windowSuspectWhy: rt.why };
 }
 const fitSummary = f => ({ bpm: r3(f.bpm), fitMode: f.fitMode, fitResidualRms: r3(f.rmsMs), fitResidualMax: r3(f.maxMs), excessRms: r3(f.excessRms), frameMs: f.frameMs,
-  driftPct: r3(f.driftPct), beats: f.n, dropped: f.total - f.n, masked: f.masked.map(m => ({ fromS: r3(m.fromS), toS: r3(m.toS), why: m.why })), windowSuspect: f.windowSuspect,
-  limits: { excessRmsMs: EXCESS_RMS_MS, driftPct: LINEAR_DRIFT_PCT, minInliers: MIN_INLIERS } });
-/** R16: why a window is refused ([] when it is fine): role 'out' | 'in', strict: the excessRms/drift refusal applies */
+  driftPct: r3(f.driftPct), blockDrift64Pct: r3(f.blockDrift64Pct), blockDriftPct16: r3(f.blockDriftPct16), driftNoisePct: r4(f.driftNoisePct), inlierFrac: r3(f.inlierFrac), extraFrac: r3(f.extraFrac), beats: f.n, dropped: f.total - f.n,
+  masked: f.masked.map(m => ({ fromS: r3(m.fromS), toS: r3(m.toS), why: m.why })), windowSuspect: f.windowSuspect,
+  limits: { driftPct: LINEAR_DRIFT_PCT, driftBlockBeats: BLOCK_GATE, minInliers: MIN_INLIERS, jitterRmsMs: JITTER_RMS_MS, extraFracMax: EXTRA_FRAC_MAX, inlierFracMin: INLIER_FRAC_MIN, excessRms: 'report-only (R17)' } });
+/** R16 + R17: why a window is refused ([] when it is fine). strict: the drift refusal applies (off for an allowDrift side) */
 export function windowRefusals(f, { strict = true, suspectCheck = false } = {}) {
   const no = [];
   if (f.n < MIN_INLIERS) no.push(`inlier beats ${f.n} < ${MIN_INLIERS}`);
   for (const m of f.masked) no.push(`masked span ${r3(m.fromS)}–${r3(m.toS)} s (${m.why.join(', ')})`);
-  if (strict && f.excessRms > EXCESS_RMS_MS) no.push(`excessRms ${r3(f.excessRms)} ms > ${EXCESS_RMS_MS} (rms ${r3(f.rmsMs)} ms at frameMs ${f.frameMs})`);
-  if (strict && f.driftPct >= LINEAR_DRIFT_PCT) no.push(`drift ${r3(f.driftPct)} % ≥ ${LINEAR_DRIFT_PCT}`);
+  if (num(f.extraFrac) && f.extraFrac > EXTRA_FRAC_MAX) no.push(`extraFrac ${r3(f.extraFrac)} > ${EXTRA_FRAC_MAX}`);
+  if (num(f.inlierFrac) && f.inlierFrac < INLIER_FRAC_MIN) no.push(`inlierFrac ${r3(f.inlierFrac)} < ${INLIER_FRAC_MIN}`);
+  if (f.rmsMs > JITTER_RMS_MS) no.push(`jitter: rms ${r3(f.rmsMs)} ms > ${JITTER_RMS_MS}`);
+  const noise = num(f.driftNoisePct) ? ` (noise ${r4(f.driftNoisePct)} %)` : '';
+  if (strict && f.driftPct >= LINEAR_DRIFT_PCT) no.push(`drift ${r3(f.driftPct)} % ≥ ${LINEAR_DRIFT_PCT} (halves)${noise}`);
+  if (strict && num(f.blockDrift64Pct) && f.blockDrift64Pct >= LINEAR_DRIFT_PCT) no.push(`drift ${r3(f.blockDrift64Pct)} % ≥ ${LINEAR_DRIFT_PCT} (64-beat blocks)${noise}`);
   if (suspectCheck && f.windowSuspect) no.push(`gridSuspect over the window (${f.windowSuspectWhy.join(', ')})`);
   return no;
 }
@@ -457,6 +491,30 @@ async function measureAlign(row, dir, map, decoder, { force }) {
   return `${row.id}: alignLag ${chk.lagMs} ms (${chk.lagSamples} samples), end ${chk.endLagMs} ms, ${chk.constant ? 'constant' : 'NOT constant'}, ${chk.within30 ? '≤ 30 ms' : 'OVER 30 ms'}; corpus.json fields: ${JSON.stringify(fields)}`;
 }
 
+/** R17: the detector's jitter floor over a run's windows: { n, median, min, max } of their excessRms (ms), null if none */
+export function excessFloor(values) {
+  const v = values.filter(num).sort((x, y) => x - y);
+  if (!v.length) return null;
+  const m = v.length >> 1, median = v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+  return { n: v.length, median: r3(median), min: r3(v[0]), max: r3(v[v.length - 1]) };
+}
+/** R17: one line per distinct window (ids and numbers only) and the excessFloor line, before any recipe runs */
+function windowReport(recipes, dir, map) {
+  const seen = new Map();
+  for (const r of recipes) for (const s of [r.out, r.in]) {
+    const key = `${s.id} ${s.from}–${s.to} s`;
+    if (seen.has(key)) continue;
+    const T = resolveTrack(dir, map, s.id);
+    if (T.error) { seen.set(key, { line: `${key}: ${T.error}` }); continue; }
+    try {
+      const f = windowFit(T.grid.beats, s.from, s.to, { frameMs: num(T.grid.frameMs) ? T.grid.frameMs : FRAME_MS_DEFAULT });
+      seen.set(key, { ex: f.excessRms, line: `window ${key}: bpm ${r3(f.bpm)} ${f.fitMode}, rms ${r3(f.rmsMs)} ms, excessRms ${r3(f.excessRms)} ms (report-only), drift ${r3(f.driftPct)} % (noise ${r4(f.driftNoisePct)} %), blockDrift64 ${r3(f.blockDrift64Pct)} %, blockDrift16 ${r3(f.blockDriftPct16)} % (report-only), inliers ${f.n}, inlierFrac ${r3(f.inlierFrac)}, extraFrac ${r3(f.extraFrac)}, masked ${f.masked.length}` });
+    } catch (e) { seen.set(key, { line: `window ${key}: ${e.message}` }); }
+  }
+  const fl = excessFloor([...seen.values()].map(x => x.ex));
+  return [...[...seen.values()].map(x => x.line), fl ? `excessFloor: median ${fl.median} ms over ${fl.n} window(s) (${fl.min}–${fl.max})` : 'excessFloor: no window fitted'];
+}
+
 async function main(argv) {
   const args = argv.slice(2), has = k => args.includes(k), opt = k => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
   const dir = audioDir(opt('--dir') || undefined), rows = loadCorpus(), map = loadMap(dir);
@@ -464,6 +522,7 @@ async function main(argv) {
   let recipes = loadMixes(MIXES_FILE, rows);
   if (opt('--only')) recipes = recipes.filter(r => r.name === opt('--only'));
   if (has('--plan')) {
+    for (const line of windowReport(recipes, dir, map)) console.log(line);
     for (const r of recipes) {
       const A = resolveTrack(dir, map, r.out.id), B = resolveTrack(dir, map, r.in.id);
       if (A.error || B.error) { console.log(`${r.name}: ${A.error || B.error}`); continue; }
@@ -477,6 +536,7 @@ async function main(argv) {
   let failed = 0;
   await withDecoder(async decoder => {
     console.log(`mix-make: ${decoder.version}, ${SR} Hz, ${recipes.length} recipe(s), out → ${path.join(dir, RENDERS)}`);
+    for (const line of windowReport(recipes, dir, map)) console.log(line);
     for (const r of recipes) {
       try { console.log(await makeMix(r, dir, map, decoder, { force: has('--force'), verify: has('--verify') })); }
       catch (e) { failed++; console.log(`${r.name}: FAILED: ${e.message}`); }
