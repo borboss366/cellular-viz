@@ -65,15 +65,20 @@ with no fade.
   - Dots right of the line: the kick comes after the clock beat. The clock is early.
   - Dots left of the line: the kick comes before the clock beat. The clock is late.
   - Dots at the two edges: the clock is half a beat off.
+- The line under the state: the lane, the beat side (0 or 1/2) and "octave hold N bpm" while ×2 or ÷2 holds the tempo.
+  The octave hold turns red when it is far from the output tempo. Then reload the page (Cmd+R).
+- key lamp: push K to show or hide it. It lights on each beat of the reference grid.
 
 ## Fix the clock
 - Dots at the edges (off-beat): push "flip" (Shift+F).
-- Tempo is half the correct tempo: push "×2" (Shift+D).
-- Tempo is double the correct tempo: push "÷2" (Shift+H).
+- Tempo is half the correct tempo: push "×2" (Shift+D). Push it one time only.
+- Tempo is double the correct tempo: push "÷2" (Shift+H). Push it one time only.
 - Small offset: push "−10" or "+10" (Shift+, or Shift+.).
 - Wrong "1": push "set 1" (Shift+1) on the downbeat.
-- Wrong tempo: push "tap" (Shift+A) on each beat, for 4 beats or more.
-- To start again: push "reset" (Shift+0).
+- Wrong tempo: push "tap" (Shift+A) on each beat, 4 times or more, evenly. Keep less than 2 seconds between taps.
+  One tap only moves the beat to the tap. It does not set the tempo.
+- "reset" (Shift+0) counts the bar again. It does not clear the tempo or the octave hold.
+- To start the clock again from the beginning: reload the page (Cmd+R). Then load and play the track again.
 
 The page records each fix. "last fix" shows the last one.
 

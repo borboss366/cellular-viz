@@ -220,3 +220,61 @@ test('clock-conductor.html: no function shadows the page\'s top-level state (a l
   const shadows = inner.filter(n => ['live', 'fade', 'decks', 'tracks', 'clock', 'log', 'shadow', 'ctx'].includes(n));
   assert.deepEqual(shadows, [], `locals shadowing page state: ${shadows.join(', ')}`);
 });
+
+test('conductor monitor (9 Nov sitting): the beat side as 0 or 1/2, "octave hold N bpm" only while held and red when far off', () => {
+  assert.deepEqual([C.sideText({ offset: 0 }), C.sideText({ offset: 0.5 }), C.sideText(null), C.sideText({ last: { t: 1 } })], ['0', '1/2', '-', '-']);
+  const ts = { lane: { lane: 'broad', side: { offset: 0.5, last: { t: 9, phase: 0.1 } } }, octaveLock: 1088.21 };
+  const l = C.laneLine(ts, 55.7);
+  assert.equal(l.text, 'lane broad . side 1/2 . octave hold 1088 bpm');
+  assert.equal(l.warn, true, '1088 against 55.7: red');
+  assert.ok(!/object Object/.test(l.text));
+  assert.deepEqual(C.laneLine({ ...ts, octaveLock: null }, 136), { text: 'lane broad . side 1/2', warn: false }, 'no hold: no octave text');
+  assert.deepEqual(C.octaveText(136, 136.1), { text: 'octave hold 136 bpm', warn: false });
+  assert.equal(C.octaveText(272, 136).warn, true, '2x: red');
+  assert.equal(C.octaveText(68, 136).warn, true, '0.5x: red');
+  assert.equal(C.laneLine({}, 120).text, '');
+  for (const s of [l.text, C.laneLine({ lane: { lane: 'low', side: { offset: 0 } } }, 0).text]) assert.ok(/^[\x20-\x7e]*$/.test(s), 'ASCII (#205)');
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  assert.match(html, /const ll = C\.laneLine\(ts, r\.bpm\);/);
+  assert.match(html, /\$\('lane'\)\.classList\.toggle\('err', ll\.warn\)/);
+  assert.ok(!/side\.last/.test(html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]), 'the page no longer prints side.last (an object)');
+});
+
+test('conductor decks: an empty deck shows "-", never LIVE; LIVE while playing or as the live deck with a track', () => {
+  const deck = (n, o = {}) => ({ n, buffer: null, track: null, playing: false, ...o });
+  const full = { buffer: {}, track: { idx: 0 } };
+  assert.equal(C.deckTag(deck(0), 0), '-', 'the empty live-index deck before anything plays');
+  assert.equal(C.deckTag(deck(1, full), 0), 'NEXT');
+  assert.equal(C.deckTag(deck(0, full), 0), 'LIVE');
+  assert.equal(C.deckTag(deck(1, { ...full, playing: true }), 0), 'LIVE', 'the outgoing deck still playing in a fade');
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  assert.match(html, /const tag = C\.deckTag\(d, live\);/);
+  assert.equal((html.match(/<span class="tag">-<\/span>/g) || []).length, 2, 'both decks start as "-" (ASCII)');
+});
+
+test('conductor load(): a failed fetch or decode says "could not load <name>: <reason>" and logs track/loadError', async () => {
+  assert.equal(C.loadErrorText('artist-a', new Error('HTTP 404')), 'could not load artist-a: HTTP 404');
+  assert.equal(C.loadErrorText('caf\u00e9', { name: 'EncodingError' }), 'could not load caf?: EncodingError');
+  assert.equal(C.loadErrorText('x', undefined), 'could not load x: unknown error');
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  const load = html.match(/async function load\(i, d = nextDeck\(\)\) \{([\s\S]*?)\n\}/)[1];
+  assert.match(load, /try \{[\s\S]*decodeAudioData[\s\S]*\} catch \(e\) \{/, 'fetch and decode inside try');
+  assert.match(load, /if \(!r\.ok\) throw new Error\(`HTTP \$\{r\.status\}`\)/, 'an HTTP error is an error, not a decode of an error page');
+  assert.match(load, /C\.loadErrorText\(t\.label, e\)/);
+  assert.match(load, /textContent = text; say\(text\);/, 'on the deck line and in the message line');
+  assert.match(load, /event: 'loadError'/);
+  const { checkRecord } = await import('../../conduct-score.mjs');
+  assert.deepEqual(checkRecord({ type: 'track', ctx: 1.5, idx: 0, event: 'loadError', file: 'a', error: 'HTTP 404' }), [], 'the server takes it (schema v1)');
+});
+
+test('conductor state line: written once per change, one line each for state and lane (no overlap)', () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  const mod = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
+  assert.match(mod, /function setText\(id, s\) \{ if \(textCache\[id\] === s\) return;/);
+  assert.match(mod, /setText\('state', /);
+  assert.match(mod, /setText\('lane', ll\.text\)/);
+  assert.ok(!/\$\('(state|lane)'\)\.textContent =/.test(mod), 'no direct per-frame writes left');
+  const css = html.match(/<style>([\s\S]*?)<\/style>/)[1];
+  assert.match(css, /#state,#lane\{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1\.3;min-height:1\.3em\}/);
+  assert.match(html, /<div class="stateBox"><small>state<\/small><div id="state">-<\/div><small id="lane"><\/small><\/div>/);
+});

@@ -92,3 +92,38 @@ export function bandHeights(bands, names, live) {
   if (!live || !bands || vals.every(v => v === 0 || !Number.isFinite(v))) return names.map(() => 0);
   return vals.map(v => (Number.isFinite(v) ? Math.round(Math.max(0, Math.min(BAND_MAX_PX, (v + 80) * 0.9))) : 0));
 }
+
+// ---------- the monitor's text lines and the deck tags (9 Nov sitting fixes); plain ASCII (#205) ----------
+/** the tracker's beat side (laneReport().side.offset: 0 or 0.5) → '0' | '1/2', or '-' without one */
+export function sideText(side) {
+  if (!side || typeof side.offset !== 'number' || !Number.isFinite(side.offset)) return '-';
+  return Math.abs(side.offset - 0.5) < 1e-6 ? '1/2' : side.offset === 0 ? '0' : String(+side.offset.toFixed(2));
+}
+/** the octave hold (tracker octaveLock, a bpm) → { text, warn }: text only while a hold is on; warn when it is more
+ *  than 1.5x or less than 0.67x the output tempo (a hold that no longer matches what the clock plays) */
+export function octaveText(lock, outBpm) {
+  if (!(lock > 0)) return { text: '', warn: false };
+  const r = outBpm > 0 ? lock / outBpm : 1;
+  return { text: `octave hold ${Math.round(lock)} bpm`, warn: r > 1.5 || r < 0.67 };
+}
+/** the line under the state: "lane broad . side 1/2 . octave hold 136 bpm" (parts that are missing are left out) */
+export function laneLine(ts, outBpm) {
+  const parts = [];
+  if (ts && ts.lane) parts.push(`lane ${ts.lane.lane || '-'}`, `side ${sideText(ts.lane.side)}`);
+  const o = octaveText(ts && ts.octaveLock, outBpm);
+  if (o.text) parts.push(o.text);
+  return { text: parts.join(' . '), warn: o.warn };
+}
+/** a deck's tag: LIVE while it plays, or when it is the live deck and holds a track; NEXT when it holds a track;
+ *  '-' when it is empty (an empty deck never shows LIVE) */
+export function deckTag(d, liveIdx) {
+  const has = !!(d && d.buffer && d.track);
+  if (d && d.playing) return 'LIVE';
+  if (has && d.n === liveIdx) return 'LIVE';
+  return has ? 'NEXT' : '-';
+}
+/** the deck and message line text for a track that did not load */
+export function loadErrorText(name, err) {
+  const why = String((err && (err.message || err.name)) || err || 'unknown error').replace(/[^\x20-\x7e]/g, '?').slice(0, 160);
+  return `could not load ${String(name).replace(/[^\x20-\x7e]/g, '?')}: ${why}`;
+}

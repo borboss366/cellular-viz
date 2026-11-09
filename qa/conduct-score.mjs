@@ -16,7 +16,7 @@
 // Session log schema v1, one JSON object per line, each with `type` and `ctx` (AudioContext seconds):
 //   session  { v: 1, id, startedAt, input: 'line:page' | 'line' }
 //   latency  { outputLatency, baseLatency, clockLatency (s), visualOffsetMs, analysisDelayMs, sampleRate }
-//   track    { idx, event: 'load' | 'play' | 'pause' | 'resume' | 'end', file?, id?, posMs? }   id: the corpus id (R9)
+//   track    { idx, event: 'load' | 'loadError' | 'play' | 'pause' | 'resume' | 'end', file?, id?, posMs?, error? }   id: the corpus id (R9)
 //   pair     { idx, posMs }                                  every 5 s while a track plays
 //   xfade    { from, to, event: 'start' | 'end', mode?: 'A' | 'B' }   a page crossfade (unmatched: mode B by default)
 //   beat     { src: 'clock' | 'shadow', beatInBar? }         an output beat (clock) or a shadow-tracker beat
