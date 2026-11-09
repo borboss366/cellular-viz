@@ -39,7 +39,7 @@ Every PR1 hard gate (Q5–Q10) rides on C1–C3, not on the real tracks. The rea
 | T9 | swing and shuffle | 21 (primary), 15, 14 | gate |
 | T10 | downtempo | 8 | report-only |
 | T11 | fast end of the range | 6, 9, 2 | covered |
-| T12 | lossy twin of a track already here | 10-lossy | missing |
+| T12 | lossy twin of a track already here | 10-lossy | report-only |
 | T13 | beat-matched blend | mix recipe a | gate once the mix exists |
 
 ## The tracks
@@ -56,7 +56,7 @@ Every PR1 hard gate (Q5–Q10) rides on C1–C3, not on the real tracks. The rea
 | 8 | The Chemical Brothers – Block Rockin' Beats | 110.0 (fit, core pending) | big-beat breaks | side stress on a breakbeat | tempo right, the side may land on the snare (one flip at most); a T3 candidate if driftCore is real | T10, report-only |
 | 9 | Skrillex – Scary Monsters and Nice Sprites | 140 (fit, core pending) | half-time dubstep, hard drop | re-lock after a drop | re-lock within 2 bars after the drop; grid not credible yet, so report-only until confirmed | T5-b, report-only |
 | 10 | Michael Jackson – Billie Jean | 117.2 (fit) | dry, machine-steady pop | the control | clean lock, p90 near the metronome's, no hand fix | T1-control, gate |
-| 10-lossy | the same master as a 320 kbps CBR export | 117.2 (twin of 10) | lossy copy, same master | alignLag on lossy audio | alignLag constant, 30 ms or less, ±2 ms over the file; scores within 2 points of the lossless row. Measured 9 Nov (R14, xcorr at 48 kHz): **0 samples**, constant start to end, so the exporter trimmed the encoder delay | T12, **missing** |
+| 10-lossy | the same master as a 320 kbps CBR export | 117.2 (twin of 10) | lossy copy, same master | alignLag on lossy audio | alignLag constant, 30 ms or less, ±2 ms over the file; scores within 2 points of the lossless row. Measured 9 Nov (R14, xcorr at 48 kHz): **0 samples**, constant start to end, so the exporter trimmed the encoder delay | T12, report-only (6729053853) |
 | 11 | Chic – Good Times | 111.5 (fit) | live band, unquantised | a follower tracking a real wander | jumps 0, phase stays in while bpm moves; driftCore recorded | T3, gate |
 | 12 | Daddy Yankee – Gasolina | 96.0 (fit) | dembow, 3-3-2 | the bar, not the beat | beat fine, the 1 wrong: set 1 by hand, then barMoves 0; the only credible bar count in the new batch | T2-d, gate |
 | 13 | Robert Miles – Children | 137.2 (fit) | trance, off-beat bass | second trance record: did the kick-side rule generalise past Sandstorm, or was it fitted to it? | lock measured from kick entry (long piano intro). Hand: none | T2-b, gate |
