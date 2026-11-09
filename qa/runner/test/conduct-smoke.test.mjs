@@ -43,43 +43,62 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
   fs.mkdirSync(tracks);
   clickTrack(tracks);
   const srv = http.createServer(S.createHandler({ tracksDir: tracks, sessionsDir: sessions }));
-  await new Promise(r => srv.listen(0, '127.0.0.1', r));
-  const base = `http://127.0.0.1:${srv.address().port}`;
   // the launch exp-run uses for a CPU-rendered page (kind "render": SwiftShader, no GPU contention with the runner), plus
   // the fake media flags of its audio runs so nothing waits on a device or a permission prompt
   const env = { ...process.env }, libRoot = path.join(os.homedir(), 'qa-libs/root');
   const libs = [path.join(libRoot, 'usr/lib/x86_64-linux-gnu'), path.join(libRoot, 'lib/x86_64-linux-gnu')].filter(p => fs.existsSync(p));
   if (libs.length) env.LD_LIBRARY_PATH = [...libs, env.LD_LIBRARY_PATH].filter(Boolean).join(':');
-  const args = ['--autoplay-policy=no-user-gesture-required', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
+  const ARGS = ['--autoplay-policy=no-user-gesture-required', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
     '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
-  const diag = [], errors = [];
-  const note = s => { diag.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${s}`.slice(0, 300)); if (diag.length > 80) diag.shift(); };
-  const t0 = Date.now();
-  const browser = await pw.chromium.launch({ args, env });
-  browser.on('disconnected', () => note('browser disconnected'));
+  // test-pr 3a36c33: the browser went away 0.1 s into the first navigation, with no crash event, console or request
+  // failure. If that happens again (the browser disconnects before the page loads), the run is repeated once with the
+  // usual container flags for Chromium (no zygote, /dev/shm not used, the audio service in-process), and Chromium's
+  // own output (Playwright's 'browser' log: its stderr, the launch line, the exit) is printed for both attempts.
+  const RETRY_ARGS = ['--no-zygote', '--disable-dev-shm-usage', '--disable-features=AudioServiceOutOfProcess,AudioServiceSandbox'];
+  const errors = [];
+  let diag = [], t0 = Date.now(), base = '';
+  const note = s => { diag.push(`${((Date.now() - t0) / 1000).toFixed(2)}s ${s}`.slice(0, 400)); if (diag.length > 120) diag.shift(); };
+  const logger = { isEnabled: name => name === 'browser' || name === 'protocol-error', log: (name, sev, msg) => note(`[${name}] ${String(msg).replace(/\s+/g, ' ')}`) };
   try {
-    const page = await browser.newPage();
-    page.on('pageerror', e => { errors.push(String(e && e.message || e)); note(`pageerror ${e && e.message || e}`); });
-    page.on('console', m => note(`console.${m.type()} ${m.text()}`));
-    page.on('crash', () => note('page crashed'));
-    page.on('close', () => note('page closed'));
-    page.on('requestfailed', r => note(`requestfailed ${new URL(r.url()).pathname} ${r.failure() && r.failure().errorText}`));
-    page.on('response', r => { if (r.status() >= 400) note(`HTTP ${r.status()} ${new URL(r.url()).pathname}`); });
-    try { await smoke(page); } catch (e) {
-      console.log(`# conductor smoke failed: ${String(e && e.message || e).split('\n')[0]}`);
-      for (const l of diag) console.log(`# conductor smoke diag: ${l}`);
-      throw e;
+    await new Promise(r => srv.listen(0, '127.0.0.1', r));
+    base = `http://127.0.0.1:${srv.address().port}`;   // the one base every request below uses
+    for (const [n, args] of [[1, ARGS], [2, [...ARGS, ...RETRY_ARGS]]]) {
+      diag = []; t0 = Date.now(); errors.length = 0;
+      let early = false, loaded = false;
+      note(`attempt ${n}: chromium ${args.join(' ')}`);
+      const browser = await pw.chromium.launch({ args, env, logger });
+      browser.on('disconnected', () => { note('browser disconnected'); if (!loaded) early = true; });
+      try {
+        const page = await browser.newPage();
+        page.on('pageerror', e => { errors.push(String(e && e.message || e)); note(`pageerror ${e && e.message || e}`); });
+        page.on('console', m => note(`console.${m.type()} ${m.text()}`));
+        page.on('crash', () => note('page crashed'));
+        page.on('close', () => note('page closed'));
+        page.on('load', () => { loaded = true; note('load event'); });
+        page.on('requestfailed', r => note(`requestfailed ${new URL(r.url()).pathname} ${r.failure() && r.failure().errorText}`));
+        page.on('response', r => { if (r.status() >= 400) note(`HTTP ${r.status()} ${new URL(r.url()).pathname}`); });
+        await smoke(page);
+        console.log(`# conductor smoke: passed on attempt ${n}${n > 1 ? ' (first launch died at navigation; container flags needed)' : ''}`);
+        return;
+      } catch (e) {
+        console.log(`# conductor smoke attempt ${n} failed: ${String(e && e.message || e).split('\n')[0]}`);
+        for (const l of diag.slice(-60)) console.log(`# conductor smoke diag: ${l}`);
+        if (!early || n === 2) throw e;
+      } finally {
+        await browser.close().catch(() => {});
+      }
     }
   } finally {
-    await browser.close().catch(() => {});
+    if (srv.closeAllConnections) srv.closeAllConnections();
     await new Promise(r => srv.close(r));
     fs.rmSync(root, { recursive: true, force: true });
   }
 
   async function smoke(page) {
-    note(`goto ${base}/ (server listening on ${srv.address().port})`);
-    await page.goto(`${base}/`, { timeout: 30e3 });
-    note('loaded');
+    const url = `${base}/experiments/clock-conductor.html`;   // straight to the page (no 302 on the first navigation)
+    note(`goto ${url} (server listening on ${srv.address().port})`);
+    await page.goto(url, { timeout: 30e3 });
+    note('goto returned');
     await page.waitForFunction(() => window.__qa && window.__qa.conductor && window.__qa.conductor.tracks.length > 0, null, { timeout: 15e3 });
     const id = await page.evaluate(async () => {
       const c = window.__qa.conductor;
