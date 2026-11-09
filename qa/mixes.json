@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "note": "Mix recipes for qa/mix-make.mjs (#188 R12, R5', 6728321330). Tracks by qa/corpus.json id only (R9: no file names); windows in seconds of each source track; bar1At: seconds of a known downbeat, set by ear with key M on the conductor page (R13), null until then (mode A then aligns beats and stays report-only). Mode A: the incoming is resampled to the outgoing tempo (ratio from bpmFit over the two windows), fadeBars even. Mode B: no resample, fadeS seconds. The windows are first picks; mix-make --plan shows each window's fit, and mode A refuses an incoming window that isn't constant-tempo.",
+  "mixes": [
+    {
+      "name": "mix-one-more-time-opus-a", "slot": "T13", "mode": "A", "fadeBars": 16,
+      "out": { "id": "one-more-time", "from": 60, "to": 150, "bar1At": null },
+      "in": { "id": "opus", "from": 300, "to": 390, "bar1At": null }
+    },
+    {
+      "name": "mix-one-more-time-opus-b", "slot": "T7", "mode": "B", "fadeS": 8,
+      "out": { "id": "one-more-time", "from": 60, "to": 150 },
+      "in": { "id": "opus", "from": 300, "to": 390 }
+    }
+  ]
+}
