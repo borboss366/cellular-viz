@@ -67,13 +67,33 @@ function bisectRepo(root) {
 test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (box only)', { timeout: 240e3 }, async t => {
   const home = qaHome();
   if (!home) { t.skip('no runner settings here (not the box)'); return; }
-  // Playwright's own debug output (browser launch, stderr, exit; the protocol) goes to this process's stderr: tee it
+  // Playwright's own debug output (pw:browser*: the launch line, Chromium's stderr, its exit; pw:protocol) goes to a log
+  // file that stays on the box ($QA_HOME/qa/history/conduct-smoke-<stamp>.log), never to test-pr's output: test-pr
+  // keeps only a few grepped lines (64a536c: the flood ran past 50 KB and hid everything). The test prints the path,
+  // compact step lines and, on failure, the last 20 pw:browser lines.
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '').replace('T', '-');
+  const logDir = path.join(home, 'qa', 'history');
+  let logFile = path.join(logDir, `conduct-smoke-${stamp}.log`);
+  try { fs.mkdirSync(logDir, { recursive: true }); fs.writeFileSync(logFile, `conductor smoke ${new Date().toISOString()}\n`); }
+  catch { logFile = path.join(os.tmpdir(), `conduct-smoke-${stamp}.log`); fs.writeFileSync(logFile, ''); }
+  const toFile = l => { try { fs.appendFileSync(logFile, l + '\n'); } catch { /* the log is best effort */ } };
+  const browserLines = [];
   process.env.DEBUG = [process.env.DEBUG, 'pw:browser*', 'pw:protocol'].filter(Boolean).join(',');
-  const stderrLines = [], write = process.stderr.write.bind(process.stderr);
+  const write = process.stderr.write.bind(process.stderr);
   process.stderr.write = (chunk, ...rest) => {
-    for (const l of String(chunk).split('\n')) if (l.trim()) { stderrLines.push(l.replace(/\x1b\[[0-9;]*m/g, '').slice(0, 300)); if (stderrLines.length > 200) stderrLines.shift(); }
-    return write(chunk, ...rest);
+    const s = String(chunk);
+    if (!/pw:(browser|protocol)/.test(s)) return write(chunk, ...rest);
+    for (const l of s.split('\n')) {
+      const c = l.replace(/\x1b\[[0-9;]*m/g, '');
+      if (!c.trim()) continue;
+      toFile(c);
+      if (/pw:browser/.test(c)) { browserLines.push(c.slice(0, 150)); if (browserLines.length > 20) browserLines.shift(); }
+    }
+    const cb = rest.find(x => typeof x === 'function');
+    if (cb) cb();
+    return true;
   };
+  console.log(`# conductor smoke log: ${logFile}`);
   let pw;
   try { pw = createRequire(path.join(home, 'qa', 'x.cjs'))('playwright'); } catch (e) { process.stderr.write = write; t.skip(`no Playwright under QA_HOME/qa: ${e.message}`); return; }
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'conduct-smoke-')), tracks = path.join(root, 'tracks'), sessions = path.join(root, 'sessions');
@@ -88,8 +108,19 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
   if (libs.length) env.LD_LIBRARY_PATH = [...libs, env.LD_LIBRARY_PATH].filter(Boolean).join(':');
   const ARGS = ['--autoplay-policy=no-user-gesture-required', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
   const t0 = Date.now(), diag = [], errors = [];
-  const note = s => { diag.push(`${((Date.now() - t0) / 1000).toFixed(2)}s ${s}`.slice(0, 400)); if (diag.length > 150) diag.shift(); };
-  const launch = async () => { const b = await pw.chromium.launch({ args: ARGS, env }); b.on('disconnected', () => note('browser disconnected')); return b; };
+  const note = s => { const l = `${((Date.now() - t0) / 1000).toFixed(2)}s ${s}`.slice(0, 400); diag.push(l); toFile(`[test] ${l}`); if (diag.length > 150) diag.shift(); };
+  // launchServer + connect so the browser's own process is in hand: its exit code and signal say how it died
+  let lastExit = null;
+  const launch = async () => {
+    const server = await pw.chromium.launchServer({ args: ARGS, env });
+    const proc = server.process();
+    proc.on('exit', (code, signal) => { lastExit = `code=${code} signal=${signal}`; note(`browser process exit ${lastExit}`); });
+    const b = await pw.chromium.connect(server.wsEndpoint());
+    b.on('disconnected', () => note('browser disconnected'));
+    b._server = server;
+    return b;
+  };
+  const closeBrowser = async b => { if (!b) return; await b.close().catch(() => {}); await b._server.close().catch(() => {}); };
   const watch = (page, tag) => {
     page.on('pageerror', e => { errors.push(String(e && e.message || e)); note(`${tag} pageerror ${e && e.message || e}`); });
     page.on('console', m => note(`${tag} console.${m.type()} ${m.text()}`));
@@ -105,11 +136,11 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
   const bisect = [];
   let browser = null;
   const dump = why => {
-    console.log(`# conductor smoke failed: ${why}`);
-    console.log(`# conductor smoke env: ${JSON.stringify(env0)}`);
-    for (const b of bisect) console.log(`# conductor smoke bisect: ${b}`);
-    for (const l of diag.slice(-80)) console.log(`# conductor smoke diag: ${l}`);
-    for (const l of stderrLines.slice(-60)) console.log(`# conductor smoke stderr: ${l}`);
+    console.log(`# conductor smoke failed: ${why.slice(0, 200)}`);
+    console.log(`# conductor smoke env: ${JSON.stringify(env0).slice(0, 400)}`);
+    for (const l of diag.filter(l => / (pageerror|crashed|closed|disconnected|exit|requestfailed|HTTP )/.test(l)).slice(-12)) console.log(`# conductor smoke event: ${l.slice(0, 200)}`);
+    for (const l of browserLines.slice(-20)) console.log(`# conductor smoke pw:browser: ${l}`);
+    console.log(`# conductor smoke log: ${logFile} (full)`);
   };
   try {
     await new Promise(r => srv.listen(0, '127.0.0.1', r));
@@ -121,32 +152,38 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
     for (const [step, url] of [['about:blank', 'about:blank'], ['static', `${bBase}/experiments/b-blank.html`], ['existing 01', `${bBase}/experiments/01-gray-scott.html`],
       ['AudioContext', `${bBase}/experiments/b-audio.html`], ['clock scripts', `${bBase}/experiments/b-scripts.html`], ['module imports', `${bBase}/experiments/b-imports.html`],
       ['page without module', `${bBase}/experiments/b-nomodule.html`], ['page', `${bBase}/experiments/clock-conductor.html`]]) {
-      if (!browser || !browser.isConnected()) browser = await launch();
+      if (!browser || !browser.isConnected()) { await closeBrowser(browser); browser = await launch(); }
       const s0 = Date.now();
-      let res;
+      lastExit = null;
+      let ok = false, why = '';
       try {
         const page = await browser.newPage();
         watch(page, step);
         await page.goto(url, { waitUntil: 'load', timeout: 20e3 });
         await page.waitForTimeout(1500);
-        res = `ok "${await page.title()}"`;
+        why = `"${(await page.title()).slice(0, 40)}"`;
+        ok = true;
         await page.close();
-      } catch (e) { res = `FAILED ${String(e && e.message || e).split('\n')[0]}`; }
-      bisect.push(`${step}: ${res}; browser ${browser.isConnected() ? 'alive' : 'DEAD'} (${Date.now() - s0} ms)`);
-      note(`bisect ${bisect.at(-1)}`);
+      } catch (e) { why = String(e && e.message || e).split('\n')[0].slice(0, 80); }
+      await new Promise(r => setTimeout(r, 200));   // let an exit event land
+      const alive = browser.isConnected();
+      const line = `step ${bisect.length + 1}: ${step} ${ok && alive ? 'ok' : alive ? 'FAILED' : 'DIED'} (${Date.now() - s0} ms) alive=${alive}${lastExit ? ` exit ${lastExit}` : ''} ${why}`;
+      bisect.push(line);
+      note(line);
+      console.log(`# conductor smoke ${line}`);
     }
-    const died = bisect.filter(b => / DEAD /.test(b)).map(b => b.split(':')[0]);
+    const died = bisect.filter(b => / DIED /.test(b)).map(b => b.replace(/^step \d+: /, '').replace(/ DIED.*/, ''));
     console.log(`# conductor smoke bisect summary: ${died.length ? `browser died at ${died.join(', ')}` : 'every step loaded'}`);
 
     // ---- the smoke run on the real page ----
-    if (!browser || !browser.isConnected()) browser = await launch();
+    if (!browser || !browser.isConnected()) { await closeBrowser(browser); browser = await launch(); }
     errors.length = 0;   // the bisect's pages don't count against the page under test
     const page = await browser.newPage();
     watch(page, 'smoke');
     try { await smoke(page, base); } catch (e) { dump(String(e && e.message || e).split('\n')[0]); throw e; }
   } finally {
     process.stderr.write = write;
-    if (browser) await browser.close().catch(() => {});
+    await closeBrowser(browser);
     for (const s of [srv, bSrv]) { if (s.closeAllConnections) s.closeAllConnections(); await new Promise(r => s.close(() => r())); }
     fs.rmSync(root, { recursive: true, force: true });
   }
