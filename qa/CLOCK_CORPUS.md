@@ -47,7 +47,7 @@ Every PR1 hard gate (Q5–Q10) rides on C1–C3, not on the real tracks. The rea
 | # | Artist – title | BPM | Character | Why it is here | Expectation, and hand fixes | Slot, status |
 |---|---|---|---|---|---|---|
 | 1 | Darude – Sandstorm | 136 (label) | trance, off-beat bass | the known side lock (viz-183-16) | kick-side lock from acquisition, no hand fix; p90 of the error reported, the gate is 90 % or more in | T2, gate |
-| 2 | The Prodigy – Voodoo People | 128 (label) | breakbeat, syncopated kicks | the kick is not the anchor | lock within 4 bars on the backbeat; one flip or tap allowed | T10-b, report-only |
+| 2 | The Prodigy – Voodoo People | 128 (label, disputed: the box's file fits ~149; which version is it?) | breakbeat, syncopated kicks | the kick is not the anchor | lock within 4 bars on the backbeat; one flip or tap allowed | T10-b, report-only |
 | 3 | Massive Attack – Teardrop | 78 (label) | sparse trip-hop, half-time feel | octave-double predicted | a halving that then HOLDS is the pass; octaveFlips 0 | T8, report-only |
 | 4 | James Brown – Hot | 97 (label) | live drums, loud eighth hats | the octave trap on a real band | octave error likely until the half-lag override lands; a hand fix of ÷2 should hold | T3-b, report-only |
 | 5 | Daft Punk – One More Time | 122.9 (fit) | filtered house, long breakdown | free-run and re-lock | free-run through the breakdown at tempo, re-lock within 2 bars when the kick returns, jumps 0 | T5, gate |
@@ -59,7 +59,7 @@ Every PR1 hard gate (Q5–Q10) rides on C1–C3, not on the real tracks. The rea
 | 10-lossy | the same master as a 320 kbps CBR export | 117.2 (twin of 10) | lossy copy, same master | alignLag on lossy audio | alignLag constant, 30 ms or less, ±2 ms over the file; scores within 2 points of the lossless row | T12, **missing** |
 | 11 | Chic – Good Times | 111.5 (fit) | live band, unquantised | a follower tracking a real wander | jumps 0, phase stays in while bpm moves; driftCore recorded | T3, gate |
 | 12 | Daddy Yankee – Gasolina | 96.0 (fit) | dembow, 3-3-2 | the bar, not the beat | beat fine, the 1 wrong: set 1 by hand, then barMoves 0; the only credible bar count in the new batch | T2-d, gate |
-| 13 | Robert Miles – Children | ~128 (fit, core pending) | trance, off-beat bass | second trance record: did the kick-side rule generalise past Sandstorm, or was it fitted to it? | lock measured from kick entry (long piano intro). Hand: none | T2-b, provisional |
+| 13 | Robert Miles – Children | 137.2 (fit) | trance, off-beat bass | second trance record: did the kick-side rule generalise past Sandstorm, or was it fitted to it? | lock measured from kick entry (long piano intro). Hand: none | T2-b, gate |
 | 14 | Burial – Archangel | ~133 (fit, core pending) | swung, smeared drums | the hardest audio here: no kick transient | low confidence expected; UNSCORED until a Shift+S-confirmed grid | T9-c, report-only |
 | 15 | Artful Dodger – Re-Rewind | ~130 (fit) | 2-step, swung hats | swing against the quarter-beat window | lock holds, hats must not pull. Hand: none | T9-b, gate |
 | 16 | Travis Scott – SICKO MODE | ~155 / ~77 (fit, core pending) | hip-hop, 808 sub, section switches | the 808 is tonal sub-bass; the switches are real tempo changes | either octave if it holds, re-lock within 4 bars per switch. Hand: ×2 or ÷2 | T8-c, report-only |

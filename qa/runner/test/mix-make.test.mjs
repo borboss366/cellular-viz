@@ -87,8 +87,9 @@ test('R16: excessRms = √(rms² − frameMs²/12), ≤ 5 ms; refusals: < 64 inl
   const drifting = grid(rampMs(126, 130, 300, 390, 450));
   assert.throws(() => M.planMix(RECIPE_A, OUT, drifting), /refused: .*in opus 300–390 s: drift [\d.]+ % ≥ 0\.3/);
   assert.throws(() => M.planMix(RECIPE_B, OUT, drifting), /refused: in opus .*drift/, 'R16: drift refused by default');
-  assert.equal(M.planMix({ ...RECIPE_B, in: { ...RECIPE_B.in, allowDrift: true } }, OUT, drifting).in.fit.fitMode, 'piecewise', 'allowDrift: piecewise (6728321330)');
-  assert.throws(() => M.planMix({ ...RECIPE_A, in: { ...RECIPE_A.in, allowDrift: true } }, OUT, drifting), /drift/, 'never for mode A\'s incoming');
+  const why = 'a live band, the drift is the test';
+  assert.equal(M.planMix({ ...RECIPE_B, in: { ...RECIPE_B.in, allowDrift: true, why } }, OUT, drifting).in.fit.fitMode, 'piecewise', 'allowDrift: piecewise (6728321330)');
+  assert.throws(() => M.planMix({ ...RECIPE_A, in: { ...RECIPE_A.in, allowDrift: true, why } }, OUT, drifting), /never allowed on mode A's incoming/);
   assert.throws(() => M.planMix({ ...RECIPE_A, out: { ...RECIPE_A.out, from: 60, to: 85 } }, OUT, IN), /out one-more-time 60–85 s: inlier beats \d+ < 64/);
   const gapped = grid(beatsMs(126, 450).filter(m => m < 340000 || m > 343000));
   assert.throws(() => M.planMix(RECIPE_B, OUT, gapped), /masked span [\d.]+–[\d.]+ s \([^)]*gap/);
@@ -109,6 +110,23 @@ test('mode B: no resample, an 8 s fade ending at the outgoing window end, two te
   assert.ok(near(p.out.fit.bpm, 123, 5e-4) && near(p.in.fit.bpm, 126, 5e-4));
   assert.ok(after[0].t >= p.overlap.midS - 1e-9 && before[before.length - 1].t < p.overlap.midS);
   assert.equal(M.selfCheck(p, M.mixSidecar(p).beats.map(b => b.ms)).ok, true);
+});
+
+test('R16a: allowDrift needs a one-line why (else refused); mix.json reports gridSuspect over the window beside the whole-file gridSuspectFile', () => {
+  const drifting = grid(rampMs(126, 130, 300, 390, 450));
+  assert.throws(() => M.planMix({ ...RECIPE_B, in: { ...RECIPE_B.in, allowDrift: true } }, OUT, drifting), /in\.allowDrift needs a one-line "why"/);
+  assert.throws(() => M.planMix({ ...RECIPE_B, in: { ...RECIPE_B.in, allowDrift: true, why: 'two\nlines' } }, OUT, drifting), /one-line "why"/);
+  const p = M.planMix({ ...RECIPE_B, in: { ...RECIPE_B.in, allowDrift: true, why: 'drift on purpose' } }, OUT, drifting);
+  assert.deepEqual([p.in.allowDrift, p.in.why, p.out.allowDrift, p.out.why], [true, 'drift on purpose', false, null]);
+  const flaggedFile = { ...IN, gridSuspect: true };
+  const q = M.planMix(RECIPE_A, OUT, flaggedFile);
+  assert.deepEqual([q.in.gridSuspect, q.in.gridSuspectFile, q.out.gridSuspectFile], [false, true, null], 'the window is clean although the whole file is flagged (Opus\'s build)');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixes-why-'));
+  try {
+    const f = path.join(dir, 'm.json'), m = M.loadMixes()[1];
+    fs.writeFileSync(f, JSON.stringify({ version: 1, mixes: [{ ...m, in: { ...m.in, allowDrift: true } }] }));
+    assert.throws(() => M.loadMixes(f), /one-line "why"/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('self-check: a beat 2 ms off its fitted grid fails the build (≤ 1 ms, 6728321330)', () => {

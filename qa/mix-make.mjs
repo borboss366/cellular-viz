@@ -146,6 +146,8 @@ export function planMix(recipe, gridOut, gridIn, { sr = SR } = {}) {
   const mode = recipe.mode;
   if (mode !== 'A' && mode !== 'B') throw new Error(`${recipe.name}: mode must be "A" or "B"`);
   const snap = s => Math.round(s * sr) / sr;
+  const whyErr = driftWhyProblems(recipe);
+  if (whyErr.length) throw new Error(`${recipe.name}: refused: ${whyErr.join('; ')}`);
   const fo = windowFit(gridOut.beats, recipe.out.from, recipe.out.to, { frameMs: num(gridOut.frameMs) ? gridOut.frameMs : FRAME_MS_DEFAULT });
   const fi = windowFit(gridIn.beats, recipe.in.from, recipe.in.to, { frameMs: num(gridIn.frameMs) ? gridIn.frameMs : FRAME_MS_DEFAULT });
   const refusals = [
@@ -196,12 +198,32 @@ export function planMix(recipe, gridOut, gridIn, { sr = SR } = {}) {
   const plan = {
     name: recipe.name, slot: recipe.slot || null, mode, ratio, stretch: mode === 'A' ? 'resample' : 'none', fadeBars, fadeS: fadeEnd - fadeStart,
     align, alignReason: align === 'beat' ? 'no bar1At' : null, reportOnly: mode === 'A' && align !== 'bar1At',
-    out: { id: recipe.out.id, fromS: outFrom, toS: outFrom + fadeEnd, fit: fitSummary(fo) },
-    in: { id: recipe.in.id, s0, toS: recipe.in.to, fit: fitSummary(fi) },
+    out: { id: recipe.out.id, fromS: outFrom, toS: outFrom + fadeEnd, fit: fitSummary(fo), ...flags(fo, gridOut, recipe.out) },
+    in: { id: recipe.in.id, s0, toS: recipe.in.to, fit: fitSummary(fi), ...flags(fi, gridIn, recipe.in) },
     m0, mixLenS, overlap: { startS: fadeStart, endS: fadeEnd, midS: mid, startBeat: idx(fadeStart), endBeat: idx(fadeEnd), midBeat: idx(mid) }, beats,
   };
   Object.defineProperty(plan, 'fits', { value: { out: fo, in: fi }, enumerable: false });
   return plan;
+}
+
+/**
+ * R16a: a side with allowDrift needs a one-line why, and mode A's incoming side never takes it → the problems ([] if fine)
+ */
+export function driftWhyProblems(recipe) {
+  const no = [];
+  for (const side of ['out', 'in']) {
+    const s = recipe[side] || {};
+    if (s.allowDrift === undefined || s.allowDrift === false) continue;
+    if (s.allowDrift !== true) { no.push(`${side}.allowDrift must be true or absent`); continue; }
+    if (recipe.mode === 'A' && side === 'in') no.push('allowDrift is never allowed on mode A\'s incoming side');
+    if (typeof s.why !== 'string' || !s.why.trim() || /\n/.test(s.why)) no.push(`${side}.allowDrift needs a one-line "why"`);
+  }
+  return no;
+}
+/** what mix.json reports beside each window: gridSuspect over the window (R16a) and the whole-file flag, allowDrift + why */
+function flags(fit, grid, side) {
+  return { gridSuspect: fit.windowSuspect, gridSuspectFile: typeof grid.gridSuspect === 'boolean' ? grid.gridSuspect : null,
+    allowDrift: side.allowDrift === true, why: side.allowDrift === true ? side.why : null };
 }
 
 /**
@@ -281,6 +303,8 @@ export function loadMixes(file = MIXES_FILE, rows = loadCorpus()) {
       if (!(num(s.from) && num(s.to) && s.to > s.from)) throw new Error(`${w}: ${side} window`);
       if (s.bar1At !== undefined && s.bar1At !== null && !num(s.bar1At)) throw new Error(`${w}: ${side}.bar1At must be seconds or null`);
     }
+    const whyErr = driftWhyProblems(m);
+    if (whyErr.length) throw new Error(`${w}: ${whyErr.join('; ')}`);
     if (m.mode !== 'A' && m.mode !== 'B') throw new Error(`${w}: mode must be "A" or "B"`);
     if (m.mode === 'A' && !(Number.isInteger(m.fadeBars) && m.fadeBars > 0 && m.fadeBars % 2 === 0)) throw new Error(`${w}: mode A needs an even fadeBars`);
     if (m.mode === 'B' && !(num(m.fadeS) && m.fadeS > 0)) throw new Error(`${w}: mode B needs fadeS`);
@@ -372,8 +396,10 @@ async function makeMix(recipe, dir, map, decoder, { force, verify }) {
   }
   const { beats, overlap } = plan;
   const mixJson = { version: 1, name: recipe.name, slot: plan.slot, mode: plan.mode, recipe,
-    inputs: { out: { id: plan.out.id, sha256: shaA, cut: [r6(plan.out.fromS), r6(plan.out.toS)], fit: plan.out.fit },
-      in: { id: plan.in.id, sha256: shaB, cut: [r6(plan.in.s0), r6(plan.in.toS)], fit: plan.in.fit } },
+    inputs: { out: { id: plan.out.id, sha256: shaA, cut: [r6(plan.out.fromS), r6(plan.out.toS)], fit: plan.out.fit,
+      gridSuspect: plan.out.gridSuspect, gridSuspectFile: plan.out.gridSuspectFile, allowDrift: plan.out.allowDrift, why: plan.out.why },
+    in: { id: plan.in.id, sha256: shaB, cut: [r6(plan.in.s0), r6(plan.in.toS)], fit: plan.in.fit,
+      gridSuspect: plan.in.gridSuspect, gridSuspectFile: plan.in.gridSuspectFile, allowDrift: plan.in.allowDrift, why: plan.in.why } },
     ratio: r6(plan.ratio), stretch: plan.stretch, fadeBars: plan.fadeBars, fadeS: r6(plan.fadeS), align: plan.align, alignReason: plan.alignReason,
     reportOnly: plan.reportOnly,
     overlap: { startS: r6(overlap.startS), endS: r6(overlap.endS), midS: r6(overlap.midS), startBeat: overlap.startBeat, endBeat: overlap.endBeat, midBeat: overlap.midBeat },
