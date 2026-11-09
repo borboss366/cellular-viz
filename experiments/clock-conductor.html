@@ -340,8 +340,8 @@ function monitor(now, ts) {
   const lamp = d.playing && d.beats.length ? C.barLamp(d.beats, posMs(d, heard)) : { on: false };
   $('lampBar').classList.toggle('on', lamp.on);
   if (keyOn && d.playing && d.beats.length) { const near = C.barLamp(d.beats.map(b => ({ ...b, pos: 1 })), posMs(d, heard), 60); $('lampKey').classList.toggle('on', near.on); }
-  const live = ts.status === 'listening' && performance.now() - lastFrameMs < 1000;
-  $('bands').innerHTML = C.bandHeights(r.bands, Clock.BANDS, live).map(h => `<i style="height:${h}px"></i>`).join('');
+  const bandsLive = ts.status === 'listening' && performance.now() - lastFrameMs < 1000;   // not "live": that is the LIVE deck (TDZ, #208)
+  $('bands').innerHTML = C.bandHeights(r.bands, Clock.BANDS, bandsLive).map(h => `<i style="height:${h}px"></i>`).join('');
   scatter(now);
   for (const x of decks) x.el.querySelector('.pos').textContent = x.track ? `${(Math.max(0, x.playing ? posMs(x, heard) : x.offsetS * 1000) / 1000).toFixed(1)} s` : '';
   $('nrec').textContent = log.all.length;

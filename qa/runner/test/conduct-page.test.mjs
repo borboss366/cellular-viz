@@ -205,7 +205,18 @@ test('clock-conductor: the band bars are blank without live tracker frames, neve
   assert.deepEqual(C.bandHeights({ ...real, kick: NaN, air: 5 }, B, true).slice(0, 2), [54, 0], 'NaN draws empty');
   assert.equal(C.bandHeights({ ...real, air: 5 }, B, true)[7], C.BAND_MAX_PX, 'a real loud band still reaches the top');
   const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
-  assert.match(html, /const live = ts\.status === 'listening' && performance\.now\(\) - lastFrameMs < 1000;/);
-  assert.match(html, /C\.bandHeights\(r\.bands, Clock\.BANDS, live\)/);
+  assert.match(html, /const bandsLive = ts\.status === 'listening' && performance\.now\(\) - lastFrameMs < 1000;/);
+  assert.match(html, /C\.bandHeights\(r\.bands, Clock\.BANDS, bandsLive\)/);
   assert.ok(!/r\.bands\[b\] \|\| 0\) \+ 80/.test(html), 'the old 0 -> full-height mapping is gone');
+});
+
+test('clock-conductor.html: no function shadows the page\'s top-level state (a local `live` read decks[live] in its TDZ, #208)', () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  const mod = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
+  const top = new Set();
+  for (const m of mod.matchAll(/^(?:let|const) ([^;=]+(?:=[^;]*)?);/gm)) for (const part of m[1].split(',')) { const n = /^\s*([A-Za-z_$][\w$]*)\s*(=|$)/.exec(part); if (n) top.add(n[1]); }
+  for (const name of ['live', 'fade', 'decks', 'tracks', 'clock', 'log']) assert.ok(top.has(name), `${name} is top-level state`);
+  const inner = [...mod.matchAll(/^[ \t]+(?:let|const) ([A-Za-z_$][\w$]*)\b/gm)].map(m => m[1]);
+  const shadows = inner.filter(n => ['live', 'fade', 'decks', 'tracks', 'clock', 'log', 'shadow', 'ctx'].includes(n));
+  assert.deepEqual(shadows, [], `locals shadowing page state: ${shadows.join(', ')}`);
 });
