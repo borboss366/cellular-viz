@@ -4,9 +4,10 @@
 // <track>.beatgrid.json, which experiments/clock.js reads for `file:` sources, so the truth (b) reference and the
 // rehearsal grid are one file.
 //
-//   { version: 2, fields: 1, beats: [{ ms, pos, conf }], edits: [...], source: {...}, orphaned: [...],
-//     bpmFit, bpmFitCore, driftCore, fitResidualRms, fitResidualMax, beatsPerBar, barSuspect, frameMs: 20,
-//     barOk: false, barOkCleared: null }          (the summary fields: gridFields below; #188)
+//   { version: 2, fields: 2, beats: [{ ms, pos, conf }], edits: [...], source: {...}, orphaned: [...],
+//     bpmFit, bpmFitCore, bpmTheilSen, inlierFrac, extraFrac, gridSuspect, suspectWhy, driftCore,
+//     fitResidualRms, fitResidualMax, beatsPerBar, barSuspect, frameMs: 20,
+//     barOk: false, barOkCleared: null }          (the summary fields: gridFields below; #188, R15)
 //
 // - ms: the Beat This! time in milliseconds (3 decimals); pos: its beat-in-bar, as given (irregular bars kept).
 // - conf: 1.0 on every beat. Beat This! gives no per-beat confidence (Audio2Beats returns beat and downbeat times
@@ -29,65 +30,140 @@ import { fileURLToPath } from 'node:url';
 export const ANCHOR_MS = 60;
 const round3 = x => Math.round(x * 1000) / 1000;
 
-// ---- grid summary fields (#188, VIZ research 6728364399: A1′, A1″, A7c) ----
-// Beat This! places beats on 20 ms frames, so a median of beat intervals carries up to ±2 % (±½ frame a beat).
-// Every tempo a ruling reads comes from a least-squares line instead. Bumping FIELDS makes ensureGrids convert every
+// ---- grid summary fields (#188; VIZ research R15, #188 6736333312) ----
+// Beat This! places beats on 20 ms frames, and its beat list can carry extra beats (a double-time run, a spurious
+// off-beat) or miss some. A line through time against beat index bends with every extra or missing beat (the
+// fields-1 bug: Sandstorm read 149.9 for 136), so the tempo is the mean of the INLIER inter-beat intervals (IBIs):
+// those within ±12.5 % of the median IBI. Doubled runs, missed beats and gaps contribute nothing, and averaging n
+// quantised IBIs keeps the resolution (σ ≈ 20 ms / √(12 n)). Bumping FIELDS makes ensureGrids convert every
 // sidecar again (hand edits are kept), so the fields reach grids made before them.
-export const FIELDS = 1, FRAME_MS = 20, CORE_TRIM_S = 30, DRIFT_WINDOW = 16, BAR_OK_RANGE = [3.95, 4.05];
+export const FIELDS = 2, FRAME_MS = 20, CORE_TRIM_S = 30, DRIFT_WINDOW = 16, BAR_OK_RANGE = [3.95, 4.05];
+export const INLIER_TOL = 0.125;     // an IBI within ±12.5 % of the median is an inlier
+export const INLIER_MIN = 0.9;       // inlierFrac below this → gridSuspect
+export const EXTRA_MAX = 0.02;       // more than 2 % of IBIs SHORTER than the inlier band (extra beats) → gridSuspect
+export const TS_AGREE = 0.005;       // Theil–Sen and the inlier mean more than 0.5 % apart → gridSuspect
+export const GAP_X = 1.8;            // an IBI over 1.8 × median is a gap: no drift window spans it
+export const WINDOW_OUT_MAX = 0.25;  // a drift window with more than 25 % outlier IBIs is masked
+export const CONF_MIN = 0.5;         // a beat under this confidence masks its drift windows (Beat This! writes 1.0)
+const TS_MIN_SPAN = 4, TS_MAX_SPAN = 256;   // Theil–Sen pairs 4–256 beats apart inside one inlier run
+
+const median = xs => {
+  const s = [...xs].sort((a, b) => a - b), n = s.length;
+  return n ? (n % 2 ? s[n >> 1] : (s[n / 2 - 1] + s[n / 2]) / 2) : NaN;
+};
+const quantile = (sorted, q) => {
+  const x = (sorted.length - 1) * q, i = Math.floor(x);
+  return i + 1 < sorted.length ? sorted[i] + (sorted[i + 1] - sorted[i]) * (x - i) : sorted[i];
+};
 
 /**
- * least-squares line through beat times (s) against their beat index → { bpm, period, n, rmsMs, maxMs } or null.
- * The index counts gap by gap (round(gap / median gap), at least 1), so a missed beat skips an index instead of
- * bending the line.
+ * the robust tempo of beat times ts (s, ascending) → null under 4 beats, else
+ *   { bpm, period, medIbi, lo, hi, n, inlierFrac, extraFrac, bpmTheilSen, rmsMs, maxMs, suspect, why }
+ * - bpm = 60 / mean of the inlier IBIs (within ±INLIER_TOL of the median IBI).
+ * - inlierFrac: inlier IBIs / all IBIs. extraFrac: IBIs shorter than the band / all IBIs, i.e. beats that should not
+ *   be there (doubled runs, spurious off-beats); long ones (a missed beat, a gap) are harmless and not counted.
+ * - bpmTheilSen: the median of pairwise slopes inside the inlier runs (consecutive beats whose IBIs are all
+ *   inliers, so the index inside a run is exact), pairs 4–256 beats apart; null when no run is long enough.
+ * - rmsMs / maxMs: residuals of every inlier run against its own least-squares line.
+ * - suspect (gridSuspect): inlierFrac < INLIER_MIN, extraFrac > EXTRA_MAX, or Theil–Sen and the mean more than
+ *   TS_AGREE apart; why lists which.
  */
-export function fitLine(ts) {
+export function robustTempo(ts) {
   if (ts.length < 4) return null;
-  const gaps = ts.slice(1).map((t, i) => t - ts[i]).sort((a, b) => a - b), med = gaps[gaps.length >> 1];
-  if (!(med > 0)) return null;
-  const idx = [0];
-  for (let i = 1; i < ts.length; i++) idx.push(idx[i - 1] + Math.max(1, Math.round((ts[i] - ts[i - 1]) / med)));
-  const n = ts.length, mx = idx.reduce((s, x) => s + x, 0) / n, my = ts.reduce((s, y) => s + y, 0) / n;
-  let sxx = 0, sxy = 0;
-  for (let i = 0; i < n; i++) { sxx += (idx[i] - mx) ** 2; sxy += (idx[i] - mx) * (ts[i] - my); }
-  const period = sxy / sxx, a = my - period * mx;
-  if (!(period > 0)) return null;
-  let ss = 0, mxr = 0;
-  for (let i = 0; i < n; i++) { const r = Math.abs(ts[i] - (a + period * idx[i])) * 1000; ss += r * r; mxr = Math.max(mxr, r); }
-  return { bpm: 60 / period, period, n, rmsMs: Math.sqrt(ss / n), maxMs: mxr };
+  const ibis = ts.slice(1).map((t, i) => t - ts[i]), medIbi = median(ibis);
+  if (!(medIbi > 0)) return null;
+  const lo = medIbi * (1 - INLIER_TOL), hi = medIbi * (1 + INLIER_TOL), inl = ibis.map(d => d >= lo && d <= hi);
+  const kept = ibis.filter((_, i) => inl[i]);
+  if (!kept.length) return null;
+  const period = kept.reduce((s, d) => s + d, 0) / kept.length;
+  const runs = [];                 // [first beat, last beat] with every IBI between them an inlier
+  let a = null;
+  for (let i = 0; i < ibis.length; i++) {
+    if (inl[i]) { if (a === null) a = i; } else if (a !== null) { runs.push([a, i]); a = null; }
+  }
+  if (a !== null) runs.push([a, ibis.length]);
+  const slopes = [];
+  let ss = 0, cnt = 0, maxMs = 0;
+  for (const [s, e] of runs) {
+    for (let i = s; i < e; i++) {
+      for (let j = i + TS_MIN_SPAN; j <= Math.min(e, i + TS_MAX_SPAN); j++) slopes.push((ts[j] - ts[i]) / (j - i));
+    }
+    const L = e - s + 1;
+    if (L < 3) continue;
+    const kx = (L - 1) / 2;
+    let my = 0, sxx = 0, sxy = 0;
+    for (let k = 0; k < L; k++) my += ts[s + k];
+    my /= L;
+    for (let k = 0; k < L; k++) { sxx += (k - kx) ** 2; sxy += (k - kx) * (ts[s + k] - my); }
+    const p = sxy / sxx;
+    for (let k = 0; k < L; k++) {
+      const r = Math.abs(ts[s + k] - (my + p * (k - kx))) * 1000;
+      ss += r * r; cnt++; maxMs = Math.max(maxMs, r);
+    }
+  }
+  const tsPeriod = slopes.length ? median(slopes) : NaN, bpm = 60 / period, bpmTheilSen = tsPeriod > 0 ? 60 / tsPeriod : null;
+  const inlierFrac = kept.length / ibis.length, extraFrac = ibis.filter(d => d < lo).length / ibis.length, why = [];
+  if (inlierFrac < INLIER_MIN) why.push('inlierFrac');
+  if (extraFrac > EXTRA_MAX) why.push('extra beats');
+  if (bpmTheilSen !== null && Math.abs(bpm - bpmTheilSen) / bpmTheilSen > TS_AGREE) why.push('Theil-Sen');
+  return { bpm, period, medIbi, lo, hi, n: ts.length, inlierFrac, extraFrac, bpmTheilSen,
+    rmsMs: cnt ? Math.sqrt(ss / cnt) : null, maxMs: cnt ? maxMs : null, suspect: why.length > 0, why };
 }
 
 /**
- * the summary fields from the beats ([{ ms, pos? }]):
- *   bpmFit          the line through every beat
- *   bpmFitCore      the line over the core: the track minus its first and last CORE_TRIM_S seconds of beats
- *                   (beatless intros and fade-outs make the gridder invent tempo), null when the core has < 16 beats
- *   driftCore       peak-to-peak bpm of a 16-beat moving fit over the core, % of bpmFitCore (A1″: constant ≤ 0.5,
- *                   drifting ≥ 1.5). Beat This! gives no per-beat confidence, so no low-confidence span is cut.
- *   fitResidualRms/Max  ms, the core fit's residuals (the whole-track fit when there is no core)
+ * driftCore (%): 16-IBI moving tempo over the core from inlier IBIs only. A window is masked when more than
+ * WINDOW_OUT_MAX of its IBIs are outliers, a gap (> GAP_X × median) sits inside it, or a beat in it is under
+ * CONF_MIN confidence. driftCore = p95 − p5 of the window tempos, % of the core tempo (max − min let one bad window
+ * decide). null when no window survives.
+ */
+function driftOf(ts, confs, fit) {
+  const tempos = [];
+  for (let i = 0; i + DRIFT_WINDOW < ts.length; i++) {
+    let sum = 0, nIn = 0, masked = false;
+    for (let k = i; k < i + DRIFT_WINDOW; k++) {
+      const d = ts[k + 1] - ts[k];
+      if (d > GAP_X * fit.medIbi || confs[k] < CONF_MIN || confs[k + 1] < CONF_MIN) { masked = true; break; }
+      if (d >= fit.lo && d <= fit.hi) { sum += d; nIn++; }
+    }
+    if (masked || DRIFT_WINDOW - nIn > WINDOW_OUT_MAX * DRIFT_WINDOW || !nIn) continue;
+    tempos.push(60 * nIn / sum);
+  }
+  if (!tempos.length) return null;
+  tempos.sort((x, y) => x - y);
+  return +(100 * (quantile(tempos, 0.95) - quantile(tempos, 0.05)) / fit.bpm).toFixed(3);
+}
+
+/**
+ * the summary fields from the beats ([{ ms, pos?, conf? }]):
+ *   bpmFit          robustTempo over every beat
+ *   bpmFitCore      robustTempo over the core: the track minus its first and last CORE_TRIM_S seconds (beatless
+ *                   intros and fade-outs make the gridder invent tempo), null when the core has < 16 beats
+ *   bpmTheilSen, inlierFrac, extraFrac, gridSuspect, suspectWhy   of the core fit (the whole track without a core)
+ *   driftCore       see driftOf; gridSuspect or driftCore > 20 % makes the tempo n/a for gating (qa/corpus.mjs)
+ *   fitResidualRms/Max  ms, the inlier runs against their own lines (core, else whole)
  *   beatsPerBar     beats / downbeats (pos 1), null without downbeats; barSuspect outside 3.95–4.05
  *   frameMs         20: the gridder's quantisation, so every consumer knows it
  */
 export function gridFields(beats) {
-  const ts = beats.map(b => b.ms / 1000), all = fitLine(ts);
-  const t0 = ts[0], t1 = ts[ts.length - 1], core = ts.filter(t => t >= t0 + CORE_TRIM_S && t <= t1 - CORE_TRIM_S);
-  const coreFit = core.length >= DRIFT_WINDOW ? fitLine(core) : null;
-  let driftCore = null;
-  if (coreFit) {
-    let lo = Infinity, hi = -Infinity;
-    for (let i = 0; i + DRIFT_WINDOW <= core.length; i++) {
-      const f = fitLine(core.slice(i, i + DRIFT_WINDOW));
-      if (f) { lo = Math.min(lo, f.bpm); hi = Math.max(hi, f.bpm); }
-    }
-    if (hi >= lo) driftCore = +(100 * (hi - lo) / coreFit.bpm).toFixed(3);
-  }
+  const ts = beats.map(b => b.ms / 1000), all = robustTempo(ts);
+  const t0 = ts[0], t1 = ts[ts.length - 1], coreIdx = [];
+  ts.forEach((t, i) => { if (t >= t0 + CORE_TRIM_S && t <= t1 - CORE_TRIM_S) coreIdx.push(i); });
+  const core = coreIdx.map(i => ts[i]), coreFit = core.length >= DRIFT_WINDOW ? robustTempo(core) : null;
+  const driftCore = coreFit ? driftOf(core, coreIdx.map(i => (Number.isFinite(beats[i].conf) ? beats[i].conf : 1)), coreFit) : null;
   const res = coreFit || all, downs = beats.filter(b => b.pos === 1).length;
   const beatsPerBar = downs ? +(beats.length / downs).toFixed(3) : null;
+  const r3 = x => (x === null || x === undefined ? null : +x.toFixed(3));
   return {
-    bpmFit: all ? +all.bpm.toFixed(3) : null,
-    bpmFitCore: coreFit ? +coreFit.bpm.toFixed(3) : null,
+    bpmFit: all ? r3(all.bpm) : null,
+    bpmFitCore: coreFit ? r3(coreFit.bpm) : null,
+    bpmTheilSen: res ? r3(res.bpmTheilSen) : null,
+    inlierFrac: res ? +res.inlierFrac.toFixed(4) : null,
+    extraFrac: res ? +res.extraFrac.toFixed(4) : null,
+    gridSuspect: res ? res.suspect : true,
+    suspectWhy: res ? res.why : ['too few beats'],
     driftCore,
-    fitResidualRms: res ? +res.rmsMs.toFixed(2) : null,
-    fitResidualMax: res ? +res.maxMs.toFixed(2) : null,
+    fitResidualRms: res && res.rmsMs !== null ? +res.rmsMs.toFixed(2) : null,
+    fitResidualMax: res && res.maxMs !== null ? +res.maxMs.toFixed(2) : null,
     beatsPerBar,
     barSuspect: beatsPerBar === null || beatsPerBar < BAR_OK_RANGE[0] || beatsPerBar > BAR_OK_RANGE[1],
     frameMs: FRAME_MS,

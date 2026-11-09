@@ -7,20 +7,23 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fitLine, gridFields, toSidecar, ensureGrids, FIELDS, FRAME_MS } from '../../beatgrid.mjs';
+import { robustTempo, gridFields, toSidecar, ensureGrids, FIELDS, FRAME_MS } from '../../beatgrid.mjs';
 
 const q20 = t => Math.round(t / 0.02) * 0.02;   // Beat This!'s 20 ms frames
 const steady = (bpm, seconds, t0 = 0) => { const p = 60 / bpm, out = []; for (let t = t0; t < t0 + seconds; t += p) out.push(t); return out; };
 const beatsOf = (ts, bpb = 4) => ts.map((t, i) => ({ ms: Math.round(t * 1e6) / 1e3, pos: (i % bpb) + 1 }));
 const near = (a, b, rel) => Math.abs(a - b) / b <= rel;
 
-test('fitLine: an exact grid gives its tempo with no residual; a missed beat skips an index, not the line', () => {
-  const ts = steady(125, 60), f = fitLine(ts);
+test('robustTempo: an exact grid gives its tempo with no residual; a missed beat drops one IBI, not the tempo', () => {
+  const ts = steady(125, 60), f = robustTempo(ts);
   assert.ok(near(f.bpm, 125, 1e-9), `${f.bpm}`);
+  assert.ok(near(f.bpmTheilSen, 125, 1e-9), `Theil-Sen ${f.bpmTheilSen}`);
   assert.ok(f.rmsMs < 1e-6 && f.maxMs < 1e-6);
-  const gap = ts.filter((_, i) => i !== 40), g = fitLine(gap);
+  assert.equal(f.inlierFrac, 1); assert.equal(f.suspect, false);
+  const gap = ts.filter((_, i) => i !== 40), g = robustTempo(gap);
   assert.ok(near(g.bpm, 125, 1e-9), `missed beat: ${g.bpm}`);
-  assert.equal(fitLine([0, 1, 2]), null, 'too few beats');
+  assert.equal(g.extraFrac, 0, 'a missed beat is a long IBI, not an extra beat');
+  assert.equal(robustTempo([0, 1, 2]), null, 'too few beats');
 });
 
 test('A1′: on 20 ms frames the line fit is within 0.05 % where the median of intervals is off by up to 2 %', () => {
@@ -32,6 +35,8 @@ test('A1′: on 20 ms frames the line fit is within 0.05 % where the median of i
   assert.equal(f.frameMs, FRAME_MS);
   assert.ok(f.fitResidualRms < 7 && f.fitResidualMax <= 10.5, `residual ${f.fitResidualRms} / ${f.fitResidualMax} ms: frame noise only`);
   assert.ok(f.driftCore < 1.5, `driftCore ${f.driftCore} %: frame noise must not read as drifting`);
+  assert.equal(f.gridSuspect, false, `suspect: ${f.suspectWhy}`);
+  assert.ok(near(f.bpmTheilSen, 123, 1e-3), `Theil-Sen ${f.bpmTheilSen}`);
 });
 
 test('A1″: a beatless-intro artefact pollutes bpmFit but not bpmFitCore; driftCore is ~0 on a constant core', () => {
@@ -99,4 +104,48 @@ test('the sidecar carries the fields, barOk false and barOkCleared null; FIELDS 
     assert.equal(regrid.barOkCleared, 'regrid');
     assert.equal(regrid.edits.length, 1, 'the edit is still kept');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// R15 (#188 6736333312): fields 1 fitted time against beat index, so every extra beat moved the line (Sandstorm read
+// 149.9 for 136). The robust fit must recover a synthetic 120.00 grid within 0.1 % under each defect, and flag the
+// grid (gridSuspect) for the ones that put beats where none belong: (b) and (d), not (a) or (c).
+const rng = seed => () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+const pick = (r, from, to, k) => { const s = new Set(); while (s.size < k) s.add(from + Math.floor(r() * (to - from))); return s; };
+
+test('R15: 120.00 within 0.1 % with (a) 5 % deleted, (b) 5 % inserted, (c) a 3 s gap, (d) a 32-beat double-time span', () => {
+  const base = steady(120, 300).map(q20), N = base.length, r = rng(188);
+  const del = pick(r, 1, N - 1, Math.round(0.05 * N));
+  const ins = pick(r, 0, N - 1, Math.round(0.05 * N));
+  const cases = {
+    a: base.filter((_, i) => !del.has(i)),
+    b: base.flatMap((t, i) => (ins.has(i) ? [t, q20(t + (base[i + 1] - t) * (0.4 + 0.2 * r()))] : [t])),   // spurious off-beats
+    c: base.filter(t => t < 150 || t >= 153),
+    d: base.flatMap((t, i) => (i >= 200 && i < 232 ? [t, q20((t + base[i + 1]) / 2)] : [t])),                // the gridder doubling up
+  };
+  const want = { a: false, b: true, c: false, d: true };
+  for (const [k, ts] of Object.entries(cases)) {
+    const f = gridFields(beatsOf(ts));
+    assert.ok(near(f.bpmFit, 120, 1e-3), `(${k}) bpmFit ${f.bpmFit}`);
+    assert.ok(near(f.bpmFitCore, 120, 1e-3), `(${k}) bpmFitCore ${f.bpmFitCore}`);
+    assert.equal(f.gridSuspect, want[k], `(${k}) gridSuspect ${f.gridSuspect} (${f.suspectWhy}; inlierFrac ${f.inlierFrac}, extraFrac ${f.extraFrac})`);
+    assert.ok(f.driftCore !== null && f.driftCore < 0.05, `(${k}) driftCore ${f.driftCore}: outliers and gaps are masked`);
+  }
+});
+
+test('R15: a tempo change the inlier mean blurs (400 beats at 120, 200 at 130) is flagged by the Theil-Sen cross-check', () => {
+  const head = steady(120, 200), tail = steady(130, 200 * 60 / 130, head[head.length - 1] + 60 / 130);
+  const f = robustTempo([...head, ...tail]);
+  assert.equal(f.inlierFrac, 1, 'every IBI is inside ±12.5 %');
+  assert.equal(f.extraFrac, 0);
+  assert.ok(Math.abs(f.bpm - f.bpmTheilSen) / f.bpmTheilSen > 0.005, `mean ${f.bpm} vs Theil-Sen ${f.bpmTheilSen}`);
+  assert.deepEqual(f.why, ['Theil-Sen']);
+  assert.equal(f.suspect, true);
+});
+
+test('R15: driftCore masks gaps and low-confidence beats, and p95 - p5 ignores one bad window', () => {
+  const ts = steady(124, 300);
+  const beats = beatsOf(ts).map((b, i) => (i >= 300 && i < 310 ? { ...b, conf: 0.2 } : b));
+  const wobble = ts.map((t, i) => (i === 320 ? t + 0.03 : t));                      // one beat 30 ms late: one window
+  assert.ok(gridFields(beats).driftCore < 1e-6, 'low-confidence beats masked');
+  assert.ok(gridFields(beatsOf(wobble)).driftCore < 0.01, `one late beat: ${gridFields(beatsOf(wobble)).driftCore}`);
 });
