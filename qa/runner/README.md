@@ -195,7 +195,8 @@ Try one round by hand first, inside the container: `node qa/runner/runner.mjs --
 
 The conductor page (#188) for listening sessions from the laptop: `qa/runner/conductor.sh` runs main's
 `qa/conduct-serve.mjs` inside the container on `conductor.sock` in the data folder, and two host units forward :8790
-to it (the container publishes no ports). On the box itself (the host), as the normal user:
+to it (the container publishes no ports). How to use the page: [qa/CONDUCTOR_GUIDE.md](../CONDUCTOR_GUIDE.md) (also the
+"Help" button or `?` on the page). On the box itself (the host), as the normal user:
 
 1. Once: add two lines to `~/.config/cellular-viz-runner.env`, with paths as the container sees them (the private
    tracks folder, and where the session logs go; both stay out of git, R9):

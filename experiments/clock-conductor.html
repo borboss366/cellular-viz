@@ -22,24 +22,30 @@
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}
 body{margin:0;font:16px/1.4 system-ui,sans-serif;background:#0b0e14;color:#dde3ee}
-header{display:flex;gap:12px;align-items:center;padding:10px 16px;background:#141a26;flex-wrap:wrap}
-h1{font-size:18px;margin:0}.banner{padding:3px 10px;border-radius:8px;background:#2b5cff;font-weight:600}
+header{display:flex;gap:12px;align-items:center;padding:10px 16px;background:#141a26;flex-wrap:nowrap}
+h1{font-size:18px;margin:0;flex:none;white-space:nowrap}.banner{padding:3px 10px;border-radius:8px;background:#2b5cff;font-weight:600}
 .badge{padding:3px 10px;border-radius:8px;background:#3a4560}.unscored{background:#5b6478}
-main{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px}
-section{background:#141a26;border-radius:12px;padding:12px}
+.banner,.badge{flex:0 1 auto;min-width:0;max-width:22ch;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.actions{display:flex;gap:8px;margin-left:auto;flex:none}
+main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;padding:12px}
+section{background:#141a26;border-radius:12px;padding:12px;min-width:0}
+.deck .name,#msg,#lastFix,#bar1,#tail{overflow-wrap:anywhere}.deck{min-height:2.8em}.fixline{min-height:2.8em}
+select{max-width:100%}#tracks{width:100%}
 h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#8a96ad;margin:0 0 8px}
 .big{font-size:44px;font-weight:700;font-variant-numeric:tabular-nums}.row{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
 .lamps{display:flex;gap:14px;margin:10px 0}.lamp{width:64px;height:64px;border-radius:50%;background:#222a3a;display:grid;place-items:center;font-size:12px;color:#8a96ad;transition:background 60ms}
 .lamp.on{background:#ffd23f;color:#000}.lamp.kick.on{background:#ff7a2b}.lamp.bar.on{background:#e8e8e8}.lamp.key.on{background:#9b6bff}
 .conf{height:10px;background:#222a3a;border-radius:5px;overflow:hidden}.conf>i{display:block;height:100%;background:#2b5cff}
-.bands{display:flex;gap:4px;height:70px;align-items:flex-end}.bands>i{flex:1;background:#2b5cff;min-height:2px}
+.bands{display:flex;gap:4px;height:70px;align-items:flex-end}.bands>i{flex:1;background:#2b5cff;min-height:2px}.bands>i:nth-child(2){background:#5b85ff}
+.bandLabels{display:flex;gap:4px;margin-top:2px;font-size:11px;line-height:1.2;color:#8a96ad}.bandLabels>span{flex:1;min-width:0;text-align:center;white-space:nowrap;overflow:hidden}.bandLabels>.k{color:#ff7a2b;font-weight:700}
 #scatter{width:100%;height:60px;background:#0b0e14;border-radius:6px}
 button,select,input{font:inherit;color:inherit;background:#222a3a;border:1px solid #3a4560;border-radius:8px;padding:6px 10px}
 button{cursor:pointer}.fixes button{min-width:60px}
 .deck{border:2px solid #3a4560;border-radius:10px;padding:8px;margin:6px 0}.deck.live{border-color:#d6455d}.deck.next{border-color:#2b5cff}
 .tag{font-weight:700;margin-right:8px}.live .tag{color:#d6455d}.next .tag{color:#2b5cff}
 #flash{height:40px;border-radius:8px;background:#222a3a}#flash.on{background:#fff}
-.msg{color:#ffd23f;min-height:1.4em}small{color:#8a96ad}
+.msg{color:#ffd23f;min-height:2.8em}small{color:#8a96ad}
+#helpPanel{padding:8px 16px 12px;background:#141a26;border-top:1px solid #3a4560;font-size:14px}#helpPanel h2{margin:10px 0 4px}#helpPanel ol,#helpPanel ul{margin:0;padding-left:22px}
 </style>
 <script src="clock.js"></script>
 <script src="clock-tracker.js"></script>
@@ -48,8 +54,27 @@ button{cursor:pointer}.fixes button{min-width:60px}
 <header>
   <h1>clock conductor</h1><span class="banner" id="input">line:page</span><span class="badge" id="scored">no track</span>
   <span class="badge" id="session">–</span><span class="badge" id="logState">log: –</span>
-  <button id="start">Start audio</button><button id="download">Download log</button>
+  <span class="actions"><button id="start">Start audio</button><button id="download">Download log</button><button id="help" title="Help (?)">Help</button></span>
 </header>
+<!-- the user guide in short (qa/CONDUCTOR_GUIDE.md has all of it); plain ASCII only: the box's Chromium aborts on font fallback (#205) -->
+<div id="helpPanel" hidden>
+  <h2>Play a track</h2>
+  <ol><li>In the Playlist box, click a track name.</li><li>Click "Load to NEXT".</li><li>Wait until the deck shows the track name (not "loading").</li>
+    <li>Push "Play / pause" or Space. The deck changes to LIVE. This also starts the audio.</li></ol>
+  <h2>Go to the next track</h2>
+  <ol><li>Click the next track name. Click "Load to NEXT". Wait for the name.</li><li>Push "Crossfade" or N. The old deck stops after the fade time.</li></ol>
+  <h2>Fix the clock (Shift + key)</h2>
+  <ul><li>Dots at the two edges (off-beat): flip, Shift+F.</li><li>Tempo is half: x2, Shift+D. Tempo is double: /2, Shift+H.</li>
+    <li>Small offset: -10 or +10, Shift+, or Shift+.</li><li>Wrong "1": set 1, Shift+1, on the downbeat.</li>
+    <li>Wrong tempo: tap, Shift+A, on 4 or more beats.</li><li>Start again: reset, Shift+0.</li></ul>
+  <h2>Marks and the bar</h2>
+  <ul><li>Select a name in the Marks list. Push M on that moment. [ and ] move bar1 by one beat.</li>
+    <li>Shift+S confirms the bar. Push it on the "1" while the bar 1 lamp is on.</li>
+    <li>Marks need the LIVE deck playing a track with a grid.</li></ul>
+  <h2>After the sitting</h2>
+  <ul><li>Push "Download log". Then stop the server on the box.</li><li>Do not push K (answer-key lamp) in a scored run.</li>
+    <li>Push Help or ? to close this panel.</li></ul>
+</div>
 <main>
   <section>
     <h2>Clock</h2>
@@ -61,11 +86,12 @@ button{cursor:pointer}.fixes button{min-width:60px}
       <div class="lamp bar" id="lampBar">bar 1</div><div class="lamp key" id="lampKey" hidden>key</div></div>
     <canvas id="scatter" width="600" height="60"></canvas>
     <div class="bands" id="bands"></div>
+    <div class="bandLabels" id="bandLabels"></div>
     <div class="fixes row" style="margin-top:10px">
       <button data-fix="tap">tap ⇧A</button><button data-fix="half">÷2 ⇧H</button><button data-fix="x2">×2 ⇧D</button>
       <button data-fix="flip">flip ⇧F</button><button data-fix="nudge" data-arg="-10">−10 ⇧,</button><button data-fix="nudge" data-arg="10">+10 ⇧.</button>
       <button data-fix="setOne">set 1 ⇧1</button><button data-fix="reset">reset ⇧0</button></div>
-    <div><small>last fix:</small> <span id="lastFix">–</span></div>
+    <div class="fixline"><small>last fix:</small> <span id="lastFix">–</span></div>
   </section>
   <section>
     <h2>Playlist</h2>
@@ -100,7 +126,10 @@ import * as C from './conductor.mjs';
 
 const qs = new URLSearchParams(location.search), $ = id => document.getElementById(id);
 const inputMode = qs.get('clock') === 'line' ? 'line' : 'line:page';
-$('input').textContent = inputMode;
+$('input').textContent = $('input').title = inputMode;
+// the band bars' names, built once (the bars redraw every frame above a fixed row; the kick bar drives the kick lamp)
+const BAND_LABELS = { sub: 'sub', kick: 'kick', low: 'low', lowMid: 'lo-mid', mid: 'mid', upperMid: 'hi-mid', presence: 'pres', air: 'air' };
+$('bandLabels').innerHTML = Clock.BANDS.map(b => `<span${b === 'kick' ? ' class="k"' : ''} title="${b}">${BAND_LABELS[b] || b}</span>`).join('');
 const ctx = new AudioContext({ latencyHint: 'interactive' });
 const settings = { bpm: 120, bpb: 4, muted: false, click: qs.get('click') === '1', kick: C.KICK_QUARTERS, snare: C.SILENT, hat: C.SILENT };
 const clock = Clock.create({ source: 'line', settings, audioContext: () => ctx });
@@ -111,7 +140,7 @@ mixBus.connect(master); master.connect(ctx.destination);
 const id = sessionId();
 const log = new ConductLog({ id, input: inputMode, now: () => ctx.currentTime,
   post: async body => { const r = await fetch(`/log/${id}`, { method: 'POST', body }); if (!r.ok) throw new Error(`HTTP ${r.status}`); } });
-$('session').textContent = id;
+$('session').textContent = $('session').title = id;
 
 // ---------- tracks and decks (R1) ----------
 let tracks = [];
@@ -315,7 +344,7 @@ function scatter(now) {
 function render() {
   decks.forEach(d => { d.el.className = 'deck' + (d.n === live ? ' live' : d.track ? ' next' : ''); d.el.querySelector('.tag').textContent = d.n === live ? 'LIVE' : d.track ? 'NEXT' : '–'; });
   const d = decks[live];
-  $('scored').textContent = !d.track ? 'no track' : d.beats.length ? 'scored' : 'UNSCORED (no grid)';
+  $('scored').textContent = $('scored').title = !d.track ? 'no track' : d.beats.length ? 'scored' : 'UNSCORED (no grid)';
   $('scored').className = 'badge' + (d.track && !d.beats.length ? ' unscored' : '');
   $('bar1').textContent = d.bar1 ? `beat ${d.bar1.beat} · ${(d.bar1.atMs / 1000).toFixed(3)} s` : '–';
 }
@@ -336,6 +365,8 @@ $('next').onclick = () => { start(); next(); };
 $('mark').onclick = () => mark();
 $('stepL').onclick = () => step(-1); $('stepR').onclick = () => step(1);
 $('download').onclick = () => download(`${id}.jsonl`, log.toJsonl());
+const toggleHelp = () => { $('helpPanel').hidden = !$('helpPanel').hidden; };
+$('help').onclick = toggleHelp;
 addEventListener('keydown', e => {
   const a = C.pageKey(e);
   if (!a) return;
@@ -343,8 +374,9 @@ addEventListener('keydown', e => {
   if (a.type === 'offset') { offRun = e.timeStamp - offLastKey < 250 ? offRun + 1 : 1; offLastKey = e.timeStamp; setOffset(clock.visualOffsetMs + a.dir * C.calStep(offRun)); }
   else if (a.type === 'mark') mark(); else if (a.type === 'step') step(a.delta); else if (a.type === 'barOk') barOk();
   else if (a.type === 'playPause') { start(); playPause(); } else if (a.type === 'next') { start(); next(); } else if (a.type === 'keyLamp') toggleKey();
+  else if (a.type === 'help') toggleHelp();
 });
-setInterval(async () => { const n = await log.flush(); $('logState').textContent = log.pending.length ? `log: ${log.pending.length} waiting` : `log: ok (${log.all.length})`; $('tail').textContent = log.all.slice(-12).map(r => JSON.stringify(r)).join('\n'); }, 1000);
+setInterval(async () => { const n = await log.flush(); $('logState').textContent = $('logState').title = log.pending.length ? `log: ${log.pending.length} waiting` : `log: ok (${log.all.length})`; $('tail').textContent = log.all.slice(-12).map(r => JSON.stringify(r)).join('\n'); }, 1000);
 setInterval(logLatency, 5000);
 addEventListener('beforeunload', () => { if (log.pending.length) navigator.sendBeacon(`/log/${id}`, log.pending.map(r => JSON.stringify(r)).join('\n') + '\n'); });
 requestAnimationFrame(tick);

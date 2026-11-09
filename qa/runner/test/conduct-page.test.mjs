@@ -130,3 +130,51 @@ test('clock-conductor.html: its module imports are files the server serves, the 
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   for (const id of ['lampBeat', 'lampKick', 'lampBar', 'bpmShadow', 'offset', 'profiles', 'markName']) assert.ok(html.includes(`id="${id}"`), id);
 });
+
+test('clock-conductor.html Help: a Help button and a hidden panel with the guide steps, ? toggles it, plain ASCII only (#205 font rule)', () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  const btn = /<button id="help"[^>]*>([^<]*)<\/button>/.exec(html);
+  assert.ok(btn, 'a Help button in the header');
+  assert.equal(btn[1], 'Help');
+  const panel = /<div id="helpPanel" hidden>([\s\S]*?)<\/div>/.exec(html);
+  assert.ok(panel, 'the panel starts hidden');
+  for (const s of ['Load to NEXT', 'Play / pause', 'Crossfade', 'Shift+F', 'Shift+S', 'Download log']) assert.ok(panel[1].includes(s), s);
+  assert.ok(/^[\x20-\x7e\n\t]*$/.test(btn[0] + panel[1]), 'no glyph outside ASCII in the new labels');
+  assert.match(html, /\$\('help'\)\.onclick = toggleHelp/);
+  assert.match(html, /a\.type === 'help'\) toggleHelp\(\)/);
+  const k = C.pageKey({ key: '?', code: 'Slash', shiftKey: true, target: { tagName: 'BODY' } });
+  assert.equal(k && k.type, 'help');
+  assert.equal(C.pageKey({ key: '?', code: 'Slash', shiftKey: true, target: { tagName: 'INPUT', type: 'text' } }), null, 'typing a ? in the venue name');
+  assert.ok(fs.existsSync(path.join(REPO, 'qa', 'CONDUCTOR_GUIDE.md')), 'the full guide');
+});
+
+test('clock-conductor.html layout: long text cannot widen a column or push the header buttons away', () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  const css = html.match(/<style>([\s\S]*?)<\/style>/)[1];
+  assert.match(css, /main\{[^}]*grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)/, 'columns may shrink below their content');
+  assert.match(css, /section\{[^}]*min-width:0/);
+  assert.match(css, /\.banner,\.badge\{[^}]*max-width:22ch[^}]*white-space:nowrap[^}]*overflow:hidden[^}]*text-overflow:ellipsis/, 'badges cut long text');
+  assert.match(css, /\.actions\{[^}]*margin-left:auto[^}]*flex:none/, 'the buttons never shrink or wrap away');
+  assert.match(css, /\.deck \.name,#msg,#lastFix,#bar1,#tail\{overflow-wrap:anywhere\}/);
+  const actions = /<span class="actions">([\s\S]*?)<\/span>/.exec(html);
+  assert.ok(actions, 'the header buttons sit in one group');
+  for (const id of ['start', 'download', 'help']) assert.ok(actions[1].includes(`id="${id}"`), id);
+  for (const id of ['input', 'session', 'scored', 'logState']) assert.match(html, new RegExp(`\\$\\('${id}'\\)\\.textContent = \\$\\('${id}'\\)\\.title =`), `${id} keeps its full text in title`);
+});
+
+test('clock-conductor.html band bars: a fixed ASCII label row from Clock.BANDS, built once, the kick label marked', () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  assert.match(html, /<div class="bands" id="bands"><\/div>\s*<div class="bandLabels" id="bandLabels"><\/div>/, 'the labels sit right under the bars');
+  const css = html.match(/<style>([\s\S]*?)<\/style>/)[1];
+  assert.match(css, /\.bandLabels\{display:flex;gap:4px/, 'the same flex and gap as the bars, so each label lines up with its bar');
+  assert.match(css, /\.bandLabels>span\{flex:1;min-width:0/);
+  const map = /const BAND_LABELS = (\{[^}]*\});/.exec(html);
+  assert.ok(map, 'one label per band');
+  const labels = Function(`return ${map[1]}`)();
+  assert.deepEqual(Clock.BANDS.map(b => labels[b]), ['sub', 'kick', 'low', 'lo-mid', 'mid', 'hi-mid', 'pres', 'air']);
+  assert.ok(Object.values(labels).every(s => /^[\x20-\x7e]+$/.test(s)), 'ASCII only (#205)');
+  const mod = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
+  assert.equal((mod.match(/\$\('bandLabels'\)\.innerHTML/g) || []).length, 1, 'built once');
+  assert.ok(!/function monitor[\s\S]*bandLabels[\s\S]*function scatter/.test(mod), 'not in the per-frame monitor');
+  assert.match(mod, /b === 'kick' \? ' class="k"'/, 'the kick label is marked');
+});
