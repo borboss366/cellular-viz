@@ -9,7 +9,8 @@
 # From the runner env file (R9: the private paths live only there, never in git):
 #   CONDUCTOR_TRACKS    the private tracks folder (required)
 #   CONDUCTOR_SESSIONS  where the session logs go (default: sessions/ beside the tracks folder)
-#   CONDUCTOR_SOCKET    the socket (default: conductor.sock next to RUNNER_SOCKET, i.e. in the data folder)
+#   CONDUCTOR_SOCKET    the socket (default: conductor.sock next to RUNNER_SOCKET; without RUNNER_SOCKET,
+#                       /home/puggie/pi-durable-worker/data/conductor.sock, what cellular-viz-conductor.service forwards to)
 #   RUNNER_STATE        conductor.pid and conductor.log go here
 set -eu
 HOME_DIR=$(cd "$(dirname "$0")/../.." && pwd)     # the clone this script lives in = RUNNER_HOME (main)
@@ -37,10 +38,9 @@ if [ "${1:-}" = "stop" ]; then stop_all; rm -f "$STATE/conductor.pid"; echo "con
 
 : "${CONDUCTOR_TRACKS:?CONDUCTOR_TRACKS not set: add it to ~/.config/cellular-viz-runner.env (qa/runner/README.md)}"
 SOCK=${CONDUCTOR_SOCKET:-}
-if [ -z "$SOCK" ]; then
-  : "${RUNNER_SOCKET:?RUNNER_SOCKET not set: the conductor socket goes next to it}"
-  SOCK="$(dirname "$RUNNER_SOCKET")/conductor.sock"
-fi
+# not set: next to RUNNER_SOCKET, else the data folder the host unit forwards to (bind-mounted at the same path)
+if [ -z "$SOCK" ] && [ -n "${RUNNER_SOCKET:-}" ]; then SOCK="$(dirname "$RUNNER_SOCKET")/conductor.sock"; fi
+SOCK=${SOCK:-/home/puggie/pi-durable-worker/data/conductor.sock}
 mkdir -p "$STATE"
 stop_all
 rm -f "$SOCK"
