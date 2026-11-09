@@ -5,10 +5,10 @@
 //
 // Diagnosis (test-pr 8b5a27d): the browser PROCESS dies with SIGTRAP (a Chromium CHECK) ~310 ms after loading the page
 // without its module, after clock.js arrives; about:blank, a static page, page 01, AudioContext, clock.js +
-// clock-tracker.js alone and the module imports alone all load. So Chromium is spawned here directly (the same binary
-// Playwright uses, its args plus --enable-logging=stderr --v=0) and driven over CDP, so its stderr ("Check failed: …")
-// and exit code/signal go to the log file; the page's markup is bisected further; and the two dying steps run once
-// more on chrome-headless-shell (what exp-run uses). Output: one compact line per step, the CHECK lines, the log path.
+// clock-tracker.js alone and the module imports alone all load. So the page's markup is bisected further, on
+// chromium.launch (pipe) with chrome-headless-shell (exp-run's binary) and exp-run's flags plus --enable-logging=stderr
+// --v=0; DEBUG=pw:browser carries Chromium's stderr ("Check failed: …") and its exit line into the log file kept on
+// the box. Output: one compact line per step, each distinct CHECK line, the markup steps that survive, the log path.
 //   node --test qa/runner/test/*.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,7 +16,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import * as S from '../../conduct-serve.mjs';
@@ -90,8 +89,6 @@ function bisectRepo(root) {
 test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (box only)', { timeout: 300e3 }, async t => {
   const home = qaHome();
   if (!home) { t.skip('no runner settings here (not the box)'); return; }
-  let pw;
-  try { pw = createRequire(path.join(home, 'qa', 'x.cjs'))('playwright'); } catch (e) { t.skip(`no Playwright under QA_HOME/qa: ${e.message}`); return; }
   // everything verbose goes to a log file that stays on the box; test-pr's output gets compact lines only
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '').replace('T', '-');
   let logFile = path.join(home, 'qa', 'history', `conduct-smoke-${stamp}.log`);
@@ -101,6 +98,29 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
   console.log(`# conductor smoke log: ${logFile}`);
   const t0 = Date.now(), errors = [], checks = [];
   const note = s => toFile(`[test ${((Date.now() - t0) / 1000).toFixed(2)}s] ${s}`);
+  // DEBUG=pw:browser (the pipe launch's own log: the command line, Chromium's stderr as [pid=…][err] lines, and
+  // "<process did exit: exitCode=…, signal=…>") goes to the log file only, never to test-pr's output
+  let cur = null;
+  process.env.DEBUG = 'pw:browser';
+  const write = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk, ...rest) => {
+    const s = String(chunk);
+    if (!/pw:browser/.test(s)) return write(chunk, ...rest);
+    for (const l of s.split('\n')) {
+      const c = l.replace(/\x1b\[[0-9;]*m/g, '');
+      if (!c.trim()) continue;
+      toFile(c);
+      if (/Check failed|FATAL|NOTREACHED|CHECK\(/.test(c)) checks.push(c.replace(/^.*?\[err\]\s*/, '').replace(/^\[[^\]]*\]\s*/, '').slice(0, 220));
+      const x = /process did exit: exitCode=(\S+), signal=(\S+?)>?$/.exec(c);
+      if (x && cur) cur.exit = `code=${x[1]} signal=${x[2]}`;
+    }
+    const cb = rest.find(x => typeof x === 'function');
+    if (cb) cb();
+    return true;
+  };
+  t.after(() => { process.stderr.write = write; });
+  let pw;
+  try { pw = createRequire(path.join(home, 'qa', 'x.cjs'))('playwright'); } catch (e) { t.skip(`no Playwright under QA_HOME/qa: ${e.message}`); return; }
 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'conduct-smoke-')), tracks = path.join(root, 'tracks'), sessions = path.join(root, 'sessions');
   fs.mkdirSync(tracks);
@@ -112,34 +132,21 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
   const env = { ...process.env }, libRoot = path.join(os.homedir(), 'qa-libs/root');
   const libs = [path.join(libRoot, 'usr/lib/x86_64-linux-gnu'), path.join(libRoot, 'lib/x86_64-linux-gnu')].filter(p => fs.existsSync(p));
   if (libs.length) env.LD_LIBRARY_PATH = [...libs, env.LD_LIBRARY_PATH].filter(Boolean).join(':');
-  const ARGS = ['--autoplay-policy=no-user-gesture-required', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
-    '--no-sandbox', '--no-first-run', '--no-default-browser-check', '--mute-audio', '--enable-logging=stderr', '--v=0'];
+  const ARGS = ['--autoplay-policy=no-user-gesture-required', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-logging=stderr', '--v=0'];
   const FULL = pw.chromium.executablePath(), SHELL = headlessShell(FULL);
-  note(`full ${FULL}; shell ${SHELL}; node ${process.versions.node}; libs ${libs.length}`);
+  note(`shell ${SHELL}; full ${FULL}; node ${process.versions.node}; libs ${libs.length}`);
+  if (!SHELL) console.log('# conductor smoke: no chrome-headless-shell found; Playwright picks its default headless binary');
 
-  /** spawn Chromium, read its stderr into the log (and the CHECK lines), connect Playwright over CDP */
-  async function spawnBrowser(exe, label) {
-    const udd = fs.mkdtempSync(path.join(root, 'udd-'));
-    const args = [...ARGS, '--remote-debugging-port=0', `--user-data-dir=${udd}`, ...(/headless-shell/.test(exe) ? [] : ['--headless=new']), 'about:blank'];
-    const proc = spawn(exe, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
-    const st = { proc, label, exit: null, browser: null };
-    let endpoint, buf = '';
-    const ready = new Promise((res, rej) => { endpoint = { res, rej }; setTimeout(() => rej(new Error(`${label}: no DevTools endpoint in 15 s`)), 15e3); });
-    const onLine = l => {
-      toFile(`[${label} err] ${l}`);
-      const m = /DevTools listening on (ws:\/\/\S+)/.exec(l);
-      if (m) endpoint.res(m[1]);
-      if (/Check failed|FATAL|NOTREACHED|CHECK\(/.test(l)) checks.push(`${label}: ${l.replace(/^\[[^\]]*\]\s*/, '')}`.slice(0, 220));
-    };
-    proc.stderr.on('data', d => { buf += d; let i; while ((i = buf.indexOf('\n')) >= 0) { onLine(buf.slice(0, i)); buf = buf.slice(i + 1); } });
-    proc.stdout.on('data', d => toFile(`[${label} out] ${String(d).trim()}`));
-    proc.on('exit', (code, signal) => { st.exit = `code=${code} signal=${signal}`; note(`${label} process exit ${st.exit}`); endpoint.rej(new Error(`${label} exited ${st.exit}`)); });
-    const ws = await ready;
-    st.browser = await pw.chromium.connectOverCDP(ws);
+  /** chromium.launch (pipe) on exp-run's binary and flags; its exit code/signal come from the pw:browser exit line
+   *  (a launched Browser has no process(); only launchServer's BrowserServer does, and that hid the stderr) */
+  async function launchBrowser(label = 'shell') {
+    const st = { label, exit: null, browser: null };
+    cur = st;
+    st.browser = await pw.chromium.launch({ headless: true, args: ARGS, env, ...(SHELL ? { executablePath: SHELL } : {}) });
     st.browser.on('disconnected', () => note(`${label} disconnected`));
     return st;
   }
-  const kill = async st => { if (!st) return; await st.browser?.close().catch(() => {}); if (st.exit === null) st.proc.kill('SIGKILL'); };
+  const kill = async st => { if (st && st.browser) await st.browser.close().catch(() => {}); };
   const watch = (page, tag) => {
     page.on('pageerror', e => { errors.push(String(e && e.message || e)); note(`${tag} pageerror ${e && e.message || e}`); });
     page.on('console', m => note(`${tag} console.${m.type()} ${m.text()}`));
@@ -148,15 +155,13 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
   };
 
   const lines = [], printed = new Set();   // each distinct CHECK line printed once, at most 6
-  let cur = null;
-  /** one bisect step on a fresh page; a dead browser is respawned first */
-  async function step(name, url, exe = FULL, label = 'chrome') {
-    if (!cur || cur.exit !== null || !cur.browser.isConnected() || cur.label !== label) { await kill(cur); cur = await spawnBrowser(exe, label); }
+  /** one bisect step on a fresh page; a dead browser is relaunched first */
+  async function step(name, url, label = 'shell') {
+    if (!cur || cur.exit !== null || !cur.browser.isConnected()) { await kill(cur); await launchBrowser(label); }
     const s0 = Date.now(), nChecks = checks.length;
     let ok = false, why = '';
     try {
-      const ctx = cur.browser.contexts()[0] || await cur.browser.newContext();
-      const page = await ctx.newPage();
+      const page = await cur.browser.newPage();
       watch(page, name);
       await page.goto(url, { waitUntil: 'load', timeout: 20e3 });
       await page.waitForTimeout(1500);
@@ -182,15 +187,15 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
       ['(a) head only', `${B}/b-m-head.html`], ['(b) no canvas', `${B}/b-m-nocanvas.html`], ['(c) no style', `${B}/b-m-nostyle.html`], ['(d) no form controls', `${B}/b-m-nocontrols.html`],
       ['(e) no scripts', `${B}/b-m-noscripts.html`], ['(f1) body half 1', `${B}/b-m-half1.html`], ['(f2) body half 2', `${B}/b-m-half2.html`]];
     for (const [name, url] of plan) await step(name, url);
-    if (SHELL) for (const [name, url] of plan.filter(p => p[0] === 'page without module' || p[0] === 'page')) await step(name, url, SHELL, 'shell');
-    else console.log('# conductor smoke: no chrome-headless-shell found beside the full chrome');
     const died = lines.filter(l => / DIED /.test(l)).map(l => l.replace(/^step \d+: /, '').replace(/ DIED.*/, ''));
     console.log(`# conductor smoke bisect summary: ${died.length ? `died at ${died.join('; ')}` : 'every step loaded'}${checks.length ? `; ${checks.length} CHECK line(s) in the log` : ''}`);
+    const survive = lines.filter(l => /: \([a-f]\d?\) /.test(l) && / ok /.test(l)).map(l => l.replace(/^step \d+: /, '').replace(/ \[.*$/, ''));
+    console.log(`# conductor smoke markup survivors: ${survive.length ? survive.join('; ') : 'none of (a)–(f)'}`);
 
-    // ---- the smoke run on the real page (full chrome, as the user's laptop runs Chrome) ----
-    await kill(cur); cur = await spawnBrowser(FULL, 'chrome');
+    // ---- the smoke run on the real page ----
+    await kill(cur); await launchBrowser('shell');
     errors.length = 0;
-    const page = await (cur.browser.contexts()[0] || await cur.browser.newContext()).newPage();
+    const page = await cur.browser.newPage();
     watch(page, 'smoke');
     try { await smoke(page, base); } catch (e) {
       console.log(`# conductor smoke failed: ${String(e && e.message || e).split('\n')[0].slice(0, 200)}${cur.exit ? ` (browser exit ${cur.exit})` : ''}`);
@@ -199,6 +204,7 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
       throw e;
     }
   } finally {
+    process.stderr.write = write;
     await kill(cur);
     for (const s of [srv, bSrv]) { if (s.closeAllConnections) s.closeAllConnections(); await new Promise(r => s.close(() => r())); }
     fs.rmSync(root, { recursive: true, force: true });
