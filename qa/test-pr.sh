@@ -88,8 +88,9 @@ else
   # the TAP tail (# tests, # pass, # fail …) is the summary; failing tests are listed before it
   node --test --test-reporter=tap $TESTS > "$OUT" 2>&1
   RC=$?
-  # failures, skipped tests with their reason ("ok N - name # SKIP why"), then the TAP totals
-  grep -E '^not ok|# SKIP|^# (tests|suites|pass|fail|cancelled|skipped|todo|duration_ms)' "$OUT" | sed 's/^ *//'
+  # failures, skipped tests with their reason ("ok N - name # SKIP why"), the real corpus's "corpus:" lines
+  # (ids and numbers only, corpus.test.mjs checks that), then the TAP totals
+  grep -E '^not ok|# SKIP|^ *# corpus: |^# (tests|suites|pass|fail|cancelled|skipped|todo|duration_ms)' "$OUT" | sed 's/^ *//'
   if [ $RC -ne 0 ]; then
     FAIL=1
     # every failure with its location and assertion message (not the stack), so one run gives the whole picture

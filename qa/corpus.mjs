@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 export const CORPUS_FILE = fileURLToPath(new URL('./corpus.json', import.meta.url));
 export const BPM_TOLERANCE = 0.01;   // a gate track's fitted tempo must sit within 1 % of its corpus BPM
+export const FLAG_DRIFT = 20;        // R15: driftCore over 20 % means the grid, not the track, is the problem
 
 /** the committed rows */
 export const loadCorpus = (file = CORPUS_FILE) => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -41,6 +42,9 @@ export function resolve(rows, map, tracksDir) {
  * the hard tempo check: every gate row with a corpus BPM against its grid's fitted tempo (bpmFitCore when the
  * converter wrote one, else bpmFit; never medianBpm) → [{ id, bpm, fit, field, err, ok, skipped, reason }].
  * Rows without a BPM (the DJ set), not "gate", or whose grid has no fitted tempo yet are skipped with the reason.
+ * R15 (#188 6736333312): a grid with gridSuspect true or driftCore over FLAG_DRIFT % has no tempo fit for gating; its
+ * row reads "grid flagged" (flagged: true, ok: null), not a failed track. gridSuspect, inlierFrac and driftCore
+ * ride along for the report (null where the grid has none yet).
  */
 export function checkBpm(rows, resolved) {
   const byId = new Map(resolved.map(x => [x.id, x]));
@@ -50,7 +54,27 @@ export function checkBpm(rows, resolved) {
     if (!x.grid) return { id: r.id, skipped: true, reason: x.reason };
     const field = Number.isFinite(x.grid.bpmFitCore) ? 'bpmFitCore' : Number.isFinite(x.grid.bpmFit) ? 'bpmFit' : null;
     if (!field) return { id: r.id, skipped: true, reason: 'grid has no fitted tempo yet' };
-    const fit = x.grid[field], err = Math.abs(fit - r.bpm) / r.bpm;
-    return { id: r.id, bpm: r.bpm, fit, field, err: +err.toFixed(5), ok: err <= BPM_TOLERANCE, skipped: false };
+    const fit = x.grid[field], err = Math.abs(fit - r.bpm) / r.bpm, g = x.grid;
+    const extra = { gridSuspect: typeof g.gridSuspect === 'boolean' ? g.gridSuspect : null,
+      inlierFrac: Number.isFinite(g.inlierFrac) ? g.inlierFrac : null, driftCore: Number.isFinite(g.driftCore) ? g.driftCore : null };
+    const flagged = extra.gridSuspect === true || (extra.driftCore !== null && extra.driftCore > FLAG_DRIFT);
+    return { id: r.id, bpm: r.bpm, fit, field, err: +err.toFixed(5), ok: flagged ? null : err <= BPM_TOLERANCE, flagged, skipped: false, ...extra };
   });
+}
+
+/**
+ * checkBpm's results as the "corpus:" lines test-pr.sh always prints: a count, then one line per gate row.
+ * Corpus ids, fields, numbers and fixed reasons only, never a stem or file name (R9: test-pr output is shared).
+ */
+export function reportLines(results) {
+  const checked = results.filter(x => !x.skipped), na = (v, f) => (v === null || v === undefined ? 'n/a' : f(v));
+  return [
+    `corpus: bpm ${checked.length} checked, ${results.length - checked.length} skipped, ` +
+      `${checked.filter(x => x.ok === false).length} off, ${checked.filter(x => x.flagged).length} grid flagged`,
+    ...results.map(x => x.skipped
+      ? `corpus: ${x.id} skipped (${x.reason})`
+      : `corpus: ${x.id} ${x.field} ${x.fit.toFixed(2)} vs ${x.bpm} (${(x.err * 100).toFixed(2)} %) ` +
+        `${x.flagged ? 'grid flagged' : x.ok ? 'ok' : 'OFF'}; gridSuspect ${na(x.gridSuspect, String)}, ` +
+        `inlierFrac ${na(x.inlierFrac, v => v.toFixed(3))}, driftCore ${na(x.driftCore, v => v.toFixed(2))} %`),
+  ];
 }

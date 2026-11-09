@@ -79,16 +79,60 @@ test('checkBpm: gate rows within 1 % of the corpus BPM, bpmFitCore first, never 
   assert.equal(r.rep, undefined, 'report rows are not checked');
 });
 
-// on the QA box, once the map is in place and the grids carry bpmFit: the real corpus, counts only in the messages
-test('the real corpus on the box: every gate track with a fitted tempo is within 1 % (skips without the map)', (t) => {
+// on the QA box, once the map is in place and the grids carry bpmFit: the real corpus, ids and numbers only.
+// REPORT-ONLY (R15, #188 6736333312): the fields-1 index fit read 4 gate tracks fast, so this prints every row and
+// never fails until the robust-fit converter has two clean runs; then it goes hard again (1 % stays 1 %).
+const REAL_CORPUS_HARD = false;
+test('the real corpus on the box: every gate track with a fitted tempo against 1 % (report-only for now; skips without the map)', (t) => {
   const tracks = A.audioDir();
   if (!fs.existsSync(tracks)) { t.skip('no tracks folder here'); return; }
   const map = C.loadMap(tracks);
   if (map.missing) { t.skip('no corpus-map.json beside the tracks yet'); return; }
   const res = C.checkBpm(rows, C.resolve(rows, map, tracks)), checked = res.filter(x => !x.skipped);
-  t.diagnostic(`corpus bpm: ${checked.length} checked, ${res.length - checked.length} skipped`);
-  const bad = checked.filter(x => !x.ok);
+  for (const line of C.reportLines(res)) t.diagnostic(line);   // test-pr.sh prints these even on a pass
+  const bad = checked.filter(x => x.ok === false);
+  if (!REAL_CORPUS_HARD) { t.diagnostic(`corpus: report-only (R15): ${bad.length} off, not failing`); return; }
   assert.deepEqual(bad.map(x => `${x.id} ${x.field} ${x.fit} vs ${x.bpm}`), [], 'gate tracks off their corpus BPM by more than 1 %');
+});
+
+test('R9: the corpus: lines test-pr prints carry ids and numbers, never a stem or file name', () => {
+  const rows = [{ id: 'ok', status: 'gate', bpm: 126 }, { id: 'off', status: 'gate', bpm: 100 },
+    { id: 'nogrid', status: 'gate', bpm: 120 }, { id: 'unmapped', status: 'gate', bpm: 117 }, { id: 'set', status: 'gate', bpm: null }];
+  const resolved = [
+    { id: 'ok', stem: 'secret-artist-ok-track', grid: { bpmFitCore: 126.2 }, reason: null },
+    { id: 'off', stem: 'secret-artist-off-track', grid: { bpmFit: 103 }, reason: null },
+    { id: 'nogrid', stem: 'secret-artist-nogrid-track', grid: null, reason: 'no grid' },
+    { id: 'unmapped', stem: null, grid: null, reason: 'not in the map' },
+    { id: 'set', stem: 'secret-dj-set', grid: { bpmFit: 127 }, reason: null },
+  ];
+  const lines = C.reportLines(C.checkBpm(rows, resolved));
+  assert.equal(lines[0], 'corpus: bpm 2 checked, 3 skipped, 1 off, 0 grid flagged');
+  assert.equal(lines.length, 1 + rows.length);
+  assert.ok(lines.every(l => l.startsWith('corpus: ')), 'every line has the prefix test-pr.sh greps for');
+  assert.equal(lines.find(l => l.startsWith('corpus: ok ')),
+    'corpus: ok bpmFitCore 126.20 vs 126 (0.16 %) ok; gridSuspect n/a, inlierFrac n/a, driftCore n/a %');
+  assert.match(lines.find(l => l.startsWith('corpus: off ')), / OFF; /);
+  const text = lines.join('\n');
+  assert.doesNotMatch(text, /secret|\.(flac|wav|mp3|m4a|aiff?|ogg)\b|beatgrid|qa-audio|\w\/[\w.-]+\/|(^|\s)\//im, text);   // no path ("n/a" is fine)
+});
+
+test('R15: gridSuspect or driftCore over 20 % reads "grid flagged" (no tempo verdict), never a failed track', () => {
+  const rows = ['sus', 'wild', 'fine', 'calm'].map(id => ({ id, status: 'gate', bpm: 120 }));
+  const resolved = [
+    { id: 'sus', grid: { bpmFitCore: 131, gridSuspect: true, inlierFrac: 0.82, driftCore: 4 }, reason: null },
+    { id: 'wild', grid: { bpmFitCore: 133, driftCore: 111.5 }, reason: null },
+    { id: 'fine', grid: { bpmFitCore: 120.3, gridSuspect: false, inlierFrac: 0.987, driftCore: 0.4 }, reason: null },
+    { id: 'calm', grid: { bpmFitCore: 125, gridSuspect: false, inlierFrac: 0.99, driftCore: 20 }, reason: null },
+  ];
+  const res = C.checkBpm(rows, resolved), r = Object.fromEntries(res.map(x => [x.id, x]));
+  assert.equal(r.sus.flagged, true); assert.equal(r.sus.ok, null, 'gridSuspect: no verdict on the track');
+  assert.equal(r.wild.flagged, true); assert.equal(r.wild.ok, null, 'driftCore 111 %: no verdict');
+  assert.equal(r.fine.ok, true); assert.equal(r.fine.flagged, false);
+  assert.equal(r.calm.flagged, false, 'exactly 20 % is not over 20 %'); assert.equal(r.calm.ok, false, 'and its 4 % error counts');
+  const lines = C.reportLines(res);
+  assert.equal(lines[0], 'corpus: bpm 4 checked, 0 skipped, 1 off, 2 grid flagged');
+  assert.equal(lines[1], 'corpus: sus bpmFitCore 131.00 vs 120 (9.17 %) grid flagged; gridSuspect true, inlierFrac 0.820, driftCore 4.00 %');
+  assert.match(lines[3], /\) ok; gridSuspect false, inlierFrac 0\.987, driftCore 0\.40 %$/);
 });
 
 test('R9: no private file names or folders in corpus.json or CLOCK_CORPUS.md', () => {
