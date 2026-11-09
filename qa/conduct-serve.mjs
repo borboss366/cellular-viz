@@ -3,9 +3,12 @@
 // session log. Separate from the QA viewer (qa/serve.mjs, the box's grading page): this one runs where the user plays,
 // on the laptop or the box, and listens on 127.0.0.1 unless told otherwise.
 //
-//   node qa/conduct-serve.mjs [--dir <tracks dir>] [--sessions <dir>] [--port 8790] [--host 127.0.0.1]
+//   node qa/conduct-serve.mjs [--dir <tracks dir>] [--sessions <dir>] [--port 8790] [--host 127.0.0.1] [--socket <path>]
 //     (R9: the folders also come from CONDUCTOR_TRACKS / CONDUCTOR_SESSIONS, env only, never committed)
 //     → http://127.0.0.1:8790/  (opens experiments/clock-conductor.html)
+//   --socket: listen on a Unix socket instead of TCP (a stale socket file is removed first; mode 0600). On the box the
+//     container publishes no ports, so qa/runner/conductor.sh puts it in the bind-mounted data folder and the host's
+//     cellular-viz-conductor.socket/.service (systemd-socket-proxyd) forward :8790 to it, like the 8787 viewer.
 //
 // Routes:
 //   GET  /                       → /experiments/clock-conductor.html
@@ -129,13 +132,29 @@ export function createHandler({ tracksDir, sessionsDir, repo = REPO }) {
   };
 }
 
+/** listen on a Unix socket: a stale socket file (left by a crash) is removed first, then the socket is made 0600 */
+export function listenSocket(server, sock) {
+  try { if (!fs.lstatSync(sock).isDirectory()) fs.unlinkSync(sock); } catch { /* none there */ }
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(sock, () => { server.off('error', reject); fs.chmodSync(sock, 0o600); resolve(sock); });
+  });
+}
+
 function main(argv) {
   const args = argv.slice(2), opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
   const tracksDir = audioDir(opt('--dir') || process.env.CONDUCTOR_TRACKS || undefined);
   const sessionsDir = path.resolve(opt('--sessions', process.env.CONDUCTOR_SESSIONS || path.join(path.dirname(tracksDir), 'sessions')));
-  const port = +opt('--port', 8790), host = opt('--host', '127.0.0.1');
+  const port = +opt('--port', 8790), host = opt('--host', '127.0.0.1'), sock = opt('--socket');
   const n = listTracks(tracksDir).length;
-  http.createServer(createHandler({ tracksDir, sessionsDir })).listen(port, host, () =>
+  const server = http.createServer(createHandler({ tracksDir, sessionsDir }));
+  if (sock) {
+    listenSocket(server, sock).then(() => console.log(`conductor on ${sock} (${n} track(s); logs → ${sessionsDir})`),
+      e => { console.error(`conductor: cannot listen on ${sock}: ${e.message}`); process.exit(1); });
+    for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => server.close(() => process.exit(0)));
+    return;
+  }
+  server.listen(port, host, () =>
     console.log(`conductor on http://${host}:${port}/ (${n} track(s); logs → ${sessionsDir})`));
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv);

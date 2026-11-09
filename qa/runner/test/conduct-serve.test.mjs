@@ -131,3 +131,26 @@ test('conduct-serve /log: schema v1 lines appended and read back; a bad line is 
     assert.deepEqual(S.checkLines('{"type":"key","ctx":1,"shown":false}\n\n'), []);
   });
 });
+
+test('conduct-serve --socket: a stale file at the path is replaced, the socket is 0600 and serves the page and the API', async () => {
+  const fx = fixture(), sock = path.join(fx.root, 'conductor.sock');
+  fs.writeFileSync(sock, 'left by a crash');
+  const srv = http.createServer(S.createHandler({ tracksDir: fx.tracks, sessionsDir: fx.sessions }));
+  const get = p => new Promise((resolve, reject) => {
+    http.get({ socketPath: sock, path: p }, res => { let b = ''; res.on('data', d => { b += d; }); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b })); }).on('error', reject);
+  });
+  try {
+    assert.equal(await S.listenSocket(srv, sock), sock);
+    const st = fs.lstatSync(sock);
+    assert.ok(st.isSocket(), 'a socket now, not the stale file');
+    assert.equal(st.mode & 0o777, 0o600, 'only the owner (the host proxy runs as the same user)');
+    const tracks = await get('/api/tracks');
+    assert.equal(tracks.status, 200);
+    assert.ok(JSON.parse(tracks.body).length >= 2, 'the tracks list comes over the socket');
+    const root = await get('/');
+    assert.ok(root.status === 200 || (root.status >= 300 && root.status < 400), `/ answers (${root.status})`);
+  } finally {
+    await new Promise(r => srv.close(r));
+    fs.rmSync(fx.root, { recursive: true, force: true });
+  }
+});

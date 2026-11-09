@@ -1,0 +1,11 @@
+# The conductor page at :8790 (#188), from the laptop on the home Wi-Fi. The container publishes no ports, so
+# qa/runner/conductor.sh runs qa/conduct-serve.mjs on a Unix socket in the bind-mounted data folder and this forwards
+# TCP :8790 to it, like the 8787 viewer. Install on the box itself (the host), once, as the normal user (no sudo):
+#   cp /home/puggie/pi-durable-worker/data/cellular-viz-runner/qa/runner/cellular-viz-conductor.{socket,service} ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now cellular-viz-conductor.socket
+# Nothing answers until conductor.sh is started (qa/runner/README.md, "Conductor page").
+[Socket]
+ListenStream=8790
+
+[Install]
+WantedBy=sockets.target

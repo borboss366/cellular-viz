@@ -1,0 +1,9 @@
+# Forwards the host's :8790 (cellular-viz-conductor.socket) to the conductor's Unix socket in the bind-mounted data
+# folder (qa/runner/conductor.sh puts conductor.sock next to the runner's qa-runner.sock). Started by the socket unit.
+[Unit]
+Description=cellular-viz conductor page forward (:8790)
+Requires=cellular-viz-conductor.socket
+After=cellular-viz-conductor.socket
+
+[Service]
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd /home/puggie/pi-durable-worker/data/conductor.sock
