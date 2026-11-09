@@ -3,12 +3,14 @@
 // track and its grid, the page in Chromium: start, load, play ~10 s, M (kickIn), M (bar1) then ], Shift+S on the bar
 // lamp; the log the server kept must parse as schema v1 and hold the records the scorer needs.
 //
-// Diagnosis (test-pr 8b5a27d): the browser PROCESS dies with SIGTRAP (a Chromium CHECK) ~310 ms after loading the page
-// without its module, after clock.js arrives; about:blank, a static page, page 01, AudioContext, clock.js +
-// clock-tracker.js alone and the module imports alone all load. So the page's markup is bisected further, on
-// chromium.launch (pipe) with chrome-headless-shell (exp-run's binary) and exp-run's flags plus --enable-logging=stderr
-// --v=0; DEBUG=pw:browser carries Chromium's stderr ("Check failed: …") and its exit line into the log file kept on
-// the box. Output: one compact line per step, each distinct CHECK line, the markup steps that survive, the log path.
+// Cause (test-pr de8b54b): the box container has no fontconfig config ("Cannot load default config file"), and
+// chrome-headless-shell aborts with "[FATAL:…SkFontMgr_FontConfigInterface.cpp:163] Not implemented." + SIGTRAP once
+// text needs a font it cannot find (here the page's styled form controls). So the browser gets FONTCONFIG_FILE: a
+// tiny fonts.conf written to the temp folder, listing the font dirs the container has, with a private cache dir. No
+// fonts go into git. Launch: chromium.launch (pipe) on chrome-headless-shell (exp-run's binary) with exp-run's flags
+// plus --enable-logging=stderr --v=0; DEBUG=pw:browser goes to a log file kept on the box. When the smoke run fails
+// with the browser dead, the old markup bisect runs and prints one line per step (each distinct FATAL/CHECK line too).
+// A passing run prints the log path and the fonts line only.
 //   node --test qa/runner/test/*.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -52,6 +54,39 @@ function headlessShell(fullExe) {
     for (const d of ds) { const p = path.join(r, d, 'chrome-headless-shell-linux64', 'chrome-headless-shell'); if (fs.existsSync(p)) return p; }
   }
   return null;
+}
+/** the container's font dirs (those holding any .ttf/.otf/.ttc/.pfb, bounded walk) and how many font files */
+function fontDirs(home) {
+  const h = os.homedir();
+  const cands = ['/usr/share/fonts', '/usr/local/share/fonts', path.join(h, '.fonts'), path.join(h, '.local/share/fonts'),
+    path.join(h, 'qa-libs/root/usr/share/fonts'), home && path.join(home, 'fonts')].filter(Boolean);
+  const out = [];
+  let files = 0;
+  const walk = (d, depth) => {
+    let n = 0, ents = [];
+    try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return 0; }
+    for (const e of ents) {
+      if (e.isFile() && /\.(ttf|otf|ttc|pfb)$/i.test(e.name)) n++;
+      else if ((e.isDirectory() || e.isSymbolicLink()) && depth < 5) n += walk(path.join(d, e.name), depth + 1);
+      if (n > 5000) break;
+    }
+    return n;
+  };
+  for (const d of [...new Set(cands)]) { const n = walk(d, 0); if (n) { out.push(d); files += n; } }
+  return { dirs: out, files };
+}
+/** a fonts.conf for those dirs, with its own cache dir (a cache shared with other fontconfig versions can break it) */
+function fontsConf(root, dirs) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const fam = (g, list) => `<alias><family>${g}</family><prefer>${list.map(f => `<family>${f}</family>`).join('')}</prefer></alias>`;
+  const conf = ['<?xml version="1.0"?>', '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">', '<fontconfig>',
+    ...dirs.map(d => `<dir>${esc(d)}</dir>`), `<cachedir>${esc(path.join(root, 'fc-cache'))}</cachedir>`,
+    fam('sans-serif', ['DejaVu Sans', 'Liberation Sans', 'Noto Sans']), fam('serif', ['DejaVu Serif', 'Liberation Serif', 'Noto Serif']),
+    fam('monospace', ['DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono']), fam('system-ui', ['DejaVu Sans', 'Liberation Sans', 'Noto Sans']),
+    '</fontconfig>', ''].join('\n');
+  const file = path.join(root, 'fonts.conf');
+  fs.writeFileSync(file, conf);
+  return file;
 }
 /** a copy of experiments/ (top-level files) and the page's qa modules, plus the bisect's pages */
 function bisectRepo(root) {
@@ -132,6 +167,13 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
   const env = { ...process.env }, libRoot = path.join(os.homedir(), 'qa-libs/root');
   const libs = [path.join(libRoot, 'usr/lib/x86_64-linux-gnu'), path.join(libRoot, 'lib/x86_64-linux-gnu')].filter(p => fs.existsSync(p));
   if (libs.length) env.LD_LIBRARY_PATH = [...libs, env.LD_LIBRARY_PATH].filter(Boolean).join(':');
+  // fonts: without a fontconfig config Chromium aborts on text it can't find a font for (SkFontMgr_FontConfigInterface)
+  const fonts = fontDirs(home);
+  if (fonts.dirs.length && !fs.existsSync('/etc/fonts/fonts.conf')) env.FONTCONFIG_FILE = fontsConf(root, fonts.dirs);
+  const fontLine = `${fonts.files} font file(s) in ${fonts.dirs.length} dir(s)${fonts.dirs.length ? ` (${fonts.dirs.join(', ')})` : ''}; ` +
+    (env.FONTCONFIG_FILE ? 'FONTCONFIG_FILE set to a temp fonts.conf' : fs.existsSync('/etc/fonts/fonts.conf') ? '/etc/fonts/fonts.conf exists, used as is' : 'NO font dir found: Chromium will abort on text');
+  console.log(`# conductor smoke fonts: ${fontLine}`);
+  note(`fonts: ${fontLine}`);
   const ARGS = ['--autoplay-policy=no-user-gesture-required', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-logging=stderr', '--v=0'];
   const FULL = pw.chromium.executablePath(), SHELL = headlessShell(FULL);
   note(`shell ${SHELL}; full ${FULL}; node ${process.versions.node}; libs ${libs.length}`);
@@ -186,20 +228,22 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
       ['clock scripts', `${B}/b-scripts.html`], ['module imports', `${B}/b-imports.html`], ['page without module', `${B}/b-nomodule.html`], ['page', `${B}/clock-conductor.html`],
       ['(a) head only', `${B}/b-m-head.html`], ['(b) no canvas', `${B}/b-m-nocanvas.html`], ['(c) no style', `${B}/b-m-nostyle.html`], ['(d) no form controls', `${B}/b-m-nocontrols.html`],
       ['(e) no scripts', `${B}/b-m-noscripts.html`], ['(f1) body half 1', `${B}/b-m-half1.html`], ['(f2) body half 2', `${B}/b-m-half2.html`]];
-    for (const [name, url] of plan) await step(name, url);
-    const died = lines.filter(l => / DIED /.test(l)).map(l => l.replace(/^step \d+: /, '').replace(/ DIED.*/, ''));
-    console.log(`# conductor smoke bisect summary: ${died.length ? `died at ${died.join('; ')}` : 'every step loaded'}${checks.length ? `; ${checks.length} CHECK line(s) in the log` : ''}`);
-    const survive = lines.filter(l => /: \([a-f]\d?\) /.test(l) && / ok /.test(l)).map(l => l.replace(/^step \d+: /, '').replace(/ \[.*$/, ''));
-    console.log(`# conductor smoke markup survivors: ${survive.length ? survive.join('; ') : 'none of (a)–(f)'}`);
-
     // ---- the smoke run on the real page ----
-    await kill(cur); await launchBrowser('shell');
-    errors.length = 0;
+    await launchBrowser('shell');
     const page = await cur.browser.newPage();
     watch(page, 'smoke');
     try { await smoke(page, base); } catch (e) {
-      console.log(`# conductor smoke failed: ${String(e && e.message || e).split('\n')[0].slice(0, 200)}${cur.exit ? ` (browser exit ${cur.exit})` : ''}`);
-      for (const c of checks.slice(-3)) console.log(`# conductor smoke check: ${c}`);
+      await new Promise(r => setTimeout(r, 300));   // let an exit line land
+      const dead = cur.exit !== null || !cur.browser.isConnected();
+      console.log(`# conductor smoke failed: ${String(e && e.message || e).split('\n')[0].slice(0, 200)}${dead ? ` (browser dead${cur.exit ? `, exit ${cur.exit}` : ''})` : ''}`);
+      for (const c of checks) { const k = c.replace(/\d+/g, '#'); if (printed.size < 6 && !printed.has(k)) { printed.add(k); console.log(`# conductor smoke check: ${c}`); } }
+      if (dead) {   // the browser died: bisect the page so the next fix has a place to look
+        for (const [name, url] of plan) await step(name, url);
+        const died = lines.filter(l => / DIED /.test(l)).map(l => l.replace(/^step \d+: /, '').replace(/ DIED.*/, ''));
+        console.log(`# conductor smoke bisect summary: ${died.length ? `died at ${died.join('; ')}` : 'every step loaded'}`);
+        const survive = lines.filter(l => /: \([a-f]\d?\) /.test(l) && / ok /.test(l)).map(l => l.replace(/^step \d+: /, '').replace(/ \[.*$/, ''));
+        console.log(`# conductor smoke markup survivors: ${survive.length ? survive.join('; ') : 'none of (a)–(f)'}`);
+      }
       console.log(`# conductor smoke log: ${logFile} (full)`);
       throw e;
     }
