@@ -130,3 +130,20 @@ test('clock-conductor.html: its module imports are files the server serves, the 
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   for (const id of ['lampBeat', 'lampKick', 'lampBar', 'bpmShadow', 'offset', 'profiles', 'markName']) assert.ok(html.includes(`id="${id}"`), id);
 });
+
+test('clock-conductor.html Help: a Help button and a hidden panel with the guide steps, ? toggles it, plain ASCII only (#205 font rule)', () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  const btn = /<button id="help"[^>]*>([^<]*)<\/button>/.exec(html);
+  assert.ok(btn, 'a Help button in the header');
+  assert.equal(btn[1], 'Help');
+  const panel = /<div id="helpPanel" hidden>([\s\S]*?)<\/div>/.exec(html);
+  assert.ok(panel, 'the panel starts hidden');
+  for (const s of ['Load to NEXT', 'Play / pause', 'Crossfade', 'Shift+F', 'Shift+S', 'Download log']) assert.ok(panel[1].includes(s), s);
+  assert.ok(/^[\x20-\x7e\n\t]*$/.test(btn[0] + panel[1]), 'no glyph outside ASCII in the new labels');
+  assert.match(html, /\$\('help'\)\.onclick = toggleHelp/);
+  assert.match(html, /a\.type === 'help'\) toggleHelp\(\)/);
+  const k = C.pageKey({ key: '?', code: 'Slash', shiftKey: true, target: { tagName: 'BODY' } });
+  assert.equal(k && k.type, 'help');
+  assert.equal(C.pageKey({ key: '?', code: 'Slash', shiftKey: true, target: { tagName: 'INPUT', type: 'text' } }), null, 'typing a ? in the venue name');
+  assert.ok(fs.existsSync(path.join(REPO, 'qa', 'CONDUCTOR_GUIDE.md')), 'the full guide');
+});

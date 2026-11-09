@@ -61,7 +61,7 @@ export function importProfiles(text) {
 /**
  * the page's own keys → an action, or null (Shift + the clock's keys stay the clock's hand fixes):
  *   M mark · [ / ] step bar1 · Shift+S confirm the bar (only with the bar lamp shown) · Alt+, / Alt+. offset ±
- *   Space play/pause · N next with a crossfade · K the answer-key lamp
+ *   Space play/pause · N next with a crossfade · K the answer-key lamp · ? the Help panel
  */
 export function pageKey(e) {
   if (!e || e.ctrlKey || e.metaKey) return null;
@@ -69,6 +69,7 @@ export function pageKey(e) {
   if (tag === 'TEXTAREA' || tag === 'SELECT' || (tag === 'INPUT' && e.target.type !== 'range')) return null;
   if (e.altKey) return e.code === 'Comma' ? { type: 'offset', dir: -1 } : e.code === 'Period' ? { type: 'offset', dir: 1 } : null;
   if (e.repeat) return null;
+  if (e.key === '?') return { type: 'help' };   // the Help panel (Shift+/ on most layouts)
   if (e.shiftKey) return e.code === 'KeyS' ? { type: 'barOk' } : null;
   return { KeyM: { type: 'mark' }, BracketLeft: { type: 'step', delta: -1 }, BracketRight: { type: 'step', delta: 1 },
     Space: { type: 'playPause' }, KeyN: { type: 'next' }, KeyK: { type: 'keyLamp' } }[e.code] || null;
