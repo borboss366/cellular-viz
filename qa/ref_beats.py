@@ -91,7 +91,7 @@ def main():
     from beat_this.utils import save_beat_tsv
 
     torch.set_num_threads(max(1, (os.cpu_count() or 2) - 1))   # leave a core for the viewer
-    a2b, done, failed = None, 0, 0
+    a2b, done, failed, undecodable = None, 0, 0, 0
     for name, path, ext in tracks:
         out, meta_path = os.path.join(a.dir, name + '.ref.beats'), os.path.join(a.dir, name + '.ref.json')
         digest = sha256(path)
@@ -106,8 +106,10 @@ def main():
         try:
             sig, sr = sf.read(path, dtype='float32', always_2d=True)
         except Exception as e:   # libsndfile reads FLAC, WAV and MP3; not M4A
-            print(f'{name}: cannot decode {os.path.basename(path)} ({e}); add a .flac or .wav of it', file=sys.stderr)
-            failed += 1
+            # any file libsndfile can't read (AAC .m4a, a damaged or odd file) is skipped, not a failure: one line,
+            # counted apart. A model crash or a failed write below still fails the run (VIZ research, #188).
+            print(f'cannot decode {name}: convert to .flac/.wav ({type(e).__name__}: {str(e)[:120]})')
+            undecodable += 1
             continue
         mono = np.ascontiguousarray(sig.mean(axis=1))
         if a2b is None:
@@ -140,7 +142,7 @@ def main():
         print(f'{name}: {meta["beats"]} beats, {meta["downbeats"]} downbeats, ~{meta["medianBpm"]} bpm, '
               f'{took:.0f} s → {os.path.basename(out)}')
         done += 1
-    print(f'ref-beats: {done} written, {failed} failed')
+    print(f'ref-beats: {done} written, {failed} failed, undecodable {undecodable}')
     return 1 if failed else 0
 
 
