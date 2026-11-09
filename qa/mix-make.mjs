@@ -8,8 +8,8 @@
 //   node qa/mix-make.mjs [--dir <tracks dir>] [--only <name>] [--plan] [--verify] [--force]   (qa/mix-make.sh: no args)
 //
 // R12: the truth of a mix is derived, never detected. Per cut window the reference beats get a fitted grid (A1′,
-// never a median): `linear` when the fit's residual RMS is small (LINEAR_RMS_MS) and the tempo drifts < 0.3 % over the
-// window, else `piecewise` (an 8-beat moving linear fit). The mix's beats are those grids mapped through the cut, the
+// never a median): `linear` when the fit's excessRms (R16) is ≤ 5 ms and the tempo drifts < 0.3 % over the window, else
+// `piecewise` (an 8-beat moving linear fit, only for a side marked allowDrift). The mix's beats are those grids mapped through the cut, the
 // resample and the start time; ref_beats.py never sees a mix.
 //   mode A (T13, beat-matched): the incoming track is resampled by ratio = bpmFit(out window) / bpmFit(in window)
 //     (`asetrate`-style: every time scales, nothing else moves) and started on an outgoing beat; its window must be
@@ -36,10 +36,18 @@ import { loadCorpus, loadMap } from './corpus.mjs';
 import { alignLagCheck, alignFields, alignNeeded } from './conduct-score.mjs';
 
 export const SR = 48000, RENDERS = 'renders', PREFIX = 'mix-';
-export const LINEAR_DRIFT_PCT = 0.3;
-// 6728321330 says RMS ≤ 5 ms; Beat This!'s 20 ms frames alone give 20/√12 = 5.8 ms on any tempo that isn't a whole
-// number of frames, so 5 ms of real wobble on top of that floor: √(5² + 5.77²) = 7.6 ms (flagged in the PR).
-export const LINEAR_RMS_MS = 7.6, PIECE_HALF = 4, SELF_CHECK_MS = 1;
+// R16 (#188 6738446518): the fit limit is the misfit ON TOP of the gridder's frame noise (uniform on frameMs: σ =
+// frameMs/√12, 5.77 ms at 20 ms): excessRms = √(max(0, rms² − frameMs²/12)) ≤ 5 ms (= rms 7.63 ms at 20 ms frames).
+// A window is refused (R16) with fewer than 64 inlier beats, any masked span (R15's mask: a 16-IBI window with > 25 %
+// outlier IBIs, a gap > 1.8 × the median IBI, or a beat under 0.5 confidence), excessRms > 5 ms or drift ≥ 0.3 %,
+// and mode A's incoming window also when it is gridSuspect (R15's rules over the window's own beats). A side with
+// allowDrift: true in mixes.json (never mode A's incoming) skips the excessRms/drift refusal and is fitted piecewise
+// (6728321330: drifting sources are welcome as mode A's outgoing side and in mode B).
+export const EXCESS_RMS_MS = 5, LINEAR_DRIFT_PCT = 0.3, MIN_INLIERS = 64, FRAME_MS_DEFAULT = 20;
+export const MASK = { window: 16, outlierMax: 0.25, tol: 0.125, gapX: 1.8, confMin: 0.5 };
+export const PIECE_HALF = 4, SELF_CHECK_MS = 1;
+/** R16: the residual RMS above the frame-quantisation floor (ms) */
+export const excessRms = (rmsMs, frameMs = FRAME_MS_DEFAULT) => Math.sqrt(Math.max(0, rmsMs * rmsMs - frameMs * frameMs / 12));
 export const MIXES_FILE = fileURLToPath(new URL('./mixes.json', import.meta.url));
 const num = x => typeof x === 'number' && Number.isFinite(x);
 const r3 = x => (num(x) ? Math.round(x * 1000) / 1000 : null);
@@ -61,8 +69,10 @@ function lsq(pts) {   // t = a + b·k over [{k, t}]
  * beat. A linear window then also drops beats more than ⅛ beat off its line. driftPct: the tempo of the window's second
  * half against its first, % of the whole.
  */
-export function windowFit(beatsMs, fromS, toS) {
-  const ts = beatsMs.map(b => (num(b) ? b : b.ms) / 1000).filter(t => t >= fromS - 1e-9 && t <= toS + 1e-9).sort((x, y) => x - y);
+export function windowFit(beatsMs, fromS, toS, { frameMs = FRAME_MS_DEFAULT } = {}) {
+  const inWin = beatsMs.map(b => (num(b) ? { t: b / 1000, conf: 1 } : { t: b.ms / 1000, conf: num(b.conf) ? b.conf : 1 }))
+    .filter(b => b.t >= fromS - 1e-9 && b.t <= toS + 1e-9).sort((x, y) => x.t - y.t);
+  const ts = inWin.map(b => b.t);
   const rt = ts.length >= 16 ? robustTempo(ts) : null;
   if (!rt) throw new Error(`window ${fromS}–${toS} s: too few reference beats (${ts.length})`);
   let P = rt.period, s = 0;
@@ -82,7 +92,7 @@ export function windowFit(beatsMs, fromS, toS) {
     return { rmsMs: Math.sqrt(res.reduce((x, r) => x + r * r, 0) / res.length), maxMs: Math.max(...res.map(Math.abs)), driftPct: 100 * Math.abs(60 / f2.b - 60 / f1.b) / (60 / b) };
   };
   let st = stats();
-  const fitMode = st.rmsMs <= LINEAR_RMS_MS && st.driftPct < LINEAR_DRIFT_PCT ? 'linear' : 'piecewise';
+  const fitMode = excessRms(st.rmsMs, frameMs) <= EXCESS_RMS_MS && st.driftPct < LINEAR_DRIFT_PCT ? 'linear' : 'piecewise';
   if (fitMode === 'linear') {
     const all = kept;
     kept = kept.filter(p => Math.abs(p.t - (a + b * p.k)) <= b / 8);
@@ -98,9 +108,35 @@ export function windowFit(beatsMs, fromS, toS) {
     const f = lsq(around);
     return f.a + f.b * k;
   };
-  return { a, b, bpm: 60 / b, kMax, kept, at, rmsMs, maxMs, driftPct, fitMode, n: kept.length, total: ts.length };
+  // R15's mask over the window's raw beats: 16-IBI spans with > 25 % outlier IBIs, a gap, or a low-confidence beat
+  const ibis = ts.slice(1).map((t, i) => t - ts[i]), med = rt.medIbi, out = d => d < med * (1 - MASK.tol) || d > med * (1 + MASK.tol);
+  const masked = [];
+  for (let i = 0; i + MASK.window <= ibis.length; i++) {
+    const w = ibis.slice(i, i + MASK.window), why = [];
+    if (w.filter(out).length > MASK.outlierMax * MASK.window) why.push('outliers');
+    if (w.some(d => d > MASK.gapX * med)) why.push('gap');
+    if (inWin.slice(i, i + MASK.window + 1).some(x => x.conf < MASK.confMin)) why.push('low confidence');
+    if (!why.length) continue;
+    const last = masked[masked.length - 1], from = ts[i], to = ts[i + MASK.window];
+    if (last && from <= last.toS + 1e-9) { last.toS = to; for (const y of why) if (!last.why.includes(y)) last.why.push(y); }
+    else masked.push({ fromS: from, toS: to, why });
+  }
+  return { a, b, bpm: 60 / b, kMax, kept, at, rmsMs, maxMs, excessRms: excessRms(rmsMs, frameMs), frameMs, driftPct, fitMode, n: kept.length, total: ts.length,
+    masked, windowSuspect: rt.suspect, windowSuspectWhy: rt.why };
 }
-const fitSummary = f => ({ bpm: r3(f.bpm), fitMode: f.fitMode, fitResidualRms: r3(f.rmsMs), fitResidualMax: r3(f.maxMs), driftPct: r3(f.driftPct), beats: f.n, dropped: f.total - f.n });
+const fitSummary = f => ({ bpm: r3(f.bpm), fitMode: f.fitMode, fitResidualRms: r3(f.rmsMs), fitResidualMax: r3(f.maxMs), excessRms: r3(f.excessRms), frameMs: f.frameMs,
+  driftPct: r3(f.driftPct), beats: f.n, dropped: f.total - f.n, masked: f.masked.map(m => ({ fromS: r3(m.fromS), toS: r3(m.toS), why: m.why })), windowSuspect: f.windowSuspect,
+  limits: { excessRmsMs: EXCESS_RMS_MS, driftPct: LINEAR_DRIFT_PCT, minInliers: MIN_INLIERS } });
+/** R16: why a window is refused ([] when it is fine): role 'out' | 'in', strict: the excessRms/drift refusal applies */
+export function windowRefusals(f, { strict = true, suspectCheck = false } = {}) {
+  const no = [];
+  if (f.n < MIN_INLIERS) no.push(`inlier beats ${f.n} < ${MIN_INLIERS}`);
+  for (const m of f.masked) no.push(`masked span ${r3(m.fromS)}–${r3(m.toS)} s (${m.why.join(', ')})`);
+  if (strict && f.excessRms > EXCESS_RMS_MS) no.push(`excessRms ${r3(f.excessRms)} ms > ${EXCESS_RMS_MS} (rms ${r3(f.rmsMs)} ms at frameMs ${f.frameMs})`);
+  if (strict && f.driftPct >= LINEAR_DRIFT_PCT) no.push(`drift ${r3(f.driftPct)} % ≥ ${LINEAR_DRIFT_PCT}`);
+  if (suspectCheck && f.windowSuspect) no.push(`gridSuspect over the window (${f.windowSuspectWhy.join(', ')})`);
+  return no;
+}
 
 /**
  * a recipe + the two grids → the plan: the cuts, ratio, fade, alignment and the derived beats on the mix timeline
@@ -110,10 +146,14 @@ export function planMix(recipe, gridOut, gridIn, { sr = SR } = {}) {
   const mode = recipe.mode;
   if (mode !== 'A' && mode !== 'B') throw new Error(`${recipe.name}: mode must be "A" or "B"`);
   const snap = s => Math.round(s * sr) / sr;
-  const fo = windowFit(gridOut.beats, recipe.out.from, recipe.out.to), fi = windowFit(gridIn.beats, recipe.in.from, recipe.in.to);
-  if (mode === 'A' && fi.fitMode !== 'linear') {
-    throw new Error(`${recipe.name}: mode A needs a constant-tempo incoming window; ${recipe.in.id} ${recipe.in.from}–${recipe.in.to} s fits ${fi.fitMode} (drift ${r3(fi.driftPct)} %, residual RMS ${r3(fi.rmsMs)} ms)`);
-  }
+  const fo = windowFit(gridOut.beats, recipe.out.from, recipe.out.to, { frameMs: num(gridOut.frameMs) ? gridOut.frameMs : FRAME_MS_DEFAULT });
+  const fi = windowFit(gridIn.beats, recipe.in.from, recipe.in.to, { frameMs: num(gridIn.frameMs) ? gridIn.frameMs : FRAME_MS_DEFAULT });
+  const refusals = [
+    ...windowRefusals(fo, { strict: recipe.out.allowDrift !== true }).map(x => `out ${recipe.out.id} ${recipe.out.from}–${recipe.out.to} s: ${x}`),
+    ...windowRefusals(fi, { strict: mode === 'A' || recipe.in.allowDrift !== true, suspectCheck: mode === 'A' }).map(x => `in ${recipe.in.id} ${recipe.in.from}–${recipe.in.to} s: ${x}`),
+  ];
+  if (refusals.length) throw new Error(`${recipe.name}: refused: ${refusals.join('; ')}`);
+  if (mode === 'A' && fi.fitMode !== 'linear') throw new Error(`${recipe.name}: refused: in ${recipe.in.id}: mode A needs a constant-tempo incoming window (fits ${fi.fitMode})`);
   const ratio = mode === 'A' ? fo.bpm / fi.bpm : 1;
   const barOut = recipe.out.bar1At, barIn = recipe.in.bar1At;
   const align = mode === 'A' ? (num(barOut) && num(barIn) ? 'bar1At' : 'beat') : 'none';
@@ -377,7 +417,7 @@ async function main(argv) {
       try {
         const p = planMix(r, A.grid, B.grid);
         console.log(`${r.name}: ${JSON.stringify({ mode: p.mode, ratio: r6(p.ratio), align: p.align, alignReason: p.alignReason, out: p.out, in: p.in, overlap: p.overlap, mixLenS: r3(p.mixLenS), beats: p.beats.length })}`);
-      } catch (e) { console.log(`${r.name}: refused: ${e.message}`); }
+      } catch (e) { console.log(e.message); }
     }
     return 0;
   }

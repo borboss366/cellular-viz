@@ -37,6 +37,8 @@ test('windowFit: a fitted line, never a median (A1′); extra off-beats dropped 
   assert.ok(near(f.bpm, 123, 5e-4), `bpm ${f.bpm}`);
   assert.equal(f.fitMode, 'linear', `rms ${f.rmsMs} ms, drift ${f.driftPct} %`);
   assert.ok(f.rmsMs < 7 && f.maxMs <= 10.5, `frame noise only: ${f.rmsMs} / ${f.maxMs} ms`);
+  assert.ok(f.excessRms < 2, `R16: frame noise is not misfit, excessRms ${f.excessRms} ms`);
+  assert.deepEqual([f.masked, f.windowSuspect, M.windowRefusals(f)], [[], false, []]);
   const x = M.windowFit(beatsMs(126, 450, { every: 5 }), 300, 390);
   assert.ok(near(x.bpm, 126, 5e-4), `with 20 % extra beats: ${x.bpm}`);
   assert.equal(x.fitMode, 'linear');
@@ -78,10 +80,20 @@ test('mode A: ratio from the window fits, a 16-bar fade on the outgoing grid, th
   assert.equal(M.mixSidecar(b, { barOkOut: true, barOkIn: false }).barOk, false);
 });
 
-test('mode A refuses an incoming window that drifts; mode B takes it', () => {
+test('R16: excessRms = √(rms² − frameMs²/12), ≤ 5 ms; refusals: < 64 inliers, masked span, excess, drift, mode A incoming gridSuspect', () => {
+  assert.ok(Math.abs(M.excessRms(Math.sqrt(400 / 12 + 25), 20) - 5) < 1e-9, '7.63 ms at 20 ms frames is 5 ms of misfit');
+  assert.equal(M.excessRms(5, 20), 0, 'under the frame floor: none');
+  assert.ok(Math.abs(M.excessRms(5, 0) - 5) < 1e-12, 'unquantised: all of it');
   const drifting = grid(rampMs(126, 130, 300, 390, 450));
-  assert.throws(() => M.planMix(RECIPE_A, OUT, drifting), /mode A needs a constant-tempo incoming window/);
-  assert.equal(M.planMix(RECIPE_B, OUT, drifting).in.fit.fitMode, 'piecewise');
+  assert.throws(() => M.planMix(RECIPE_A, OUT, drifting), /refused: .*in opus 300–390 s: drift [\d.]+ % ≥ 0\.3/);
+  assert.throws(() => M.planMix(RECIPE_B, OUT, drifting), /refused: in opus .*drift/, 'R16: drift refused by default');
+  assert.equal(M.planMix({ ...RECIPE_B, in: { ...RECIPE_B.in, allowDrift: true } }, OUT, drifting).in.fit.fitMode, 'piecewise', 'allowDrift: piecewise (6728321330)');
+  assert.throws(() => M.planMix({ ...RECIPE_A, in: { ...RECIPE_A.in, allowDrift: true } }, OUT, drifting), /drift/, 'never for mode A\'s incoming');
+  assert.throws(() => M.planMix({ ...RECIPE_A, out: { ...RECIPE_A.out, from: 60, to: 85 } }, OUT, IN), /out one-more-time 60–85 s: inlier beats \d+ < 64/);
+  const gapped = grid(beatsMs(126, 450).filter(m => m < 340000 || m > 343000));
+  assert.throws(() => M.planMix(RECIPE_B, OUT, gapped), /masked span [\d.]+–[\d.]+ s \([^)]*gap/);
+  const extras = grid(beatsMs(126, 450, { every: 5 }));
+  assert.throws(() => M.planMix(RECIPE_A, OUT, extras), /gridSuspect over the window/);
   assert.throws(() => M.planMix({ ...RECIPE_A, fadeBars: 15 }, OUT, IN), /even/);
 });
 
@@ -109,8 +121,8 @@ test('self-check: a beat 2 ms off its fitted grid fails the build (≤ 1 ms, 672
 });
 
 test('renderMix: outgoing untouched before the fade, the resampled incoming clicks land on the derived beats', () => {
-  const sr = 8000, recipe = { name: 'mix-c-d-a', mode: 'A', fadeBars: 4, out: { id: 'x', from: 10, to: 40, bar1At: null }, in: { id: 'y', from: 20, to: 50, bar1At: null } };
-  const gOut = grid(beatsMs(123, 60, { q: false })), gIn = grid(beatsMs(126, 60, { q: false }));
+  const sr = 8000, recipe = { name: 'mix-c-d-a', mode: 'A', fadeBars: 4, out: { id: 'x', from: 10, to: 50, bar1At: null }, in: { id: 'y', from: 20, to: 60, bar1At: null } };
+  const gOut = grid(beatsMs(123, 60, { q: false })), gIn = grid(beatsMs(126, 70, { q: false }));
   const p = M.planMix(recipe, gOut, gIn, { sr });
   const clicks = (ms, startS, lenS) => {
     const d = new Float32Array(Math.ceil(lenS * sr));
