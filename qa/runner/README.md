@@ -218,12 +218,11 @@ to it (the container publishes no ports). How to use the page: [qa/CONDUCTOR_GUI
    ```
    podman exec --env-file ~/.config/cellular-viz-runner.env pi-durable-worker sh -c 'sh "$RUNNER_HOME/qa/runner/conductor.sh" stop'
    ```
-4. On the laptop: open http://192.168.8.164:8790/
+4. On the laptop: run `ssh -L 8790:localhost:8790 puggie@192.168.8.164`, then open http://localhost:8790/
 
-That address is not a secure origin, so the browser refuses the mic or mixer there: the default `?clock=line:page`
-(the clock hears the page's own decks) works, `?clock=line` does not. For `?clock=line`, tunnel instead:
-`ssh -L 8790:localhost:8790 puggie@192.168.8.164`, then open http://localhost:8790/ (a secure origin, so the mixer
-works, and the tracks stay on the box).
+The LAN address http://192.168.8.164:8790/ plays audio only: it is not a secure origin, so Chrome gives it no
+AudioWorklet and the clock cannot listen (the page shows a red "Clock is off" banner). localhost through the tunnel is
+a secure origin: the clock works there in both modes (`?clock=line` takes the mixer), and the tracks stay on the box.
 
 ## API (GET only)
 

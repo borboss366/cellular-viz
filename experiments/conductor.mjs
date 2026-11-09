@@ -74,3 +74,21 @@ export function pageKey(e) {
   return { KeyM: { type: 'mark' }, BracketLeft: { type: 'step', delta: -1 }, BracketRight: { type: 'step', delta: 1 },
     Space: { type: 'playPause' }, KeyN: { type: 'next' }, KeyK: { type: 'keyLamp' } }[e.code] || null;
 }
+
+// ---------- the clock-off banner and the band bars (9 Nov sitting: the LAN address is not a secure context) ----------
+/** the banner text when the clock cannot listen, else null (plain ASCII, #205). AudioWorklet exists only in a secure
+ *  context (https or localhost), so on http://<LAN address> the tracker never starts (clock.js attachInput → 'error'). */
+export const CLOCK_OFF_TEXT = 'Clock is off: this address is not secure. Open http://localhost:8790/ through the ssh tunnel (see Help).';
+export function clockWarning({ secure, status, error } = {}) {
+  if (secure !== false && status !== 'error') return null;
+  const why = error ? ` (${String(error).replace(/[^\x20-\x7e]/g, '?').slice(0, 160)})` : '';
+  return (secure === false ? CLOCK_OFF_TEXT : 'Clock is off: the tracker did not start. Reload the page.') + why;
+}
+/** bar heights in px for the band levels (dB, about -80 ... 0): all empty without live tracker frames, and never full
+ *  from a placeholder (all-zero bands, as the clock reports before any frame) or a non-number */
+export const BAND_MAX_PX = 70;
+export function bandHeights(bands, names, live) {
+  const vals = names.map(b => (bands ? bands[b] : undefined));
+  if (!live || !bands || vals.every(v => v === 0 || !Number.isFinite(v))) return names.map(() => 0);
+  return vals.map(v => (Number.isFinite(v) ? Math.round(Math.max(0, Math.min(BAND_MAX_PX, (v + 80) * 0.9))) : 0));
+}

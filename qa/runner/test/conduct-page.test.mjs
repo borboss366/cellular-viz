@@ -178,3 +178,45 @@ test('clock-conductor.html band bars: a fixed ASCII label row from Clock.BANDS, 
   assert.ok(!/function monitor[\s\S]*bandLabels[\s\S]*function scatter/.test(mod), 'not in the per-frame monitor');
   assert.match(mod, /b === 'kick' \? ' class="k"'/, 'the kick label is marked');
 });
+
+test('clock-conductor: a red "Clock is off" banner when the page is not a secure context or the tracker failed; ASCII text', () => {
+  assert.equal(C.clockWarning({ secure: true, status: 'listening' }), null, 'localhost / https: no banner');
+  assert.equal(C.clockWarning({ secure: true }), null, 'before the audio starts: no banner');
+  const lan = C.clockWarning({ secure: false });   // window.isSecureContext stubbed false: http://<LAN address>
+  assert.equal(lan, 'Clock is off: this address is not secure. Open http://localhost:8790/ through the ssh tunnel (see Help).');
+  assert.equal(C.clockWarning({ secure: false, status: 'error', error: 'AudioWorklet is not available' }), `${lan} (AudioWorklet is not available)`);
+  assert.match(C.clockWarning({ secure: true, status: 'error', error: 'boom \u2192 x' }), /^Clock is off: the tracker did not start\. Reload the page\. \(boom \? x\)$/);
+  for (const w of [lan, C.clockWarning({ secure: true, status: 'error', error: 'caf\u00e9 \u2014 \u00d7' })]) assert.ok(/^[\x20-\x7e]+$/.test(w), `ASCII (#205): ${w}`);
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  assert.match(html, /<body>\s*<!--[^>]*-->\s*<div id="clockOff" class="clockOff" hidden><\/div>\s*<header>/, 'the banner sits at the top, hidden until needed');
+  assert.match(html, /C\.clockWarning\(\{ secure: window\.isSecureContext, status: ts\.status, error: ts\.error \}\)/);
+  assert.match(html, /\nshowClockOff\(\);/, 'checked when the page opens, before any audio');
+  assert.match(html, /\$\('state'\)\.classList\.toggle\('err', ts\.status === 'error'\)/, 'the State field turns red on error');
+  assert.match(html.match(/<style>([\s\S]*?)<\/style>/)[1], /\.err\{color:#ff5a6e/);
+});
+
+test('clock-conductor: the band bars are blank without live tracker frames, never full from the all-zero placeholder', () => {
+  const B = Clock.BANDS, zeros = Object.fromEntries(B.map(b => [b, 0]));
+  assert.deepEqual(C.bandHeights(zeros, B, true), B.map(() => 0), 'the clock reports all 0 before any frame: blank, not 70 px');
+  assert.deepEqual(C.bandHeights(undefined, B, true), B.map(() => 0));
+  const real = { sub: -20, kick: -10, low: -30, lowMid: -40, mid: -50, upperMid: -60, presence: -70, air: -90 };
+  assert.deepEqual(C.bandHeights(real, B, false), B.map(() => 0), 'no frames (status error): blank');
+  assert.deepEqual(C.bandHeights(real, B, true), [54, 63, 45, 36, 27, 18, 9, 0]);
+  assert.deepEqual(C.bandHeights({ ...real, kick: NaN, air: 5 }, B, true).slice(0, 2), [54, 0], 'NaN draws empty');
+  assert.equal(C.bandHeights({ ...real, air: 5 }, B, true)[7], C.BAND_MAX_PX, 'a real loud band still reaches the top');
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  assert.match(html, /const bandsLive = ts\.status === 'listening' && performance\.now\(\) - lastFrameMs < 1000;/);
+  assert.match(html, /C\.bandHeights\(r\.bands, Clock\.BANDS, bandsLive\)/);
+  assert.ok(!/r\.bands\[b\] \|\| 0\) \+ 80/.test(html), 'the old 0 -> full-height mapping is gone');
+});
+
+test('clock-conductor.html: no function shadows the page\'s top-level state (a local `live` read decks[live] in its TDZ, #208)', () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  const mod = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
+  const top = new Set();
+  for (const m of mod.matchAll(/^(?:let|const) ([^;=]+(?:=[^;]*)?);/gm)) for (const part of m[1].split(',')) { const n = /^\s*([A-Za-z_$][\w$]*)\s*(=|$)/.exec(part); if (n) top.add(n[1]); }
+  for (const name of ['live', 'fade', 'decks', 'tracks', 'clock', 'log']) assert.ok(top.has(name), `${name} is top-level state`);
+  const inner = [...mod.matchAll(/^[ \t]+(?:let|const) ([A-Za-z_$][\w$]*)\b/gm)].map(m => m[1]);
+  const shadows = inner.filter(n => ['live', 'fade', 'decks', 'tracks', 'clock', 'log', 'shadow', 'ctx'].includes(n));
+  assert.deepEqual(shadows, [], `locals shadowing page state: ${shadows.join(', ')}`);
+});

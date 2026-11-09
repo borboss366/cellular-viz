@@ -45,12 +45,15 @@ button{cursor:pointer}.fixes button{min-width:60px}
 .tag{font-weight:700;margin-right:8px}.live .tag{color:#d6455d}.next .tag{color:#2b5cff}
 #flash{height:40px;border-radius:8px;background:#222a3a}#flash.on{background:#fff}
 .msg{color:#ffd23f;min-height:2.8em}small{color:#8a96ad}
+.clockOff{background:#8b1e2d;color:#fff;padding:8px 16px;font-weight:600;overflow-wrap:anywhere}.err{color:#ff5a6e;font-weight:700}
 #helpPanel{padding:8px 16px 12px;background:#141a26;border-top:1px solid #3a4560;font-size:14px}#helpPanel h2{margin:10px 0 4px}#helpPanel ol,#helpPanel ul{margin:0;padding-left:22px}
 </style>
 <script src="clock.js"></script>
 <script src="clock-tracker.js"></script>
 </head>
 <body>
+<!-- shown when the clock cannot listen (not a secure context, or the tracker failed): C.clockWarning, plain ASCII -->
+<div id="clockOff" class="clockOff" hidden></div>
 <header>
   <h1>clock conductor</h1><span class="banner" id="input">line:page</span><span class="badge" id="scored">no track</span>
   <span class="badge" id="session">–</span><span class="badge" id="logState">log: –</span>
@@ -58,6 +61,8 @@ button{cursor:pointer}.fixes button{min-width:60px}
 </header>
 <!-- the user guide in short (qa/CONDUCTOR_GUIDE.md has all of it); plain ASCII only: the box's Chromium aborts on font fallback (#205) -->
 <div id="helpPanel" hidden>
+  <h2>Open the page</h2>
+  <ul><li>http://192.168.8.164:8790/ plays audio only. The clock needs http://localhost:8790/ through the tunnel: ssh -L 8790:localhost:8790 puggie@192.168.8.164</li></ul>
   <h2>Play a track</h2>
   <ol><li>In the Playlist box, click a track name.</li><li>Click "Load to NEXT".</li><li>Wait until the deck shows the track name (not "loading").</li>
     <li>Push "Play / pause" or Space. The deck changes to LIVE. This also starts the audio.</li></ol>
@@ -150,6 +155,14 @@ let live = 0, fade = null, fixId = 0, keyShownS = 0, keyOn = false, keyOnAt = 0;
 const nextDeck = () => decks[1 - live];
 const posMs = (d, t = ctx.currentTime) => C.deckPosMs(d, t);
 function say(t) { $('msg').textContent = t; }
+// the red banner: the clock needs a secure context (AudioWorklet), so on http://<LAN address> it is off (9 Nov sitting)
+let shownWarning = null;
+function showClockOff(ts = clock.trackerState || {}) {
+  const w = C.clockWarning({ secure: window.isSecureContext, status: ts.status, error: ts.error });
+  if (w === shownWarning) return;
+  shownWarning = w; $('clockOff').hidden = !w; $('clockOff').textContent = w || '';
+}
+showClockOff();
 
 async function loadTracks() {
   tracks = await (await fetch('/api/tracks')).json();
@@ -220,7 +233,9 @@ for (const b of document.querySelectorAll('[data-fix]')) b.onclick = () => clock
 
 let seenJumps = 0, lastState = null, lastShadowState = null, kickPrev = -200, kickAt = -1, lastSample = 0, beatFlashAt = -1;
 const onsets = [];
+let lastFrameMs = -1e9;   // performance.now() of the last tracker frame: the band bars draw only while frames come
 function onFrame(f) {
+  lastFrameMs = performance.now();
   for (const at of shadowBeats(t => shadow.beatsAt(t), b => shadow.timeOf(b), f.t)) log.add('beat', { src: 'shadow', ctx: at });
   const k = f.bands ? f.bands.kick : null;
   if (typeof k === 'number') { if (k - kickPrev > 6) { kickAt = f.t; onsets.push(f.t); if (onsets.length > 16) onsets.shift(); } kickPrev = k; }
@@ -313,6 +328,8 @@ function monitor(now, ts) {
   $('bpmOut').textContent = r.bpm ? r.bpm.toFixed(1) : '–';
   $('bpmShadow').textContent = shadow.bpm ? shadow.bpm.toFixed(1) : '–';
   $('state').textContent = `${ts.state || '–'} · ${ts.status || ''}`;
+  $('state').classList.toggle('err', ts.status === 'error');
+  showClockOff(ts);
   const lane = ts.lane ? `lane ${ts.lane.lane || ''} side ${ts.lane.side && ts.lane.side.last != null ? ts.lane.side.last : '–'}` : '';
   $('lane').textContent = lane + (ts.octaveLock ? ` · octave ${ts.octaveLock}` : '');
   $('conf').style.width = `${Math.round((r.confidence || 0) * 100)}%`;
@@ -323,7 +340,8 @@ function monitor(now, ts) {
   const lamp = d.playing && d.beats.length ? C.barLamp(d.beats, posMs(d, heard)) : { on: false };
   $('lampBar').classList.toggle('on', lamp.on);
   if (keyOn && d.playing && d.beats.length) { const near = C.barLamp(d.beats.map(b => ({ ...b, pos: 1 })), posMs(d, heard), 60); $('lampKey').classList.toggle('on', near.on); }
-  if (r.bands) $('bands').innerHTML = Clock.BANDS.map(b => `<i style="height:${Math.max(2, Math.min(70, ((r.bands[b] || 0) + 80) * 0.9))}px"></i>`).join('');
+  const bandsLive = ts.status === 'listening' && performance.now() - lastFrameMs < 1000;   // not "live": that is the LIVE deck (TDZ, #208)
+  $('bands').innerHTML = C.bandHeights(r.bands, Clock.BANDS, bandsLive).map(h => `<i style="height:${h}px"></i>`).join('');
   scatter(now);
   for (const x of decks) x.el.querySelector('.pos').textContent = x.track ? `${(Math.max(0, x.playing ? posMs(x, heard) : x.offsetS * 1000) / 1000).toFixed(1)} s` : '';
   $('nrec').textContent = log.all.length;

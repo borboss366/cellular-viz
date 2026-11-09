@@ -7,8 +7,9 @@ The page is `experiments/clock-conductor.html` (#188). The box serves it at :879
 1. Start the server:
    `podman exec -d --env-file ~/.config/cellular-viz-runner.env pi-durable-worker sh -c 'sh "$RUNNER_HOME/qa/runner/conductor.sh"'`
 2. On the laptop, open Chrome. Do not use Safari.
-3. Go to http://192.168.8.164:8790/
-4. To use the mixer or mic as input: run `ssh -L 8790:localhost:8790 puggie@192.168.8.164` first. Then open
+3. On the laptop, run `ssh -L 8790:localhost:8790 puggie@192.168.8.164`. Keep it open.
+4. Go to http://localhost:8790/ . The address http://192.168.8.164:8790/ plays audio only: the clock needs localhost
+   (a red banner says "Clock is off" on the LAN address). To use the mixer or mic as input, open
    http://localhost:8790/?clock=line
 5. To hear the clock: add `?click=1` to the address (or `&click=1` after `?clock=line`). The page then plays a click
    on each clock beat.
