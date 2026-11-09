@@ -57,6 +57,8 @@ with no fade.
 - beat lamp: flashes on each clock beat.
 - kick lamp: flashes on each kick that the tracker hears.
 - bar 1 lamp: shows the "1" from the reference grid. It works only when the LIVE deck plays a track with a grid.
+- Blue bars: the loudness of 8 frequency bands that the clock hears. The second bar is kick. The bars do not change the
+  sound. The names are under the bars: sub, kick, low, lo-mid, mid, hi-mid, pres, air.
 - Orange dots: the last 16 kicks. The middle line is "on the beat".
   - Dots on the middle line: the clock is correct.
   - Dots right of the line: the kick comes after the clock beat. The clock is early.

@@ -36,7 +36,8 @@ h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#8a96ad;ma
 .lamps{display:flex;gap:14px;margin:10px 0}.lamp{width:64px;height:64px;border-radius:50%;background:#222a3a;display:grid;place-items:center;font-size:12px;color:#8a96ad;transition:background 60ms}
 .lamp.on{background:#ffd23f;color:#000}.lamp.kick.on{background:#ff7a2b}.lamp.bar.on{background:#e8e8e8}.lamp.key.on{background:#9b6bff}
 .conf{height:10px;background:#222a3a;border-radius:5px;overflow:hidden}.conf>i{display:block;height:100%;background:#2b5cff}
-.bands{display:flex;gap:4px;height:70px;align-items:flex-end}.bands>i{flex:1;background:#2b5cff;min-height:2px}
+.bands{display:flex;gap:4px;height:70px;align-items:flex-end}.bands>i{flex:1;background:#2b5cff;min-height:2px}.bands>i:nth-child(2){background:#5b85ff}
+.bandLabels{display:flex;gap:4px;margin-top:2px;font-size:11px;line-height:1.2;color:#8a96ad}.bandLabels>span{flex:1;min-width:0;text-align:center;white-space:nowrap;overflow:hidden}.bandLabels>.k{color:#ff7a2b;font-weight:700}
 #scatter{width:100%;height:60px;background:#0b0e14;border-radius:6px}
 button,select,input{font:inherit;color:inherit;background:#222a3a;border:1px solid #3a4560;border-radius:8px;padding:6px 10px}
 button{cursor:pointer}.fixes button{min-width:60px}
@@ -85,6 +86,7 @@ button{cursor:pointer}.fixes button{min-width:60px}
       <div class="lamp bar" id="lampBar">bar 1</div><div class="lamp key" id="lampKey" hidden>key</div></div>
     <canvas id="scatter" width="600" height="60"></canvas>
     <div class="bands" id="bands"></div>
+    <div class="bandLabels" id="bandLabels"></div>
     <div class="fixes row" style="margin-top:10px">
       <button data-fix="tap">tap ⇧A</button><button data-fix="half">÷2 ⇧H</button><button data-fix="x2">×2 ⇧D</button>
       <button data-fix="flip">flip ⇧F</button><button data-fix="nudge" data-arg="-10">−10 ⇧,</button><button data-fix="nudge" data-arg="10">+10 ⇧.</button>
@@ -125,6 +127,9 @@ import * as C from './conductor.mjs';
 const qs = new URLSearchParams(location.search), $ = id => document.getElementById(id);
 const inputMode = qs.get('clock') === 'line' ? 'line' : 'line:page';
 $('input').textContent = $('input').title = inputMode;
+// the band bars' names, built once (the bars redraw every frame above a fixed row; the kick bar drives the kick lamp)
+const BAND_LABELS = { sub: 'sub', kick: 'kick', low: 'low', lowMid: 'lo-mid', mid: 'mid', upperMid: 'hi-mid', presence: 'pres', air: 'air' };
+$('bandLabels').innerHTML = Clock.BANDS.map(b => `<span${b === 'kick' ? ' class="k"' : ''} title="${b}">${BAND_LABELS[b] || b}</span>`).join('');
 const ctx = new AudioContext({ latencyHint: 'interactive' });
 const settings = { bpm: 120, bpb: 4, muted: false, click: qs.get('click') === '1', kick: C.KICK_QUARTERS, snare: C.SILENT, hat: C.SILENT };
 const clock = Clock.create({ source: 'line', settings, audioContext: () => ctx });

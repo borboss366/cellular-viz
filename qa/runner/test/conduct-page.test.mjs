@@ -161,3 +161,20 @@ test('clock-conductor.html layout: long text cannot widen a column or push the h
   for (const id of ['start', 'download', 'help']) assert.ok(actions[1].includes(`id="${id}"`), id);
   for (const id of ['input', 'session', 'scored', 'logState']) assert.match(html, new RegExp(`\\$\\('${id}'\\)\\.textContent = \\$\\('${id}'\\)\\.title =`), `${id} keeps its full text in title`);
 });
+
+test('clock-conductor.html band bars: a fixed ASCII label row from Clock.BANDS, built once, the kick label marked', () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  assert.match(html, /<div class="bands" id="bands"><\/div>\s*<div class="bandLabels" id="bandLabels"><\/div>/, 'the labels sit right under the bars');
+  const css = html.match(/<style>([\s\S]*?)<\/style>/)[1];
+  assert.match(css, /\.bandLabels\{display:flex;gap:4px/, 'the same flex and gap as the bars, so each label lines up with its bar');
+  assert.match(css, /\.bandLabels>span\{flex:1;min-width:0/);
+  const map = /const BAND_LABELS = (\{[^}]*\});/.exec(html);
+  assert.ok(map, 'one label per band');
+  const labels = Function(`return ${map[1]}`)();
+  assert.deepEqual(Clock.BANDS.map(b => labels[b]), ['sub', 'kick', 'low', 'lo-mid', 'mid', 'hi-mid', 'pres', 'air']);
+  assert.ok(Object.values(labels).every(s => /^[\x20-\x7e]+$/.test(s)), 'ASCII only (#205)');
+  const mod = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
+  assert.equal((mod.match(/\$\('bandLabels'\)\.innerHTML/g) || []).length, 1, 'built once');
+  assert.ok(!/function monitor[\s\S]*bandLabels[\s\S]*function scatter/.test(mod), 'not in the per-frame monitor');
+  assert.match(mod, /b === 'kick' \? ' class="k"'/, 'the kick label is marked');
+});
