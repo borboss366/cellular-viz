@@ -5,12 +5,12 @@
 //
 // Cause (test-pr de8b54b): the box container has no fontconfig config ("Cannot load default config file"), and
 // chrome-headless-shell aborts with "[FATAL:…SkFontMgr_FontConfigInterface.cpp:163] Not implemented." + SIGTRAP once
-// text needs a font it cannot find (here the page's styled form controls). So the browser gets FONTCONFIG_FILE: a
-// tiny fonts.conf written to the temp folder, listing the font dirs the container has, with a private cache dir. No
-// fonts go into git. Launch: chromium.launch (pipe) on chrome-headless-shell (exp-run's binary) with exp-run's flags
+// text needs a font it cannot find (here the page's styled form controls). The runner container image now carries
+// fontconfig and fonts-dejavu-core, so Chromium uses the system /etc/fonts; a missing /etc/fonts/fonts.conf fails
+// this test up front with a clear message instead of a SIGTRAP. Launch: chromium.launch (pipe) on chrome-headless-shell (exp-run's binary) with exp-run's flags
 // plus --enable-logging=stderr --v=0; DEBUG=pw:browser goes to a log file kept on the box. When the smoke run fails
 // with the browser dead, the old markup bisect runs and prints one line per step (each distinct FATAL/CHECK line too).
-// A passing run prints the log path and the fonts line only.
+// A passing run prints the log path only.
 //   node --test qa/runner/test/*.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -54,39 +54,6 @@ function headlessShell(fullExe) {
     for (const d of ds) { const p = path.join(r, d, 'chrome-headless-shell-linux64', 'chrome-headless-shell'); if (fs.existsSync(p)) return p; }
   }
   return null;
-}
-/** the container's font dirs (those holding any .ttf/.otf/.ttc/.pfb, bounded walk) and how many font files */
-function fontDirs(home) {
-  const h = os.homedir();
-  const cands = ['/usr/share/fonts', '/usr/local/share/fonts', path.join(h, '.fonts'), path.join(h, '.local/share/fonts'),
-    path.join(h, 'qa-libs/root/usr/share/fonts'), home && path.join(home, 'fonts')].filter(Boolean);
-  const out = [];
-  let files = 0;
-  const walk = (d, depth) => {
-    let n = 0, ents = [];
-    try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return 0; }
-    for (const e of ents) {
-      if (e.isFile() && /\.(ttf|otf|ttc|pfb)$/i.test(e.name)) n++;
-      else if ((e.isDirectory() || e.isSymbolicLink()) && depth < 5) n += walk(path.join(d, e.name), depth + 1);
-      if (n > 5000) break;
-    }
-    return n;
-  };
-  for (const d of [...new Set(cands)]) { const n = walk(d, 0); if (n) { out.push(d); files += n; } }
-  return { dirs: out, files };
-}
-/** a fonts.conf for those dirs, with its own cache dir (a cache shared with other fontconfig versions can break it) */
-function fontsConf(root, dirs) {
-  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-  const fam = (g, list) => `<alias><family>${g}</family><prefer>${list.map(f => `<family>${f}</family>`).join('')}</prefer></alias>`;
-  const conf = ['<?xml version="1.0"?>', '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">', '<fontconfig>',
-    ...dirs.map(d => `<dir>${esc(d)}</dir>`), `<cachedir>${esc(path.join(root, 'fc-cache'))}</cachedir>`,
-    fam('sans-serif', ['DejaVu Sans', 'Liberation Sans', 'Noto Sans']), fam('serif', ['DejaVu Serif', 'Liberation Serif', 'Noto Serif']),
-    fam('monospace', ['DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono']), fam('system-ui', ['DejaVu Sans', 'Liberation Sans', 'Noto Sans']),
-    '</fontconfig>', ''].join('\n');
-  const file = path.join(root, 'fonts.conf');
-  fs.writeFileSync(file, conf);
-  return file;
 }
 /** a copy of experiments/ (top-level files) and the page's qa modules, plus the bisect's pages */
 function bisectRepo(root) {
@@ -156,6 +123,11 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
   t.after(() => { process.stderr.write = write; });
   let pw;
   try { pw = createRequire(path.join(home, 'qa', 'x.cjs'))('playwright'); } catch (e) { t.skip(`no Playwright under QA_HOME/qa: ${e.message}`); return; }
+  // without a fontconfig config chrome-headless-shell aborts on text (SkFontMgr_FontConfigInterface FATAL + SIGTRAP)
+  if (!fs.existsSync('/etc/fonts/fonts.conf')) {
+    console.log('# conductor smoke: fontconfig missing in the runner container (see #205)');
+    assert.fail('fontconfig missing in the runner container (see #205)');
+  }
 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'conduct-smoke-')), tracks = path.join(root, 'tracks'), sessions = path.join(root, 'sessions');
   fs.mkdirSync(tracks);
@@ -167,13 +139,6 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
   const env = { ...process.env }, libRoot = path.join(os.homedir(), 'qa-libs/root');
   const libs = [path.join(libRoot, 'usr/lib/x86_64-linux-gnu'), path.join(libRoot, 'lib/x86_64-linux-gnu')].filter(p => fs.existsSync(p));
   if (libs.length) env.LD_LIBRARY_PATH = [...libs, env.LD_LIBRARY_PATH].filter(Boolean).join(':');
-  // fonts: without a fontconfig config Chromium aborts on text it can't find a font for (SkFontMgr_FontConfigInterface)
-  const fonts = fontDirs(home);
-  if (fonts.dirs.length && !fs.existsSync('/etc/fonts/fonts.conf')) env.FONTCONFIG_FILE = fontsConf(root, fonts.dirs);
-  const fontLine = `${fonts.files} font file(s) in ${fonts.dirs.length} dir(s)${fonts.dirs.length ? ` (${fonts.dirs.join(', ')})` : ''}; ` +
-    (env.FONTCONFIG_FILE ? 'FONTCONFIG_FILE set to a temp fonts.conf' : fs.existsSync('/etc/fonts/fonts.conf') ? '/etc/fonts/fonts.conf exists, used as is' : 'NO font dir found: Chromium will abort on text');
-  console.log(`# conductor smoke fonts: ${fontLine}`);
-  note(`fonts: ${fontLine}`);
   const ARGS = ['--autoplay-policy=no-user-gesture-required', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-logging=stderr', '--v=0'];
   const FULL = pw.chromium.executablePath(), SHELL = headlessShell(FULL);
   note(`shell ${SHELL}; full ${FULL}; node ${process.versions.node}; libs ${libs.length}`);
