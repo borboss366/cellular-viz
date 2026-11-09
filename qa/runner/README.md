@@ -191,6 +191,39 @@ as for the 8787 viewer), then `curl http://127.0.0.1:8788/api/status`.
 
 Try one round by hand first, inside the container: `node qa/runner/runner.mjs --once` (polls once, runs the queue, exits).
 
+## Conductor page (:8790)
+
+The conductor page (#188) for listening sessions from the laptop: `qa/runner/conductor.sh` runs main's
+`qa/conduct-serve.mjs` inside the container on `conductor.sock` in the data folder, and two host units forward :8790
+to it (the container publishes no ports). On the box itself (the host), as the normal user:
+
+1. Once: add two lines to `~/.config/cellular-viz-runner.env`, with paths as the container sees them (the private
+   tracks folder, and where the session logs go; both stay out of git, R9):
+   ```
+   CONDUCTOR_TRACKS=/path/inside/container/to/the/private/tracks
+   CONDUCTOR_SESSIONS=/path/inside/container/to/conductor-sessions
+   ```
+2. Once: install the two units:
+   ```
+   cp /home/puggie/pi-durable-worker/data/cellular-viz-runner/qa/runner/cellular-viz-conductor.{socket,service} ~/.config/systemd/user/
+   systemctl --user daemon-reload && systemctl --user enable --now cellular-viz-conductor.socket
+   ```
+3. Before each session, start the server (`$RUNNER_HOME` is expanded inside the container, from the env file; its
+   log is `conductor.log` in the runner state folder):
+   ```
+   podman exec -d --env-file ~/.config/cellular-viz-runner.env pi-durable-worker sh -c 'sh "$RUNNER_HOME/qa/runner/conductor.sh"'
+   ```
+   and afterwards, to stop it:
+   ```
+   podman exec --env-file ~/.config/cellular-viz-runner.env pi-durable-worker sh -c 'sh "$RUNNER_HOME/qa/runner/conductor.sh" stop'
+   ```
+4. On the laptop: open http://192.168.8.164:8790/
+
+That address is not a secure origin, so the browser refuses the mic or mixer there: the default `?clock=line:page`
+(the clock hears the page's own decks) works, `?clock=line` does not. For `?clock=line`, tunnel instead:
+`ssh -L 8790:localhost:8790 puggie@192.168.8.164`, then open http://localhost:8790/ (a secure origin, so the mixer
+works, and the tracks stay on the box).
+
 ## API (GET only)
 
 | path | what |
