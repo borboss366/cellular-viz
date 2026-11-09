@@ -43,8 +43,8 @@ export function resolve(rows, map, tracksDir) {
  * converter wrote one, else bpmFit; never medianBpm) → [{ id, bpm, fit, field, err, ok, skipped, reason }].
  * Rows without a BPM (the DJ set), not "gate", or whose grid has no fitted tempo yet are skipped with the reason.
  * R15 (#188 6736333312): a grid with gridSuspect true or driftCore over FLAG_DRIFT % has no tempo fit for gating; its
- * row reads "grid flagged" (flagged: true, ok: null), not a failed track. gridSuspect, inlierFrac and driftCore
- * ride along for the report (null where the grid has none yet).
+ * row reads "grid flagged" (flagged: true, ok: null), not a failed track. gridSuspect, inlierFrac, extraFrac,
+ * longFrac (report-only) and driftCore ride along for the report (null where the grid has none yet).
  */
 export function checkBpm(rows, resolved) {
   const byId = new Map(resolved.map(x => [x.id, x]));
@@ -56,7 +56,8 @@ export function checkBpm(rows, resolved) {
     if (!field) return { id: r.id, skipped: true, reason: 'grid has no fitted tempo yet' };
     const fit = x.grid[field], err = Math.abs(fit - r.bpm) / r.bpm, g = x.grid;
     const extra = { gridSuspect: typeof g.gridSuspect === 'boolean' ? g.gridSuspect : null,
-      inlierFrac: Number.isFinite(g.inlierFrac) ? g.inlierFrac : null, driftCore: Number.isFinite(g.driftCore) ? g.driftCore : null };
+      inlierFrac: Number.isFinite(g.inlierFrac) ? g.inlierFrac : null, extraFrac: Number.isFinite(g.extraFrac) ? g.extraFrac : null,
+      longFrac: Number.isFinite(g.longFrac) ? g.longFrac : null, driftCore: Number.isFinite(g.driftCore) ? g.driftCore : null };
     const flagged = extra.gridSuspect === true || (extra.driftCore !== null && extra.driftCore > FLAG_DRIFT);
     return { id: r.id, bpm: r.bpm, fit, field, err: +err.toFixed(5), ok: flagged ? null : err <= BPM_TOLERANCE, flagged, skipped: false, ...extra };
   });
@@ -75,6 +76,7 @@ export function reportLines(results) {
       ? `corpus: ${x.id} skipped (${x.reason})`
       : `corpus: ${x.id} ${x.field} ${x.fit.toFixed(2)} vs ${x.bpm} (${(x.err * 100).toFixed(2)} %) ` +
         `${x.flagged ? 'grid flagged' : x.ok ? 'ok' : 'OFF'}; gridSuspect ${na(x.gridSuspect, String)}, ` +
-        `inlierFrac ${na(x.inlierFrac, v => v.toFixed(3))}, driftCore ${na(x.driftCore, v => v.toFixed(2))} %`),
+        `inlierFrac ${na(x.inlierFrac, v => v.toFixed(3))}, extraFrac ${na(x.extraFrac, v => v.toFixed(3))}, ` +
+        `longFrac ${na(x.longFrac, v => v.toFixed(3))}, driftCore ${na(x.driftCore, v => v.toFixed(2))} %`),
   ];
 }

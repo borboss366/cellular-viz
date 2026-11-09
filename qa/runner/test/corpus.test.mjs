@@ -110,7 +110,7 @@ test('R9: the corpus: lines test-pr prints carry ids and numbers, never a stem o
   assert.equal(lines.length, 1 + rows.length);
   assert.ok(lines.every(l => l.startsWith('corpus: ')), 'every line has the prefix test-pr.sh greps for');
   assert.equal(lines.find(l => l.startsWith('corpus: ok ')),
-    'corpus: ok bpmFitCore 126.20 vs 126 (0.16 %) ok; gridSuspect n/a, inlierFrac n/a, driftCore n/a %');
+    'corpus: ok bpmFitCore 126.20 vs 126 (0.16 %) ok; gridSuspect n/a, inlierFrac n/a, extraFrac n/a, longFrac n/a, driftCore n/a %');
   assert.match(lines.find(l => l.startsWith('corpus: off ')), / OFF; /);
   const text = lines.join('\n');
   assert.doesNotMatch(text, /secret|\.(flac|wav|mp3|m4a|aiff?|ogg)\b|beatgrid|qa-audio|\w\/[\w.-]+\/|(^|\s)\//im, text);   // no path ("n/a" is fine)
@@ -121,7 +121,7 @@ test('R15: gridSuspect or driftCore over 20 % reads "grid flagged" (no tempo ver
   const resolved = [
     { id: 'sus', grid: { bpmFitCore: 131, gridSuspect: true, inlierFrac: 0.82, driftCore: 4 }, reason: null },
     { id: 'wild', grid: { bpmFitCore: 133, driftCore: 111.5 }, reason: null },
-    { id: 'fine', grid: { bpmFitCore: 120.3, gridSuspect: false, inlierFrac: 0.987, driftCore: 0.4 }, reason: null },
+    { id: 'fine', grid: { bpmFitCore: 120.3, gridSuspect: false, inlierFrac: 0.987, extraFrac: 0.004, longFrac: 0.009, driftCore: 0.4 }, reason: null },
     { id: 'calm', grid: { bpmFitCore: 125, gridSuspect: false, inlierFrac: 0.99, driftCore: 20 }, reason: null },
   ];
   const res = C.checkBpm(rows, resolved), r = Object.fromEntries(res.map(x => [x.id, x]));
@@ -131,8 +131,8 @@ test('R15: gridSuspect or driftCore over 20 % reads "grid flagged" (no tempo ver
   assert.equal(r.calm.flagged, false, 'exactly 20 % is not over 20 %'); assert.equal(r.calm.ok, false, 'and its 4 % error counts');
   const lines = C.reportLines(res);
   assert.equal(lines[0], 'corpus: bpm 4 checked, 0 skipped, 1 off, 2 grid flagged');
-  assert.equal(lines[1], 'corpus: sus bpmFitCore 131.00 vs 120 (9.17 %) grid flagged; gridSuspect true, inlierFrac 0.820, driftCore 4.00 %');
-  assert.match(lines[3], /\) ok; gridSuspect false, inlierFrac 0\.987, driftCore 0\.40 %$/);
+  assert.equal(lines[1], 'corpus: sus bpmFitCore 131.00 vs 120 (9.17 %) grid flagged; gridSuspect true, inlierFrac 0.820, extraFrac n/a, longFrac n/a, driftCore 4.00 %');
+  assert.match(lines[3], /\) ok; gridSuspect false, inlierFrac 0\.987, extraFrac 0\.004, longFrac 0\.009, driftCore 0\.40 %$/);
 });
 
 test('R9: no private file names or folders in corpus.json or CLOCK_CORPUS.md', () => {
