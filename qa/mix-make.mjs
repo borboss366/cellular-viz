@@ -29,6 +29,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { robustTempo, toSidecar } from './beatgrid.mjs';
 import { wavBytes, writeAtomic } from './runner/audiocheck.mjs';
 import { audioDir, sourceTracks, sha256 } from './runner/audio.mjs';
@@ -312,9 +313,35 @@ export function loadMixes(file = MIXES_FILE, rows = loadCorpus()) {
   return doc.mixes;
 }
 
+// ---------- where Playwright is ----------
+// The runner clone (RUNNER_HOME) has no node_modules: Playwright is installed in QA box's working copy,
+// QA_HOME/qa/node_modules, which the runner symlinks into its work trees for exp-run. A bare import from qa/ in the
+// runner clone can't see it (QA box, 9 Nov: "Cannot find package 'playwright'"), so look there first: PLAYWRIGHT_DIR
+// (a folder whose node_modules has it), then QA_HOME/qa (qa/mix-make.sh gets QA_HOME from qa/runner/settings.sh),
+// then beside this file.
+const HERE_DIR = path.dirname(fileURLToPath(import.meta.url));
+export function playwrightBases(env = process.env, here = HERE_DIR) {
+  const out = [];
+  if (env.PLAYWRIGHT_DIR) out.push(env.PLAYWRIGHT_DIR);
+  if (env.QA_HOME) out.push(path.join(env.QA_HOME, 'qa'));
+  out.push(here);
+  return [...new Set(out.map(p => path.resolve(p)))];
+}
+/** Playwright's module, required from the first base whose node_modules has it; throws with every place it looked */
+export function loadPlaywright(env = process.env, here = HERE_DIR) {
+  const tried = [];
+  for (const base of playwrightBases(env, here)) {
+    const req = createRequire(path.join(base, 'mix-make-resolve.cjs'));
+    let file;
+    try { file = req.resolve('playwright'); } catch (e) { if (e.code !== 'MODULE_NOT_FOUND') throw e; tried.push(base); continue; }
+    return req(file);
+  }
+  throw new Error(`Cannot find package 'playwright' from ${tried.join(', ')} (QA_HOME must be QA box's working copy, whose qa/node_modules has it)`);
+}
+
 // ---------- the decoder: Chromium's decodeAudioData at 48 kHz, files handed to the page by request interception ----------
 async function withDecoder(fn) {
-  const { chromium } = await import('playwright');
+  const { chromium } = loadPlaywright();
   const env = { ...process.env }, libRoot = path.join(os.homedir(), 'qa-libs/root');
   const libs = [path.join(libRoot, 'usr/lib/x86_64-linux-gnu'), path.join(libRoot, 'lib/x86_64-linux-gnu')].filter(p => fs.existsSync(p));
   if (libs.length) env.LD_LIBRARY_PATH = [...libs, env.LD_LIBRARY_PATH].filter(Boolean).join(':');

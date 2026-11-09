@@ -182,3 +182,33 @@ test('recipes and names: qa/mixes.json by corpus id, mix- names are renders (nev
     bad({ ...mixes[1], fadeS: undefined }, /mode B needs fadeS/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// QA box, 9 Nov: qa/mix-make.sh failed at once in the runner clone ("Cannot find package 'playwright'"): Playwright is
+// in QA_HOME/qa/node_modules (QA box's working copy), and a bare import from the runner clone's qa/ can't see it.
+test('loadPlaywright: PLAYWRIGHT_DIR, then QA_HOME/qa, then beside mix-make.mjs; the error names every place', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-pw-'));
+  try {
+    const home = path.join(tmp, 'qa-home'), empty = path.join(tmp, 'runner-clone', 'qa');
+    const pkg = path.join(home, 'qa', 'node_modules', 'playwright');
+    fs.mkdirSync(pkg, { recursive: true }); fs.mkdirSync(empty, { recursive: true });
+    fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: 'playwright', version: '0.0.0-fake', main: 'index.js' }));
+    fs.writeFileSync(path.join(pkg, 'index.js'), "module.exports = { chromium: { fake: 'from QA_HOME' } };\n");
+    assert.deepEqual(M.playwrightBases({ PLAYWRIGHT_DIR: '/pw', QA_HOME: home }, empty), ['/pw', path.join(home, 'qa'), empty]);
+    assert.deepEqual(M.playwrightBases({}, empty), [empty]);
+    assert.equal(M.loadPlaywright({ QA_HOME: home }, empty).chromium.fake, 'from QA_HOME', 'found through QA_HOME/qa/node_modules');
+    assert.equal(M.loadPlaywright({ PLAYWRIGHT_DIR: path.join(home, 'qa') }, empty).chromium.fake, 'from QA_HOME');
+    assert.throws(() => M.loadPlaywright({ QA_HOME: path.join(tmp, 'nowhere') }, empty),
+      e => /Cannot find package 'playwright'/.test(e.message) && e.message.includes(path.join(tmp, 'nowhere', 'qa')) && e.message.includes(empty));
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test('the box: Playwright resolves for qa/mix-make.sh from the runner settings\' QA_HOME (skips off the box)', (t) => {
+  const files = [process.env.RUNNER_ENV, path.join(os.homedir(), '.config/cellular-viz-runner.env'), path.join(os.homedir(), '.cache/cellular-viz-runner/runner.env')].filter(Boolean);
+  const file = files.find(f => fs.existsSync(f));
+  if (!file) { t.skip('no runner settings here (not the box)'); return; }
+  const line = fs.readFileSync(file, 'utf8').split('\n').filter(l => /^QA_HOME=/.test(l)).pop();
+  if (!line) { t.skip(`no QA_HOME in ${path.basename(file)}`); return; }
+  const home = line.slice('QA_HOME='.length).trim().replace(/^(['"])(.*)\1$/, '$2');
+  const pw = M.loadPlaywright({ QA_HOME: home });   // only QA_HOME, as mix-make.sh sets it; never PLAYWRIGHT_DIR here
+  assert.equal(typeof pw.chromium?.launch, 'function', 'playwright.chromium.launch');
+});
