@@ -147,3 +147,17 @@ test('clock-conductor.html Help: a Help button and a hidden panel with the guide
   assert.equal(C.pageKey({ key: '?', code: 'Slash', shiftKey: true, target: { tagName: 'INPUT', type: 'text' } }), null, 'typing a ? in the venue name');
   assert.ok(fs.existsSync(path.join(REPO, 'qa', 'CONDUCTOR_GUIDE.md')), 'the full guide');
 });
+
+test('clock-conductor.html layout: long text cannot widen a column or push the header buttons away', () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  const css = html.match(/<style>([\s\S]*?)<\/style>/)[1];
+  assert.match(css, /main\{[^}]*grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)/, 'columns may shrink below their content');
+  assert.match(css, /section\{[^}]*min-width:0/);
+  assert.match(css, /\.banner,\.badge\{[^}]*max-width:22ch[^}]*white-space:nowrap[^}]*overflow:hidden[^}]*text-overflow:ellipsis/, 'badges cut long text');
+  assert.match(css, /\.actions\{[^}]*margin-left:auto[^}]*flex:none/, 'the buttons never shrink or wrap away');
+  assert.match(css, /\.deck \.name,#msg,#lastFix,#bar1,#tail\{overflow-wrap:anywhere\}/);
+  const actions = /<span class="actions">([\s\S]*?)<\/span>/.exec(html);
+  assert.ok(actions, 'the header buttons sit in one group');
+  for (const id of ['start', 'download', 'help']) assert.ok(actions[1].includes(`id="${id}"`), id);
+  for (const id of ['input', 'session', 'scored', 'logState']) assert.match(html, new RegExp(`\\$\\('${id}'\\)\\.textContent = \\$\\('${id}'\\)\\.title =`), `${id} keeps its full text in title`);
+});

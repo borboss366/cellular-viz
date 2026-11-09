@@ -105,5 +105,6 @@ Marks go on the LIVE deck only, while it plays. A track with no grid cannot have
 - A deck shows "loading ..." for more than 20 seconds: the track did not load. Select a different track.
 - "load a track first": no deck has a track. Do "Play a track" again.
 - "load the next track first": the NEXT deck has no track. Do steps 1 to 3 of "Go to the next track".
-- You cannot see "Start audio": the header is too long. Push "Play / pause". It starts the audio too.
+- A badge in the header ends with "...": the text is too long. Hold the mouse on the badge to see all of it.
+- You cannot see "Start audio": push "Play / pause". It starts the audio too.
 - Do not push K (answer-key lamp) in a scored run.

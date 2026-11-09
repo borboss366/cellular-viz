@@ -22,11 +22,15 @@
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}
 body{margin:0;font:16px/1.4 system-ui,sans-serif;background:#0b0e14;color:#dde3ee}
-header{display:flex;gap:12px;align-items:center;padding:10px 16px;background:#141a26;flex-wrap:wrap}
-h1{font-size:18px;margin:0}.banner{padding:3px 10px;border-radius:8px;background:#2b5cff;font-weight:600}
+header{display:flex;gap:12px;align-items:center;padding:10px 16px;background:#141a26;flex-wrap:nowrap}
+h1{font-size:18px;margin:0;flex:none;white-space:nowrap}.banner{padding:3px 10px;border-radius:8px;background:#2b5cff;font-weight:600}
 .badge{padding:3px 10px;border-radius:8px;background:#3a4560}.unscored{background:#5b6478}
-main{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px}
-section{background:#141a26;border-radius:12px;padding:12px}
+.banner,.badge{flex:0 1 auto;min-width:0;max-width:22ch;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.actions{display:flex;gap:8px;margin-left:auto;flex:none}
+main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;padding:12px}
+section{background:#141a26;border-radius:12px;padding:12px;min-width:0}
+.deck .name,#msg,#lastFix,#bar1,#tail{overflow-wrap:anywhere}.deck{min-height:2.8em}.fixline{min-height:2.8em}
+select{max-width:100%}#tracks{width:100%}
 h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#8a96ad;margin:0 0 8px}
 .big{font-size:44px;font-weight:700;font-variant-numeric:tabular-nums}.row{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
 .lamps{display:flex;gap:14px;margin:10px 0}.lamp{width:64px;height:64px;border-radius:50%;background:#222a3a;display:grid;place-items:center;font-size:12px;color:#8a96ad;transition:background 60ms}
@@ -39,7 +43,7 @@ button{cursor:pointer}.fixes button{min-width:60px}
 .deck{border:2px solid #3a4560;border-radius:10px;padding:8px;margin:6px 0}.deck.live{border-color:#d6455d}.deck.next{border-color:#2b5cff}
 .tag{font-weight:700;margin-right:8px}.live .tag{color:#d6455d}.next .tag{color:#2b5cff}
 #flash{height:40px;border-radius:8px;background:#222a3a}#flash.on{background:#fff}
-.msg{color:#ffd23f;min-height:1.4em}small{color:#8a96ad}
+.msg{color:#ffd23f;min-height:2.8em}small{color:#8a96ad}
 #helpPanel{padding:8px 16px 12px;background:#141a26;border-top:1px solid #3a4560;font-size:14px}#helpPanel h2{margin:10px 0 4px}#helpPanel ol,#helpPanel ul{margin:0;padding-left:22px}
 </style>
 <script src="clock.js"></script>
@@ -49,7 +53,7 @@ button{cursor:pointer}.fixes button{min-width:60px}
 <header>
   <h1>clock conductor</h1><span class="banner" id="input">line:page</span><span class="badge" id="scored">no track</span>
   <span class="badge" id="session">–</span><span class="badge" id="logState">log: –</span>
-  <button id="start">Start audio</button><button id="download">Download log</button><button id="help" title="Help (?)">Help</button>
+  <span class="actions"><button id="start">Start audio</button><button id="download">Download log</button><button id="help" title="Help (?)">Help</button></span>
 </header>
 <!-- the user guide in short (qa/CONDUCTOR_GUIDE.md has all of it); plain ASCII only: the box's Chromium aborts on font fallback (#205) -->
 <div id="helpPanel" hidden>
@@ -85,7 +89,7 @@ button{cursor:pointer}.fixes button{min-width:60px}
       <button data-fix="tap">tap ⇧A</button><button data-fix="half">÷2 ⇧H</button><button data-fix="x2">×2 ⇧D</button>
       <button data-fix="flip">flip ⇧F</button><button data-fix="nudge" data-arg="-10">−10 ⇧,</button><button data-fix="nudge" data-arg="10">+10 ⇧.</button>
       <button data-fix="setOne">set 1 ⇧1</button><button data-fix="reset">reset ⇧0</button></div>
-    <div><small>last fix:</small> <span id="lastFix">–</span></div>
+    <div class="fixline"><small>last fix:</small> <span id="lastFix">–</span></div>
   </section>
   <section>
     <h2>Playlist</h2>
@@ -120,7 +124,7 @@ import * as C from './conductor.mjs';
 
 const qs = new URLSearchParams(location.search), $ = id => document.getElementById(id);
 const inputMode = qs.get('clock') === 'line' ? 'line' : 'line:page';
-$('input').textContent = inputMode;
+$('input').textContent = $('input').title = inputMode;
 const ctx = new AudioContext({ latencyHint: 'interactive' });
 const settings = { bpm: 120, bpb: 4, muted: false, click: qs.get('click') === '1', kick: C.KICK_QUARTERS, snare: C.SILENT, hat: C.SILENT };
 const clock = Clock.create({ source: 'line', settings, audioContext: () => ctx });
@@ -131,7 +135,7 @@ mixBus.connect(master); master.connect(ctx.destination);
 const id = sessionId();
 const log = new ConductLog({ id, input: inputMode, now: () => ctx.currentTime,
   post: async body => { const r = await fetch(`/log/${id}`, { method: 'POST', body }); if (!r.ok) throw new Error(`HTTP ${r.status}`); } });
-$('session').textContent = id;
+$('session').textContent = $('session').title = id;
 
 // ---------- tracks and decks (R1) ----------
 let tracks = [];
@@ -335,7 +339,7 @@ function scatter(now) {
 function render() {
   decks.forEach(d => { d.el.className = 'deck' + (d.n === live ? ' live' : d.track ? ' next' : ''); d.el.querySelector('.tag').textContent = d.n === live ? 'LIVE' : d.track ? 'NEXT' : '–'; });
   const d = decks[live];
-  $('scored').textContent = !d.track ? 'no track' : d.beats.length ? 'scored' : 'UNSCORED (no grid)';
+  $('scored').textContent = $('scored').title = !d.track ? 'no track' : d.beats.length ? 'scored' : 'UNSCORED (no grid)';
   $('scored').className = 'badge' + (d.track && !d.beats.length ? ' unscored' : '');
   $('bar1').textContent = d.bar1 ? `beat ${d.bar1.beat} · ${(d.bar1.atMs / 1000).toFixed(3)} s` : '–';
 }
@@ -367,7 +371,7 @@ addEventListener('keydown', e => {
   else if (a.type === 'playPause') { start(); playPause(); } else if (a.type === 'next') { start(); next(); } else if (a.type === 'keyLamp') toggleKey();
   else if (a.type === 'help') toggleHelp();
 });
-setInterval(async () => { const n = await log.flush(); $('logState').textContent = log.pending.length ? `log: ${log.pending.length} waiting` : `log: ok (${log.all.length})`; $('tail').textContent = log.all.slice(-12).map(r => JSON.stringify(r)).join('\n'); }, 1000);
+setInterval(async () => { const n = await log.flush(); $('logState').textContent = $('logState').title = log.pending.length ? `log: ${log.pending.length} waiting` : `log: ok (${log.all.length})`; $('tail').textContent = log.all.slice(-12).map(r => JSON.stringify(r)).join('\n'); }, 1000);
 setInterval(logLatency, 5000);
 addEventListener('beforeunload', () => { if (log.pending.length) navigator.sendBeacon(`/log/${id}`, log.pending.map(r => JSON.stringify(r)).join('\n') + '\n'); });
 requestAnimationFrame(tick);
