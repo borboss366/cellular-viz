@@ -18,6 +18,11 @@ import { fileURLToPath } from 'node:url';
 import { parseLog } from './conduct-score.mjs';
 import { BAR1, MARK_NAME, beatTimes, fittedBeatMs } from './marks.mjs';
 
+// Shift+S on the conductor page (A7b): a `barOk` mark = "the bar lamp showed on the 1". It belongs to the track's grid
+// (barOk on the box's sidecar), not to corpus.json, so it is only reported here.
+export const BAR_OK = 'barOk';
+export const barOkLines = marks => marks.filter(m => m.name === BAR_OK).map(m => `grid ${m.id}: barOk confirmed with Shift+S on beat ${m.beat} (set barOk: true in its sidecar on the box)`);
+
 export const CORPUS_FILE = fileURLToPath(new URL('./corpus.json', import.meta.url));
 export const MIXES_FILE = fileURLToPath(new URL('./mixes.json', import.meta.url));
 const num = x => typeof x === 'number' && Number.isFinite(x);
@@ -61,7 +66,7 @@ export function refit(marks, gridOf) {
 /** qa/corpus.json text + marks → { text, changes, warnings } (bar1 marks are left to the mixes) */
 export function applyToCorpus(text, marks) {
   const lines = String(text).split('\n'), changes = [], warnings = [];
-  for (const m of marks.filter(x => x.name !== BAR1)) {
+  for (const m of marks.filter(x => x.name !== BAR1 && x.name !== BAR_OK)) {
     const i = lines.findIndex(l => l.trim().startsWith(`{"id":${JSON.stringify(m.id)},`));
     if (i < 0) { warnings.push(`${m.id}: not a corpus.json row; ${m.name} not applied`); continue; }
     const comma = lines[i].trimEnd().endsWith(','), row = JSON.parse(lines[i].trim().replace(/,$/, ''));
@@ -115,7 +120,7 @@ async function main(argv) {
   const marks = refit(got.marks, gridOf);
   const c = applyToCorpus(fs.readFileSync(CORPUS_FILE, 'utf8'), marks), x = applyToMixes(fs.readFileSync(MIXES_FILE, 'utf8'), marks);
   for (const l of [...got.problems, ...c.warnings, ...x.warnings]) console.log(`warning: ${l}`);
-  for (const l of [...c.changes, ...x.changes]) console.log(l);
+  for (const l of [...c.changes, ...x.changes, ...barOkLines(marks)]) console.log(l);
   if (!c.changes.length && !x.changes.length) { console.log('marks-apply: nothing to change'); return 0; }
   if (!has('--write')) { console.log('marks-apply: dry run; --write to apply'); return 0; }
   fs.writeFileSync(CORPUS_FILE, c.text);

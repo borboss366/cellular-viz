@@ -4,18 +4,20 @@
 // on the laptop or the box, and listens on 127.0.0.1 unless told otherwise.
 //
 //   node qa/conduct-serve.mjs [--dir <tracks dir>] [--sessions <dir>] [--port 8790] [--host 127.0.0.1]
+//     (R9: the folders also come from CONDUCTOR_TRACKS / CONDUCTOR_SESSIONS, env only, never committed)
 //     → http://127.0.0.1:8790/  (opens experiments/clock-conductor.html)
 //
 // Routes:
 //   GET  /                       → /experiments/clock-conductor.html
 //   GET  /experiments/<file>     the repo's pages and their shared code (.html .js .mjs .css .json)
 //   GET  /qa/<file>.mjs          only the browser-safe modules the page imports (BROWSER_MODULES)
-//   GET  /api/tracks             [{ idx, label, id, kind: 'track' | 'mix', grid: bool }]  (label: the file stem, shown
-//                                on this machine only; id: the corpus id from corpus-map.json, or the mix name)
+//   GET  /api/tracks             [{ idx, label, id, kind: 'track' | 'mix', grid: bool, marks }]  (label: the file stem,
+//                                shown on this machine only; id: the corpus id from corpus-map.json, or the mix name;
+//                                marks: the names qa/corpus.json lists for that id, for the page's mark menu)
 //   GET  /audio/<idx>            the track's bytes (Range supported)
 //   GET  /grid/<idx>             its reference grid (<stem>.beatgrid.json), 404 without one
 //   POST /log/<session>          JSONL lines appended to <sessions>/<session>.jsonl; every line must fit schema v1
-//                                (qa/conduct-score.mjs checkRecord), else 400 and nothing is written
+//                                (qa/conduct-score.mjs checkRecord) and stay ≤ 64 KB (R9), else 400 and nothing is written
 //   GET  /log/<session>          the session so far (the page's download)
 // The tracks are read, never copied or listed outside this server; the session logs stay in the sessions folder
 // (default: beside the tracks folder), outside git (R9).
@@ -30,7 +32,7 @@ import { checkRecord } from './conduct-score.mjs';
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const BROWSER_MODULES = ['marks.mjs', 'conduct-log.mjs'];
 export const SESSION_RE = /^conductor-\d{8}-\d{6}(-[a-z0-9]{1,8})?$/;
-export const MAX_POST = 4 << 20;
+export const MAX_POST = 4 << 20, MAX_LINE = 64 << 10;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
   '.flac': 'audio/flac', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.aif': 'audio/aiff', '.aiff': 'audio/aiff' };
 const SAFE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(html|js|mjs|css|json)$/;
@@ -70,6 +72,7 @@ export function checkLines(text) {
   const errs = [];
   String(text).split('\n').forEach((l, i) => {
     if (!l.trim()) return;
+    if (Buffer.byteLength(l) > MAX_LINE) { errs.push(`line ${i + 1}: over 64 KB`); return; }
     let r;
     try { r = JSON.parse(l); } catch { errs.push(`line ${i + 1}: not JSON`); return; }
     for (const e of checkRecord(r)) errs.push(`line ${i + 1}: ${e}`);
@@ -89,7 +92,10 @@ export function createHandler({ tracksDir, sessionsDir, repo = REPO }) {
       }
       if (req.method === 'GET' && parts[0] === 'qa' && parts.length === 2 && BROWSER_MODULES.includes(parts[1])) return sendFile(req, res, path.join(repo, 'qa', parts[1]));
       if (req.method === 'GET' && parts[0] === 'api' && parts[1] === 'tracks' && parts.length === 2) {
-        return json(res, 200, listTracks(tracksDir).map(t => ({ idx: t.idx, label: t.stem, id: t.id, kind: t.kind, grid: t.grid })));
+        let rows = [];
+        try { rows = JSON.parse(fs.readFileSync(path.join(repo, 'qa', 'corpus.json'), 'utf8')); } catch { /* no corpus: no mark names */ }
+        const marksOf = Object.fromEntries(rows.map(r => [r.id, r.marks || []]));
+        return json(res, 200, listTracks(tracksDir).map(t => ({ idx: t.idx, label: t.stem, id: t.id, kind: t.kind, grid: t.grid, marks: (t.id && marksOf[t.id]) || [] })));
       }
       if ((req.method === 'GET' || req.method === 'HEAD') && (parts[0] === 'audio' || parts[0] === 'grid') && parts.length === 2 && /^\d+$/.test(parts[1])) {
         const t = listTracks(tracksDir)[+parts[1]];
@@ -125,8 +131,8 @@ export function createHandler({ tracksDir, sessionsDir, repo = REPO }) {
 
 function main(argv) {
   const args = argv.slice(2), opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
-  const tracksDir = audioDir(opt('--dir'));
-  const sessionsDir = path.resolve(opt('--sessions', path.join(path.dirname(tracksDir), 'sessions')));
+  const tracksDir = audioDir(opt('--dir') || process.env.CONDUCTOR_TRACKS || undefined);
+  const sessionsDir = path.resolve(opt('--sessions', process.env.CONDUCTOR_SESSIONS || path.join(path.dirname(tracksDir), 'sessions')));
   const port = +opt('--port', 8790), host = opt('--host', '127.0.0.1');
   const n = listTracks(tracksDir).length;
   http.createServer(createHandler({ tracksDir, sessionsDir })).listen(port, host, () =>
