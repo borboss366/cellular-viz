@@ -57,6 +57,8 @@
 //   metronome.now()              → the clock's time on the audio clock that the visuals show now (heard + offset)
 //   Clock.qaEvents(metronome)    → events and jumps merged, sorted by time (for __qa.events)
 //   metronome.lateStats          → { late, lateMaxMs, maxGapMs, lookAheadMs } (#95: heavy 4K frames; __qa.clockLate)
+//   metronome.onTrackerFrame(fn) → line only: fn(frame) for every analysis frame the tracker gets (a read-only tee, #188 R3:
+//                                  the conductor page's shadow tracker); returns an unsubscribe function, null off line
 //
 // Booking under long frames (#95, 31 Oct): read() and hitsDue() call schedule() first, at most once per frame, so a
 // frame longer than the 25 ms timer can't push the booking past its look-ahead; the look-ahead is
@@ -219,7 +221,7 @@
     const load = opts.load || loadFile;
     // line: the tracker, its input and worklet, the hand fixes' offset (beats) and the booking position
     const line = source === 'line' ? { status: 'idle', error: null, tracker: null, node: null, input: null, offset: 0,
-      step: null, lastBooked: -Infinity, seenJumps: 0, stateLog: [], rises: [] } : null;
+      step: null, lastBooked: -Infinity, seenJumps: 0, stateLog: [], rises: [], taps: [] } : null;
     const lineDelayMs = () => (opts.trackerOptions && Number.isFinite(opts.trackerOptions.analysisDelayMs) ? opts.trackerOptions.analysisDelayMs
       : root.ClockTracker ? root.ClockTracker.ANALYSIS_DELAY_MS : null);
 
@@ -655,6 +657,7 @@
         if (!line || !line.tracker || !f) return;
         const tr = line.tracker;
         tr.push(f);
+        for (const fn of line.taps) { try { fn(f); } catch (e) { warnOnce('tee', 'onTrackerFrame listener: ' + ((e && e.message) || e)); } }
         if (f.rise) for (const r of f.rise) { line.rises.push(r); if (line.rises.length > 4096) line.rises.shift(); }   // the rise probe (3c truths)
         for (; line.seenJumps < tr.jumps.length; line.seenJumps++) {
           const j = tr.jumps[line.seenJumps];
@@ -762,6 +765,13 @@
         this.jumps.push(jump);
         if (this.jumps.length > JUMPS_KEPT) this.jumps.shift();
         return jump;
+      },
+      // a read-only tee of the tracker's input (#188 R3): fn gets every analysis frame the tracker gets, in order, after it;
+      // the conductor page feeds a shadow ClockTracker that never sees fix(). → an unsubscribe function, or null off line
+      onTrackerFrame(fn) {
+        if (!line || typeof fn !== 'function') return null;
+        line.taps.push(fn);
+        return () => { const i = line.taps.indexOf(fn); if (i >= 0) line.taps.splice(i, 1); };
       },
       // __qa.tracker (#95 SHOULD 8): null on other sources
       // the QA truths' view of the line source (3c, experiments/clock-truth.html): the rise probe's times and the tracker
