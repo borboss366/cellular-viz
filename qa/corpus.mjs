@@ -54,3 +54,17 @@ export function checkBpm(rows, resolved) {
     return { id: r.id, bpm: r.bpm, fit, field, err: +err.toFixed(5), ok: err <= BPM_TOLERANCE, skipped: false };
   });
 }
+
+/**
+ * checkBpm's results as the "corpus:" lines test-pr.sh always prints: a count, then one line per gate row.
+ * Corpus ids, fields, numbers and fixed reasons only, never a stem or file name (R9: test-pr output is shared).
+ */
+export function reportLines(results) {
+  const checked = results.filter(x => !x.skipped);
+  return [
+    `corpus: bpm ${checked.length} checked, ${results.length - checked.length} skipped, ${checked.filter(x => !x.ok).length} off`,
+    ...results.map(x => x.skipped
+      ? `corpus: ${x.id} skipped (${x.reason})`
+      : `corpus: ${x.id} ${x.field} ${x.fit.toFixed(2)} vs ${x.bpm} (${(x.err * 100).toFixed(2)} %) ${x.ok ? 'ok' : 'OFF'}`),
+  ];
+}

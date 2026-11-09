@@ -86,9 +86,29 @@ test('the real corpus on the box: every gate track with a fitted tempo is within
   const map = C.loadMap(tracks);
   if (map.missing) { t.skip('no corpus-map.json beside the tracks yet'); return; }
   const res = C.checkBpm(rows, C.resolve(rows, map, tracks)), checked = res.filter(x => !x.skipped);
-  t.diagnostic(`corpus bpm: ${checked.length} checked, ${res.length - checked.length} skipped`);
+  for (const line of C.reportLines(res)) t.diagnostic(line);   // test-pr.sh prints these even on a pass
   const bad = checked.filter(x => !x.ok);
   assert.deepEqual(bad.map(x => `${x.id} ${x.field} ${x.fit} vs ${x.bpm}`), [], 'gate tracks off their corpus BPM by more than 1 %');
+});
+
+test('R9: the corpus: lines test-pr prints carry ids and numbers, never a stem or file name', () => {
+  const rows = [{ id: 'ok', status: 'gate', bpm: 126 }, { id: 'off', status: 'gate', bpm: 100 },
+    { id: 'nogrid', status: 'gate', bpm: 120 }, { id: 'unmapped', status: 'gate', bpm: 117 }, { id: 'set', status: 'gate', bpm: null }];
+  const resolved = [
+    { id: 'ok', stem: 'secret-artist-ok-track', grid: { bpmFitCore: 126.2 }, reason: null },
+    { id: 'off', stem: 'secret-artist-off-track', grid: { bpmFit: 103 }, reason: null },
+    { id: 'nogrid', stem: 'secret-artist-nogrid-track', grid: null, reason: 'no grid' },
+    { id: 'unmapped', stem: null, grid: null, reason: 'not in the map' },
+    { id: 'set', stem: 'secret-dj-set', grid: { bpmFit: 127 }, reason: null },
+  ];
+  const lines = C.reportLines(C.checkBpm(rows, resolved));
+  assert.equal(lines[0], 'corpus: bpm 2 checked, 3 skipped, 1 off');
+  assert.equal(lines.length, 1 + rows.length);
+  assert.ok(lines.every(l => l.startsWith('corpus: ')), 'every line has the prefix test-pr.sh greps for');
+  assert.match(lines.find(l => l.includes(' ok ')), /^corpus: ok bpmFitCore 126\.20 vs 126 \(0\.16 %\) ok$/);
+  assert.match(lines.find(l => l.includes(' off ')), /OFF$/);
+  const text = lines.join('\n');
+  assert.doesNotMatch(text, /secret|\.(flac|wav|mp3|m4a|aiff?|ogg)\b|beatgrid|qa-audio|\//i, text);
 });
 
 test('R9: no private file names or folders in corpus.json or CLOCK_CORPUS.md', () => {
