@@ -5,6 +5,13 @@ A consolidated write-up of VIZ research's findings in #188
 [6765748314](https://github.com/borboss366/cellular-viz/issues/188#issuecomment-6765748314)), for the controller brief
 [docs/CELLULAR_VIZ_BRIEF_NOVATION.md](CELLULAR_VIZ_BRIEF_NOVATION.md). Docs only: no code lands during the freeze.
 
+> **Read this with the brief.** Two points in it have changed:
+> - **D1:** the research changed it. The controller uses **DAW mode**, not a Custom Mode built in Components (section 1).
+> - **D4:** the user has **not approved** it. Only the restart command landed (#211: `fix('restart')`, Shift+R).
+>   There is no tap-clears-hold and no second-press release.
+>
+> The brief is kept as the reviewer wrote it.
+
 ## Sources
 
 The official source is Novation's **Launch Control XL 3 programmer's reference guide** (7 articles). The help-centre HTML
