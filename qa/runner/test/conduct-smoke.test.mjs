@@ -250,7 +250,7 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
     });
     await page.waitForTimeout(2500);   // two log flushes
     const state = await page.evaluate(() => window.__qa.conductor.state());
-    const late = await page.evaluate(() => window.__qa.clockLate || null);
+    const lateAtEnd = await page.evaluate(() => window.__qa.clockLate || null);
     const recs = parseLog(fs.readFileSync(path.join(sessions, `${id}.jsonl`), 'utf8'));
     const n = (type, f = () => true) => recs.filter(r => r.type === type && f(r)).length;
     const summary = { records: recs.length, pending: state.pending, tracker: state.tracker && state.tracker.state,
@@ -261,7 +261,7 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
     const playAt = (recs.find(r => r.type === 'track' && r.event === 'play') || {}).ctx;
     const firstAt = src => { const b = recs.find(r => r.type === 'beat' && r.src === src); return b && typeof playAt === 'number' ? +(b.ctx - playAt).toFixed(2) : null; };
     summary.firstBeatS = { clock: firstAt('clock'), shadow: firstAt('shadow') };
-    summary.clockLate = late;
+    summary.clockLate = lateAtEnd;
     summary.trackerStates = state.tracker && state.tracker.states ? state.tracker.states.map(s => `${s.state}@${(+s.t).toFixed(1)}`).join(' ') : null;
     console.log(`# conductor smoke: ${JSON.stringify(summary).slice(0, 700)}`);
     t.diagnostic(`corpus: report: conductor smoke ${JSON.stringify(summary).slice(0, 700)}`);   // printed on a pass too
