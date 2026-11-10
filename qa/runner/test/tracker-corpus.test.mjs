@@ -2,9 +2,10 @@
 // fix() ever reaches it) on whole tracks decoded by Chromium's own decoder (no ffmpeg, as exp-run and mix-make). On the
 // box only: Playwright from the runner settings' QA_HOME (as conduct-smoke), the tracks folder and corpus-map.json
 // beside it; skipped anywhere else, with the reason. R9: tracks are named by corpus id only, never by file or stem.
-//   (a) sandstorm: the shadow's tempo within 1 % of 136 for >= 95 % of the time after its first lock (it locked 4:3 at
-//       180.8 in the 10 Nov sitting)
-//   (c) gasolina: a right octave hold (96, set 10 s after the lock) never releases over the next 60 s
+//   (a) tempo rows, sandstorm (136) and gasolina (96): the tracker alone within 1 % from its first lock to the end, #214
+//       beside main b1fe5f0 (vendored in fixtures/) in one row; report-only for two runs, then >= 95 % and >= main - 2
+//   (c) gasolina: a right hold armed after 2 s within 1 % of 96 never releases in 60 s; a wrong x2 hold (192)
+//       releases to 96 within 8 beats through the new evidence path (a 128 hold is printed beside it)
 //   node --test qa/runner/test/*.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -115,30 +116,60 @@ function tempoStats(mono, ref, lib) {
 }
 function say(t, line) { console.log(`# ${line}`); t.diagnostic(line); }
 
-test('(a) sandstorm on the real track: the shadow within 1 % of 136 for >= 95 % of the time after its lock; main b1fe5f0 printed beside it (box only)', async (t) => {
-  const d = await audio('sandstorm', 240);
+// The tempo rows (304 family): the tracker alone from its first lock to the end, #214 beside main b1fe5f0 in one row.
+// REPORT-ONLY for their first two box runs (VIZ research, 10 Nov); then hard at >= 95 % AND >= main - 2 points.
+const TEMPO_ROWS_HARD = false;
+/** while the #214 tracker sits near `bpm` (+/- 2 %): what its relative check saw (the stretch's evaluations) */
+function stretchEvals(mono, bpm) {
+  const seen = new Map();
+  let secs = 0;
+  track(mono, (tr, tt) => {
+    if (tr.state === 'idle' || Math.abs(tr.ownBpm / bpm - 1) > 0.02) return;
+    secs += 0.1;
+    const ev = tr.relative.eval;
+    if (ev && !seen.has(ev.t)) seen.set(ev.t, ev);
+  });
+  const evs = [...seen.values()], used = evs.filter(e => !e.skipped);
+  const best = e => Math.max(0, ...(e.cands || []).map(c => c.ratio || 0));
+  const R0s = used.map(e => e.choice.R).filter(x => x !== null);
+  return `${secs.toFixed(1)} s near ${bpm}: ${evs.length} estimates (${evs.length - used.length} skipped: ${[...new Set(evs.filter(e => e.skipped).map(e => e.skipped))].join(', ') || '-'}), choice R min ${R0s.length ? Math.min(...R0s).toFixed(3) : '-'} max ${R0s.length ? Math.max(...R0s).toFixed(3) : '-'}, best relative ratio max ${used.length ? Math.max(...used.map(best)).toFixed(3) : '-'}; first evals ${JSON.stringify(used.slice(0, 3))}`;
+}
+async function tempoRow(t, id, ref, secs, { watch = null } = {}) {
+  const d = await audio(id, secs);
   if (d.skip) { t.skip(d.skip); return; }
-  const now = tempoStats(d.mono, 136, T), base = tempoStats(d.mono, 136, BASE), tr = now.tr;
-  say(t, `sandstorm ${(d.mono.length / SR).toFixed(1)} s, tracker alone. #214: ${now.line}. main b1fe5f0 (report): ${base.line}. delta ${(now.pct - base.pct).toFixed(1)} points`);
-  say(t, `sandstorm #214 relatives: ${tr.relative.count} moves of ${tr.relative.estimates} estimates, last move ${JSON.stringify(tr.relative.last)}, closest unmoved ratio ${tr.relative.closest} at ${JSON.stringify(tr.relative.closestAt)}, last eval ${JSON.stringify(tr.relative.eval)}; jumps ${tr.jumps.map(j => j.kind).join(',') || 'none'}`);
-  assert.ok(now.lockT !== null, `locks: ${now.line}`);
-  assert.ok(now.pct >= 95, `#214 ${now.line} (main b1fe5f0: ${base.line})`);
-});
-
-// (c) on Gasolina, both cases start from the tracker reading 96 within 1 % (test 305 at 469ac5a set its hold while
-// the tracker read 128.09, a 4:3 lock, and the old fold release rightly let it go)
-const REF_G = 96;
-function untilRight(tr, tt, st) {   // the first sample, after the lock, with the tracker within 1 % of 96 for 1 s
-  if (st.lockT === null && tr.state === 'locked') st.lockT = tt;
-  if (st.lockT === null || st.rightAt !== null) return;
-  if (Math.abs(tr.ownBpm / REF_G - 1) <= 0.01) { if (st.okSince === null) st.okSince = tt; if (tt - st.okSince >= 1) st.rightAt = tt; } else st.okSince = null;
+  const now = tempoStats(d.mono, ref, T), base = tempoStats(d.mono, ref, BASE), tr = now.tr;
+  const ok = now.pct >= 95 && now.pct >= base.pct - 2;
+  say(t, `${id} ${(d.mono.length / SR).toFixed(1)} s, tracker alone, from its first lock: #214 ${now.pct.toFixed(1)} % | main b1fe5f0 ${base.pct.toFixed(1)} % | delta ${(now.pct - base.pct).toFixed(1)} points | ${ok ? 'would pass' : 'would FAIL'} (>= 95 % and >= main - 2) ${TEMPO_ROWS_HARD ? '[hard]' : '[report-only]'}`);
+  say(t, `${id} #214: ${now.line}`);
+  say(t, `${id} main b1fe5f0: ${base.line}`);
+  say(t, `${id} #214 relatives: ${tr.relative.count} moves, ${tr.relative.estimates} evaluated, ${tr.relative.skipped} skipped (untrusted base); last move ${JSON.stringify(tr.relative.last)}; closest unmoved ratio ${tr.relative.closest} at ${JSON.stringify(tr.relative.closestAt)}; tempo moves while locked ${tr.relative.tempoMoves}, last pending ${JSON.stringify(tr.relative.tempoHold)}; jumps ${tr.jumps.map(j => j.kind).join(',') || 'none'}`);
+  if (watch) say(t, `${id} #214 relative check during the ${watch} stretch: ${stretchEvals(d.mono, watch)}`);
+  if (TEMPO_ROWS_HARD) {
+    assert.ok(now.lockT !== null, `locks: ${now.line}`);
+    assert.ok(ok, `#214 ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %: ${now.line}`);
+  }
 }
 
-test('(c) gasolina on the real track: a right hold, set once the tracker reads 96, never releases over 60 s; main b1fe5f0 printed (box only)', async (t) => {
+test('(a) tempo row sandstorm: within 1 % of 136 from the first lock, #214 beside main b1fe5f0 (report-only for two runs; box only)', async (t) => {
+  await tempoRow(t, 'sandstorm', 136, 240, { watch: 136 * 4 / 3 });
+});
+
+test('(a) tempo row gasolina: within 1 % of 96 from the first lock, #214 beside main b1fe5f0, the 128 stretch logged (report-only for two runs; box only)', async (t) => {
+  await tempoRow(t, 'gasolina', 96, 240, { watch: 128 });
+});
+
+// (c) on Gasolina, both cases start from the tracker reading 96 within 1 % for >= 2 s (test 305 at 469ac5a set its
+// hold while the tracker read 128.09, a 4:3 lock, and the old fold release rightly let it go)
+const REF_G = 96;
+function untilRight(tr, tt, st) {   // the first sample, after the lock, with the tracker within 1 % of 96 for 2 s
+  if (st.lockT === null && tr.state === 'locked') st.lockT = tt;
+  if (st.lockT === null || st.rightAt !== null) return;
+  if (Math.abs(tr.ownBpm / REF_G - 1) <= 0.01) { if (st.okSince === null) st.okSince = tt; if (tt - st.okSince >= 2) st.rightAt = tt; } else st.okSince = null;
+}
+
+test('(c) gasolina: a right hold, armed after 2 s within 1 % of 96, never releases over 60 s (box only)', async (t) => {
   const d = await audio('gasolina', 240);
   if (d.skip) { t.skip(d.skip); return; }
-  const base = tempoStats(d.mono, REF_G, BASE), now = tempoStats(d.mono, REF_G, T);
-  say(t, `gasolina ${(d.mono.length / SR).toFixed(1)} s, tracker alone, no hold. #214: ${now.line}. main b1fe5f0 (report): ${base.line}`);
   const st = { lockT: null, okSince: null, rightAt: null };
   let heldAt = null, worst = null;
   const bpms = [];
@@ -152,32 +183,42 @@ test('(c) gasolina on the real track: a right hold, set once the tracker reads 9
     }
   });
   const rel = tr.notes.filter(n => n.kind === 'octave-release'), span = heldAt === null ? 0 : Math.min(60, d.mono.length / SR - heldAt);
-  const line = `gasolina right hold: lock ${st.lockT === null ? 'never' : st.lockT.toFixed(2) + ' s'}, reads 96 from ${st.rightAt === null ? 'never' : st.rightAt.toFixed(1) + ' s'}, hold at ${heldAt === null ? '-' : heldAt.toFixed(1) + ' s'} for ${span.toFixed(1)} s; releases ${rel.map(n => `${n.why || 'fold'}@${n.t.toFixed(1)} (lock ${n.lock.toFixed(1)}, raw ${n.raw.toFixed(1)})`).join(', ') || 'none'}; bpm min ${bpms.length ? Math.min(...bpms).toFixed(2) : '-'} max ${bpms.length ? Math.max(...bpms).toFixed(2) : '-'}; lock now ${tr.octaveLock}; worst check ${JSON.stringify(worst)}`;
+  const line = `gasolina right hold: lock ${st.lockT === null ? 'never' : st.lockT.toFixed(2) + ' s'}, 96 for 2 s at ${st.rightAt === null ? 'never' : st.rightAt.toFixed(1) + ' s'}, hold at ${heldAt === null ? '-' : heldAt.toFixed(1) + ' s'} for ${span.toFixed(1)} s; releases ${rel.map(n => `${n.why || 'fold'}@${n.t.toFixed(1)} (lock ${n.lock.toFixed(1)}, raw ${n.raw.toFixed(1)})`).join(', ') || 'none'}; bpm min ${bpms.length ? Math.min(...bpms).toFixed(2) : '-'} max ${bpms.length ? Math.max(...bpms).toFixed(2) : '-'}; lock now ${tr.octaveLock}; worst check ${JSON.stringify(worst)}`;
   say(t, line);
   assert.ok(st.lockT !== null, `the tracker locks: ${line}`);
-  assert.ok(heldAt !== null, `the tracker never read 96 within 1 % (for 1 s) in the 60 s after its lock, so no right hold could be set: ${line}`);
+  assert.ok(heldAt !== null, `the tracker never read 96 within 1 % for 2 s in the 60 s after its lock, so no right hold could be armed: ${line}`);
   assert.ok(span >= 60, `the track runs 60 s past the hold: ${line}`);
   assert.equal(rel.filter(n => n.t <= heldAt + 60).length, 0, `no release: ${line}`);
 });
 
-test('(c) gasolina on the real track: a wrong hold forced at 128 (4:3) releases and the tracker reads 96 again (box only)', async (t) => {
+/** a wrong hold forced by scaleTempo(f) once the tracker reads 96: when it releases, by which path, when 96 is back */
+function forcedHold(mono, f) {
+  const st = { lockT: null, okSince: null, rightAt: null };
+  let heldAt = null, relAt = null, backAt = null, evAtRel = null, lastEval = null;
+  const after = [];
+  const tr = track(mono, (tr, tt) => {
+    untilRight(tr, tt, st);
+    if (heldAt === null && st.rightAt !== null && st.rightAt - st.lockT <= 60) { tr.scaleTempo(f, tt); heldAt = tt; }
+    if (heldAt === null) return;
+    if (relAt === null && tr.octaveLock === null) { relAt = tt; evAtRel = lastEval; }
+    if (relAt === null) lastEval = tr.hold.eval;
+    if (relAt !== null && backAt === null && Math.abs(tr.ownBpm / REF_G - 1) <= 0.01) backAt = tt;
+    if (tt <= heldAt + 20) after.push(`${(tt - heldAt).toFixed(1)}:${tr.ownBpm.toFixed(1)}${tr.octaveLock ? 'H' : ''}`);
+  });
+  const rel = tr.notes.filter(n => n.kind === 'octave-release'), first = rel.find(n => heldAt !== null && n.t >= heldAt) || null;
+  const line = `hold x${f.toFixed(3)} (${heldAt === null ? '-' : (REF_G * f).toFixed(1)}): 96 for 2 s at ${st.rightAt === null ? 'never' : st.rightAt.toFixed(1) + ' s'}, hold at ${heldAt === null ? '-' : heldAt.toFixed(1) + ' s'}; released ${relAt === null ? 'never' : '+' + (relAt - heldAt).toFixed(2) + ' s'} by ${first ? (first.why || 'fold') : '-'} (lock ${first ? first.lock.toFixed(1) : '-'}, raw ${first ? first.raw.toFixed(1) : '-'}); last check before it ${JSON.stringify(evAtRel)}; 96 again ${backAt === null ? 'never' : '+' + (backAt - heldAt).toFixed(2) + ' s'}; jumps ${tr.jumps.filter(j => heldAt !== null && j.at >= heldAt).map(j => `${j.kind}@+${(j.at - heldAt).toFixed(2)}`).join(', ') || 'none'}; trace (s:bpm, H = held) ${after.filter((_, i) => i % 5 === 0).join(' ')}`;
+  return { heldAt, relAt, backAt, first, evAtRel, line };
+}
+
+test('(c) gasolina: a wrong x2 hold (192) releases to 96 within 8 beats through the new path; a 128 hold printed (box only)', async (t) => {
   const d = await audio('gasolina', 240);
   if (d.skip) { t.skip(d.skip); return; }
-  const st = { lockT: null, okSince: null, rightAt: null };
-  let heldAt = null, relAt = null, backAt = null;
-  const after = [];
-  const tr = track(d.mono, (tr, tt) => {
-    untilRight(tr, tt, st);
-    if (heldAt === null && st.rightAt !== null && st.rightAt - st.lockT <= 60) { tr.scaleTempo(128 / tr.ownBpm, tt); heldAt = tt; }   // the 4:3 hold
-    if (heldAt === null) return;
-    if (relAt === null && tr.octaveLock === null) relAt = tt;
-    if (relAt !== null && backAt === null && Math.abs(tr.ownBpm / REF_G - 1) <= 0.01) backAt = tt;
-    if (tt <= heldAt + 30) after.push(`${(tt - heldAt).toFixed(1)}:${tr.ownBpm.toFixed(1)}${tr.octaveLock ? 'H' : ''}`);
-  });
-  const rel = tr.notes.filter(n => n.kind === 'octave-release');
-  const line = `gasolina hold forced at 128: reads 96 from ${st.rightAt === null ? 'never' : st.rightAt.toFixed(1) + ' s'}, hold at ${heldAt === null ? '-' : heldAt.toFixed(1) + ' s'}; released ${relAt === null ? 'never' : '+' + (relAt - heldAt).toFixed(1) + ' s'} (${rel.map(n => `${n.why || 'fold'} lock ${n.lock.toFixed(1)} raw ${n.raw.toFixed(1)}`).join(', ') || 'none'}); 96 again ${backAt === null ? 'never' : '+' + (backAt - heldAt).toFixed(1) + ' s'}; trace (s after hold:bpm, H = held) ${after.filter((_, i) => i % 5 === 0).join(' ')}`;
-  say(t, line);
-  assert.ok(heldAt !== null, `the tracker never read 96 within 1 % (for 1 s) in the 60 s after its lock: ${line}`);
-  assert.ok(relAt !== null && relAt - heldAt <= 10, `the 128 hold releases within 10 s: ${line}`);
-  assert.ok(backAt !== null && backAt - relAt <= 8, `the tracker reads 96 within 8 s of the release: ${line}`);
+  const x2 = forcedHold(d.mono, 2), h128 = forcedHold(d.mono, 128 / 96), eight = 8 * 60 / REF_G;
+  say(t, `gasolina wrong hold x2: ${x2.line}`);
+  say(t, `gasolina wrong hold 128 (report: 0.415 octave is below the new path's 0.75, so only the old >20 % fold path can release it): ${h128.line}`);
+  assert.ok(x2.heldAt !== null, `the tracker never read 96 within 1 % for 2 s in the 60 s after its lock: ${x2.line}`);
+  assert.ok(x2.relAt !== null && x2.relAt - x2.heldAt <= eight, `released within 8 beats (${eight.toFixed(2)} s): ${x2.line}`);
+  assert.ok(x2.first && x2.first.why === 'evidence', `through the new path (why 'evidence', not the old fold): ${x2.line}`);
+  assert.ok(x2.evAtRel && x2.evAtRel.wrong === true, `the last check before the release reads wrong = true: ${x2.line}`);
+  assert.ok(x2.backAt !== null && x2.backAt - x2.heldAt <= eight, `96 again within 8 beats of the hold: ${x2.line}`);
 });

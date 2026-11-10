@@ -61,6 +61,10 @@
     // ACF, the prior and the onset concentration R at that period (relSecs of broadband onsets); one wins only by
     // relMargin and relMinGain of R. The octaves stay with the half-lag override and the hysteresis.
     relRatios: [4 / 3, 3 / 2, 2 / 3, 3 / 4], relMargin: 1.2, relMinGain: 0.1, relSecs: 8,
+    // VIZ research's ruling on the #214 box run (10 Nov): relatives only from a trusted base (conf >= lockConf and the
+    // current tempo's R >= relMinR0; at R 0.1 the base itself is in doubt), and while locked a tempo more than tempoTol
+    // off must hold (within tempoTol of itself) for tempoHoldN estimates (~2 s at 6 Hz) before it replaces bpm
+    relMinR0: 0.2, tempoTol: 0.03, tempoHoldN: 12,
     // the octave hold's evidence release (fix c): the estimate is >= holdOct octaves from the hold and the onsets back
     // it (a slower estimate: R there >= holdSlow x R at the hold; a faster one: R at the hold < holdFast x R there)
     // for > holdSecs; then the hold goes and the model moves to the estimate's octave
@@ -208,6 +212,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     const notes = [];
     let relCount = 0, relLast = null;   // fix (a): how often a non-octave relative replaced the ACF's choice, and the last
     let relEval = null, holdEval = null;
+    let pend = null, tempoHold = null, tempoMoves = 0;   // ruling (i): the pending tempo while locked, its last state, moves
     const relEvals = [], relStats = { n: 0, closest: 0, closestAt: null };
 
     const ownBeats = t => own.B0 + (t - own.T0) / own.P;
@@ -315,6 +320,12 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     function relativeLag(Lf, r, Lmin, Lmax, t) {
       const b0 = 60 / (Lf * dtHop), a0 = acfAt(r, Lf, Lmin, Lmax), R0 = periodR(60 / b0, t, C.relSecs);
       if (R0 === null || !(a0 > 0)) return Lf;
+      // ruling (ii): no relative move from an untrusted base (the 108 -> 144 hop came from R0 0.101)
+      if (conf < C.lockConf || R0 < C.relMinR0) {
+        relEval = { t: +t.toFixed(3), choice: { bpm: +b0.toFixed(2), R: r3(R0) }, conf: r3(conf), skipped: conf < C.lockConf ? 'conf' : 'R0' };
+        relStats.skipped = (relStats.skipped || 0) + 1;
+        return Lf;
+      }
       const s0 = a0 * prior(b0) * R0, cands = [];
       let bestL = Lf, bestS = s0 * C.relMargin, bestK = 1, bestR = R0, topRatio = 0, topK = null;
       for (const k of C.relRatios) {
@@ -409,7 +420,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       octaveLock = null; lockOutSince = null; holdOutSince = null;
       if (f === 1 || !own.P) return;
       setPeriod(own, own.P / f, t);
-      bpm = 60 / own.P; bigCount = 0; recent.length = 0;
+      bpm = 60 / own.P; bigCount = 0; pend = null; recent.length = 0;
       if (tapModel) { setPeriod(tapModel, tapModel.P / f, t); return; }   // a tap owns the output's phase
       // the beat side at the new period: the low lane's mean phase (the kick), broadband's without one
       let st = laneStat(lanes.low, t);
@@ -451,8 +462,18 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         return;
       }
       if (t < estHoldUntil) return;   // the drift follower just set the period; the window still holds the old tempo
-      if (Math.abs(raw - bpm) / bpm > 0.1) { if (++bigCount < 6) return; bpm = raw; }   // a real change holds for ~1 s
-      else { bigCount = 0; bpm = 0.7 * bpm + 0.3 * raw; }
+      const dev = Math.abs(raw - bpm) / bpm;
+      if (state === 'locked' && dev > C.tempoTol) {
+        // locked (ruling i): a new tempo replaces bpm only after tempoHoldN estimates agreeing with each other within
+        // tempoTol (~2 s); a scatter (110, 141, 179 on Sandstorm) keeps restarting the count and never lands
+        if (pend && Math.abs(raw / pend.bpm - 1) <= C.tempoTol) { pend.n++; pend.bpm = 0.7 * pend.bpm + 0.3 * raw; }
+        else pend = { bpm: raw, n: 1, since: t };
+        tempoHold = { t: +t.toFixed(3), bpm: +bpm.toFixed(2), cand: +pend.bpm.toFixed(2), n: pend.n, since: +pend.since.toFixed(3) };
+        if (pend.n < C.tempoHoldN) return;
+        bpm = pend.bpm; pend = null; bigCount = 0; tempoMoves++;
+      }
+      else if (dev > 0.1) { pend = null; if (++bigCount < 6) return; bpm = raw; }   // not locked: a real change holds for ~1 s
+      else { bigCount = 0; pend = null; bpm = 0.7 * bpm + 0.3 * raw; }
       setPeriod(own, 60 / bpm, t);
     }
 
@@ -572,7 +593,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       for (const o of recent) res = Math.max(res, Math.abs(o.t - (mt + (o.k - mk) * P)));
       if (!(P > 0) || res > 0.1 * P || Math.abs(P / own.P - 1) <= C.driftMin) return;
       setPeriod(own, P, to);
-      bpm = 60 / P; estHoldUntil = to + C.acWindow; bigCount = 0;
+      bpm = 60 / P; estHoldUntil = to + C.acWindow; bigCount = 0; pend = null;
       const e = frac(ownBeats(to) + own.pending);   // the phase error left at the new period, slewed from here
       own.pending -= e;
       // the window is kept: while it still straddles the step each new onset refines the period again
@@ -658,7 +679,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     }
 
     // __qa.tracker / snapshot(): fix (a)'s and fix (c)'s numbers (VIZ research's review of #214)
-    const relReport = () => ({ count: relCount, last: relLast, eval: relEval, evals: relEvals.slice(-8), estimates: relStats.n, closest: relStats.closest, closestAt: relStats.closestAt });
+    const relReport = () => ({ count: relCount, last: relLast, eval: relEval, evals: relEvals.slice(-8), estimates: relStats.n, skipped: relStats.skipped || 0, closest: relStats.closest, closestAt: relStats.closestAt,
+      tempoHold, tempoMoves });
     const holdReport = () => ({ lock: octaveLock ? +octaveLock.toFixed(2) : null, outSinceS: holdOutSince === null ? null : +holdOutSince.toFixed(3), eval: holdEval,
       releases: notes.filter(n => n.kind === 'octave-release').slice(-4).map(n => ({ t: +n.t.toFixed(3), why: n.why || 'fold', lock: +n.lock.toFixed(2), raw: +n.raw.toFixed(2) })) });
     function read(t) {
@@ -699,7 +721,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         setPeriod(own, own.P / f, t);
         if (tapModel) setPeriod(tapModel, tapModel.P / f, t);
         bpm = 60 / own.P; octaveLock = bpm; lockOutSince = null; holdOutSince = null;
-        estHoldUntil = t + C.acWindow; recent.length = 0; bigCount = 0;
+        estHoldUntil = t + C.acWindow; recent.length = 0; bigCount = 0; pend = null;
       },
       // __qa.tracker (#95 SHOULD 8)
       snapshot() {
