@@ -45,7 +45,16 @@ export function resolve(rows, map, tracksDir) {
  * R15 (#188 6736333312): a grid with gridSuspect true or driftCore over FLAG_DRIFT % has no tempo fit for gating; its
  * row reads "grid flagged" (flagged: true, ok: null), not a failed track. gridSuspect, inlierFrac, extraFrac,
  * longFrac (report-only) and driftCore ride along for the report (null where the grid has none yet).
+ * Octave folding (as agreed for test 123 hard): an octaveFree row's fitted tempo is folded by x2 or /2 (up to two
+ * steps) to the octave nearest its corpus BPM before the 1 % check; fold is the factor used (1 = not folded), fit stays
+ * the grid's own number. Rows that are not octaveFree are never folded.
  */
+export const MAX_FOLD_STEPS = 2;
+export function octaveFold(fit, bpm) {
+  if (!(fit > 0) || !(bpm > 0)) return 1;
+  const k = Math.max(-MAX_FOLD_STEPS, Math.min(MAX_FOLD_STEPS, Math.round(Math.log2(bpm / fit))));
+  return Math.pow(2, k);
+}
 export function checkBpm(rows, resolved) {
   const byId = new Map(resolved.map(x => [x.id, x]));
   return rows.filter(r => r.status === 'gate').map(r => {
@@ -54,12 +63,13 @@ export function checkBpm(rows, resolved) {
     if (!x.grid) return { id: r.id, skipped: true, reason: x.reason };
     const field = Number.isFinite(x.grid.bpmFitCore) ? 'bpmFitCore' : Number.isFinite(x.grid.bpmFit) ? 'bpmFit' : null;
     if (!field) return { id: r.id, skipped: true, reason: 'grid has no fitted tempo yet' };
-    const fit = x.grid[field], err = Math.abs(fit - r.bpm) / r.bpm, g = x.grid;
+    const fit = x.grid[field], fold = r.octaveFree === true ? octaveFold(fit, r.bpm) : 1, g = x.grid;
+    const err = Math.abs(fit * fold - r.bpm) / r.bpm;
     const extra = { gridSuspect: typeof g.gridSuspect === 'boolean' ? g.gridSuspect : null,
       inlierFrac: Number.isFinite(g.inlierFrac) ? g.inlierFrac : null, extraFrac: Number.isFinite(g.extraFrac) ? g.extraFrac : null,
       longFrac: Number.isFinite(g.longFrac) ? g.longFrac : null, driftCore: Number.isFinite(g.driftCore) ? g.driftCore : null };
     const flagged = extra.gridSuspect === true || (extra.driftCore !== null && extra.driftCore > FLAG_DRIFT);
-    return { id: r.id, bpm: r.bpm, fit, field, err: +err.toFixed(5), ok: flagged ? null : err <= BPM_TOLERANCE, flagged, skipped: false, ...extra };
+    return { id: r.id, bpm: r.bpm, fit, fold, field, err: +err.toFixed(5), ok: flagged ? null : err <= BPM_TOLERANCE, flagged, skipped: false, ...extra };
   });
 }
 
@@ -67,6 +77,7 @@ export function checkBpm(rows, resolved) {
  * checkBpm's results as the "corpus:" lines test-pr.sh always prints: a count, then one line per gate row.
  * Corpus ids, fields, numbers and fixed reasons only, never a stem or file name (R9: test-pr output is shared).
  */
+const foldText = x => (!x.fold || x.fold === 1 ? '' : ` folded ${x.fold > 1 ? 'x' + x.fold : '/' + (1 / x.fold)} = ${(x.fit * x.fold).toFixed(2)}`);
 export function reportLines(results) {
   const checked = results.filter(x => !x.skipped), na = (v, f) => (v === null || v === undefined ? 'n/a' : f(v));
   return [
@@ -74,7 +85,7 @@ export function reportLines(results) {
       `${checked.filter(x => x.ok === false).length} off, ${checked.filter(x => x.flagged).length} grid flagged`,
     ...results.map(x => x.skipped
       ? `corpus: ${x.id} skipped (${x.reason})`
-      : `corpus: ${x.id} ${x.field} ${x.fit.toFixed(2)} vs ${x.bpm} (${(x.err * 100).toFixed(2)} %) ` +
+      : `corpus: ${x.id} ${x.field} ${x.fit.toFixed(2)}${foldText(x)} vs ${x.bpm} (${(x.err * 100).toFixed(2)} %) ` +
         `${x.flagged ? 'grid flagged' : x.ok ? 'ok' : 'OFF'}; gridSuspect ${na(x.gridSuspect, String)}, ` +
         `inlierFrac ${na(x.inlierFrac, v => v.toFixed(3))}, extraFrac ${na(x.extraFrac, v => v.toFixed(3))}, ` +
         `longFrac ${na(x.longFrac, v => v.toFixed(3))}, driftCore ${na(x.driftCore, v => v.toFixed(2))} %`),
