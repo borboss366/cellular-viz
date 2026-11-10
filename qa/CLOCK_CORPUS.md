@@ -85,6 +85,30 @@ Per cut window the truth is a least-squares straight grid through the reference 
 
 Real transitions, EQ moves, breakdowns. 90 % or more of played time inside the gate, at most one hand fix per transition. The number the party is judged on.
 
+## Unusual tempo / meter tracks (hc-01 … hc-11, report-only, slot T14)
+
+The user's batch of 10 Nov: tracks that are **hard for the tracker**, not a genre: odd meters, swing, unusual or slow tempos, maybe polyrhythm. Their ids map to files in the box's own corpus-map.json; this file names neither artists nor titles for them yet. The first reference grids (Beat This! alone, 18:20) were gridSuspect on 7 of 11, with 3.49, 3.15, 2.46, 1.86 and 2.07 beats a bar: those may be real odd meters, not errors. These rows take their reference from **the three-tracker vote** (`qa/ref-beats-vote.sh`, `refTool: "vote"` in corpus.json):
+
+- **A** Beat This! frame logits decoded by madmom's DBN beat tracker; bar positions from madmom's DBN downbeat tracker, which may choose 2, 3, 4, 5, 6 or 7 beats a bar; the meter it picks is reported per track. **B** madmom's RNN beat activation and the same DBN. **C** essentia's RhythmExtractor2013, multifeature, with its confidence.
+- **Range:** wide, 60–260 BPM (essentia stops at 250): 87.7 (hc-05) and 91.06 (hc-04) may be the true tempos, and hc-06 (~130), hc-07 (~128) and hc-01 (~122.9) must fit too. A row may set `refMinBpm` / `refMaxBpm`; the vote uses them only when the wide vote does not agree.
+- **Accepted** when two of three agree within 1 % after octave folding **and** essentia's confidence is at least 1.5. When the agreement needed an octave fold, no prior picks the octave: both candidates are reported and the track is flagged for the user's ear, unless essentia's confidence is at least 3.5. gridSuspect stays a reported number.
+- **Swing and tempo changes:** each track's line carries its tempo over 8-bar windows (p5 / p50 / p95 and the spread), so a drifting or swung track shows as one instead of being forced to a single BPM.
+- The vote also runs, as a report, on the 22 earlier tracks: their `.ref.*` files and grids are never touched by it.
+
+| Id | BPM | Status | Reference |
+|---|---|---|---|
+| hc-01 | ~122.9 (user) | report-only | vote |
+| hc-02 | pending | report-only | vote |
+| hc-03 | pending | report-only | vote |
+| hc-04 | pending (91.06 old grid, maybe true) | report-only | vote |
+| hc-05 | pending (87.7 old grid, maybe true) | report-only | vote |
+| hc-06 | ~130 (user) | report-only | vote |
+| hc-07 | ~128 (user) | report-only | vote |
+| hc-08 | pending | report-only | vote |
+| hc-09 | pending | report-only | vote |
+| hc-10 | pending | report-only | vote |
+| hc-11 | pending | report-only | vote |
+
 ## Reading the corpus
 
 Per track: the share of played time inside the gate (±35 ms), for the tracker alone (the shadow) and for the conducted clock, plus p50, p90 and p95 of the error as reported numbers. The corpus number: how many tracks need no hand fix, and how many fixes the rest needed.
