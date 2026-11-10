@@ -62,10 +62,11 @@ export const RECORD_FIELDS = {
   sample: [], fix: ['id', 'kind'], jump: ['fromBeats', 'toBeats'], state: ['to'], mark: ['idx', 'name', 'trackMs'], key: ['shown'],
 };
 /** every jump kind a session can log (Q9: each clock.jumps entry appears once): the tracker's own (acquire, override,
- *  side, flip, and octave: #214's evidence release of a wrong octave hold, booked on a bar line, forward only), the
+ *  side, flip, octave: #214's evidence release of a wrong octave hold, and relative: #214's re-acquire after a 4:3 /
+ *  3:2 tempo move; both booked on a bar line, forward only), the
  *  hand fixes clock.js books as jumps, a file seek. Any other kind is counted under session.jumps.unknown (reported,
  *  never a parse error, so a new kind never breaks a real run's scoring). */
-export const JUMP_KINDS = ['acquire', 'override', 'side', 'flip', 'octave', 'nudge', 'x2', 'half', 'setOne', 'reset', 'tap', 'seek', 'bar'];
+export const JUMP_KINDS = ['acquire', 'override', 'side', 'flip', 'octave', 'relative', 'nudge', 'x2', 'half', 'setOne', 'reset', 'tap', 'seek', 'bar'];
 /** the problems with one record (empty when it fits schema v1) */
 export function checkRecord(r) {
   if (!r || typeof r !== 'object' || Array.isArray(r)) return ['not an object'];

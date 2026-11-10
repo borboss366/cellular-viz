@@ -119,7 +119,8 @@ function tempoStats(mono, ref, lib) {
 function say(t, line) { console.log(`# ${line}`); t.diagnostic(line); }
 
 // The tempo rows (304 family): the tracker alone from its first lock to the end, #214 beside main b1fe5f0 in one row.
-// REPORT-ONLY for their first two box runs (VIZ research, 10 Nov); then hard at >= 95 % AND >= main - 2 points.
+// REPORT-ONLY for two more box runs (VIZ research on de9b83b, 10 Nov); then hard at >= 95 % AND >= main - 2 points,
+// per track.
 const TEMPO_ROWS_HARD = false;
 /** while the #214 tracker sits near `bpm` (+/- 2 %): what its relative check saw (the stretch's evaluations) */
 function stretchEvals(mono, bpm) {
@@ -144,7 +145,7 @@ async function tempoRow(t, id, ref, secs, { watch = null } = {}) {
   say(t, `${id} ${(d.mono.length / SR).toFixed(1)} s, tracker alone, from its first lock: #214 ${now.pct.toFixed(1)} % | main b1fe5f0 ${base.pct.toFixed(1)} % | delta ${(now.pct - base.pct).toFixed(1)} points | ${ok ? 'would pass' : 'would FAIL'} (>= 95 % and >= main - 2) ${TEMPO_ROWS_HARD ? '[hard]' : '[report-only]'}`);
   say(t, `${id} #214: ${now.line}`);
   say(t, `${id} main b1fe5f0: ${base.line}`);
-  say(t, `${id} #214 relatives: ${tr.relative.count} moves, ${tr.relative.estimates} evaluated, ${tr.relative.skipped} skipped (untrusted base); last move ${JSON.stringify(tr.relative.last)}; closest unmoved ratio ${tr.relative.closest} at ${JSON.stringify(tr.relative.closestAt)}; tempo moves while locked ${tr.relative.tempoMoves}, last pending ${JSON.stringify(tr.relative.tempoHold)}; jumps ${tr.jumps.map(j => j.kind).join(',') || 'none'}`);
+  say(t, `${id} #214 relatives: ${tr.relative.count} picks, ${tr.relative.moves} landed moves (last at ${tr.relative.lastMoveT}), ${tr.relative.estimates} evaluated, ${tr.relative.skipped} blocked (rate); home ${JSON.stringify(tr.relative.home)}; last move ${JSON.stringify(tr.relative.last)}; closest unmoved ratio ${tr.relative.closest} at ${JSON.stringify(tr.relative.closestAt)}; tempo moves while locked ${tr.relative.tempoMoves}, last pending ${JSON.stringify(tr.relative.tempoHold)}; jumps ${tr.jumps.map(j => j.kind).join(',') || 'none'}`);
   if (watch) say(t, `${id} #214 relative check during the ${watch} stretch: ${stretchEvals(d.mono, watch)}`);
   if (TEMPO_ROWS_HARD) {
     assert.ok(now.lockT !== null, `locks: ${now.line}`);
