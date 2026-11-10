@@ -215,3 +215,37 @@ test('fix(\'flip\') (Shift+F / controller): half a beat at the next bar line, lo
   assert.ok(medAfter > 0.4, `the clock now sits on the off-beat (${medAfter})`);
   assert.equal(c.trackerState.lane.side.hand, true);
 });
+
+test('restart (Shift+R, #188 10 Nov): a fresh tracker; the octave hold and the tap tempo are gone, tee listeners stay, the clock re-acquires', () => {
+  const s = render('128-steady', { sr: SR }), at = t0 => s.beats.find(t => t >= t0);
+  let tee = 0, before = null, after = null, oldTracker = null, ret = null;
+  const key = { shiftKey: true, code: 'KeyR', target: { tagName: 'BODY' }, preventDefault() {} };
+  const { c } = runLine(s, { at: [
+    { t: 0, fn: c => c.onTrackerFrame(() => { tee++; }) },   // a listener like the conductor's shadow
+    { t: at(12), fn: c => c.fix('x2', QA) }, { t: at(13), fn: c => c.fix('x2', QA) }, { t: at(14), fn: c => c.fix('tap', QA) },
+    { t: at(16), fn: c => { before = { ...c.trackerState, tee }; oldTracker = c.line.tracker; ret = c.handFixKey(key); after = { ...c.trackerState, tee }; } },
+  ] });
+  const end = c.trackerState;
+  console.log(`restart: before hold ${before.octaveLock} tapped ${before.tapped}; after hold ${after.octaveLock} tapped ${after.tapped} state ${after.state}; end bpm ${end.bpm} state ${end.state} hold ${end.octaveLock}; tee ${after.tee} -> ${tee}`);
+  assert.ok(before.octaveLock > 400, `two x2: the hold is two octaves up (${before.octaveLock})`);
+  assert.equal(before.tapped, true);
+  assert.deepEqual({ kind: ret.kind, origin: ret.origin }, { kind: 'restart', origin: 'fix:key' }, 'Shift+R is the restart key');
+  assert.notEqual(c.line.tracker, oldTracker, 'a fresh tracker');
+  assert.equal(after.octaveLock, null, 'the octave hold is gone');
+  assert.equal(after.tapped, false, 'the tap tempo is gone');
+  assert.equal(after.state, 'acquire', 'it starts over');
+  assert.ok(tee > after.tee + 100, 'the frame listeners (the shadow) keep getting every frame');
+  assert.equal(c.jumps.filter(j => j.kind === 'restart').length, 0, 'not a jump: nothing rewinds in the jump log');
+  assert.equal(end.octaveLock, null);
+  assert.ok(Math.abs(end.bpm - 128) <= 3, `re-acquired at the true tempo: ${end.bpm}`);
+});
+
+test('restart: off the line source, or with an injected tracker, it does nothing (other pages unchanged)', () => {
+  const m = Clock.create({ source: 'metronome', audioContext: () => fakeContext(), timers: false, keys: false });
+  assert.equal(m.fix('restart', QA), null);
+  const { c } = stubClock(128);
+  const tr = c.line.tracker;
+  assert.equal(c.fix('restart', QA), null, 'an injected tracker cannot be made again');
+  assert.equal(c.line.tracker, tr);
+  assert.equal(c.fix('restart', { origin: 'page' }), null, 'beat authority: other origins are rejected as for every fix');
+});
