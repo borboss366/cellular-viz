@@ -16,8 +16,9 @@
 //     half-lag override at 0.55, parabolic peak, period refined on the onsets of ~8 s, octave hysteresis around the
 //     current tempo, EMA 0.7/0.3, re-estimated at ~6 Hz. Free-run keeps lastConfidentBpm. The chosen lag's
 //     non-octave relatives (4/3, 3/2, 2/3, 3/4) are scored by ACF x prior x onset concentration (#188 fix a, the 4:3
-//     lock). An octave hold (x2 / /2) also releases on evidence: the estimate as heard >= 0.75 octave away and the
-//     onsets backing its octave for > 2 s; the model then moves to that octave (#188 fix c).
+//     lock). An octave hold (x2 / /2) also releases on evidence: the estimate as heard >= 0.75 octave away for > 2 s
+//     (a hold slower than the estimate also needs its grid to split the onsets); the model then moves to that octave
+//     (#188 fix c).
 //   - phase: PLL. Acquire (confidence < 0.4): window ½ beat, gain 1 (a jump). Tracking: window ¼ beat, gain 0.15,
 //     applied as a bounded RATE change (≤ 3 % of the beat rate, never a step). Confidence = EMA of 1 − 2|err|; it
 //     decays while no onset lands in the window.
@@ -71,9 +72,10 @@
     // relMinGainR (replacing relMinR0 and relMinGain); at most one relative move per relEverySecs, its phase re-acquired
     // at the next bar line (jump kind 'relative')
     trustR: 0.3, trustTol: 0.01, relMinR: 0.25, relMinGainR: 0.15, relEverySecs: 8,
-    // the octave hold's evidence release (fix c): the estimate is >= holdOct octaves from the hold and the onsets back
-    // it (a slower estimate: R there >= holdSlow x R at the hold; a faster one: R at the hold < holdFast x R there)
-    // for > holdSecs; then the hold goes and the model moves to the estimate's octave
+    // the octave hold's evidence release (fix c, the user's ruling 10 Nov 14:57): the estimate is >= holdOct octaves from
+    // the hold for > holdSecs, and, only when the hold is SLOWER than the estimate, R at the hold < holdFast x R there.
+    // A hold faster than the estimate needs the distance alone (holdSlow is logged as support). Then the hold goes and
+    // the model moves to the estimate's octave
     holdOct: 0.75, holdSlow: 0.8, holdFast: 0.6, holdSecs: 2,
   };
 
@@ -419,10 +421,16 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const d = Math.log2(est / octaveLock);
       const Rh = periodR(60 / octaveLock, t, C.relSecs), Re = periodR(60 / est, t, C.relSecs);
       let wrong = false;
-      // slower estimate: every onset also sits on its grid (hold too fast); faster: the hold's grid splits the onsets
-      if (Math.abs(d) >= C.holdOct && Rh !== null && Re !== null) wrong = d < 0 ? Re >= C.holdSlow * Rh : Rh < C.holdFast * Re;
+      // the user's ruling (10 Nov 14:57, VIZ research): a hold FASTER than the estimate (the estimate slower, e.g. a
+      // wrong x2) releases on distance alone, >= holdOct octaves for > holdSecs; the half-period signature (every onset
+      // also on the slower grid, Rest >= 0.8 Rhold) is logged as support, not required. A hold SLOWER than the estimate
+      // keeps the R bar: the hold's grid must split the onsets (Rhold < 0.6 Rest), so a right /2 survives an estimator
+      // that reads double (81 stomp-clap).
+      const support = Rh !== null && Re !== null ? Re >= C.holdSlow * Rh : null;
+      if (Math.abs(d) >= C.holdOct) wrong = d < 0 ? true : (Rh !== null && Re !== null && Rh < C.holdFast * Re);
       holdEval = { t: +t.toFixed(3), lock: +octaveLock.toFixed(2), est: +est.toFixed(2), oct: r3(d), Rhold: r3(Rh), Rest: r3(Re),
-        test: d < 0 ? 'slower: Rest >= 0.8 Rhold' : 'faster: Rhold < 0.6 Rest', wrong,
+        test: d < 0 ? 'hold faster: distance >= 0.75 octave (support: Rest >= 0.8 Rhold)' : 'hold slower: Rhold < 0.6 Rest', wrong,
+        ...(d < 0 ? { support } : {}),
         accS: wrong && holdOutSince !== null ? +(t - holdOutSince).toFixed(3) : 0 };
       return wrong;
     }
