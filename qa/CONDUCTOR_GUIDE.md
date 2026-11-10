@@ -18,7 +18,7 @@ The page is `experiments/clock-conductor.html` (#188). The box serves it at :879
 - Header: the input ("line:page" or "line"), the track badge ("no track", "scored" or "UNSCORED (no grid)"), the
   session, the log state, "Start audio", "Download log", "Help".
 - Clock (left): "output" tempo, "tracker alone (shadow)" tempo, the state, the confidence bar, the lamps (beat, kick,
-  bar 1), the orange dots, the 8 band bars, the fix buttons, "last fix".
+  bar 1), the phase wheel and its hint line, the 8 band bars, the fix buttons, "last fix".
 - Playlist (right): the track list, "Load to NEXT", "Play / pause", "Crossfade N", the fade time, the two decks.
 - Marks (right, under the decks): the mark name list, "Mark M", "[ −1" and "] +1".
 - Calibrate (left, lower): the white flash bar, the offset slider, the venue profiles.
@@ -60,17 +60,25 @@ with no fade.
 - bar 1 lamp: shows the "1" from the reference grid. It works only when the LIVE deck plays a track with a grid.
 - Blue bars: the loudness of 8 frequency bands that the clock hears. The second bar is kick. The bars do not change the
   sound. The names are under the bars: sub, kick, low, lo-mid, mid, hi-mid, pres, air.
-- Orange dots: the last 16 kicks. The middle line is "on the beat".
-  - Dots on the middle line: the clock is correct.
-  - Dots right of the line: the kick comes after the clock beat. The clock is early.
-  - Dots left of the line: the kick comes before the clock beat. The clock is late.
-  - Dots at the two edges: the clock is half a beat off.
+- Phase wheel (it replaces the orange dots): a round dial. The top (12 o'clock) is the clock beat.
+  - Each kick is drawn at its distance from the clock beat. One full turn is one beat.
+  - Clockwise (right of the top): the kick comes after the clock beat. The clock is early.
+  - Anticlockwise (left of the top): the kick comes before the clock beat. The clock is late.
+  - The ring shows the kicks of the last 8 bars. Older kicks fade. Extra lobes are the groove (for example a 2-step
+    kick half a beat late). They are not an error.
+  - The bright mark is the middle of the kicks near the top. The number in the centre is its error in ms.
+  - The wheel is grey when the clock is not locked. Then the state word shows in the centre.
+- The hint line next to the wheel names the key to push:
+  - "on the beat": do nothing.
+  - "+10 (Shift+.) about N times" or "-10 (Shift+,) about N times": push that key N times.
+  - "half a beat off: flip (Shift+F)": the main lobe is at the bottom. Push "flip".
+  - "tempo wrong: tap 6 to 8 times (Shift+A)": the ring turns. Tap on the beat.
 - The line under the state: the lane, the beat side (0 or 1/2) and "octave hold N bpm" while ×2 or ÷2 holds the tempo.
   The octave hold turns red when it is far from the output tempo. Then push "restart" (Shift+R).
 - key lamp: push K to show or hide it. It lights on each beat of the reference grid.
 
 ## Fix the clock
-- Dots at the edges (off-beat): push "flip" (Shift+F).
+- Main lobe of the wheel at the bottom (off-beat): push "flip" (Shift+F).
 - Tempo is half the correct tempo: push "×2" (Shift+D). Push it one time only.
 - Tempo is double the correct tempo: push "÷2" (Shift+H). Push it one time only.
 - ×2 and ÷2 hold the octave. Press ÷2 again to release it. After ×2, press ×2 again. The tempo goes back at the

@@ -175,7 +175,7 @@ test('clock-conductor.html band bars: a fixed ASCII label row from Clock.BANDS, 
   assert.ok(Object.values(labels).every(s => /^[\x20-\x7e]+$/.test(s)), 'ASCII only (#205)');
   const mod = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
   assert.equal((mod.match(/\$\('bandLabels'\)\.innerHTML/g) || []).length, 1, 'built once');
-  assert.ok(!/function monitor[\s\S]*bandLabels[\s\S]*function scatter/.test(mod), 'not in the per-frame monitor');
+  assert.ok(!/function monitor[\s\S]*bandLabels[\s\S]*function drawWheel/.test(mod), 'not in the per-frame monitor');
   assert.match(mod, /b === 'kick' \? ' class="k"'/, 'the kick label is marked');
 });
 
@@ -322,4 +322,90 @@ test('D4 on the conductor page: an uneven tap logs a rejected fix and flashes th
   assert.match(guide, /Tap 4 to 8 times on the beat\. Small timing errors are averaged\./);
   assert.match(guide, /A red flash means a missed or a double tap/);
   assert.doesNotMatch(guide, /Tap evenly, four or more/, 'the old even-taps rule is gone');
+});
+
+// ---------- the phase wheel (the user 10 Nov 20:46; VIZ research): C.phaseWheel on synthetic kicks ----------
+// kicks are places on the clock's beat count (b); 136 bpm, 4 beats a bar, the last 8 bars
+const W136 = { bpm: 136, bpb: 4, state: 'locked' };
+const beatsOf = ms => ms / 1000 * 136 / 60;   // ms at 136 bpm -> beats
+const fourOnFloor = (shift = 0, rate = 1, n = 32) => Array.from({ length: n }, (_, k) => ({ b: k * rate + shift + ((k * 7) % 5 - 2) * 0.004 }));
+const wheelOf = (ks, o = {}) => C.phaseWheel(ks, { ...W136, ...o });
+
+test('phase wheel: kicks on the clock beat -> marker at 12 o\'clock, "on the beat"', () => {
+  const w = wheelOf(fourOnFloor());
+  console.log(`wheel on the beat: ${JSON.stringify({ ...w, bins: undefined })}`);
+  assert.equal(w.kind, 'on'); assert.equal(w.hint, 'on the beat');
+  assert.ok(Math.abs(w.medianMs) <= 5, `${w.medianMs} ms`);
+  assert.equal(w.sixShare, 0);
+  assert.ok(w.driftDegPerBar !== null && Math.abs(w.driftDegPerBar) < 5, `drift ${w.driftDegPerBar}`);
+  assert.equal(w.bins.length, 48); assert.ok(w.bins[0] > 0, 'the ring sits at 12 o\'clock');
+});
+
+test('phase wheel: kicks 40 ms BEFORE the clock beat (the clock is late) -> "+10 (Shift+.) about 4 times"', () => {
+  const w = wheelOf(fourOnFloor(-beatsOf(40)));
+  assert.ok(Math.abs(w.medianMs + 40) <= 4, `${w.medianMs} ms`);
+  assert.equal(w.kind, 'nudge'); assert.equal(w.hint, '+10 (Shift+.) about 4 times', 'nudge + = clock ahead');
+  const after = wheelOf(fourOnFloor(beatsOf(30)));
+  assert.equal(after.hint, '-10 (Shift+,) about 3 times', 'kicks after the beat (the clock is early): -10');
+});
+
+test('phase wheel: half a beat off -> the main lobe at 6 o\'clock, "half a beat off: flip (Shift+F)"', () => {
+  const w = wheelOf(fourOnFloor(0.5));
+  assert.ok(w.sixShare > 0.9, `six ${w.sixShare}`);
+  assert.equal(w.kind, 'flip'); assert.equal(w.hint, 'half a beat off: flip (Shift+F)');
+  assert.ok(w.bins[24] > 0, 'the lobe at 6 o\'clock (bin 24 of 48)');
+});
+
+test('phase wheel: the tempo 3 % off -> the ring turns (> 30 degrees a bar), "tempo wrong: tap 6 to 8 times (Shift+A)"', () => {
+  const w = wheelOf(fourOnFloor(0, 1.03));
+  console.log(`wheel tempo 3 % off: drift ${w.driftDegPerBar} deg/bar over ${w.driftBars} bars`);
+  assert.ok(Math.abs(w.driftDegPerBar) > 30, `drift ${w.driftDegPerBar}`);
+  assert.equal(w.kind, 'tap'); assert.equal(w.hint, 'tempo wrong: tap 6 to 8 times (Shift+A)');
+  const slow = wheelOf(fourOnFloor(0, 0.97));
+  assert.equal(slow.kind, 'tap', `3 % slow too: drift ${slow.driftDegPerBar}`);
+  assert.ok(slow.driftDegPerBar < 0 && w.driftDegPerBar > 0, 'the sign shows which way it turns');
+});
+
+test('phase wheel: free-run (not locked) -> grey, the state word instead of a hint', () => {
+  for (const s of ['acquire', 'free-run']) {
+    const w = wheelOf(fourOnFloor(), { state: s });
+    assert.equal(w.grey, true); assert.equal(w.kind, 'state'); assert.equal(w.hint, s);
+  }
+  assert.equal(wheelOf(fourOnFloor(), { state: null }).hint, 'no clock');
+});
+
+test('phase wheel: a 2-step kick (1 and the and of 3) with a correct clock -> marker at 12, "on the beat", no flip, no tap', () => {
+  const ks = [];
+  for (let bar = 0; bar < 8; bar++) ks.push({ b: bar * 4 }, { b: bar * 4 + 2.5 });
+  const w = wheelOf(ks);
+  console.log(`wheel 2-step: ${JSON.stringify({ ...w, bins: undefined })}`);
+  assert.equal(w.medianMs, 0, 'marker at 12 o\'clock');
+  assert.equal(w.hint, 'on the beat');
+  assert.ok(w.six > 0 && w.twelve > 0, 'two lobes: 12 and 6 (the groove)');
+  assert.equal(w.driftDegPerBar, null, 'bars pointing two ways do not count as drift');
+});
+
+test('the conductor page draws the wheel instead of the dots, exposes its numbers on __qa, ASCII text; Help and guide say how to read it', () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  assert.match(html, /<canvas id="wheel" width="220" height="220"><\/canvas>/);
+  assert.doesNotMatch(html, /id="scatter"/, 'the orange-dot strip is gone');
+  assert.match(html, /const wv = C\.phaseWheel\(kicks, \{ bpm: /, 'the numbers come from the tested module');
+  assert.match(html, /wheel: \(\) => wheelNow && \{ medianMs: wheelNow\.medianMs, sixShare: wheelNow\.sixShare/, '__qa.conductor.wheel()');
+  assert.match(html, /driftDegPerBar: wheelNow\.driftDegPerBar, hint: wheelNow\.hint/);
+  const fn = /function drawWheel\(ts\) \{([\s\S]*?)\n\}/.exec(html)[1];
+  for (const s of fn.match(/fillText\(([^;]*)\)/g) || []) assert.ok(/^[\x20-\x7e]*$/.test(s), `canvas text is ASCII: ${s}`);
+  const legend = /<div class="wheelLegend">([\s\S]*?)<\/div>/.exec(html)[1].replace(/<[^>]+>/g, '');
+  assert.ok(/^[\x20-\x7e\s]*$/.test(legend), 'the legend is ASCII (#205)');
+  assert.match(legend, /Top = the clock beat/);
+  const panel = /<div id="helpPanel" hidden>([\s\S]*?)<\/div>/.exec(html)[1];
+  assert.match(panel, /Read the wheel: top = the clock beat\. The line under it names the key to push\./);
+  assert.doesNotMatch(panel, /Dots at the two edges/);
+  const guide = fs.readFileSync(path.join(REPO, 'qa', 'CONDUCTOR_GUIDE.md'), 'utf8');
+  assert.match(guide, /Phase wheel \(it replaces the orange dots\)/);
+  assert.match(guide, /"tempo wrong: tap 6 to 8 times \(Shift\+A\)"/);
+  assert.doesNotMatch(guide, /^- Orange dots/m);
+  // every hint the module can give is ASCII
+  for (const h of ['on the beat', '+10 (Shift+.) about 4 times', 'half a beat off: flip (Shift+F)', 'tempo wrong: tap 6 to 8 times (Shift+A)']) {
+    assert.ok(/^[\x20-\x7e]+$/.test(h));
+  }
 });

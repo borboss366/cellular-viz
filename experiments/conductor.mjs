@@ -127,3 +127,79 @@ export function loadErrorText(name, err) {
   const why = String((err && (err.message || err.name)) || err || 'unknown error').replace(/[^\x20-\x7e]/g, '?').slice(0, 160);
   return `could not load ${String(name).replace(/[^\x20-\x7e]/g, '?')}: ${why}`;
 }
+
+// ---------- the phase wheel (#188, the user 10 Nov 20:46; VIZ research's design) ----------
+// A round dial: the clock beat at 12 o'clock, each kick at (its phase against the clock beat) x 360 degrees. Clockwise
+// = the kick comes AFTER the clock beat (the clock is early). The kicks of the last 8 bars make a weighted ring (48
+// angle bins, older kicks fade): a groove's syncopated kicks are extra lobes, not an error. The marker is the
+// weighted median of the kicks within 1/4 beat of 12 o'clock, in ms. One hint names the key to push.
+export const WHEEL_BINS = 48, WHEEL_BARS = 8, WHEEL_ON_MS = 15, WHEEL_NUDGE_MS = 10, WHEEL_MARK = 0.25, WHEEL_DRIFT_DEG = 30;
+export const WHEEL_MIN_KICKS = 4;
+const wrapPhase = x => x - Math.round(x);   // -1/2 .. 1/2 of a beat (+ = after the clock beat)
+export const wheelBin = ph => (Math.round((((ph % 1) + 1) % 1) * WHEEL_BINS)) % WHEEL_BINS;   // bin 0 is centred on 12 o'clock
+/** kicks: [{ b }] (or numbers): each kick's place on the clock's beat count when it was heard; opts: { bpm, bpb,
+ *  nowBeats (the clock's beat count now), state (the tracker state) } →
+ *  { bins, total, kicks, medianPhase, medianMs, twelve, six, sixShare, driftDegPerBar, driftBars, kind, hint, grey } */
+export function phaseWheel(kicks, { bpm = 120, bpb = 4, nowBeats = null, state = null } = {}) {
+  const span = WHEEL_BARS * bpb, P = bpm > 0 ? 60 / bpm : 0.5, bins = new Array(WHEEL_BINS).fill(0);
+  const ks = [];
+  let last = -Infinity;
+  for (const k of kicks || []) { const b = typeof k === 'number' ? k : k && k.b; if (Number.isFinite(b) && b > last) last = b; }
+  const now = Number.isFinite(nowBeats) ? nowBeats : last;
+  for (const k of kicks || []) {
+    const b = typeof k === 'number' ? k : k && k.b;
+    if (!Number.isFinite(b)) continue;
+    const age = now - b;
+    if (age < -1 || age > span) continue;
+    const w = 1 - 0.9 * Math.min(1, Math.max(0, age) / span);   // the newest 1, the oldest 0.1
+    const ph = wrapPhase(b);
+    ks.push({ b, ph, w });
+    bins[wheelBin(ph)] += w;
+  }
+  let total = 0, twelve = 0, six = 0;
+  for (const k of ks) { total += k.w; if (Math.abs(k.ph) <= 0.125) twelve += k.w; if (Math.abs(k.ph) >= 0.375) six += k.w; }
+  // the marker: the weighted median of the kicks within 1/4 beat of 12 o'clock
+  const near = ks.filter(k => Math.abs(k.ph) <= WHEEL_MARK).sort((a, b) => a.ph - b.ph);
+  let medianPhase = null;
+  if (near.length) {
+    const half = near.reduce((s, k) => s + k.w, 0) / 2;
+    let acc = 0;
+    for (const k of near) { acc += k.w; if (acc >= half) { medianPhase = k.ph; break; } }
+  }
+  const medianMs = medianPhase === null ? null : Math.round(medianPhase * P * 1000);
+  // the ring turning: one circular mean angle per bar (bars whose kicks point one way, R >= 0.5), unwrapped, and the
+  // least-squares slope in degrees per bar. A 2-step bar (kicks at 12 and 6) has R near 0 and is left out
+  const perBar = new Map();
+  for (const k of ks) {
+    const bar = Math.floor(k.b / bpb), a = 2 * Math.PI * k.ph, e = perBar.get(bar) || { c: 0, s: 0, w: 0, n: 0 };
+    e.c += k.w * Math.cos(a); e.s += k.w * Math.sin(a); e.w += k.w; e.n++; perBar.set(bar, e);
+  }
+  const pts = [];
+  for (const [bar, e] of [...perBar.entries()].sort((x, y) => x[0] - y[0])) {
+    if (e.n < 2 || Math.hypot(e.c, e.s) / e.w < 0.5) continue;
+    let deg = Math.atan2(e.s, e.c) * 180 / Math.PI;
+    if (pts.length) { const prev = pts[pts.length - 1].deg; while (deg - prev > 180) deg -= 360; while (deg - prev < -180) deg += 360; }
+    pts.push({ bar, deg });
+  }
+  let driftDegPerBar = null;
+  if (pts.length >= 3) {
+    const mx = pts.reduce((s, p) => s + p.bar, 0) / pts.length, my = pts.reduce((s, p) => s + p.deg, 0) / pts.length;
+    let sxx = 0, sxy = 0;
+    for (const p of pts) { sxx += (p.bar - mx) ** 2; sxy += (p.bar - mx) * (p.deg - my); }
+    if (sxx > 0) driftDegPerBar = +(sxy / sxx).toFixed(1);
+  }
+  const out = { bins, total: +total.toFixed(3), kicks: ks.length, medianPhase: medianPhase === null ? null : +medianPhase.toFixed(4), medianMs,
+    twelve: +twelve.toFixed(3), six: +six.toFixed(3), sixShare: total > 0 ? +(six / total).toFixed(3) : 0, driftDegPerBar, driftBars: pts.length,
+    kind: 'none', hint: '', grey: false };
+  if (state !== 'locked') { out.grey = true; out.kind = 'state'; out.hint = String(state || 'no clock').replace(/[^\x20-\x7e]/g, '?'); return out; }
+  if (ks.length < WHEEL_MIN_KICKS) { out.hint = 'waiting for kicks'; return out; }
+  if (driftDegPerBar !== null && Math.abs(driftDegPerBar) > WHEEL_DRIFT_DEG) { out.kind = 'tap'; out.hint = 'tempo wrong: tap 6 to 8 times (Shift+A)'; return out; }
+  if (six > 0 && six > 2 * twelve && six / total >= 0.4) { out.kind = 'flip'; out.hint = 'half a beat off: flip (Shift+F)'; return out; }
+  if (medianMs === null) { out.hint = 'no kicks near the beat'; return out; }
+  if (Math.abs(medianMs) <= WHEEL_ON_MS) { out.kind = 'on'; out.hint = 'on the beat'; return out; }
+  // nudge + = clock ahead: a kick BEFORE the clock beat (medianMs < 0, the clock is late) wants +10
+  const n = Math.max(1, Math.round(Math.abs(medianMs) / WHEEL_NUDGE_MS));
+  out.kind = 'nudge';
+  out.hint = medianMs < 0 ? `+10 (Shift+.) about ${n} times` : `-10 (Shift+,) about ${n} times`;
+  return out;
+}
