@@ -6,6 +6,7 @@
 //       beside main b1fe5f0 (vendored in fixtures/) in one row; report-only for two runs, then >= 95 % and >= main - 2
 //   (c) gasolina: a right hold armed after 2 s within 1 % of 96 never releases in 60 s; a wrong x2 hold (192)
 //       releases to 96 within 8 beats through the new evidence path (a 128 hold is printed beside it)
+//   (i) re-lock cost of the 2 s tempo hysteresis on real crossfades, report-only, main b1fe5f0 beside #214
 //   node --test qa/runner/test/*.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,6 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { createRequire } from 'node:module';
+import { BUDGET_BEATS, relockFigures, relockText } from './fixtures/relock.mjs';
 
 const require = createRequire(import.meta.url);
 const T = require('../../../experiments/clock-tracker.js');
@@ -86,11 +88,11 @@ async function decode(file, secs) {
 const BASE = require('./fixtures/clock-tracker-b1fe5f0.cjs');
 
 /** a tracker (new or baseline) over the audio; `every` runs each 0.1 s with (tr, t) */
-function track(mono, every, lib = T) {
+function track(mono, every, lib = T, sr = SR) {
   const tr = lib.createTracker();
   let next = 0;
-  const an = lib.createAnalyzer({ sampleRate: SR, onFrame: f => { tr.push(f); if (f.t >= next) { every(tr, f.t); next = f.t + 0.1; } } });
-  for (let i = 0; i < mono.length; i += 128) an.process(mono.subarray(i, Math.min(mono.length, i + 128)), i / SR);
+  const an = lib.createAnalyzer({ sampleRate: sr, onFrame: f => { tr.push(f); if (f.t >= next) { every(tr, f.t); next = f.t + 0.1; } } });
+  for (let i = 0; i < mono.length; i += 128) an.process(mono.subarray(i, Math.min(mono.length, i + 128)), i / sr);
   return tr;
 }
 /** decoded audio per corpus id, once per file run (the cases share it) */
@@ -221,4 +223,60 @@ test('(c) gasolina: a wrong x2 hold (192) releases to 96 within 8 beats through 
   assert.ok(x2.first && x2.first.why === 'evidence', `through the new path (why 'evidence', not the old fold): ${x2.line}`);
   assert.ok(x2.evAtRel && x2.evAtRel.wrong === true, `the last check before the release reads wrong = true: ${x2.line}`);
   assert.ok(x2.backAt !== null && x2.backAt - x2.heldAt <= eight, `96 again within 8 beats of the hold: ${x2.line}`);
+});
+
+// ---------------------------------------------------------------- the cost of ruling (i): re-lock on real crossfades
+// (the user, 10 Nov 14:54). REPORT-ONLY: main b1fe5f0 beside #214 on the same audio, the 8-beat budget beside each
+// figure, OVER when above it. None of the #17 mixes (qa/mixes.json) changes tempo by more than 3 %: mode A resamples
+// the incoming to the outgoing tempo, and mode B (one-more-time -> opus) is 122.9 -> 126.0, +2.5 %. So the row on the
+// mode B render is printed for what it is, and a test-made crossfade from two corpus tracks gives the > 3 % case:
+// one-more-time (122.9) -> sandstorm (136, +10.7 %), 8 s equal-power, no resample.
+function readWavMono(file) {
+  const b = fs.readFileSync(file);
+  let p = 12, sr = 0, ch = 0, bits = 0, data = null;
+  while (p + 8 <= b.length) {
+    const id = b.toString('ascii', p, p + 4), n = b.readUInt32LE(p + 4);
+    if (id === 'fmt ') { ch = b.readUInt16LE(p + 10); sr = b.readUInt32LE(p + 12); bits = b.readUInt16LE(p + 22); }
+    else if (id === 'data') { data = [p + 8, Math.min(n, b.length - p - 8)]; break; }
+    p += 8 + n + (n & 1);
+  }
+  if (!data || bits !== 16 || !ch) throw new Error('not a 16-bit PCM WAV');
+  const frames = Math.floor(data[1] / (2 * ch)), mono = new Float32Array(frames);
+  for (let i = 0; i < frames; i++) { let v = 0; for (let c = 0; c < ch; c++) v += b.readInt16LE(data[0] + 2 * (i * ch + c)); mono[i] = v / ch / 32768; }
+  return { sr, mono };
+}
+/** both trackers over one mix: re-lock from the midpoint to within 1 % of the new tempo, and % within 1 % over the mix */
+function mixRow(label, mono, sr, midS, outBpm, inBpm) {
+  const cells = [];
+  for (const [name, lib] of [['#214', T], ['main b1fe5f0', BASE]]) {
+    const trace = [];
+    let lockT = null;
+    track(mono, (tr, tt) => { if (lockT === null && tr.state === 'locked') lockT = tt; trace.push({ t: tt, bpm: tr.ownBpm, state: tr.state }); }, lib, sr);
+    const scored = trace.filter(x => lockT !== null && x.t >= lockT), ref = x => (x.t < midS ? outBpm : inBpm);
+    const pct = scored.length ? 100 * scored.filter(x => Math.abs(x.bpm / ref(x) - 1) <= 0.01).length / scored.length : 0;
+    cells.push(`${relockText(name, relockFigures(trace, midS, inBpm))}, whole mix within 1 % ${pct.toFixed(1)} % (from lock ${lockT === null ? 'never' : lockT.toFixed(1) + ' s'})`);
+  }
+  return `re-lock ${label}, ${outBpm} -> ${inBpm} (${(100 * (inBpm / outBpm - 1)).toFixed(1)} %), from the midpoint ${midS.toFixed(1)} s, budget ${BUDGET_BEATS} beats | ${cells.join(' | ')}`;
+}
+
+test('(i) re-lock cost on real crossfades, report-only: the #17 mode B render and a test-made > 3 % crossfade, main b1fe5f0 beside #214 (box only)', async (t) => {
+  const dir = A.audioDir();
+  if (!fs.existsSync(dir)) { t.skip('no tracks folder here'); return; }
+  const corpus = JSON.parse(fs.readFileSync(new URL('../../corpus.json', import.meta.url), 'utf8')), bpmOf = id => (corpus.find(r => r.id === id) || {}).bpm;
+  // the #17 mode B render (mix-make writes it under renders/, named by corpus ids)
+  const base = path.join(dir, 'renders', 'mix-one-more-time-opus-b');
+  if (fs.existsSync(base + '.wav') && fs.existsSync(base + '.mix.json')) {
+    const mj = JSON.parse(fs.readFileSync(base + '.mix.json', 'utf8')), w = readWavMono(base + '.wav');
+    say(t, mixRow('#17 mix-one-more-time-opus-b (mode B, under 3 %: the hysteresis does not engage)', w.mono, w.sr, mj.overlap.midS, mj.inputs.out.fit.bpm, mj.inputs.in.fit.bpm));
+  } else say(t, 're-lock #17 mix-one-more-time-opus-b: not rendered on this box (qa/mix-make.sh), row skipped');
+  // the test-made crossfade: one-more-time [60, 90) s -> sandstorm [30, 70) s, 8 s equal-power from mix 22 s
+  const a = await audio('one-more-time', 100), b = await audio('sandstorm', 240);
+  if (a.skip || b.skip) { say(t, `re-lock test-made crossfade: skipped (${a.skip || b.skip})`); return; }
+  const o0 = 60 * SR, i0 = 30 * SR, fadeA = 22 * SR, fadeB = 30 * SR, n = 62 * SR, mix = new Float32Array(n);
+  for (let k = 0; k < n; k++) {
+    const vo = k < fadeB ? a.mono[o0 + k] || 0 : 0, vi = k >= fadeA ? b.mono[i0 + k - fadeA] || 0 : 0;
+    const u = Math.min(1, Math.max(0, (k - fadeA) / (fadeB - fadeA)));
+    mix[k] = vo * Math.cos(Math.PI * u / 2) + vi * Math.sin(Math.PI * u / 2);
+  }
+  say(t, mixRow('test-made crossfade one-more-time -> sandstorm (8 s, no resample)', mix, SR, 26, bpmOf('one-more-time'), bpmOf('sandstorm')));
 });

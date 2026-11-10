@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { render, renderHits } from './fixtures/tracker-scenarios.mjs';
+import { BUDGET_BEATS, relockFigures, relockText } from './fixtures/relock.mjs';
 const require = createRequire(import.meta.url);
 const T = require('../../../experiments/clock-tracker.js');
 
@@ -356,4 +357,44 @@ test('(c) a right hold the estimator disagrees with never releases (81 stomp-cla
   console.log(`(c) 81 held: scale ${f0} at ${tH.toFixed(2)} s, releases ${rel.length}, end bpm ${o.tr.ownBpm.toFixed(2)}, lock ${o.tr.octaveLock}, hold ${JSON.stringify(o.tr.hold.eval)}`);
   assert.equal(rel.length, 0, `no release: ${JSON.stringify(rel)}`);
   assert.ok(o.tr.octaveLock !== null && Math.abs(o.tr.ownBpm - 81) <= 1, `held at 81: ${o.tr.ownBpm}`);
+});
+
+// ---------------------------------------------------------------- the cost of ruling (i)'s 2 s tempo hysteresis
+// (the user, 10 Nov 14:54): re-lock after a tempo change, main b1fe5f0's tracker (vendored) and #214's side by side on
+// the same input. REPORT-ONLY: printed with the 8-beat budget beside each figure, flagged OVER when above it.
+const BASE = require('./fixtures/clock-tracker-b1fe5f0.cjs');
+/** the tracker alone over samples; per 0.1 s: own bpm and state */
+function traceOf(lib, samples, sr) {
+  const tr = lib.createTracker(), out = [];
+  let next = 0;
+  const an = lib.createAnalyzer({ sampleRate: sr, onFrame: f => { tr.push(f); if (f.t >= next) { out.push({ t: f.t, bpm: tr.ownBpm, state: tr.state }); next = f.t + 0.1; } } });
+  for (let i = 0; i < samples.length; i += 128) an.process(samples.subarray(i, Math.min(samples.length, i + 128)), i / sr);
+  return out;
+}
+function hardCut(b1, b2, tc, seconds, seed = 1366) {
+  const beats = [];
+  for (let t = 0.5; t < tc - 1e-9; t += 60 / b1) beats.push(t);
+  for (let t = tc; t < seconds - 0.6; t += 60 / b2) beats.push(t);
+  const hits = [];
+  beats.forEach((t, i) => {
+    const P = (t < tc ? 60 / b1 : 60 / b2);
+    hits.push({ t, lane: 'kick', vel: i % 4 ? 0.8 : 1 });
+    if (i % 4 === 1 || i % 4 === 3) hits.push({ t, lane: 'snare', vel: 0.8 });
+    hits.push({ t, lane: 'hat', vel: 0.9 }); hits.push({ t: t + P / 2, lane: 'hat', vel: 0.7 });
+  });
+  const samples = renderHits(hits, seconds, SR, seed);
+  let m = 0; for (const v of samples) m = Math.max(m, Math.abs(v));
+  for (let i = 0; i < samples.length; i++) samples[i] *= 0.8 / m;
+  return samples;
+}
+
+test('(i) re-lock cost, report-only: step-120-128 and a hard cut 128 -> 136, main b1fe5f0 beside #214 (8-beat budget)', () => {
+  const cases = [
+    { name: 'step-120-128 (6.7 %)', samples: render('step-120-128', { sr: SR }).samples, tc: 30, B: 128 },
+    { name: 'hard cut 128 -> 136 (6.25 %)', samples: hardCut(128, 136, 30, 60), tc: 30, B: 136 },
+  ];
+  for (const c of cases) {
+    const now = relockFigures(traceOf(T, c.samples, SR), c.tc, c.B), base = relockFigures(traceOf(BASE, c.samples, SR), c.tc, c.B);
+    console.log(`# re-lock ${c.name}, budget ${BUDGET_BEATS} beats | ${relockText('#214', now)} | ${relockText('main b1fe5f0', base)}`);
+  }
 });
