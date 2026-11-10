@@ -227,6 +227,20 @@ test('A4 lockBeats (from start or from the kick-entry mark), A5 conf columns, A6
   assert.equal(run({ gridExtra: { barOk: true } }).tracks[0].barReportOnly, false);
 });
 
+test('#214 jump kind octave: a known kind (Q9), parsed, counted, forward so no rewind; an unknown kind is listed, never an error', () => {
+  assert.ok(C.JUMP_KINDS.includes('octave') && ['acquire', 'override', 'side', 'flip'].every(k => C.JUMP_KINDS.includes(k)));
+  const { records, info } = one({ jumps: [{ ctx: 20, kind: 'octave', fromBeats: 40, toBeats: 40.5 }, { ctx: 30, kind: 'acquire', fromBeats: 60, toBeats: 60.1 }] });
+  const again = C.parseLog(C.toJsonl(records));   // the log round trip keeps it
+  assert.equal(again.filter(r => r.type === 'jump' && r.kind === 'octave').length, 1);
+  const r = C.scoreSession(again, info);
+  assert.deepEqual(r.session.jumps, { total: 2, byKind: { octave: 1, acquire: 1 }, unknown: [], octave: 1, rewinds: 0 });
+  assert.deepEqual([r.tracks[0].jumpKinds, r.tracks[0].rewinds], [{ octave: 1, acquire: 1 }, 0]);
+  assert.match(C.renderReport(r), /^Jumps 2: octave 1, acquire 1 · rewinds 0$/m);
+  const odd = C.scoreSession(...Object.values(one({ jumps: [{ ctx: 20, kind: 'wobble', fromBeats: 40, toBeats: 40.2 }] })));
+  assert.deepEqual(odd.session.jumps.unknown, ['wobble']);
+  assert.match(C.renderReport(odd), /unknown kinds wobble/);
+});
+
 test('R3 shadow column and R2 timelines: tracker alone beside conducted; samples move by clock.latency, the fit residual shows', () => {
   const r = run({ clock: beatsList(T.map(t => t + 0.25)), shadow: beatsList(T) }).tracks[0];
   assert.deepEqual([r.conducted.inPct, r.alone.inPct, r.deltaInPct], [0, 100, -100]);

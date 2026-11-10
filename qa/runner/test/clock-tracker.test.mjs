@@ -5,6 +5,7 @@
 // failing gate shows where it stands.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { render, renderHits } from './fixtures/tracker-scenarios.mjs';
 const require = createRequire(import.meta.url);
@@ -304,7 +305,20 @@ test('(a) the relatives never fire on the steady scenarios (no 4:3 / 3:2 move wh
     const s = render(name, { sr: SR }), o = run(s);
     console.log(`(a) ${name}: relatives ${JSON.stringify(o.tr.relative)}, bpm ${o.tr.ownBpm.toFixed(2)}`);
     assert.equal(o.tr.relative.count, 0, `${name}: ${JSON.stringify(o.tr.relative)}`);
+    // VIZ research: every estimate's evaluation is logged (the choice and each relative's score and R)
+    const ev = o.tr.snapshot().relative.eval;
+    assert.ok(ev && ev.choice && typeof ev.choice.score === 'number' && typeof ev.choice.R === 'number' && ev.cands.length >= 1, `${name}: relative.eval ${JSON.stringify(ev)}`);
+    assert.ok(o.tr.relative.estimates > 50, `${name}: ${o.tr.relative.estimates} estimates, closest ${o.tr.relative.closest} at ${JSON.stringify(o.tr.relative.closestAt)}`);
   }
+});
+
+test('(a) reaches the shadow: the conductor\'s shadow is a plain createTracker(), the same estimate() as the clock\'s', () => {
+  const page = fs.readFileSync(new URL('../../../experiments/clock-conductor.html', import.meta.url), 'utf8');
+  assert.match(page, /const shadow = ClockTracker\.createTracker\(\);/, 'the shadow takes the defaults');
+  assert.match(page, /clock\.onTrackerFrame\(f => \{ shadow\.push\(f\);/, 'and every frame through push() (applyTempo(estimate()))');
+  const tr = T.createTracker();
+  assert.deepEqual(T.DEFAULTS.relRatios.map(k => +k.toFixed(4)), [1.3333, 1.5, 0.6667, 0.75]);
+  assert.equal(tr.relative.count, 0);
 });
 
 for (const [f, label] of [[2, 'x2'], [0.5, '/2']]) {
@@ -313,7 +327,16 @@ for (const [f, label] of [[2, 'x2'], [0.5, '/2']]) {
     let at8 = null;
     const o = run(s, { at: [{ t: tX, fn: (tr, t) => tr.scaleTempo(f, t) }, { t: tX + 8 * P, fn: tr => { at8 = { bpm: tr.ownBpm, lock: tr.octaveLock }; } }] });
     const rel = o.tr.notes.filter(n => n.kind === 'octave-release'), jumps = o.tr.jumps.filter(j => j.at > tX);
-    const detail = `releases ${rel.map(n => `${n.why || 'fold'}@+${(n.t - tX).toFixed(2)} s (lock ${n.lock.toFixed(1)}, raw ${n.raw.toFixed(1)})`).join(', ') || 'none'}; at +8 beats ${JSON.stringify(at8)}; end bpm ${o.tr.ownBpm.toFixed(2)}, lock ${o.tr.octaveLock}; jumps after ${jumps.map(j => `${j.kind}@+${(j.at - tX).toFixed(2)}`).join(', ') || 'none'}`;
+    const detail = `releases ${rel.map(n => `${n.why || 'fold'}@+${(n.t - tX).toFixed(2)} s (lock ${n.lock.toFixed(1)}, raw ${n.raw.toFixed(1)})`).join(', ') || 'none'}; at +8 beats ${JSON.stringify(at8)}; end bpm ${o.tr.ownBpm.toFixed(2)}, lock ${o.tr.octaveLock}; jumps after ${jumps.map(j => `${j.kind}@+${(j.at - tX).toFixed(2)} (${j.fromBeats.toFixed(3)}->${j.toBeats.toFixed(3)})`).join(', ') || 'none'}; hold ${JSON.stringify(o.tr.hold)}`;
+    // the octave jump (if the beat had to move more than 1/4) is booked on a bar line and runs forward: rewinds 0
+    assert.equal(jumps.filter(j => j.toBeats < j.fromBeats).length, 0, `rewinds 0: ${detail}`);
+    assert.ok(o.monotonic, `beats monotonic: ${detail}`);
+    for (const j of jumps.filter(x => x.kind === 'octave')) {
+      const onBar = Math.abs(frac((j.fromBeats - o.tr.barOrigin) / 4)) * 4;
+      assert.ok(onBar <= 0.05, `octave jump ${onBar.toFixed(3)} beat from a bar line: ${detail}`);
+    }
+    assert.ok(jumps.every(j => j.kind === 'octave'), `no other jump: ${detail}`);
+    assert.ok(o.tr.hold.releases.length === 1 && o.tr.hold.releases[0].why === 'evidence', `snapshot().hold logs the release: ${detail}`);
     console.log(`(c) ${label} on 128: ${detail}`);
     assert.equal(rel.length, 1, `one release: ${detail}`);
     assert.equal(rel[0].why, 'evidence', detail);
@@ -330,7 +353,7 @@ test('(c) a right hold the estimator disagrees with never releases (81 stomp-cla
   let f0 = null;
   const o = run(s, { at: [{ t: tH, fn: (tr, t) => { f0 = 2 ** Math.round(Math.log2(81 / tr.ownBpm)); tr.scaleTempo(f0, t); } }] });
   const rel = o.tr.notes.filter(n => n.kind === 'octave-release');
-  console.log(`(c) 81 held: scale ${f0} at ${tH.toFixed(2)} s, releases ${rel.length}, end bpm ${o.tr.ownBpm.toFixed(2)}, lock ${o.tr.octaveLock}`);
+  console.log(`(c) 81 held: scale ${f0} at ${tH.toFixed(2)} s, releases ${rel.length}, end bpm ${o.tr.ownBpm.toFixed(2)}, lock ${o.tr.octaveLock}, hold ${JSON.stringify(o.tr.hold.eval)}`);
   assert.equal(rel.length, 0, `no release: ${JSON.stringify(rel)}`);
   assert.ok(o.tr.octaveLock !== null && Math.abs(o.tr.ownBpm - 81) <= 1, `held at 81: ${o.tr.ownBpm}`);
 });

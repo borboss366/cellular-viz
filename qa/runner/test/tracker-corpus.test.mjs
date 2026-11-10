@@ -101,7 +101,7 @@ test('(a) sandstorm on the real track: the shadow within 1 % of 136 for >= 95 % 
   const inside = trace.filter(x => Math.abs(x.bpm / 136 - 1) <= 0.01), frac = trace.length ? inside.length / trace.length : 0;
   const out = trace.filter(x => Math.abs(x.bpm / 136 - 1) > 0.01), bins = {};
   for (const x of out) { const k = Math.round(x.bpm); bins[k] = (bins[k] || 0) + 1; }
-  const line = `sandstorm (tracker alone): ${(d.mono.length / SR).toFixed(1)} s, lock ${lockT === null ? 'never' : lockT.toFixed(2) + ' s'}, within 1 % of 136 ${(100 * frac).toFixed(1)} % of ${trace.length} samples; outside by bpm ${JSON.stringify(bins)}; first outside ${out.slice(0, 5).map(x => `${x.t.toFixed(1)}:${x.bpm.toFixed(1)}`).join(' ') || 'none'}; end bpm ${tr.ownBpm.toFixed(2)}; relatives ${JSON.stringify(tr.relative)}; jumps ${tr.jumps.map(j => j.kind).join(',') || 'none'}`;
+  const line = `sandstorm (tracker alone): ${(d.mono.length / SR).toFixed(1)} s, lock ${lockT === null ? 'never' : lockT.toFixed(2) + ' s'}, within 1 % of 136 ${(100 * frac).toFixed(1)} % of ${trace.length} samples; outside by bpm ${JSON.stringify(bins)}; first outside ${out.slice(0, 5).map(x => `${x.t.toFixed(1)}:${x.bpm.toFixed(1)}`).join(' ') || 'none'}; end bpm ${tr.ownBpm.toFixed(2)}; relatives: ${tr.relative.count} moves of ${tr.relative.estimates} estimates, last move ${JSON.stringify(tr.relative.last)}, closest unmoved ratio ${tr.relative.closest} at ${JSON.stringify(tr.relative.closestAt)}, last eval ${JSON.stringify(tr.relative.eval)}; jumps ${tr.jumps.map(j => j.kind).join(',') || 'none'}`;
   console.log(`# ${line}`);
   t.diagnostic(line);
   assert.ok(lockT !== null, `locks: ${line}`);
@@ -113,15 +113,19 @@ test('(c) gasolina on the real track: a right octave hold (96) never releases ov
   if (f.skip) { t.skip(f.skip); return; }
   const d = await decode(f, 200);
   if (d.skip) { t.skip(d.skip); return; }
-  let lockT = null, heldAt = null, scale = null;
+  let lockT = null, heldAt = null, scale = null, worst = null;
   const bpms = [];
   const tr = track(d.mono, (tr, tt) => {
     if (lockT === null && tr.state === 'locked') lockT = tt;
     if (lockT !== null && heldAt === null && tt >= lockT + 10) { scale = 2 ** Math.round(Math.log2(96 / tr.ownBpm)); tr.scaleTempo(scale, tt); heldAt = tt; }
-    if (heldAt !== null && tt <= heldAt + 60) bpms.push(tr.ownBpm);
+    if (heldAt !== null && tt <= heldAt + 60) {
+      bpms.push(tr.ownBpm);
+      const ev = tr.hold.eval;   // the check closest to a release: the longest accumulator, else the first 'wrong'
+      if (ev && (worst === null || ev.accS > worst.accS || (ev.wrong && !worst.wrong))) worst = ev;
+    }
   });
   const rel = tr.notes.filter(n => n.kind === 'octave-release'), span = heldAt === null ? 0 : Math.min(60, d.mono.length / SR - heldAt);
-  const line = `gasolina (tracker alone): lock ${lockT === null ? 'never' : lockT.toFixed(2) + ' s'}, hold x${scale} at ${heldAt === null ? '-' : heldAt.toFixed(1) + ' s'} for ${span.toFixed(1)} s; releases ${rel.map(n => `${n.why || 'fold'}@${n.t.toFixed(1)} (raw ${n.raw.toFixed(1)})`).join(', ') || 'none'}; bpm min ${bpms.length ? Math.min(...bpms).toFixed(2) : '-'} max ${bpms.length ? Math.max(...bpms).toFixed(2) : '-'}; lock now ${tr.octaveLock}`;
+  const line = `gasolina (tracker alone): lock ${lockT === null ? 'never' : lockT.toFixed(2) + ' s'}, hold x${scale} at ${heldAt === null ? '-' : heldAt.toFixed(1) + ' s'} for ${span.toFixed(1)} s; releases ${rel.map(n => `${n.why || 'fold'}@${n.t.toFixed(1)} (raw ${n.raw.toFixed(1)})`).join(', ') || 'none'}; bpm min ${bpms.length ? Math.min(...bpms).toFixed(2) : '-'} max ${bpms.length ? Math.max(...bpms).toFixed(2) : '-'}; lock now ${tr.octaveLock}; hold eval ${JSON.stringify(tr.hold.eval)}; worst check ${JSON.stringify(worst)}`;
   console.log(`# ${line}`);
   t.diagnostic(line);
   assert.ok(heldAt !== null && span >= 60, `held for 60 s: ${line}`);

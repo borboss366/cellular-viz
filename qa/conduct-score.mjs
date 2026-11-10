@@ -61,6 +61,11 @@ export const RECORD_FIELDS = {
   session: ['v'], latency: [], track: ['idx', 'event'], pair: ['idx', 'posMs'], xfade: ['from', 'to', 'event'], beat: ['src'],
   sample: [], fix: ['id', 'kind'], jump: ['fromBeats', 'toBeats'], state: ['to'], mark: ['idx', 'name', 'trackMs'], key: ['shown'],
 };
+/** every jump kind a session can log (Q9: each clock.jumps entry appears once): the tracker's own (acquire, override,
+ *  side, flip, and octave: #214's evidence release of a wrong octave hold, booked on a bar line, forward only), the
+ *  hand fixes clock.js books as jumps, a file seek. Any other kind is counted under session.jumps.unknown (reported,
+ *  never a parse error, so a new kind never breaks a real run's scoring). */
+export const JUMP_KINDS = ['acquire', 'override', 'side', 'flip', 'octave', 'nudge', 'x2', 'half', 'setOne', 'reset', 'tap', 'seek', 'bar'];
 /** the problems with one record (empty when it fits schema v1) */
 export function checkRecord(r) {
   if (!r || typeof r !== 'object' || Array.isArray(r)) return ['not an object'];
@@ -410,10 +415,11 @@ function scoreTrack(S, tr, info, cols) {
     freeRunDriftPct: rnd(freeRunDrift, 3), freeRunHeld: freeRunDrift === null ? null : freeRunDrift <= FREERUN_DRIFT_PCT,
     barMoves: set1 ? jumps.filter(j => j.ctx >= set1.ctx && j.origin === 'tracker' && j.kind === 'bar').length : null,
     barPct: inBeats.length ? rnd(100 * inBeats.filter(b => (C.col.bib[b.i] === 1) === (b.pos === 1)).length / inBeats.length, 2) : null,
-    barReportOnly: !gridBarOk, rewinds: jumps.filter(j => j.toBeats < j.fromBeats).length,
+    barReportOnly: !gridBarOk, rewinds: jumps.filter(j => j.toBeats < j.fromBeats).length, jumpKinds: kindCounts(jumps),
     isDj, djFixesMax, gridFlags: gridFlags(grid), afterEndAtBeats: afterEndAt,
     _beats: C.pick.beats, _shadowBeats: per.shadow.pick.beats, _span: [spanStart, spanEnd], _mix: mix, _mixMid: mixMid };
 }
+function kindCounts(jumps) { const c = {}; for (const j of jumps) { const k = String(j.kind); c[k] = (c[k] || 0) + 1; } return c; }
 function gridFlags(g) {
   return { gridSuspect: typeof g.gridSuspect === 'boolean' ? g.gridSuspect : null, driftCore: num(g.driftCore) ? g.driftCore : null,
     barOk: g.barOk === true, fields: num(g.fields) ? g.fields : null };
@@ -497,6 +503,8 @@ export function scoreSession(records, info = {}) {
     fixes, fixesPerTrack: sc.length ? rnd(fixes / sc.length, 3) : null, tracksWithoutFixes: sc.filter(t => !t.fixes.length).length,
     scoredTracks: sc.length, keyShownS: rnd(S.keyShownS, 2),
     unscored: tracks.filter(t => !t.scored).map(t => ({ label: t.label, reason: t.reason })),
+    jumps: { total: S.jumps.length, byKind: kindCounts(S.jumps), unknown: [...new Set(S.jumps.map(j => String(j.kind)).filter(k => !JUMP_KINDS.includes(k)))],
+      octave: S.jumps.filter(j => j.kind === 'octave').length, rewinds: S.jumps.filter(j => j.toBeats < j.fromBeats).length },
     pass: findings.length === 0, findings,
   };
   return { session, tracks: tracks.map(({ _beats, _shadowBeats, _span, _mix, _mixMid, ...t }) => t), windows, _beats: Object.fromEntries(sc.map(t => [t.label, t._beats])) };
@@ -521,6 +529,7 @@ export function renderReport(res) {
   L.push(`## The gate (R7): ${s.pass ? 'PASS' : 'FAIL'}`, '');
   L.push('| | conducted | tracker alone | Δ |', '|---|---|---|---|', `| inside ±35 ms, % of played time | ${v(s.inPct)} | ${v(s.alonePct)} | ${v(s.deltaPct)} |`, `| inside ±70 ms (report) | ${v(s.in70Pct)} | | |`, '');
   L.push(`Episodes ${s.episodes.total}: caught ${s.episodes.caught}, late ${s.episodes.late}, missed ${s.episodes.missed} · reaction p50 ${v(s.reactionBeats.p50)} / p90 ${v(s.reactionBeats.p90)} beats · false fixes ${s.falseFixes} · fixes ${s.fixes} (${v(s.fixesPerTrack)} per track, ${s.tracksWithoutFixes} tracks with none) · answer key ${v(s.keyShownS)} s`, '');
+  L.push(`Jumps ${s.jumps.total}: ${Object.entries(s.jumps.byKind).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'} · rewinds ${s.jumps.rewinds}${s.jumps.unknown.length ? ` · unknown kinds ${s.jumps.unknown.join(', ')}` : ''}`, '');
   if (s.findings.length) { L.push('Findings:'); s.findings.forEach((f, i) => L.push(`${i + 1}. ${f}`)); L.push(''); }
   L.push('## Tracks', '', '| track | slot | played s | in % | alone % | Δ | ±70 % | |e| p50/p90/p95 ms | lock beats | episodes | fixes right/false/none | octave | side span | conf | flags |',
     '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
