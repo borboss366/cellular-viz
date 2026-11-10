@@ -77,9 +77,11 @@ with no fade.
   next bar line.
 - Small offset: push "−10" or "+10" (Shift+, or Shift+.).
 - Wrong "1": push "set 1" (Shift+1) on the downbeat.
-- Wrong tempo: push "tap" (Shift+A) on each beat, 4 times or more, evenly. Keep less than 2 seconds between taps.
-  Tap evenly, four or more. A red flash means the taps were uneven: nothing changed, tap again.
-  Four even taps set the tempo and release the octave hold. One to three taps only move the beat to the tap.
+- Wrong tempo: push "tap" (Shift+A) on each beat. Keep less than 2 seconds between taps.
+  Tap 4 to 8 times on the beat. Small timing errors are averaged.
+  The taps set the tempo and release the octave hold. One to three taps only move the beat to the tap.
+  A red flash means a missed or a double tap: nothing changed, tap again.
+  "last taps" shows the tapped tempo and the number of taps, or "rejected: missed tap" / "rejected: double tap".
 - "reset" (Shift+0) counts the bar again. It does not clear the tempo or the octave hold.
 - If the tempo or the octave hold is wrong and a tap does not fix it, push "restart" (Shift+R). The clock starts again;
   the music does not stop. The clock needs a few seconds to find the beat again.

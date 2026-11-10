@@ -305,12 +305,21 @@ test('D4 on the conductor page: an uneven tap logs a rejected fix and flashes th
   assert.match(html, /else if \(j && j\.type === 'release-scheduled'\) rec\.release = true;/, 'a second x2 / half press is marked as a release');
   assert.match(html, /button\.reject\{background:#c0182b/, 'the red flash style');
   assert.match(html, /querySelector\('\[data-fix="tap"\]'\)/, 'on the tap button');
-  assert.match(html, /REJECTED: uneven taps/, 'the last-fix line says so');
+  assert.match(html, /REJECTED: \$\{j\.tapError === 'double' \? 'double' : 'missed'\} tap/, 'the last-fix line says which tap was wrong');
+  // the last tap set next to "last fix": its tempo and count, or why it was rejected (the user 20:27)
+  assert.match(html, /<small>last taps:<\/small> <span id="lastTap">/);
+  assert.match(html, /if \(kind === 'tap' && j && \(j\.tapBpm \|\| j\.rejected\)\) \$\('lastTap'\)\.textContent = tapNote\(j\);/);
+  assert.match(html, /return `rejected: \$\{j\.tapError === 'double' \? 'double' : 'missed'\} tap`;/);
+  assert.match(html, /return `\$\{j\.tapBpm\.toFixed\(1\)\} bpm \(\$\{j\.taps\} taps\)`;/);
+  assert.match(html, /b\.onclick = e => clock\.fix\([^\n]*eventTs: e\.timeStamp \}\)/, 'the tap button times the tap at its click event');
   const panel = /<div id="helpPanel" hidden>([\s\S]*?)<\/div>/.exec(html)[1];
   assert.match(panel, /Press \/2 again to release it/);
-  assert.match(panel, /Tap evenly, four or more\. A red flash means the taps were uneven\./);
+  assert.match(panel, /Tap 4 to 8 times on the beat\. Small timing errors are averaged\./);
+  assert.match(panel, /A red flash means a missed or a double tap/);
   assert.ok(/^[\x20-\x7e\s]*$/.test(panel.replace(/<[^>]+>/g, '')), 'Help stays plain ASCII (#205)');
   const guide = fs.readFileSync(path.join(REPO, 'qa', 'CONDUCTOR_GUIDE.md'), 'utf8');
   assert.match(guide, /Press ÷2 again to release it\./);
-  assert.match(guide, /Tap evenly, four or more\. A red flash means the taps were uneven/);
+  assert.match(guide, /Tap 4 to 8 times on the beat\. Small timing errors are averaged\./);
+  assert.match(guide, /A red flash means a missed or a double tap/);
+  assert.doesNotMatch(guide, /Tap evenly, four or more/, 'the old even-taps rule is gone');
 });
