@@ -14,7 +14,10 @@
 //     (pads in a breakdown don't count), refractory 150 ms, sub-hop timing from a parabola through the peak.
 //   - tempo: autocorrelation of ~4 s of onset strength over 60–180 BPM, log-normal prior at 120 (σ 0.7 octave),
 //     half-lag override at 0.55, parabolic peak, period refined on the onsets of ~8 s, octave hysteresis around the
-//     current tempo, EMA 0.7/0.3, re-estimated at ~6 Hz. Free-run keeps lastConfidentBpm.
+//     current tempo, EMA 0.7/0.3, re-estimated at ~6 Hz. Free-run keeps lastConfidentBpm. The chosen lag's
+//     non-octave relatives (4/3, 3/2, 2/3, 3/4) are scored by ACF x prior x onset concentration (#188 fix a, the 4:3
+//     lock). An octave hold (x2 / /2) also releases on evidence: the estimate as heard >= 0.75 octave away and the
+//     onsets backing its octave for > 2 s; the model then moves to that octave (#188 fix c).
 //   - phase: PLL. Acquire (confidence < 0.4): window ½ beat, gain 1 (a jump). Tracking: window ¼ beat, gain 0.15,
 //     applied as a bounded RATE change (≤ 3 % of the beat rate, never a step). Confidence = EMA of 1 − 2|err|; it
 //     decays while no onset lands in the window.
@@ -54,6 +57,14 @@
     confTau: 1.0, maxRate: 0.03, refRel: 0.3, reacqJump: 0.25, reacqOnsets: 3, bpb: 4,
     escapeTempo: 0.03, escapePhase: 0.25, escapeSecs: 4, escapeConf: 0.7,
     laneBeats: 8, laneMinOnsets: 4,
+    // non-octave relatives (#188 6766497000 fix a): the chosen lag's 4/3, 3/2, 2/3 and 3/4 tempos are scored with the
+    // ACF, the prior and the onset concentration R at that period (relSecs of broadband onsets); one wins only by
+    // relMargin and relMinGain of R. The octaves stay with the half-lag override and the hysteresis.
+    relRatios: [4 / 3, 3 / 2, 2 / 3, 3 / 4], relMargin: 1.2, relMinGain: 0.1, relSecs: 8,
+    // the octave hold's evidence release (fix c): the estimate is >= holdOct octaves from the hold and the onsets back
+    // it (a slower estimate: R there >= holdSlow x R at the hold; a faster one: R at the hold < holdFast x R there)
+    // for > holdSecs; then the hold goes and the model moves to the estimate's octave
+    holdOct: 0.75, holdSlow: 0.8, holdFast: 0.6, holdSecs: 2,
   };
 
   // ---------------------------------------------------------------- analysis (worklet and node)
@@ -193,8 +204,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // the output: own (plus an integer relabel) or, after a tap, the tap model until the tracker overrides it
     let tapModel = null, outOffset = 0, disagreeSince = null;
     const jumps = [], stateLog = [];
-    let octaveLock = null, lockOutSince = null;
+    let octaveLock = null, lockOutSince = null, holdOutSince = null;
     const notes = [];
+    let relCount = 0, relLast = null;   // fix (a): how often a non-octave relative replaced the ACF's choice, and the last
 
     const ownBeats = t => own.B0 + (t - own.T0) / own.P;
     const tapBeats = t => tapModel.B0 + (t - tapModel.T0) / tapModel.P;
@@ -279,6 +291,37 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
 
     // ---- tempo
     function prior(b) { const o = Math.log2(b / C.priorBpm) / C.priorOct; return Math.exp(-0.5 * o * o); }
+    // onset concentration at a period, independent of the model's phase: the amplitude-weighted circular resultant of
+    // the broadband onsets of the last secs at period P (1 = every onset on one phase of P, 0 = spread); null when
+    // fewer than 2 x laneMinOnsets onsets
+    function periodR(P, t, secs) {
+      const ons = lanes.broad.onsets;
+      let c = 0, s = 0, w = 0, n = 0;
+      for (let i = ons.length - 1; i >= 0 && ons[i].t > t - secs; i--) {
+        const th = 2 * Math.PI * ons[i].t / P;
+        c += ons[i].s * Math.cos(th); s += ons[i].s * Math.sin(th); w += ons[i].s; n++;
+      }
+      return n < 2 * C.laneMinOnsets || !(w > 0) ? null : Math.hypot(c, s) / w;
+    }
+    // fix (a), the 4:3 lock (#188 6766497000): the ACF peak and the half-lag override only ever weigh octave relatives,
+    // so a comb at 3/4 of the beat (a dotted-eighth riff, off-beat eighths) could win and then confirm itself in the
+    // refine and drift steps. Score the chosen lag's non-octave relatives by ACF x prior x periodR and keep the best.
+    const acfAt = (r, L, Lmin, Lmax) => { const i = Math.round(L); return i < Lmin || i > Lmax ? null : Math.max(r[i - 1], r[i], r[i + 1]); };
+    function relativeLag(Lf, r, Lmin, Lmax, t) {
+      const b0 = 60 / (Lf * dtHop), a0 = acfAt(r, Lf, Lmin, Lmax), R0 = periodR(60 / b0, t, C.relSecs);
+      if (R0 === null || !(a0 > 0)) return Lf;
+      let bestL = Lf, bestS = a0 * prior(b0) * R0 * C.relMargin, bestK = 1, bestR = R0;
+      for (const k of C.relRatios) {
+        const b = b0 * k;
+        if (b < C.minBpm || b > C.maxBpm) continue;
+        const a = acfAt(r, Lf / k, Lmin, Lmax), R = periodR(60 / b, t, C.relSecs);
+        if (!(a > 0) || R === null || R < R0 + C.relMinGain) continue;
+        const sc = a * prior(b) * R;
+        if (sc > bestS) { bestS = sc; bestL = Lf / k; bestK = k; bestR = R; }
+      }
+      if (bestK !== 1) { relCount++; relLast = { t: +t.toFixed(3), from: +b0.toFixed(2), to: +(b0 * bestK).toFixed(2), R0: r3(R0), R: r3(bestR) }; }
+      return bestL;
+    }
     function estimate(t) {
       const n = Math.min(fv.length, Math.round(C.acWindow / dtHop));
       const Lmin = Math.floor(60 / C.maxBpm / dtHop), Lmax = Math.ceil(60 / C.minBpm / dtHop);
@@ -308,6 +351,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       let Lf = para(best);
       const h = Math.round(Lf / 2);   // half-lag override: the double tempo if its peak holds ≥ 0.55 of this one
       if (h >= Lmin && h >= 2 && r[h] >= C.halfLag * r[best] && r[h] >= r[h - 1] && r[h] >= r[h + 1]) Lf = para(h);
+      Lf = relativeLag(Lf, r, Lmin, Lmax, t);   // fix (a): a non-octave relative with clearly better onset support
       let raw = 60 / (Lf * dtHop);
       // refine the period on the onsets of the last refineWindow seconds
       const P0 = 60 / raw, strong = recentStrong(t, C.refineWindow);
@@ -330,8 +374,47 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       for (let i = onsets.length - 1; i >= 0 && onsets[i].t > t - secs; i--) mx = Math.max(mx, onsets[i].s);
       return onsets.filter(o => o.t > t - secs && o.s >= C.strongRel * mx);
     }
+    // fix (c) (#188 6766497000): the old release below tests the estimate after the fold into the hold's octave, so a
+    // hold whole octaves wrong reads ratio ~1 and never goes. This one reads the estimate as heard (before the
+    // hysteresis and the fold) and asks the onsets: the estimate's octave must explain them at least as well. A hold
+    // the estimator merely disagrees with (the reason a hold exists: 81 stomp-clap read at 162, held at 81) keeps.
+    function holdWrong(est, t) {
+      const d = Math.log2(est / octaveLock);
+      if (Math.abs(d) < C.holdOct) return false;
+      const Rh = periodR(60 / octaveLock, t, C.relSecs), Re = periodR(60 / est, t, C.relSecs);
+      if (Rh === null || Re === null) return false;
+      // slower estimate: every onset also sits on its grid (hold too fast); faster: the hold's grid splits the onsets
+      return d < 0 ? Re >= C.holdSlow * Rh : Rh < C.holdFast * Re;
+    }
+    function releaseHold(est, t) {
+      const f = bpm ? Math.pow(2, Math.round(Math.log2(est / bpm))) : 1;
+      notes.push({ t, kind: 'octave-release', why: 'evidence', lock: octaveLock, raw: est });
+      octaveLock = null; lockOutSince = null; holdOutSince = null;
+      if (f === 1 || !own.P) return;
+      setPeriod(own, own.P / f, t);
+      bpm = 60 / own.P; bigCount = 0; recent.length = 0;
+      if (tapModel) { setPeriod(tapModel, tapModel.P / f, t); return; }   // a tap owns the output's phase
+      // the beat side at the new period: the low lane's mean phase (the kick), broadband's without one
+      let st = laneStat(lanes.low, t);
+      if (st.R === null) st = laneStat(lanes.broad, t);
+      if (st.R === null) return;
+      const e = frac(st.phase + own.pending);
+      if (Math.abs(e) <= C.trackWindow) { own.pending -= e; return; }
+      // the onsets sit at phase e: put the beat on them at once, as an acquisition does, but forward only (beats never
+      // run back): -e when that is forward, else the next onset (1 - e)
+      const from = outBeats(t);
+      own.B0 += e > 0 ? 1 - e : -e; own.pending = 0;
+      logJump(t, 'octave', from, outBeats(t));
+    }
     function applyTempo(raw, t) {
       if (!raw || !isFinite(raw)) return;
+      const est = raw;   // as heard: before the hysteresis and the hold's fold
+      if (octaveLock) {
+        if (holdWrong(est, t)) {
+          if (holdOutSince === null) holdOutSince = t;
+          else if (t - holdOutSince > C.holdSecs) { releaseHold(est, t); return; }
+        } else holdOutSince = null;
+      }
       if (bpm) {   // octave hysteresis: ×2 / ÷2 of the current tempo snaps back
         const q = raw / bpm;
         if (Math.abs(q - 2) < 0.12) raw /= 2; else if (Math.abs(q - 0.5) < 0.06) raw *= 2;
@@ -571,7 +654,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         disagreeSince = null;
         if (scheduled && scheduled.kind === 'override') scheduled = null;
       },
-      setOctaveLock(b) { octaveLock = b || null; lockOutSince = null; },
+      setOctaveLock(b) { octaveLock = b || null; lockOutSince = null; holdOutSince = null; },
       // fix('flip') by hand (clock.js lineFix, Shift + F or the controller): half a beat at the next bar line, logged
       // as jump { kind: 'flip', origin } when it lands. Returns what was scheduled, or null (no model, or a jump is due).
       flip(t, origin = null) {
@@ -592,16 +675,16 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         if (!own.P || !(f > 0)) return;
         setPeriod(own, own.P / f, t);
         if (tapModel) setPeriod(tapModel, tapModel.P / f, t);
-        bpm = 60 / own.P; octaveLock = bpm; lockOutSince = null;
+        bpm = 60 / own.P; octaveLock = bpm; lockOutSince = null; holdOutSince = null;
         estHoldUntil = t + C.acWindow; recent.length = 0; bigCount = 0;
       },
       // __qa.tracker (#95 SHOULD 8)
       snapshot() {
         return { state, confidence: +conf.toFixed(3), octaveLock: octaveLock ? +octaveLock.toFixed(2) : null,
           bpm: +(tapModel ? 60 / tapModel.P : bpm).toFixed(2), tapped: !!tapModel, lastJump: jumps[jumps.length - 1] || null,
-          lane: laneReport() };
+          lane: laneReport(), relative: { count: relCount, last: relLast } };
       },
-      get notes() { return notes; }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
+      get notes() { return notes; }, get relative() { return { count: relCount, last: relLast }; }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
       get jumps() { return jumps; }, get stateLog() { return stateLog; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
       get state() { return state; }, get confidence() { return conf; }, get bpm() { return tapModel ? 60 / tapModel.P : bpm; },
       get ownBpm() { return bpm; }, get lastConfidentBpm() { return lastConfidentBpm; }, get tapped() { return !!tapModel; },
