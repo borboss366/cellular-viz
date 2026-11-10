@@ -73,8 +73,8 @@ with no fade.
 - Dots at the edges (off-beat): push "flip" (Shift+F).
 - Tempo is half the correct tempo: push "×2" (Shift+D). Push it one time only.
 - Tempo is double the correct tempo: push "÷2" (Shift+H). Push it one time only.
-- ×2 and ÷2 hold the octave. Press ÷2 again to release it (×2 again after ×2). The tempo goes back at the next
-  bar line.
+- ×2 and ÷2 hold the octave. Press ÷2 again to release it. After ×2, press ×2 again. The tempo goes back at the
+  next bar line.
 - Small offset: push "−10" or "+10" (Shift+, or Shift+.).
 - Wrong "1": push "set 1" (Shift+1) on the downbeat.
 - Wrong tempo: push "tap" (Shift+A) on each beat, 4 times or more, evenly. Keep less than 2 seconds between taps.

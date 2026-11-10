@@ -16,6 +16,8 @@ import path from 'node:path';
 import http from 'node:http';
 import { createRequire } from 'node:module';
 import { BUDGET_BEATS, relockFigures, relockText } from './fixtures/relock.mjs';
+import { heavyLock } from './fixtures/heavy-lock.mjs';
+const heavy = async t => { const release = await heavyLock('tracker-corpus'); t.after(release); };
 
 const require = createRequire(import.meta.url);
 const T = require('../../../experiments/clock-tracker.js');
@@ -156,10 +158,12 @@ async function tempoRow(t, id, ref, secs, { watch = null } = {}) {
 }
 
 test('(a) tempo row sandstorm: within 1 % of 136 from the first lock, #214 beside main b1fe5f0 (report-only for two runs; box only)', async (t) => {
+  await heavy(t);   // one heavy box test at a time (fixtures/heavy-lock.mjs)
   await tempoRow(t, 'sandstorm', 136, 240, { watch: 136 * 4 / 3 });
 });
 
 test('(a) tempo row gasolina: within 1 % of 96 from the first lock, #214 beside main b1fe5f0, the 128 stretch logged (report-only for two runs; box only)', async (t) => {
+  await heavy(t);   // one heavy box test at a time (fixtures/heavy-lock.mjs)
   await tempoRow(t, 'gasolina', 96, 240, { watch: 128 });
 });
 
@@ -173,6 +177,7 @@ function untilRight(tr, tt, st) {   // the first sample, after the lock, with th
 }
 
 test('(c) gasolina: a right hold, armed after 2 s within 1 % of 96, never releases over 60 s (box only)', async (t) => {
+  await heavy(t);   // one heavy box test at a time (fixtures/heavy-lock.mjs)
   const d = await audio('gasolina', 240);
   if (d.skip) { t.skip(d.skip); return; }
   const st = { lockT: null, okSince: null, rightAt: null };
@@ -216,6 +221,7 @@ function forcedHold(mono, f) {
 }
 
 test('(c) gasolina: a wrong x2 hold (192) releases to 96 within 8 beats through the new path; a 128 hold printed (box only)', async (t) => {
+  await heavy(t);   // one heavy box test at a time (fixtures/heavy-lock.mjs)
   const d = await audio('gasolina', 240);
   if (d.skip) { t.skip(d.skip); return; }
   const x2 = forcedHold(d.mono, 2), h128 = forcedHold(d.mono, 128 / 96), eight = 8 * 60 / REF_G;
@@ -263,6 +269,7 @@ function mixRow(label, mono, sr, midS, outBpm, inBpm) {
 }
 
 test('(i) re-lock cost on real crossfades, report-only: the #17 mode B render and a test-made > 3 % crossfade, main b1fe5f0 beside #214 (box only)', async (t) => {
+  await heavy(t);   // one heavy box test at a time (fixtures/heavy-lock.mjs)
   const dir = A.audioDir();
   if (!fs.existsSync(dir)) { t.skip('no tracks folder here'); return; }
   const corpus = JSON.parse(fs.readFileSync(new URL('../../corpus.json', import.meta.url), 'utf8')), bpmOf = id => (corpus.find(r => r.id === id) || {}).bpm;
