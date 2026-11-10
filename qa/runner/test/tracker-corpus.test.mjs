@@ -81,43 +81,70 @@ async function decode(file, secs) {
   } finally { await b.close(); srv.close(); }
 }
 
-/** the tracker alone over the audio; `every` runs each 0.1 s with (tr, t) */
-function track(mono, every) {
-  const tr = T.createTracker();
+// the baseline (report-only): main b1fe5f0's tracker, vendored as it was before fixes a and c
+const BASE = require('./fixtures/clock-tracker-b1fe5f0.cjs');
+
+/** a tracker (new or baseline) over the audio; `every` runs each 0.1 s with (tr, t) */
+function track(mono, every, lib = T) {
+  const tr = lib.createTracker();
   let next = 0;
-  const an = T.createAnalyzer({ sampleRate: SR, onFrame: f => { tr.push(f); if (f.t >= next) { every(tr, f.t); next = f.t + 0.1; } } });
+  const an = lib.createAnalyzer({ sampleRate: SR, onFrame: f => { tr.push(f); if (f.t >= next) { every(tr, f.t); next = f.t + 0.1; } } });
   for (let i = 0; i < mono.length; i += 128) an.process(mono.subarray(i, Math.min(mono.length, i + 128)), i / SR);
   return tr;
 }
-
-test('(a) sandstorm on the real track: the shadow within 1 % of 136 for >= 95 % of the time after its lock (box only)', async (t) => {
-  const f = trackFile('sandstorm');
-  if (f.skip) { t.skip(f.skip); return; }
-  const d = await decode(f, 240);
-  if (d.skip) { t.skip(d.skip); return; }
+/** decoded audio per corpus id, once per file run (the cases share it) */
+const decoded = new Map();
+async function audio(id, secs) {
+  if (!decoded.has(id)) {
+    const f = trackFile(id);
+    decoded.set(id, f.skip ? f : await decode(f, secs));
+  }
+  return decoded.get(id);
+}
+/** the tracker alone, no fixes: its tempo every 0.1 s after its first lock → % within 1 % of ref, time by bpm, 4:3 / 3:4 */
+function tempoStats(mono, ref, lib) {
   const trace = [];
   let lockT = null;
-  const tr = track(d.mono, (tr, tt) => { if (lockT === null && tr.state === 'locked') lockT = tt; if (lockT !== null) trace.push({ t: tt, bpm: tr.ownBpm, state: tr.state }); });
-  const inside = trace.filter(x => Math.abs(x.bpm / 136 - 1) <= 0.01), frac = trace.length ? inside.length / trace.length : 0;
-  const out = trace.filter(x => Math.abs(x.bpm / 136 - 1) > 0.01), bins = {};
-  for (const x of out) { const k = Math.round(x.bpm); bins[k] = (bins[k] || 0) + 1; }
-  const line = `sandstorm (tracker alone): ${(d.mono.length / SR).toFixed(1)} s, lock ${lockT === null ? 'never' : lockT.toFixed(2) + ' s'}, within 1 % of 136 ${(100 * frac).toFixed(1)} % of ${trace.length} samples; outside by bpm ${JSON.stringify(bins)}; first outside ${out.slice(0, 5).map(x => `${x.t.toFixed(1)}:${x.bpm.toFixed(1)}`).join(' ') || 'none'}; end bpm ${tr.ownBpm.toFixed(2)}; relatives: ${tr.relative.count} moves of ${tr.relative.estimates} estimates, last move ${JSON.stringify(tr.relative.last)}, closest unmoved ratio ${tr.relative.closest} at ${JSON.stringify(tr.relative.closestAt)}, last eval ${JSON.stringify(tr.relative.eval)}; jumps ${tr.jumps.map(j => j.kind).join(',') || 'none'}`;
-  console.log(`# ${line}`);
-  t.diagnostic(line);
-  assert.ok(lockT !== null, `locks: ${line}`);
-  assert.ok(frac >= 0.95, line);
+  const tr = track(mono, (tr, tt) => { if (lockT === null && tr.state === 'locked') lockT = tt; if (lockT !== null) trace.push({ t: tt, bpm: tr.ownBpm }); }, lib);
+  const near = q => trace.filter(x => Math.abs(x.bpm / (ref * q) - 1) <= 0.02).length / 10;
+  const bins = {};
+  for (const x of trace) if (Math.abs(x.bpm / ref - 1) > 0.01) { const k = Math.round(x.bpm); bins[k] = +(((bins[k] || 0) + 0.1)).toFixed(1); }
+  const top = Object.entries(bins).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, s]) => `${k}:${s}s`).join(' ') || 'none';
+  const pct = trace.length ? 100 * trace.filter(x => Math.abs(x.bpm / ref - 1) <= 0.01).length / trace.length : 0;
+  return { tr, trace, lockT, pct, line: `lock ${lockT === null ? 'never' : lockT.toFixed(2) + ' s'}, within 1 % of ${ref} ${pct.toFixed(1)} % of ${(trace.length / 10).toFixed(1)} s; outside (bpm:s) ${top}; at 4:3 (${(ref * 4 / 3).toFixed(1)} +/- 2 %) ${near(4 / 3)} s, at 3:4 (${(ref * 3 / 4).toFixed(1)}) ${near(3 / 4)} s, at x2 ${near(2)} s, at /2 ${near(0.5)} s` };
+}
+function say(t, line) { console.log(`# ${line}`); t.diagnostic(line); }
+
+test('(a) sandstorm on the real track: the shadow within 1 % of 136 for >= 95 % of the time after its lock; main b1fe5f0 printed beside it (box only)', async (t) => {
+  const d = await audio('sandstorm', 240);
+  if (d.skip) { t.skip(d.skip); return; }
+  const now = tempoStats(d.mono, 136, T), base = tempoStats(d.mono, 136, BASE), tr = now.tr;
+  say(t, `sandstorm ${(d.mono.length / SR).toFixed(1)} s, tracker alone. #214: ${now.line}. main b1fe5f0 (report): ${base.line}. delta ${(now.pct - base.pct).toFixed(1)} points`);
+  say(t, `sandstorm #214 relatives: ${tr.relative.count} moves of ${tr.relative.estimates} estimates, last move ${JSON.stringify(tr.relative.last)}, closest unmoved ratio ${tr.relative.closest} at ${JSON.stringify(tr.relative.closestAt)}, last eval ${JSON.stringify(tr.relative.eval)}; jumps ${tr.jumps.map(j => j.kind).join(',') || 'none'}`);
+  assert.ok(now.lockT !== null, `locks: ${now.line}`);
+  assert.ok(now.pct >= 95, `#214 ${now.line} (main b1fe5f0: ${base.line})`);
 });
 
-test('(c) gasolina on the real track: a right octave hold (96) never releases over 60 s (box only)', async (t) => {
-  const f = trackFile('gasolina');
-  if (f.skip) { t.skip(f.skip); return; }
-  const d = await decode(f, 200);
+// (c) on Gasolina, both cases start from the tracker reading 96 within 1 % (test 305 at 469ac5a set its hold while
+// the tracker read 128.09, a 4:3 lock, and the old fold release rightly let it go)
+const REF_G = 96;
+function untilRight(tr, tt, st) {   // the first sample, after the lock, with the tracker within 1 % of 96 for 1 s
+  if (st.lockT === null && tr.state === 'locked') st.lockT = tt;
+  if (st.lockT === null || st.rightAt !== null) return;
+  if (Math.abs(tr.ownBpm / REF_G - 1) <= 0.01) { if (st.okSince === null) st.okSince = tt; if (tt - st.okSince >= 1) st.rightAt = tt; } else st.okSince = null;
+}
+
+test('(c) gasolina on the real track: a right hold, set once the tracker reads 96, never releases over 60 s; main b1fe5f0 printed (box only)', async (t) => {
+  const d = await audio('gasolina', 240);
   if (d.skip) { t.skip(d.skip); return; }
-  let lockT = null, heldAt = null, scale = null, worst = null;
+  const base = tempoStats(d.mono, REF_G, BASE), now = tempoStats(d.mono, REF_G, T);
+  say(t, `gasolina ${(d.mono.length / SR).toFixed(1)} s, tracker alone, no hold. #214: ${now.line}. main b1fe5f0 (report): ${base.line}`);
+  const st = { lockT: null, okSince: null, rightAt: null };
+  let heldAt = null, worst = null;
   const bpms = [];
   const tr = track(d.mono, (tr, tt) => {
-    if (lockT === null && tr.state === 'locked') lockT = tt;
-    if (lockT !== null && heldAt === null && tt >= lockT + 10) { scale = 2 ** Math.round(Math.log2(96 / tr.ownBpm)); tr.scaleTempo(scale, tt); heldAt = tt; }
+    untilRight(tr, tt, st);
+    if (heldAt === null && st.rightAt !== null && st.rightAt - st.lockT <= 60) { tr.scaleTempo(1, tt); heldAt = tt; }   // the hold at the tempo it reads: 96
     if (heldAt !== null && tt <= heldAt + 60) {
       bpms.push(tr.ownBpm);
       const ev = tr.hold.eval;   // the check closest to a release: the longest accumulator, else the first 'wrong'
@@ -125,9 +152,32 @@ test('(c) gasolina on the real track: a right octave hold (96) never releases ov
     }
   });
   const rel = tr.notes.filter(n => n.kind === 'octave-release'), span = heldAt === null ? 0 : Math.min(60, d.mono.length / SR - heldAt);
-  const line = `gasolina (tracker alone): lock ${lockT === null ? 'never' : lockT.toFixed(2) + ' s'}, hold x${scale} at ${heldAt === null ? '-' : heldAt.toFixed(1) + ' s'} for ${span.toFixed(1)} s; releases ${rel.map(n => `${n.why || 'fold'}@${n.t.toFixed(1)} (raw ${n.raw.toFixed(1)})`).join(', ') || 'none'}; bpm min ${bpms.length ? Math.min(...bpms).toFixed(2) : '-'} max ${bpms.length ? Math.max(...bpms).toFixed(2) : '-'}; lock now ${tr.octaveLock}; hold eval ${JSON.stringify(tr.hold.eval)}; worst check ${JSON.stringify(worst)}`;
-  console.log(`# ${line}`);
-  t.diagnostic(line);
-  assert.ok(heldAt !== null && span >= 60, `held for 60 s: ${line}`);
+  const line = `gasolina right hold: lock ${st.lockT === null ? 'never' : st.lockT.toFixed(2) + ' s'}, reads 96 from ${st.rightAt === null ? 'never' : st.rightAt.toFixed(1) + ' s'}, hold at ${heldAt === null ? '-' : heldAt.toFixed(1) + ' s'} for ${span.toFixed(1)} s; releases ${rel.map(n => `${n.why || 'fold'}@${n.t.toFixed(1)} (lock ${n.lock.toFixed(1)}, raw ${n.raw.toFixed(1)})`).join(', ') || 'none'}; bpm min ${bpms.length ? Math.min(...bpms).toFixed(2) : '-'} max ${bpms.length ? Math.max(...bpms).toFixed(2) : '-'}; lock now ${tr.octaveLock}; worst check ${JSON.stringify(worst)}`;
+  say(t, line);
+  assert.ok(st.lockT !== null, `the tracker locks: ${line}`);
+  assert.ok(heldAt !== null, `the tracker never read 96 within 1 % (for 1 s) in the 60 s after its lock, so no right hold could be set: ${line}`);
+  assert.ok(span >= 60, `the track runs 60 s past the hold: ${line}`);
   assert.equal(rel.filter(n => n.t <= heldAt + 60).length, 0, `no release: ${line}`);
+});
+
+test('(c) gasolina on the real track: a wrong hold forced at 128 (4:3) releases and the tracker reads 96 again (box only)', async (t) => {
+  const d = await audio('gasolina', 240);
+  if (d.skip) { t.skip(d.skip); return; }
+  const st = { lockT: null, okSince: null, rightAt: null };
+  let heldAt = null, relAt = null, backAt = null;
+  const after = [];
+  const tr = track(d.mono, (tr, tt) => {
+    untilRight(tr, tt, st);
+    if (heldAt === null && st.rightAt !== null && st.rightAt - st.lockT <= 60) { tr.scaleTempo(128 / tr.ownBpm, tt); heldAt = tt; }   // the 4:3 hold
+    if (heldAt === null) return;
+    if (relAt === null && tr.octaveLock === null) relAt = tt;
+    if (relAt !== null && backAt === null && Math.abs(tr.ownBpm / REF_G - 1) <= 0.01) backAt = tt;
+    if (tt <= heldAt + 30) after.push(`${(tt - heldAt).toFixed(1)}:${tr.ownBpm.toFixed(1)}${tr.octaveLock ? 'H' : ''}`);
+  });
+  const rel = tr.notes.filter(n => n.kind === 'octave-release');
+  const line = `gasolina hold forced at 128: reads 96 from ${st.rightAt === null ? 'never' : st.rightAt.toFixed(1) + ' s'}, hold at ${heldAt === null ? '-' : heldAt.toFixed(1) + ' s'}; released ${relAt === null ? 'never' : '+' + (relAt - heldAt).toFixed(1) + ' s'} (${rel.map(n => `${n.why || 'fold'} lock ${n.lock.toFixed(1)} raw ${n.raw.toFixed(1)}`).join(', ') || 'none'}); 96 again ${backAt === null ? 'never' : '+' + (backAt - heldAt).toFixed(1) + ' s'}; trace (s after hold:bpm, H = held) ${after.filter((_, i) => i % 5 === 0).join(' ')}`;
+  say(t, line);
+  assert.ok(heldAt !== null, `the tracker never read 96 within 1 % (for 1 s) in the 60 s after its lock: ${line}`);
+  assert.ok(relAt !== null && relAt - heldAt <= 10, `the 128 hold releases within 10 s: ${line}`);
+  assert.ok(backAt !== null && backAt - relAt <= 8, `the tracker reads 96 within 8 s of the release: ${line}`);
 });
