@@ -5,10 +5,11 @@ A consolidated write-up of VIZ research's findings in #188
 [6765748314](https://github.com/borboss366/cellular-viz/issues/188#issuecomment-6765748314)), for the controller brief
 [docs/CELLULAR_VIZ_BRIEF_NOVATION.md](CELLULAR_VIZ_BRIEF_NOVATION.md). Docs only: no code lands during the freeze.
 
-> **Read this with the brief.** Two points in it have changed:
+> **Read this with the brief.** Two points about it:
 > - **D1:** the research changed it. The controller uses **DAW mode**, not a Custom Mode built in Components (section 1).
-> - **D4:** the user has **not approved** it. Only the restart command landed (#211: `fix('restart')`, Shift+R).
->   There is no tap-clears-hold and no second-press release.
+> - **D4:** the user now **approves** it (10 Nov): tap clears the octave hold, a second ÷2 / ×2 press releases the hold,
+>   and uneven taps are rejected with a blink. It lands with the controller module, not before. The restart command
+>   (#211: `fix('restart')`, Shift+R) stays.
 >
 > The brief is kept as the reviewer wrote it.
 
@@ -61,6 +62,8 @@ mode on connect and disables it on unload.
 | Shift | (its feature control) | 7 |
 
 - The touch example confirms fader 1 = `BEh 05h`.
+- **Row 1 runs in relative mode** for `visualOffsetMs` and phase trim, so they move by detents from the current value
+  and never jump to a knob position. The probe confirms the decode.
 - **Relative encoders:** each encoder row can switch to relative mode with `B6h 45h / 48h / 49h <7Fh | 00h>`, pivot
   40h. In relative mode the row's CCs are **+40h**: 4Dh–54h, 55h–5Ch, 5Dh–64h. By default encoders are absolute and
   pick up position values the host sends them.
@@ -84,11 +87,11 @@ mode on connect and disables it on unload.
   - bit 5 auto-shows the display on touch; bit 6 auto-shows it on change;
   - **00h** cancels; **7Fh** brings up the display with its current contents.
 - **Text characters:** ASCII 20h–7Eh, plus 1Bh empty box, 1Ch filled box, 1Dh flat, 1Eh heart.
-- **Bitmap:** `F0h 00h 20h 29h 02h 15h 09h <target> <1216 bytes> F7h`, 19 bytes × 64 rows for the 128×64 screen, 7 pixels
-  per byte, highest bit leftmost. The guide prints the terminator as `7Fh`, most likely a typo for F7h. An ack message
-  follows that is "suitable for timing fluid animations". The device holds one bitmap in memory at a time.
-- **To check on hardware:** the guide gives **20h** (stationary) and **21h** (global temporary) as the bitmap targets,
-  while the text targets are **35h/36h**.
+- **We use text only.** The controller shows BPM, confidence and the last fix as text on the stationary target (35h).
+  No bitmaps.
+- **Bitmap (for reference, not used):** `F0h 00h 20h 29h 02h 15h 09h <target> <1216 bytes> F7h`, 19 bytes × 64 rows for
+  the 128×64 screen. The guide prints the terminator as `7Fh` and gives 20h/21h as the bitmap targets, while the text
+  targets are 35h/36h.
 
 ## 5. Feature controls (channel 7, query on channel 8)
 
@@ -125,10 +128,21 @@ That keeps a second controller distinguishable.
 - **Hot-plug:** `MIDIAccess.onstatechange` fires on connect and disconnect, and the spec advises against relying heavily
   on it. So re-resolve the port by name on every statechange, and re-send the DAW-mode enable plus the LED and screen
   state after a replug: the device powers up in standalone mode.
-- **Sharing with Resolume:** on macOS, CoreMIDI shares a device between applications
+- **Sharing with Resolume: UNVERIFIED.** CoreMIDI lets several applications open one device
   ([CoreMIDI multi-client](https://salivity.github.io/midi/article/how-mac-os-core-midi-enables-multi-app-midi-sharing)).
-  But two hosts driving the same LEDs, screen and mode will fight. Resolume must not be mapped to this controller's DAW
-  port; it may use the MIDI port.
+  But the guide says that in DAW mode the controls "can be accessed and will report on the DAW In/Out (USB) interface
+  only". If so, while this page holds DAW mode, Resolume on the MIDI port may get nothing from the faders and pots.
+  - **The probe decides.** Its key test counts messages per input port with DAW mode on and off.
+  - **If the MIDI port stays silent in DAW mode,** the options are:
+    - a bridge: Chrome sends the controls over a WebSocket, and the node side re-sends them on a virtual MIDI port that
+      Resolume reads;
+    - two controllers.
+
+    Decide after the probe.
+  - Either way, Resolume must never drive this controller's LEDs, screen or mode.
+- **Recovery:** a crash or a closed tab can leave the device in DAW mode, with dark LEDs that look dead. Power-cycle it:
+  it powers up in Standalone mode. The probe and the controller module leave DAW mode on their Leave button, on
+  `pagehide` and on `beforeunload`.
 
 ## 7. D5: serving without the ssh tunnel
 
@@ -138,19 +152,25 @@ That keeps a second controller distinguishable.
   secure context they need.
 - **Setup (one-off):**
   1. On the Mac: `brew install mkcert` and `mkcert -install`.
-  2. Still on the Mac: `mkcert 192.168.8.164 box.local`.
+  2. Still on the Mac: make the certificate for a **hostname**, never 192.168.8.164: `box.local` (mDNS) now, or a name
+     on a travel router later. A party network gives the box another address, so a certificate for an address breaks.
   3. Copy the two PEM files to the box and point `conduct-serve` at them.
   4. Keep `rootCA-key.pem` on the Mac only.
 - **Fallback, already working:** the ssh tunnel (`ssh -L 8790:localhost:8790 puggie@192.168.8.164`, then
   http://localhost:8790/), because localhost is a secure context.
+- **Not this week.** The freeze holds; the tunnel stays tonight's procedure.
 - **Possible one-evening alternative:** the Chrome flag `--unsafely-treat-insecure-origin-as-secure`. It is allowed by
   [Secure Contexts §7.2](https://w3c.github.io/webappsec-secure-contexts/), but it isn't a standing setup.
 - **Not recommended for the gate run:** serving from the laptop, because the corpus would exist twice, or the audio would
   stream over plain LAN HTTP.
 
-## 8. The probe page (spec, to build after the freeze)
+## 8. The probe page
 
-`experiments/lcxl3-probe.html` is small and standalone: no clock and no page pause. It fills the two gaps the guide
+**Built:** `experiments/lcxl3-probe.html` (a freeze exception the user approved on 10 Nov). It is self-contained and
+imports nothing from the clock or the conductor. It adds the **key test**: messages counted per input port with DAW
+mode on and off. It drops the bitmap step (text only).
+
+The original spec follows. It is small and standalone, with no clock and no page pause. It fills the two gaps the guide
 leaves as images, and proves the plumbing.
 
 1. **Connect:** `requestMIDIAccess({ sysex: true })`.
@@ -188,12 +208,15 @@ leaves as images, and proves the plumbing.
 - **Button CCs and palette indices** are only in the PNG tables above; the article text doesn't give them. The probe
   page's learn pass and palette sweep read them off the hardware. That is the first hardware check and fills
   `lcxl3.map.json`.
-- **Bitmap target:** 20h/21h vs 35h/36h, settled by probe step 7.
+- **Resolume on the MIDI port in DAW mode:** settled by the probe's key test (section 6).
+- **Local LEDs:** whether the LEDs answer presses by themselves in DAW mode. The probe asks.
 - **Flash / pulse** in the palette: unknown until the sweep.
 
 ## 10. The user's decisions so far
 
-- **D4 (tap clears the hold, second ÷2/×2 press releases it) is not approved.** Only the restart command landed:
-  `fix('restart')`, Shift+R on the keys, #211. The brief's D4 section stays as the reviewer wrote it, for reference.
-- **D5:** not decided yet. The research recommends mkcert HTTPS; the tunnel works today.
+- **D4 is approved** (10 Nov): tap clears the octave hold, a second ÷2 / ×2 press releases it, and uneven taps are
+  rejected with a blink. It lands with the controller module. Restart (#211, Shift+R) stays.
+- **D5:** not this week. When it comes: mkcert HTTPS with a hostname (box.local or a travel router), never the IP. The
+  tunnel works today.
+- **Display:** text only.
 - The tracker stays frozen. Controller code comes after the freeze, starting with the probe page.
