@@ -1,5 +1,6 @@
 // The three-tracker reference vote (#188, the user 10 Nov 17:27; VIZ research's ruling): qa/ref_beats_vote.py and its
-// fixed script qa/ref-beats-vote.sh, and the hardcore rows hc-01..hc-11 in qa/corpus.json. The trackers themselves
+// fixed script qa/ref-beats-vote.sh, and the unusual tempo / meter rows hc-01..hc-11 (the user 17:39: hard for the tracker,
+// not a genre) in qa/corpus.json. The trackers themselves
 // (torch, beat-this, madmom, essentia) only exist in the box's venv, so here: the vote rules (--selftest), the files
 // parse, the old path for the 22 earlier tracks is untouched, and the rows are well formed. ids only (R9).
 //   node --test qa/runner/test/*.test.mjs
@@ -14,7 +15,7 @@ const QA = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const rows = JSON.parse(fs.readFileSync(path.join(QA, 'corpus.json'), 'utf8'));
 const HC = Array.from({ length: 11 }, (_, i) => `hc-${String(i + 1).padStart(2, '0')}`);
 
-test('ref_beats_vote.py --selftest: 2-of-3 within 1 % after octave folding, 4:3 never folds, confidence 1.5 gates, wide 110-260', (t) => {
+test('ref_beats_vote.py --selftest: 2-of-3 within 1 % after octave folding, 4:3 never folds, confidence 1.5 gates (3.5 after an octave fold), wide 60-260, meters 2-7, tempo curve', (t) => {
   const py = spawnSync('python3', ['-c', 'import sys; print(sys.version_info >= (3, 9))'], { encoding: 'utf8' });
   if (py.error) { t.skip('no python3 here'); return; }
   const r = spawnSync('python3', [path.join(QA, 'ref_beats_vote.py'), '--selftest'], { encoding: 'utf8' });
@@ -67,5 +68,10 @@ test('corpus.json: hc-01..hc-11 by id, report-only, refTool vote; optional refMi
   assert.deepEqual(['hc-01', 'hc-06', 'hc-07'].map(id => by[id].bpm), [122.9, 130, 128], 'the three slower ones the user named (why the range is wide)');
   const md = fs.readFileSync(path.join(QA, 'CLOCK_CORPUS.md'), 'utf8');
   for (const id of HC) assert.ok(md.includes(`| ${id} |`), `${id} in CLOCK_CORPUS.md`);
-  assert.match(md, /110\u2013260 BPM/);
+  assert.match(md, /60\u2013260 BPM/);
+  assert.match(md, /2, 3, 4, 5, 6 or 7 beats a bar/);
+  assert.doesNotMatch(md, /hardcore/i, "the batch is unusual tempo / meter, not a genre (the user, 17:39)");
+  const py = fs.readFileSync(path.join(QA, "ref_beats_vote.py"), "utf8");
+  assert.match(py, /beats_per_bar=METERS/, "the downbeat DBN may choose 2..7 beats a bar");
+  assert.match(py, /^WIDE = \(60\.0, 260\.0\)/m);
 });

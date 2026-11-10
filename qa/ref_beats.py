@@ -95,7 +95,7 @@ def main():
     for name, path, ext in tracks:
         out, meta_path = os.path.join(a.dir, name + '.ref.beats'), os.path.join(a.dir, name + '.ref.json')
         digest = sha256(path)
-        # a reference written by the three-tracker vote (qa/ref_beats_vote.py, the hardcore batch) is never redone here,
+        # a reference written by the three-tracker vote (qa/ref_beats_vote.py, the hc batch) is never redone here,
         # not even with --force: the vote owns it
         try:
             if json.load(open(meta_path)).get('tool') == 'vote':

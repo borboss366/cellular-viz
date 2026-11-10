@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Reference beats by a vote of three trackers (#188, the user 10 Nov 17:27, VIZ research's ruling): for fast and
-hard music (the hardcore batch hc-01..hc-11) where Beat This! alone gave 7/11 gridSuspect grids.
+"""Reference beats by a vote of three trackers (#188, the user 10 Nov 17:27, VIZ research's ruling): for tracks that
+are hard FOR THE TRACKER (the batch hc-01..hc-11: odd meters, swing, unusual or slow tempos, maybe polyrhythm; the
+user's correction 17:39, not the hardcore genre) where Beat This! alone gave 7/11 gridSuspect grids.
 
 Run it through qa/ref-beats-vote.sh (the venv, the GPU lock, the grids). For each corpus track on the box (ids from
 corpus-map.json beside the tracks folder; R9: ids only in every line it prints, never a file name):
   A  Beat This! frame logits (Audio2Frames, 50 fps) decoded by madmom's DBNBeatTrackingProcessor (min_bpm..max_bpm),
-     the bar positions by DBNDownBeatTrackingProcessor(beats_per_bar=[4]) on the same logits
+     the bar positions by DBNDownBeatTrackingProcessor(beats_per_bar=[2, 3, 4, 5, 6, 7]) on the same logits: the meter
+     it picks is reported per track (the old grids' 3.49, 3.15, 2.46 beats a bar may be real odd meters)
   B  madmom RNNBeatProcessor + the same DBN (100 fps)
   C  essentia RhythmExtractor2013(method='multifeature', minTempo, maxTempo <= 250), with its confidence
 The vote: two of three agree within 1 % after octave folding (x2, /2, x4, /4). The gate: 2-of-3 AND essentia
-confidence >= 1.5 accepts; anything else is flagged for the user's ear. The tempo range is wide (110-260 by default,
-never a hard-coded 140-220: hc-06 130, hc-07 128, hc-01 122.9); a corpus row may set refMinBpm / refMaxBpm, used
-only when the wide vote does not agree.
+confidence >= 1.5 accepts; anything else is flagged for the user's ear. When the trackers agree only after an octave
+fold, no prior picks the octave: both candidates are reported and the track is flagged, unless essentia's confidence
+is >= 3.5. The tempo range is wide (60-260: 87.7 and 91.06 may be true tempos here); a corpus row may set refMinBpm /
+refMaxBpm, used only when the wide vote does not agree. Each line also carries the tempo curve over 8-bar windows
+(p5 / p50 / p95), so a swung or drifting track shows as one, not as a single forced bpm.
 
 Outputs, next to the track (beat times only; the audio is read in place, never copied):
   <stem>.vote.json   every track: each tracker's bpm, beats and seconds, agreement, confidence, accepted / flagged
@@ -31,12 +35,15 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-WIDE = (110.0, 260.0)          # the default range (VIZ research: wide, with the vote and octave folding)
+WIDE = (60.0, 260.0)           # the default range (the user 17:39: slow and unusual tempos are real here)
 ESSENTIA_MAX = 250.0           # RhythmExtractor2013's maxTempo limit
 AGREE = 0.01                   # 1 %
 CONF_MIN = 1.5                 # essentia confidence for an accepted grid
+CONF_OCTAVE = 3.5              # ... and for one whose agreement needed an octave fold (else: flagged, both candidates)
+METERS = [2, 3, 4, 5, 6, 7]    # beats a bar the downbeat DBN may choose
+WIN_BARS = 8                   # the tempo curve's window
 FPS_BT, FPS_MM = 50, 100
-TOOL_VERSION = 1
+TOOL_VERSION = 2   # 2: range 60-260, meters 2-7, octave candidates, tempo curve (the user 17:39)
 NO_ROW = {}
 
 
@@ -62,7 +69,13 @@ def vote(bpms):
     agreeing = sorted({c for pr in pairs for c in pr['pair']})
     pick = next((n for n in ('A', 'B', 'C') if n in agreeing), None)
     octave_split = any(pr['fold'] != 1 for pr in pairs)   # some agreement needed an octave fold: worth an ear
-    return {'pairs': pairs, 'agree': len(agreeing) >= 2, 'agreeing': agreeing, 'pick': pick, 'octaveSplit': octave_split}
+    # the distinct octaves the agreeing trackers stand at (no prior chooses between them)
+    cands = []
+    for n in agreeing:
+        if not any(abs(bpms[n] / c - 1) <= AGREE for c in cands):
+            cands.append(round(bpms[n], 2))
+    return {'pairs': pairs, 'agree': len(agreeing) >= 2, 'agreeing': agreeing, 'pick': pick, 'octaveSplit': octave_split,
+            'candidates': sorted(cands)}
 
 
 def verdict(v, conf):
@@ -71,7 +84,40 @@ def verdict(v, conf):
         return False, 'no two trackers agree within 1 % (after octave folding)'
     if conf is None or conf < CONF_MIN:
         return False, f'essentia confidence {conf if conf is None else round(conf, 2)} < {CONF_MIN}'
+    if v['octaveSplit'] and conf < CONF_OCTAVE:
+        return False, f'octave ambiguous (candidates {" / ".join(str(c) for c in v["candidates"])}), essentia confidence {round(conf, 2)} < {CONF_OCTAVE}: for the ear'
     return True, None
+
+
+def tempo_curve(beats, meter=4, bars=WIN_BARS):
+    """the tempo over windows of `bars` bars (meter beats each), half overlapping -> p5 / p50 / p95 and the spread in %"""
+    n = max(4, int(meter or 4) * bars)
+    if beats is None or len(beats) < n + 1:
+        return None
+    vals = []
+    for i in range(0, len(beats) - n, max(1, n // 2)):
+        dt = beats[i + n] - beats[i]
+        if dt > 0:
+            vals.append(60.0 * n / dt)
+    if not vals:
+        return None
+    vals.sort()
+    q = lambda p: vals[min(len(vals) - 1, int(round(p * (len(vals) - 1))))]
+    p5, p50, p95 = q(0.05), q(0.5), q(0.95)
+    return {'p5': round(p5, 2), 'p50': round(p50, 2), 'p95': round(p95, 2), 'spreadPct': round(100 * (p95 - p5) / p50, 2), 'windows': len(vals), 'beatsPerWindow': n}
+
+
+def meter_of(rows):
+    """the downbeat DBN's (time, beat-in-bar) rows -> the most common bar length and how often each length came"""
+    counts, last = {}, None
+    for _, p in rows:
+        p = int(p)
+        if p == 1 and last:
+            counts[last] = counts.get(last, 0) + 1
+        last = p
+    if not counts:
+        return None, {}
+    return max(counts, key=lambda k: (counts[k], -abs(k - 4))), {str(k): v for k, v in sorted(counts.items())}
 
 
 def bpm_of(beats):
@@ -99,7 +145,7 @@ def positions(beats, downbeats, tol=0.05):
 
 def selftest():
     cases = []
-    # a hardcore track: Beat This! and madmom at 200, essentia at 100 (folded x2): all three agree
+    # a fast track: Beat This! and madmom at 200, essentia at 100 (folded x2): all three agree
     v = vote({'A': 200.0, 'B': 199.6, 'C': 100.1}); cases.append(('octave fold', v['agree'] and v['pick'] == 'A' and v['octaveSplit'] is True and len(v['pairs']) == 3))
     v = vote({'A': 200.0, 'B': 199.6, 'C': 200.3}); cases.append(('same octave', v['agree'] and v['octaveSplit'] is False))
     # 87.7 (the half DBN range let in) vs 175.5: folds
@@ -111,10 +157,21 @@ def selftest():
     # 4:3 is not an octave: no agreement
     v = vote({'A': 136.0, 'B': 181.3, 'C': None}); cases.append(('4:3 is not folded', not v['agree']))
     ok, why = verdict(vote({'A': 200.0, 'B': 200.5, 'C': 200.2}), 1.2); cases.append(('low confidence flags', not ok and 'confidence' in why))
+    # agreement only after a fold: both candidates, flagged unless essentia is very confident
+    v = vote({'A': 87.7, 'B': 175.5, 'C': None}); ok, why = verdict(v, 2.4)
+    cases.append(('octave fold flags for the ear', not ok and 'octave ambiguous' in why and v['candidates'] == [87.7, 175.5]))
+    ok, why = verdict(v, 3.6); cases.append(('octave fold accepted at conf 3.6', ok))
+    tc = tempo_curve([i * 0.5 for i in range(200)], 4); cases.append(('tempo curve steady', tc['p50'] == 120.0 and tc['spreadPct'] == 0.0))
+    swing = [0.0]
+    for i in range(199):
+        swing.append(swing[-1] + (0.5 if i < 100 else 0.45))
+    tc = tempo_curve(swing, 4); cases.append(('tempo curve shows a change', tc['p5'] < 121 and tc['p95'] > 132))
+    cases.append(('meter 7', meter_of([(i, (i % 7) + 1) for i in range(70)])[0] == 7))
+    cases.append(('meter 3', meter_of([(i, (i % 3) + 1) for i in range(30)])[0] == 3))
     ok, why = verdict(vote({'A': 200.0, 'B': 200.5, 'C': 200.2}), 3.1); cases.append(('accepted', ok and why is None))
     cases.append(('bpm_of', bpm_of([i * 0.3 for i in range(20)]) == 200.0))
     cases.append(('positions', positions([0, .3, .6, .9, 1.2, 1.5], [0, 1.2]) == [1, 2, 3, 4, 1, 2]))
-    cases.append(('wide range', WIDE == (110.0, 260.0) and ESSENTIA_MAX == 250.0))
+    cases.append(('wide range', WIDE == (60.0, 260.0) and ESSENTIA_MAX == 250.0 and METERS == [2, 3, 4, 5, 6, 7]))
     bad = [n for n, ok in cases if not ok]
     print(json.dumps({'selftest': 'ok' if not bad else 'FAIL', 'cases': len(cases), 'failed': bad}))
     return 1 if bad else 0
@@ -157,9 +214,11 @@ class Trackers:
         t = time.time()
         a = self.DBN(min_bpm=lo, max_bpm=hi, fps=FPS_BT)(acts['beat'])
         both = np.stack([np.clip(acts['beat'] - acts['down'], 0, 1), acts['down']], axis=1)
-        d = self.DDBN(beats_per_bar=[4], min_bpm=lo, max_bpm=hi, fps=FPS_BT)(both)
+        d = self.DDBN(beats_per_bar=METERS, min_bpm=lo, max_bpm=hi, fps=FPS_BT)(both)
         downs = [float(r[0]) for r in d if int(r[1]) == 1]
-        out['A'] = {'beats': [float(x) for x in a], 'downbeats': downs, 'seconds': round(acts['tA'] + time.time() - t, 1)}
+        meter, bars = meter_of([(float(r[0]), int(r[1])) for r in d])
+        out['A'] = {'beats': [float(x) for x in a], 'downbeats': downs, 'meter': meter, 'bars': bars,
+                    'seconds': round(acts['tA'] + time.time() - t, 1)}
         t = time.time()
         b = self.DBN(min_bpm=lo, max_bpm=hi, fps=FPS_MM)(acts['act'])
         out['B'] = {'beats': [float(x) for x in b], 'seconds': round(acts['tB'] + time.time() - t, 1)}
@@ -203,7 +262,7 @@ def main():
         print('vote: no corpus-map.json beside the tracks folder: nothing to do (ids only, R9)')
         return 1
     tracks = [(id_of[s], s, p) for s, p, _ in source_tracks(a.dir) if s in id_of]
-    # the vote rows first (the hardcore batch), then the rest as a report
+    # the vote rows first (the hc batch), then the rest as a report
     tracks.sort(key=lambda x: (rows.get(x[0], NO_ROW).get('refTool') != 'vote', x[0]))
     n_vote = sum(1 for t in tracks if rows.get(t[0], NO_ROW).get('refTool') == 'vote')
     n_unmapped = len(source_tracks(a.dir)) - len(tracks)
@@ -250,6 +309,9 @@ def main():
         grid_beats = res[pick]['beats'] if (ok and pick) else []
         pos = positions(grid_beats, res['A']['downbeats']) if grid_beats else []
         seconds = round(len(mono) / sr, 2)
+        # the meter the downbeat DBN chose, and the tempo curve over 8-bar windows (of the grid, else of A's beats)
+        meter = res['A'].get('meter')
+        curve = tempo_curve(grid_beats or res['A']['beats'], meter or 4)
         meta = {
             'id': tid, 'toolVersion': TOOL_VERSION, 'model': a.model, 'sha256': digest, 'seconds': seconds,
             'range': {'name': rng_name, 'minBpm': rng[0], 'maxBpm': rng[1], 'essentiaMax': ESSENTIA_MAX},
@@ -258,6 +320,7 @@ def main():
                 'B': {'name': 'madmom-rnn+dbn', 'bpm': bpms['B'], 'beats': len(res['B']['beats']), 'seconds': res['B']['seconds']},
                 'C': {'name': 'essentia-multifeature', 'bpm': bpms['C'], 'beats': len(res['C']['beats']), 'confidence': conf, 'seconds': res['C']['seconds']},
             },
+            'meter': meter, 'barLengths': res['A'].get('bars'), 'tempoCurve': curve, 'candidates': v['candidates'],
             'vote': v, 'accepted': ok, 'flagged': None if ok else why, 'pick': pick if ok else None,
             'bpm': bpms[pick] if (ok and pick) else None, 'corpusBpm': row.get('bpm'), 'refTool': row.get('refTool'),
             'versions': {k: version(k) for k in ('beat-this', 'madmom', 'madmom-prebuilt', 'essentia', 'torch', 'numpy')},
@@ -292,7 +355,9 @@ def main():
         T = meta['trackers']
         print(f'vote: {tid} {seconds:.0f} s | A {T["A"]["bpm"]} ({T["A"]["seconds"]} s) B {T["B"]["bpm"]} ({T["B"]["seconds"]} s) '
               f'C {T["C"]["bpm"]} conf {conf} ({T["C"]["seconds"]} s) | agree {"+".join(p["pair"] for p in v["pairs"]) or "none"} '
-              f'{"(octave split)" if v["octaveSplit"] else ""}| range {rng_name} | '
+              f'{"(octave split: " + " / ".join(str(c) for c in v["candidates"]) + ") " if v["octaveSplit"] else ""}| range {rng_name} | '
+              f'meter {meter} {res["A"].get("bars")} | tempo 8-bar p5/p50/p95 '
+              f'{(str(curve["p5"]) + "/" + str(curve["p50"]) + "/" + str(curve["p95"]) + " spread " + str(curve["spreadPct"]) + " %") if curve else "-"} | '
               f'{"ACCEPTED " + str(meta["bpm"]) + (" -> .ref.beats" if meta.get("wroteRef") else " (report)") if ok else "FLAGGED: " + why}'
               f' | corpus {row.get("bpm")} | grid {meta.get("gridBpm")} (suspect {meta.get("gridSuspect")}) vs vote {meta.get("vsGrid")}')
 
