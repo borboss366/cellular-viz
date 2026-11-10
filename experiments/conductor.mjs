@@ -4,7 +4,7 @@
 export const KICK_QUARTERS = 'x---x---x---x---', SILENT = '----------------';   // R2: a kick on every quarter = the output beats
 export const XFADE_S = 8, PAIR_S = 5, SAMPLE_S = 0.1, START_LEAD_S = 0.05;
 export const OFFSET_MIN = -100, OFFSET_MAX = 200, LAMP_MS = 120;
-export const FIX_KIND = { tap: 'tap', half: 'half', x2: 'x2', flip: 'flip', nudge: 'nudge', setOne: 'set1', reset: 'reset' };   // clock.fix → schema v1
+export const FIX_KIND = { tap: 'tap', half: 'half', x2: 'x2', flip: 'flip', nudge: 'nudge', setOne: 'set1', reset: 'reset', restart: 'restart' };   // clock.fix → schema v1
 const num = x => typeof x === 'number' && Number.isFinite(x);
 
 /** a deck started with start(at, offsetS): its track position (ms) at audio time t, and the audio time of a position */

@@ -74,7 +74,8 @@ button{cursor:pointer}.fixes button{min-width:60px}
     <li>Small offset: -10 or +10, Shift+, or Shift+.</li><li>Wrong "1": set 1, Shift+1, on the downbeat.</li>
     <li>Wrong tempo: tap, Shift+A, on each beat, 4 times or more, evenly, less than 2 s apart. One tap only moves the beat.</li>
     <li>reset, Shift+0, counts the bar again. It does not clear the tempo or the octave hold.</li>
-    <li>Start the clock again: reload the page (Cmd+R), then load and play the track again.</li>
+    <li>If the tempo or the octave hold is wrong and a tap does not fix it, push Shift+R (restart). The clock starts again; the music does not stop.</li>
+    <li>If that does not help: reload the page (Cmd+R), then load and play the track again.</li>
     <li>K shows or hides the key lamp (the reference beats).</li></ul>
   <h2>Marks and the bar</h2>
   <ul><li>Select a name in the Marks list. Push M on that moment. [ and ] move bar1 by one beat.</li>
@@ -99,7 +100,8 @@ button{cursor:pointer}.fixes button{min-width:60px}
     <div class="fixes row" style="margin-top:10px">
       <button data-fix="tap">tap ⇧A</button><button data-fix="half">÷2 ⇧H</button><button data-fix="x2">×2 ⇧D</button>
       <button data-fix="flip">flip ⇧F</button><button data-fix="nudge" data-arg="-10">−10 ⇧,</button><button data-fix="nudge" data-arg="10">+10 ⇧.</button>
-      <button data-fix="setOne">set 1 ⇧1</button><button data-fix="reset">reset ⇧0</button></div>
+      <button data-fix="setOne">set 1 ⇧1</button><button data-fix="reset">reset ⇧0</button>
+      <button data-fix="restart" title="Start the clock again (Shift+R). The music does not stop.">restart Shift+R</button></div>
     <div class="fixline"><small>last fix:</small> <span id="lastFix">–</span></div>
   </section>
   <section>
@@ -241,7 +243,7 @@ clock.fix = (kind, arg, o) => {
     if (arg !== undefined) rec.arg = arg;
     if (j && typeof j.at === 'number') rec.landedCtx = j.at;
     log.add('fix', rec);
-    $('lastFix').textContent = `${kind}${arg !== undefined ? ' ' + arg : ''} at ${ctx.currentTime.toFixed(2)} s${j ? `, beat ${j.fromBeats.toFixed(2)} → ${j.toBeats.toFixed(2)}` : ' (lands at the bar line)'}`;
+    $('lastFix').textContent = `${kind}${arg !== undefined ? ' ' + arg : ''} at ${ctx.currentTime.toFixed(2)} s${j && j.kind === 'restart' ? ' (the clock starts again)' : j ? `, beat ${j.fromBeats.toFixed(2)} → ${j.toBeats.toFixed(2)}` : ' (lands at the bar line)'}`;
   }
   return j;
 };

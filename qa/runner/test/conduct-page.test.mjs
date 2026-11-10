@@ -278,3 +278,23 @@ test('conductor state line: written once per change, one line each for state and
   assert.match(css, /#state,#lane\{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1\.3;min-height:1\.3em\}/);
   assert.match(html, /<div class="stateBox"><small>state<\/small><div id="state">-<\/div><small id="lane"><\/small><\/div>/);
 });
+
+test('conductor restart (Shift+R): the button and key are wired, it logs a fix record "restart", the guide and Help say when to use it', async () => {
+  assert.equal(C.FIX_KIND.restart, 'restart', 'logged as a fix the scorer reads');
+  const { checkRecord } = await import('../../conduct-score.mjs');
+  assert.deepEqual(checkRecord({ type: 'fix', ctx: 12.5, id: 3, kind: 'restart', origin: 'fix:key', idx: 0, landedCtx: 12.5 }), [], 'schema v1 takes it');
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  const btn = /<button data-fix="restart"[^>]*>([^<]*)<\/button>/.exec(html);
+  assert.ok(btn, 'a restart button among the fix buttons');
+  assert.ok(/^[\x20-\x7e]+$/.test(btn[0]), `ASCII label (#205): ${btn[0]}`);
+  assert.match(html, /j && j\.kind === 'restart' \? ' \(the clock starts again\)'/, '"last fix" reads it without fromBeats');
+  const src = fs.readFileSync(path.join(REPO, 'experiments', 'clock.js'), 'utf8');
+  assert.match(src, /KeyR: \['restart'\]/, 'Shift+R is a clock hand-fix key (origin fix:key, logged by the page like the others)');
+  assert.equal(C.pageKey({ code: 'KeyR', shiftKey: true, target: { tagName: 'BODY' } }), null, 'the page leaves Shift+R to the clock');
+  const panel = /<div id="helpPanel" hidden>([\s\S]*?)<\/div>/.exec(html)[1];
+  assert.match(panel, /If the tempo or the octave hold is wrong and a tap does not fix it, push Shift\+R \(restart\)\. The clock starts again; the music does not stop\./);
+  assert.match(panel, /Cmd\+R/, 'the reload stays as a fallback');
+  const guide = fs.readFileSync(path.join(REPO, 'qa', 'CONDUCTOR_GUIDE.md'), 'utf8');
+  assert.match(guide, /If the tempo or the octave hold is wrong and a tap does not fix it, push "restart" \(Shift\+R\)\. The clock starts again;\n  the music does not stop\./);
+  assert.match(guide, /If that does not help: reload the page \(Cmd\+R\)/);
+});

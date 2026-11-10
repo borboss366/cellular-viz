@@ -47,11 +47,14 @@
 //   metronome.fix(kind, arg, { origin }) → kind: 'tap' | 'nudge' (arg ms, + = clock ahead) | 'x2' | 'half' | 'setOne' | 'reset'
 //                                  | 'flip' (line only: half a beat at the next bar line, the tracker on the other side
 //                                  of the beat; logged as jump { kind: 'flip', origin } when it lands, then rebooked)
+//                                  | 'restart' (line only: a fresh tracker, as at start; the octave hold, a tap tempo,
+//                                  the side and the tempo start over; the input and onTrackerFrame listeners stay;
+//                                  returns { type: 'restart', at, origin }, not a jump)
 //                                  acts only for origin 'fix:controller' | 'fix:key' | 'qa' (beat authority, #95 31 Oct);
 //                                  any other origin is a no-op logged in fixRejected (__qa.fixRejected)
 //   metronome.nextBeatAt() / .nextBarAt() → read-only: the clock time (now() timeline) of the next beat / bar line
 //   Hand-fix keys (Shift only; without Shift nothing touches the clock): Shift+A tap, Shift+H ÷2, Shift+D ×2,
-//   Shift+1 set the 1, Shift+, / Shift+. nudge −10 / +10 ms, Shift+0 reset, Shift+F flip (line). The same commands come from the
+//   Shift+1 set the 1, Shift+, / Shift+. nudge −10 / +10 ms, Shift+0 reset, Shift+F flip (line), Shift+R restart (line). The same commands come from the
 //   controller's Shift buttons as origin 'fix:controller' (#85 layout).
 //   metronome.setVisualOffset(ms) / .visualOffsetMs   → −100 … +200 ms, + = visuals earlier (#95 6498683963)
 //   metronome.now()              → the clock's time on the audio clock that the visuals show now (heard + offset)
@@ -80,7 +83,7 @@
   const AHEAD_MIN = 0.1, AHEAD_MAX = 0.25, GAPS_KEPT = 120, GAPS_MIN = 10, PUMP_MIN_MS = 4;
   const FIX_ORIGINS = ['fix:controller', 'fix:key', 'qa'], QUANTUM = 0.003, NO_DOUBLE = 0.020, TAP_GAP = 2, TAPS_KEPT = 5;
   // Shift + key (KeyboardEvent.code) → hand fix; clear of the pages' own keys (z x c v t b [ ] `)
-  const FIX_KEYS = { KeyA: ['tap'], KeyH: ['half'], KeyD: ['x2'], Digit1: ['setOne'], Comma: ['nudge', -10], Period: ['nudge', 10], Digit0: ['reset'], KeyF: ['flip'] };
+  const FIX_KEYS = { KeyA: ['tap'], KeyH: ['half'], KeyD: ['x2'], Digit1: ['setOne'], Comma: ['nudge', -10], Period: ['nudge', 10], Digit0: ['reset'], KeyF: ['flip'], KeyR: ['restart'] };
   const FILE_GAIN = 1, CLICK_GAIN = 0.35, FILE_LEAD = 0.05, LINE_OWN_INPUT_MS = 1500;
 
   // the tracker library (clock-tracker.js): already on the page, required in node, or loaded next to this file
@@ -428,6 +431,7 @@
           return null;
         }
         if (!this.ctx || !this.playing) return null;
+        if (kind === 'restart') return line ? this.lineRestart(origin, this.now({ raw: true })) : null;   // any beat state, even no model
         const at = this.now({ raw: true }), from = this.baseBeats(at);
         if (from < 0) return null;
         if (file) return this.fileFix(kind, arg, origin, at, from);
@@ -725,6 +729,21 @@
         }
         line.step = s;
         this.schedule();
+      },
+      // restart (#188, 10 Nov sitting): the clock's tracker is replaced by a fresh one, as at start, so a wrong octave
+      // hold, a bad tap tempo, the side and the tempo all start over without a page reload. Command layer only: the
+      // tracker's code is unchanged. The worklet and its input stay connected (lineFrame feeds whatever line.tracker is
+      // now), the onTrackerFrame listeners (the conductor's shadow) are kept, booked hits ahead are dropped, and the
+      // clock re-acquires. Not a jump (nothing rewinds in the jump log); the caller logs it as a fix.
+      lineRestart(origin, at) {
+        if (!line || !line.tracker || opts.tracker) return null;   // an injected tracker (tests) cannot be made again
+        const lib = root.ClockTracker || trackerLibSync();
+        if (!lib || typeof lib.createTracker !== 'function') return null;
+        line.tracker = lib.createTracker(opts.trackerOptions || {});
+        line.seenJumps = 0; line.offset = 0; line.flipPending = null; this.oneAt = 0; this.taps = [];
+        if (this.ctx) line.lastBooked = this.dropFuture(this.ctx.currentTime);
+        line.step = null;
+        return { type: 'restart', at, kind: 'restart', origin };
       },
       // hand fixes on line (authority table in the header): the tracker keeps listening underneath
       lineFix(kind, arg, origin, at, from) {
