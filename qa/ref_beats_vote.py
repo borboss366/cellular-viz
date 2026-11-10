@@ -270,6 +270,12 @@ class Trackers:
         return out
 
 
+def writes_ref(row, accepted, degraded):
+    """a new <stem>.ref.beats only for a refTool 'vote' row (the hc batch), only when accepted, never from a DEGRADED
+    (2-tracker) vote; every other row keeps its old reference (the vote is a report next to it)"""
+    return bool(accepted) and not degraded and (row or {}).get('refTool') == 'vote'
+
+
 def write_beats(path, beats, pos):
     with open(path + '.tmp', 'w') as f:
         for t, p in zip(beats, pos):
@@ -379,7 +385,7 @@ def main():
         }
         if ok:
             write_beats(base + '.vote.beats', grid_beats, pos)
-            if row.get('refTool') == 'vote' and not degraded:   # only the batch's rows get a new reference grid (3 trackers)
+            if writes_ref(row, ok, degraded):   # only the batch's rows, accepted, 3 trackers
                 write_beats(base + '.ref.beats', grid_beats, pos)
                 ref = {'track': os.path.basename(path), 'sha256': digest, 'tool': 'vote', 'model': a.model, 'pick': pick,
                        'beats': len(grid_beats), 'downbeats': sum(1 for p in pos if p == 1), 'medianBpm': bpms[pick],

@@ -62,7 +62,7 @@ test('ref-beats-vote.sh: madmom-prebuilt metadata fix in .venv-vote, the import 
   assert.match(code, /--trackers "\$VOTE_MODE"/);
   const py = fs.readFileSync(path.join(QA, 'ref_beats_vote.py'), 'utf8');
   assert.match(py, /choices=\(2, 3\)/);
-  assert.match(py, /if row\.get\('refTool'\) == 'vote' and not degraded:/, 'no .ref.beats from a 2-tracker vote');
+  assert.match(py, /if writes_ref\(row, ok, degraded\):/, 'the .ref.beats write goes through writes_ref (its behaviour: the next test)');
   assert.match(py, /'trackerSet': tset, 'degraded': degraded/, 'every .vote.json says which trackers voted');
   assert.match(py, /old\.get\('trackerSet', SETS\[3\]\) == tset/, 'a degraded result is redone once madmom works');
   assert.match(py, /Postprocessor\(type='minimal'/, 'A0 is Beat This! without the madmom DBN');
@@ -106,11 +106,27 @@ test('the madmom fix, run for real: a fake madmom-prebuilt in a throwaway venv i
   }
 });
 
-test('the old ref_beats.py path: unchanged for the 22 earlier rows, and it leaves a vote-made reference alone', () => {
+test('the old ref_beats.py path: unchanged for the 22 earlier rows, and it leaves a vote-made reference alone', (t) => {
   const py = fs.readFileSync(path.join(QA, 'ref_beats.py'), 'utf8');
   assert.match(py, /get\('tool'\) == 'vote'/, 'ref_beats.py skips a .ref.json written by the vote, even with --force');
   const vote = fs.readFileSync(path.join(QA, 'ref_beats_vote.py'), 'utf8');
-  assert.match(vote, /if row\.get\('refTool'\) == 'vote':/, 'the vote writes .ref.beats only for refTool "vote" rows');
+  assert.match(vote, /^\s+if writes_ref\(row, ok, degraded\):/m, 'the .ref.beats write is gated by writes_ref');
+  // the gate's behaviour, called for real: only refTool "vote" rows, only accepted, never from a DEGRADED vote
+  const py3 = spawnSync('python3', ['-c', 'import sys'], { encoding: 'utf8' });
+  if (py3.error) { t.diagnostic('no python3 here: writes_ref behaviour not run'); }
+  else {
+    const probe = [
+      'import json, sys',
+      `sys.path.insert(0, ${JSON.stringify(QA)})`,
+      'from ref_beats_vote import writes_ref',
+      "V, R, D = {'refTool': 'vote'}, {'bpm': 136}, 'no madmom'",
+      'print(json.dumps([writes_ref(V, True, None), writes_ref(V, False, None), writes_ref(V, True, D), writes_ref(R, True, None), writes_ref(None, True, None), writes_ref({}, True, None)]))',
+    ].join('\n');
+    const r = spawnSync('python3', ['-c', probe], { encoding: 'utf8' });
+    assert.equal(r.status, 0, `writes_ref: ${r.stderr}`);
+    assert.deepEqual(JSON.parse(r.stdout.trim()), [true, false, false, false, false, false],
+      'vote row + accepted + 3 trackers writes; not accepted, DEGRADED, an earlier row or no row never write');
+  }
   const others = rows.filter(r => !HC.includes(r.id));
   assert.ok(others.length >= 22, `${others.length} earlier rows`);
   assert.deepEqual(others.filter(r => r.refTool !== undefined).map(r => r.id), [], 'no earlier row moves to the vote');
