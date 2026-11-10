@@ -326,12 +326,19 @@ test('(a) reaches the shadow: the conductor\'s shadow is a plain createTracker()
 });
 
 for (const [f, label] of [[2, 'x2'], [0.5, '/2']]) {
-  test(`(c) a wrong hold: ${label} on a 128 click releases within 8 beats and the tempo is 128 again`, () => {
-    const s = clickTrack(128, 30, { seed: 1280 }), P = 60 / 128, tX = s.beats.find(t => t >= 12);
-    let at8 = null;
-    const o = run(s, { at: [{ t: tX, fn: (tr, t) => tr.scaleTempo(f, t) }, { t: tX + 8 * P, fn: tr => { at8 = { bpm: tr.ownBpm, lock: tr.octaveLock }; } }] });
+  // the user's option 2 (15:36): a hand hold is protected for HOLD_PROTECT_BARS bars of the held tempo; then fix (c)
+  test(`(c) a wrong hold: ${label} on a 128 click holds through its ${T.HOLD_PROTECT_BARS}-bar protection, then releases within 8 beats and the tempo is 128 again`, () => {
+    const P = 60 / 128, protectS = T.HOLD_PROTECT_BARS * 4 * 60 / (128 * f), tX0 = 12;
+    const s = clickTrack(128, Math.ceil(tX0 + protectS + 25), { seed: 1280 }), tX = s.beats.find(t => t >= tX0), tP = tX + protectS;
+    let at8 = null, before = null;
+    const o = run(s, { at: [{ t: tX, fn: (tr, t) => tr.scaleTempo(f, t) },
+      { t: tP - 0.2, fn: tr => { before = { bpm: tr.ownBpm, lock: tr.octaveLock, hold: tr.hold }; } },
+      { t: tP + 8 * P, fn: tr => { at8 = { bpm: tr.ownBpm, lock: tr.octaveLock }; } }] });
     const rel = o.tr.notes.filter(n => n.kind === 'octave-release'), jumps = o.tr.jumps.filter(j => j.at > tX);
-    const detail = `releases ${rel.map(n => `${n.why || 'fold'}@+${(n.t - tX).toFixed(2)} s (lock ${n.lock.toFixed(1)}, raw ${n.raw.toFixed(1)})`).join(', ') || 'none'}; at +8 beats ${JSON.stringify(at8)}; end bpm ${o.tr.ownBpm.toFixed(2)}, lock ${o.tr.octaveLock}; jumps after ${jumps.map(j => `${j.kind}@+${(j.at - tX).toFixed(2)} (${j.fromBeats.toFixed(3)}->${j.toBeats.toFixed(3)})`).join(', ') || 'none'}; hold ${JSON.stringify(o.tr.hold)}`;
+    const detail = `protected until +${protectS.toFixed(2)} s (${JSON.stringify(before && before.hold.protectedUntil)}, ${before && before.hold.protectSkips} checks skipped); releases ${rel.map(n => `${n.why || 'fold'}@+${(n.t - tX).toFixed(2)} s (lock ${n.lock.toFixed(1)}, raw ${n.raw.toFixed(1)})`).join(', ') || 'none'}; at protection end + 8 beats ${JSON.stringify(at8)}; end bpm ${o.tr.ownBpm.toFixed(2)}, lock ${o.tr.octaveLock}; jumps after ${jumps.map(j => `${j.kind}@+${(j.at - tX).toFixed(2)} (${j.fromBeats.toFixed(3)}->${j.toBeats.toFixed(3)})`).join(', ') || 'none'}`;
+    console.log(`(c) ${label} on 128: ${detail}`);
+    assert.ok(before && before.lock !== null && Math.abs(before.bpm - 128 * f) <= 2, `held through the protection: ${detail}`);
+    assert.ok(before.hold.protectSkips > 0 && before.hold.eval && before.hold.eval.skipped === 'protected', `the checks were skipped: ${detail}`);
     // the octave jump (if the beat had to move more than 1/4) is booked on a bar line and runs forward: rewinds 0
     assert.equal(jumps.filter(j => j.toBeats < j.fromBeats).length, 0, `rewinds 0: ${detail}`);
     assert.ok(o.monotonic, `beats monotonic: ${detail}`);
@@ -340,17 +347,16 @@ for (const [f, label] of [[2, 'x2'], [0.5, '/2']]) {
       assert.ok(onBar <= 0.05, `octave jump ${onBar.toFixed(3)} beat from a bar line: ${detail}`);
     }
     assert.ok(jumps.every(j => j.kind === 'octave'), `no other jump: ${detail}`);
-    assert.ok(o.tr.hold.releases.length === 1 && o.tr.hold.releases[0].why === 'evidence', `snapshot().hold logs the release: ${detail}`);
-    console.log(`(c) ${label} on 128: ${detail}`);
     assert.equal(rel.length, 1, `one release: ${detail}`);
     assert.equal(rel[0].why, 'evidence', detail);
-    assert.ok(rel[0].t - tX <= 8 * P, `released ${(rel[0].t - tX).toFixed(2)} s after ${label}: ${detail}`);
-    assert.ok(at8 && at8.lock === null && Math.abs(at8.bpm - 128) <= 1, `128 again within 8 beats: ${detail}`);
+    assert.ok(rel[0].t >= tP && rel[0].t - tP <= 8 * P, `released ${(rel[0].t - tP).toFixed(2)} s after the protection ended: ${detail}`);
+    assert.ok(at8 && at8.lock === null && Math.abs(at8.bpm - 128) <= 1, `128 again within 8 beats of the protection's end: ${detail}`);
     assert.ok(Math.abs(o.tr.ownBpm - 128) <= 1 && o.tr.octaveLock === null, detail);
-    const st = phaseStats(o, s, { from: tX + 16 * P, settle: 0 });
-    assert.ok(st.p90 <= 0.05, `on the clicks again 16 beats after ${label}: p90 ${st.p90.toFixed(3)} beat (bias ${st.bias.toFixed(3)}): ${detail}`);
+    const st = phaseStats(o, s, { from: tP + 24 * P, settle: 0 });
+    assert.ok(st.p90 <= 0.05, `on the clicks again after the release: p90 ${st.p90.toFixed(3)} beat (bias ${st.bias.toFixed(3)}): ${detail}`);
   });
 }
+
 
 test('(c) a right hold the estimator disagrees with never releases (81 stomp-clap held at 81)', () => {
   const s = render('81-stomp-clap', { sr: SR }), tH = s.beats.find(t => t >= 15);
@@ -408,7 +414,9 @@ test('(i) re-lock cost, report-only: step-120-128 and a hard cut 128 -> 136, mai
 // figure (kick on 1, snare on 3 of the 174 grid, so the drums alone say 87) with hats on every 174 beat at three
 // levels; at 15 s, if the tracker reads ~87, x2 (to the right 174) is pressed; printed: whether and when it releases.
 test('(c) cost, report-only: a right x2 on a 174 figure read at 87 (does the distance-only release undo it?)', (t) => {
-  const bpm = 174, P = 60 / bpm, seconds = 40;
+  // with the user's option 2 (15:36) the hold is protected HOLD_PROTECT_BARS bars (64 beats of 174, ~22 s): the track
+  // runs 25 s past that, so the row shows whether the release comes after the protection ends
+  const bpm = 174, P = 60 / bpm, protectS = T.HOLD_PROTECT_BARS * 4 * P, seconds = Math.ceil(15 + protectS + 25);
   for (const hat of [0.15, 0.3, 0.6]) {
     const beats = [], hits = [];
     for (let t = 0.5; t < seconds - 0.6; t += P) beats.push(t);
@@ -424,6 +432,6 @@ test('(c) cost, report-only: a right x2 on a 174 figure read at 87 (does the dis
     let read = null, pressed = null;
     const o = run(s, { at: [{ t: 15, fn: (tr, t) => { read = tr.ownBpm; if (Math.abs(read / 87 - 1) <= 0.03) { tr.scaleTempo(2, t); pressed = t; } } }] });
     const rel = o.tr.notes.filter(n => n.kind === 'octave-release' && pressed !== null && n.t >= pressed);
-    report(t, `(c) cost ${s.name}: tracker read ${read === null ? '-' : read.toFixed(2)} at 15 s; ${pressed === null ? 'not at ~87, so no x2 pressed' : `x2 pressed to ${(2 * read).toFixed(1)}; ${rel.length ? `RELEASED back to the wrong octave at +${(rel[0].t - pressed).toFixed(2)} s (${rel[0].why || 'fold'}, raw ${rel[0].raw.toFixed(1)})` : 'kept to the end'}; end bpm ${o.tr.ownBpm.toFixed(2)}, hold ${o.tr.octaveLock}; last check ${JSON.stringify(o.tr.hold.eval)}`}`);
+    report(t, `(c) cost ${s.name}: tracker read ${read === null ? '-' : read.toFixed(2)} at 15 s; ${pressed === null ? 'not at ~87, so no x2 pressed' : `x2 pressed to ${(2 * read).toFixed(1)}; protected until +${protectS.toFixed(2)} s (${o.tr.hold.protectSkips} checks skipped); ${rel.length ? `RELEASED back to the wrong octave at +${(rel[0].t - pressed).toFixed(2)} s, ${(rel[0].t - pressed - protectS).toFixed(2)} s after the protection (${rel[0].why || 'fold'}, raw ${rel[0].raw.toFixed(1)})` : `kept to the end (${(seconds - pressed - protectS).toFixed(1)} s past the protection)`}; end bpm ${o.tr.ownBpm.toFixed(2)}, hold ${o.tr.octaveLock}; last check ${JSON.stringify(o.tr.hold.eval)}`}`);
   }
 });

@@ -172,15 +172,15 @@ test('R5 through the clock: four even taps 5 % fast → exactly one override wit
   assert.equal(c.trackerState.tapped, false);
 });
 
-test('x2 then tracker: a wrong x2 holds at once, then #214 fix (c) releases it (faster hold, distance >= 0.75 octave for 2 s)', () => {
-  const s = render('128-steady', { sr: SR }), tX = s.beats.find(t => t >= 12);
-  let held = null;
-  const { c } = runLine(s, { at: [{ t: tX, fn: c => c.fix('x2', QA) }, { t: tX + 1, fn: c => { held = c.trackerState; } }] });
+test('x2 then tracker: the hand x2 holds against the half-tempo estimate through its 16-bar protection (the user, 15:36), then fix (c) may release it', () => {
+  const s = render('128-steady', { sr: SR }), tX = s.beats.find(t => t >= 12), protectS = T.HOLD_PROTECT_BARS * 4 * 60 / 256;
+  const seen = [];
+  const { c } = runLine(s, { at: [{ t: tX, fn: c => c.fix('x2', QA) },
+    ...[1, protectS / 2, protectS - 0.3].map(d => ({ t: tX + d, fn: c => { seen.push({ d: +d.toFixed(2), ...c.trackerState }); } }))] });
   const st = c.trackerState, rel = c.line.tracker.notes.filter(n => n.kind === 'octave-release');
-  console.log(`x2: 1 s after bpm ${held.bpm}, octaveLock ${held.octaveLock}; end bpm ${st.bpm}, octaveLock ${st.octaveLock}; releases ${rel.map(n => `${n.why || 'fold'}@+${(n.t - tX).toFixed(2)}`).join(', ')}`);
-  assert.ok(Math.abs(held.bpm - 256) <= 3 && held.octaveLock && Math.abs(held.octaveLock - 256) <= 3, `held 1 s after: ${JSON.stringify({ bpm: held.bpm, lock: held.octaveLock })}`);
-  assert.ok(rel.length === 1 && rel[0].why === 'evidence' && rel[0].t - tX <= 4, `released by fix (c): ${JSON.stringify(rel)}`);
-  assert.ok(Math.abs(st.bpm - 128) <= 3 && st.octaveLock === null, `back to 128: ${st.bpm}`);
+  console.log(`x2: protected ${protectS.toFixed(2)} s (${JSON.stringify(st.hold && st.hold.protectedUntil)}); held at ${seen.map(x => `+${x.d}s ${x.bpm}/${x.octaveLock}`).join(', ')}; end bpm ${st.bpm}, octaveLock ${st.octaveLock}; releases ${rel.map(n => `${n.why || 'fold'}@+${(n.t - tX).toFixed(2)}`).join(', ') || 'none'}`);
+  for (const x of seen) assert.ok(Math.abs(x.bpm - 256) <= 3 && x.octaveLock && Math.abs(x.octaveLock - 256) <= 3, `held at +${x.d} s (bar 16 ends at +${protectS.toFixed(2)}): ${JSON.stringify({ bpm: x.bpm, lock: x.octaveLock })}`);
+  assert.equal(rel.filter(n => n.t < tX + protectS).length, 0, `no release inside the protection: ${JSON.stringify(rel)}`);
 });
 
 test('nudge then tracker: the shift stays (the PLL carries on underneath)', () => {

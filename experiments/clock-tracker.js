@@ -49,6 +49,10 @@
   // the one definition (R3). Measured by 3c's truth run viz-183-1 (2 Nov): raw delay 11.3 ms on truth (a)'s metronome,
   // 12.8–16 ms on the four tracks; 12 keeps truth (a)'s bias near 0 and the tracks' within +1 … +4 ms.
   const ANALYSIS_DELAY_MS = 12;
+  // the user's ruling (10 Nov 15:36, option 2): a hand octave hold (x2 / /2) is immune to fix (c)'s automatic release
+  // for this many bars of the held tempo after the press; D4's hand releases and the >20 %/4 s real-tempo-change
+  // release are not affected
+  const HOLD_PROTECT_BARS = 16;
 
   const DEFAULTS = {
     minBpm: 60, maxBpm: 180, priorBpm: 120, priorOct: 0.7, halfLag: 0.55,
@@ -76,7 +80,7 @@
     // the hold for > holdSecs, and, only when the hold is SLOWER than the estimate, R at the hold < holdFast x R there.
     // A hold faster than the estimate needs the distance alone (holdSlow is logged as support). Then the hold goes and
     // the model moves to the estimate's octave
-    holdOct: 0.75, holdSlow: 0.8, holdFast: 0.6, holdSecs: 2,
+    holdOct: 0.75, holdSlow: 0.8, holdFast: 0.6, holdSecs: 2, holdProtectBars: HOLD_PROTECT_BARS,
   };
 
   // ---------------------------------------------------------------- analysis (worklet and node)
@@ -218,6 +222,12 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     const jumps = [], stateLog = [];
     let octaveLock = null, lockOutSince = null, holdOutSince = null;
     let holdResets = 0, holdLastReset = null, holdFirstWrong = null;   // fix (c) accumulator diagnostics (logging only)
+    let protect = null, protectSkips = 0;   // the hand hold's protection: { t, beat, bar } of its end; checks skipped in it
+    function protectHold(t) {   // from now, holdProtectBars bars of the held tempo (bpm): fix (c) does not count
+      const beats = C.holdProtectBars * C.bpb, b = own.P ? ownBeats(t) + beats : null;
+      protect = { t: t + beats * 60 / bpm, beat: b === null ? null : +b.toFixed(3), bar: b === null ? null : Math.floor((b - barOrigin) / C.bpb) };
+      protectSkips = 0;
+    }
     const notes = [];
     let relCount = 0, relLast = null;   // fix (a): how often a non-octave relative replaced the ACF's choice, and the last
     let relEval = null, holdEval = null;
@@ -463,7 +473,11 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     function applyTempo(raw, t) {
       if (!raw || !isFinite(raw)) return;
       const est = raw;   // as heard: before the hysteresis and the hold's fold
-      if (octaveLock) {
+      if (octaveLock && protect && t < protect.t) {
+        // the user's option 2: inside the protection fix (c) neither checks nor counts (the old fold release below stays)
+        holdOutSince = null; protectSkips++;
+        holdEval = { t: +t.toFixed(3), lock: +octaveLock.toFixed(2), est: +est.toFixed(2), skipped: 'protected', protectedUntil: protect };
+      } else if (octaveLock) {
         if (holdWrong(est, t)) {
           if (holdOutSince === null) { holdOutSince = t; if (holdFirstWrong === null) holdFirstWrong = t; }
           else if (t - holdOutSince > C.holdSecs) { releaseHold(est, t); return; }
@@ -728,6 +742,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       home: trustedBpm ? { bpm: +trustedBpm.toFixed(2), at: +trustedAt.toFixed(3), returns: homeReturns } : null });
     const holdReport = () => ({ lock: octaveLock ? +octaveLock.toFixed(2) : null, outSinceS: holdOutSince === null ? null : +holdOutSince.toFixed(3), eval: holdEval,
       resets: holdResets, lastReset: holdLastReset, firstWrongS: holdFirstWrong === null ? null : +holdFirstWrong.toFixed(3),
+      protectedUntil: protect ? { t: +protect.t.toFixed(3), beat: protect.beat, bar: protect.bar } : null, protectSkips,
       releases: notes.filter(n => n.kind === 'octave-release').slice(-4).map(n => ({ t: +n.t.toFixed(3), why: n.why || 'fold', lock: +n.lock.toFixed(2), raw: +n.raw.toFixed(2) })) });
     function read(t) {
       const b = outBeats(t), P = tapModel ? tapModel.P : own.P;
@@ -745,7 +760,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         disagreeSince = null;
         if (scheduled && scheduled.kind === 'override') scheduled = null;
       },
-      setOctaveLock(b) { octaveLock = b || null; lockOutSince = null; holdOutSince = null; holdResets = 0; holdLastReset = null; holdFirstWrong = null; },
+      // a hold set here by hand is protected like scaleTempo's; null (D4's release, a tap) clears it and its protection
+      setOctaveLock(b, t) { octaveLock = b || null; lockOutSince = null; holdOutSince = null; holdResets = 0; holdLastReset = null; holdFirstWrong = null;
+        if (octaveLock && Number.isFinite(t)) protectHold(t); else if (!octaveLock) protect = null; },
       // fix('flip') by hand (clock.js lineFix, Shift + F or the controller): half a beat at the next bar line, logged
       // as jump { kind: 'flip', origin } when it lands. Returns what was scheduled, or null (no model, or a jump is due).
       flip(t, origin = null) {
@@ -767,6 +784,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         setPeriod(own, own.P / f, t);
         if (tapModel) setPeriod(tapModel, tapModel.P / f, t);
         bpm = 60 / own.P; octaveLock = bpm; lockOutSince = null; holdOutSince = null; holdResets = 0; holdLastReset = null; holdFirstWrong = null;
+        protectHold(t);   // the user's option 2: HOLD_PROTECT_BARS bars of the held tempo
         estHoldUntil = t + C.acWindow; recent.length = 0; bigCount = 0; pend = null;
       },
       // __qa.tracker (#95 SHOULD 8)
@@ -783,7 +801,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     };
   }
 
-  const api = { createAnalyzer, createTracker, fftInPlace, workletUrl, WORKLET_SOURCE, ANALYSIS_DELAY_MS, DEFAULTS, EDGES, BANDS };
+  const api = { createAnalyzer, createTracker, fftInPlace, workletUrl, WORKLET_SOURCE, ANALYSIS_DELAY_MS, HOLD_PROTECT_BARS, DEFAULTS, EDGES, BANDS };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.ClockTracker = api;
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this));

@@ -220,18 +220,21 @@ function forcedHold(mono, f) {
   return { heldAt, relAt, backAt, first, evAtRel, line };
 }
 
-test('(c) gasolina: a wrong x2 hold (192) releases to 96 within 8 beats through the new path; a 128 hold printed (box only)', async (t) => {
+test('(c) gasolina: a wrong x2 hold (192) holds through its 16-bar protection, then releases to 96 within 8 beats through the new path; a 128 hold printed (box only)', async (t) => {
   await heavy(t);   // one heavy box test at a time (fixtures/heavy-lock.mjs)
   const d = await audio('gasolina', 240);
   if (d.skip) { t.skip(d.skip); return; }
-  const x2 = forcedHold(d.mono, 2), h128 = forcedHold(d.mono, 128 / 96), eight = 8 * 60 / REF_G;
-  say(t, `gasolina wrong hold x2: ${x2.line}`);
+  // the user's option 2 (15:36): the hand hold is protected T.HOLD_PROTECT_BARS bars of the held 192 (64 beats, 20 s)
+  const x2 = forcedHold(d.mono, 2), h128 = forcedHold(d.mono, 128 / 96), eight = 8 * 60 / REF_G, protectS = T.HOLD_PROTECT_BARS * 4 * 60 / 192;
+  const pEnd = x2.heldAt === null ? null : x2.heldAt + protectS;
+  say(t, `gasolina wrong hold x2 (protected ${protectS.toFixed(1)} s, to +${protectS.toFixed(1)} s): ${x2.line}`);
   say(t, `gasolina wrong hold 128 (report: 0.415 octave is below the new path's 0.75, so only the old >20 % fold path can release it): ${h128.line}`);
   assert.ok(x2.heldAt !== null, `the tracker never read 96 within 1 % for 2 s in the 60 s after its lock: ${x2.line}`);
-  assert.ok(x2.relAt !== null && x2.relAt - x2.heldAt <= eight, `released within 8 beats (${eight.toFixed(2)} s): ${x2.line}`);
+  assert.ok(x2.relAt !== null && x2.relAt >= pEnd - 0.2, `held through the protection: ${x2.line}`);
+  assert.ok(x2.relAt - pEnd <= eight, `released within 8 beats (${eight.toFixed(2)} s) after the protection ended (+${(x2.relAt - pEnd).toFixed(2)} s): ${x2.line}`);
   assert.ok(x2.first && x2.first.why === 'evidence', `through the new path (why 'evidence', not the old fold): ${x2.line}`);
   assert.ok(x2.evAtRel && x2.evAtRel.wrong === true, `the last check before the release reads wrong = true: ${x2.line}`);
-  assert.ok(x2.backAt !== null && x2.backAt - x2.heldAt <= eight, `96 again within 8 beats of the hold: ${x2.line}`);
+  assert.ok(x2.backAt !== null && x2.backAt - pEnd <= eight, `96 again within 8 beats of the protection's end: ${x2.line}`);
 });
 
 // ---------------------------------------------------------------- the cost of ruling (i): re-lock on real crossfades

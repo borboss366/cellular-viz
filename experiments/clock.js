@@ -23,7 +23,8 @@
 //            of the held key releases it (back to the estimate's octave at the next bar line, jump { kind: 'octave',
 //            origin }), or 4+ even taps. The estimator never clears it, except the tracker's own releases: #214 fix
 //            (c) (the estimate >= 0.75 octave away for 2 s; a hold slower than the estimate also needs the onsets to
-//            disagree) and a real tempo change (> 20 % off the held octave for > 4 s)
+//            disagree), never in the first HOLD_PROTECT_BARS (16) bars after the press, and a real tempo change
+//            (> 20 % off the held octave for > 4 s)
 //   nudge    shifts the clock against the tracker (an offset); the PLL carries on underneath, so the shift stays
 //   setOne / reset  relabel only; the tracker never touches bar position
 // Every jump (tracker or hand) cancels and rebooks the clicks and future hits (#95 MUST 2); slews don't need to.
