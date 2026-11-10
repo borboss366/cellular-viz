@@ -8,6 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -45,6 +46,64 @@ test('ref-beats-vote.sh: a fixed no-argument script, its own venv (the old .venv
   assert.match(sh, /download\.pytorch\.org\/whl\/cpu/, 'CPU torch');
   assert.match(sh, /gpu-lock\.sh" ref-beats-vote/, 'holds the GPU lock');
   assert.match(sh, /beatgrid\.mjs" --dir/, 'then the grids');
+});
+
+test('ref-beats-vote.sh: madmom-prebuilt metadata fix in .venv-vote, the import check before any voting, and DEGRADED 2 trackers without madmom', () => {
+  const sh = fs.readFileSync(path.join(QA, 'ref-beats-vote.sh'), 'utf8');
+  assert.match(sh, /^mm_fix\(\) \{/m, 'the fix is a function');
+  assert.match(sh, /'madmom-' \+ ver \+ '\.dist-info'/, 'a madmom-<version>.dist-info beside the package');
+  assert.match(sh, /Name: madmom\\n/, 'METADATA says Name: madmom');
+  assert.match(sh, /realpath\(sys\.prefix\)/, 'only inside the venv');
+  const code = sh.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
+  const fix = code.indexOf('\nmm_fix\n'), check = code.indexOf('import madmom, essentia, beat_this'), run = code.indexOf('ref_beats_vote.py" --dir');
+  assert.ok(fix > 0 && check > fix && run > check, 'fix, then the import check, then the vote');
+  assert.match(code, /"\$PY" -c "\$CORE" \|\| die "STOP:/, 'Beat This! and essentia missing: stop before any voting');
+  assert.match(code, /DEGRADED: madmom is off/, 'a madmom failure says so, loudly');
+  assert.match(code, /--trackers "\$VOTE_MODE"/);
+  const py = fs.readFileSync(path.join(QA, 'ref_beats_vote.py'), 'utf8');
+  assert.match(py, /choices=\(2, 3\)/);
+  assert.match(py, /if row\.get\('refTool'\) == 'vote' and not degraded:/, 'no .ref.beats from a 2-tracker vote');
+  assert.match(py, /'trackerSet': tset, 'degraded': degraded/, 'every .vote.json says which trackers voted');
+  assert.match(py, /old\.get\('trackerSet', SETS\[3\]\) == tset/, 'a degraded result is redone once madmom works');
+  assert.match(py, /Postprocessor\(type='minimal'/, 'A0 is Beat This! without the madmom DBN');
+});
+
+test('the madmom fix, run for real: a fake madmom-prebuilt in a throwaway venv imports after mm_fix (box, 10 Nov PackageNotFoundError)', (t) => {
+  const py = spawnSync('python3', ['-c', 'import sys; print(sys.version_info >= (3, 9))'], { encoding: 'utf8' });
+  if (py.error) { t.skip('no python3 here'); return; }
+  const sh = fs.readFileSync(path.join(QA, 'ref-beats-vote.sh'), 'utf8');
+  const body = sh.split("<<'EOF' || echo \"madmom-fix")[1];
+  assert.ok(body, 'the mm_fix heredoc');
+  const src = body.slice(body.indexOf('\n') + 1, body.indexOf('\nEOF\n'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mmfix-'));
+  try {
+    const venv = path.join(dir, 'venv');
+    const mk = spawnSync('python3', ['-m', 'venv', '--without-pip', venv], { encoding: 'utf8' });
+    if (mk.status !== 0) { t.skip(`python3 -m venv --without-pip: ${mk.stderr}`); return; }
+    const PY = path.join(venv, 'bin', 'python');
+    const site = spawnSync(PY, ['-c', "import sysconfig; print(sysconfig.get_paths()['purelib'])"], { encoding: 'utf8' }).stdout.trim();
+    fs.mkdirSync(path.join(site, 'madmom'), { recursive: true });
+    // the same two lines as madmom/__init__.py upstream
+    fs.writeFileSync(path.join(site, 'madmom', '__init__.py'), 'from importlib.metadata import distribution\n__version__ = distribution("madmom")  .version\n');
+    const di = path.join(site, 'madmom_prebuilt-0.17.post1.dist-info');
+    fs.mkdirSync(di);
+    fs.writeFileSync(path.join(di, 'METADATA'), 'Metadata-Version: 2.1\nName: madmom-prebuilt\nVersion: 0.17.post1\n');
+    const before = spawnSync(PY, ['-c', 'import madmom'], { encoding: 'utf8' });
+    assert.notEqual(before.status, 0, 'the fake reproduces the box failure');
+    assert.match(before.stderr, /PackageNotFoundError/);
+    const run = spawnSync(PY, ['-'], { input: src, encoding: 'utf8' });
+    assert.equal(run.status, 0, `mm_fix: ${run.stdout} ${run.stderr}`);
+    assert.match(run.stdout, /wrote madmom-0\.17\.post1\.dist-info/);
+    const after = spawnSync(PY, ['-c', 'import madmom; print(madmom.__version__)'], { encoding: 'utf8' });
+    assert.equal(after.status, 0, `import madmom after the fix: ${after.stderr}`);
+    assert.equal(after.stdout.trim(), '0.17.post1');
+    const again = spawnSync(PY, ['-'], { input: src, encoding: 'utf8' });
+    assert.equal(again.status, 0);
+    assert.equal(again.stdout.trim(), '', 'idempotent: a second run does nothing');
+    assert.equal(fs.readFileSync(path.join(site, 'madmom', '__init__.py'), 'utf8').includes('try:'), false, 'the dist-info was enough: __init__.py untouched');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('the old ref_beats.py path: unchanged for the 22 earlier rows, and it leaves a vote-made reference alone', () => {
