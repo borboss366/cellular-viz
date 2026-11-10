@@ -322,3 +322,18 @@ test('R14: alignLag by cross-correlation (envelope, then samples), constant over
   assert.deepEqual([twin.shiftMs, twin.conducted.absE.p50], [13, 0]);
   assert.equal(run({ clock: beatsList(T.map(t => t + 0.013)) }).tracks[0].conducted.absE.p50, 13);
 });
+
+test('schema v2: a log with "wheel" records and sample.wheel parses and scores exactly as without them (reported, never scored)', () => {
+  const { records, info } = one();
+  const base = C.scoreSession(C.parseLog(records.map(r => JSON.stringify(r)).join('\n') + '\n'), info);
+  const v2 = records.map(r => (r.type === 'session' ? { ...r, v: 2 } : r.type === 'sample' ? { ...r, wheel: { kind: 'on', ms: 4 } } : r));
+  v2.push({ type: 'wheel', ctx: 10, kind: 'flip', hint: 'half a beat off: flip (Shift+F)', medianMs: null, sixShare: 0.8, driftDegPerBar: 3, state: 'locked', idx: 0, posMs: 9000 },
+    { type: 'wheel', ctx: 12, kind: 'on', hint: 'on the beat', medianMs: 4, sixShare: 0, driftDegPerBar: 0, state: 'locked', idx: 0, posMs: 11000 });
+  const parsed = C.parseLog(v2.map(r => JSON.stringify(r)).join('\n') + '\n');
+  assert.equal(parsed.filter(r => r.type === 'wheel').length, 2);
+  const withWheel = C.scoreSession(parsed, info);
+  assert.deepEqual([withWheel.session.inPct, withWheel.session.pass, withWheel.session.findings], [base.session.inPct, base.session.pass, base.session.findings], 'the session score is unchanged');
+  assert.deepEqual(withWheel.tracks[0].conducted, base.tracks[0].conducted);
+  assert.deepEqual(C.checkRecord({ type: 'session', ctx: 0, v: 3 }), ['session: v is not 1 or 2']);
+  assert.deepEqual(C.checkRecord({ type: 'wheel', ctx: 1 }), ['wheel: kind missing']);
+});

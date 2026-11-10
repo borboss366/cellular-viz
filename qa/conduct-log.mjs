@@ -6,8 +6,9 @@
 //   log.add('track', { idx: 0, event: 'play', id: 'opus', posMs: 0 });   // ctx filled from now() unless given
 //   setInterval(() => log.flush(), 1000);                                 // POSTs the new lines (qa/conduct-serve.mjs)
 //   log.toJsonl()                                                         // the whole session, for the download
-export const SCHEMA_V = 1;
-export const TYPES = ['session', 'latency', 'track', 'pair', 'xfade', 'beat', 'sample', 'fix', 'jump', 'state', 'mark', 'key'];
+// v2 (the user 10 Nov 22:27): adds 'wheel' records (the phase-wheel hint when it changes) and sample.wheel { kind, ms }
+export const SCHEMA_V = 2;
+export const TYPES = ['session', 'latency', 'track', 'pair', 'xfade', 'beat', 'sample', 'fix', 'jump', 'state', 'mark', 'key', 'wheel'];
 export const PAIR_EVERY_S = 5, SAMPLE_EVERY_S = 0.1;
 const pad = n => String(n).padStart(2, '0');
 

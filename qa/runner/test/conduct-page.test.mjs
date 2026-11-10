@@ -409,3 +409,46 @@ test('the conductor page draws the wheel instead of the dots, exposes its number
     assert.ok(/^[\x20-\x7e]+$/.test(h));
   }
 });
+
+// ---------- the wheel hint in the session log (the user 10 Nov 22:27) ----------
+test('wheel log: a hint that holds 0.5 s writes exactly one record (ctx = when it began); a flicker shorter than 0.5 s writes none', () => {
+  const log = C.wheelHintLog();
+  const on = { kind: 'on', hint: 'on the beat', medianMs: 3, sixShare: 0, driftDegPerBar: 1, grey: false };
+  const flip = { kind: 'flip', hint: 'half a beat off: flip (Shift+F)', medianMs: null, sixShare: 0.9, driftDegPerBar: 0, grey: false };
+  const tap = { kind: 'tap', hint: 'tempo wrong: tap 6 to 8 times (Shift+A)', medianMs: 40, sixShare: 0.3, driftDegPerBar: 45, grey: false };
+  const grey = { kind: 'state', hint: 'acquire', medianMs: null, sixShare: 0, driftDegPerBar: null, grey: true };
+  const recs = [];
+  const run = (w, from, to) => { for (let t = from; t < to - 1e-9; t += 1 / 60) { const r = log(+t.toFixed(4), w); if (r) recs.push(r); } };
+  run(on, 10, 11.5);               // on the beat for 1.5 s: one record
+  assert.equal(recs.length, 1);
+  assert.equal(recs[0].kind, 'on'); assert.equal(recs[0].hint, 'on the beat'); assert.ok(Math.abs(recs[0].ctx - 10) < 1e-6, `ctx = when it began: ${recs[0].ctx}`);
+  assert.deepEqual([recs[0].medianMs, recs[0].sixShare, recs[0].driftDegPerBar], [3, 0, 1]);
+  run(flip, 11.5, 11.8);           // a 0.3 s flicker: nothing
+  run(on, 11.8, 13);               // back to the logged hint: nothing
+  assert.equal(recs.length, 1, 'a flicker shorter than 0.5 s writes no record');
+  run(tap, 13, 13.7);              // tap holds 0.7 s: one record
+  assert.equal(recs.length, 2); assert.equal(recs[1].kind, 'tap'); assert.ok(Math.abs(recs[1].ctx - 13) < 1e-6);
+  run(grey, 13.7, 15);             // not locked: kind grey, the state word
+  assert.equal(recs.length, 3); assert.equal(recs[2].kind, 'grey'); assert.equal(recs[2].hint, 'acquire');
+  run(grey, 15, 20);
+  assert.equal(recs.length, 3, 'the same hint is never logged twice in a row');
+  assert.equal(C.WHEEL_HOLD_S, 0.5);
+  assert.deepEqual([C.wheelKind(on), C.wheelKind(grey), C.wheelKind(null)], ['on', 'grey', 'none']);
+});
+
+test('wheel log on the page: a "wheel" record through log.add with the state, the LIVE track and posMs; samples carry wheel { kind, ms }; the log takes it (v2)', async () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  assert.match(html, /const wheelLog = C\.wheelHintLog\(\);/);
+  assert.match(html, /const wrec = wheelLog\(ctx\.currentTime, wv\);/, 'fed every frame, debounced in the module');
+  assert.match(html, /log\.add\('wheel', \{ \.\.\.wrec, state: ts\.state \|\| null, idx: tr \? tr\.idx : undefined, id: tr \? tr\.id \|\| undefined : undefined,/);
+  assert.match(html, /posMs: tr && dl\.playing \? Math\.round\(posMs\(dl, wrec\.ctx\)\) : null/);
+  assert.match(html, /wheel: wheelNow \? \{ kind: C\.wheelKind\(wheelNow\), ms: wheelNow\.medianMs \} : null \}\);/, 'the sample record carries the wheel');
+  const L = await import('../../conduct-log.mjs');
+  assert.equal(L.SCHEMA_V, 2);
+  assert.ok(L.TYPES.includes('wheel'));
+  const log = new L.ConductLog({ id: 'conductor-20261110-222700', now: () => 3 });
+  const r = log.add('wheel', { ctx: 2.5, kind: 'flip', hint: 'half a beat off: flip (Shift+F)', medianMs: null, sixShare: 0.8, driftDegPerBar: 2, state: 'locked', idx: 0, id: 'hc-07', posMs: 61000 });
+  const { checkRecord } = await import('../../conduct-score.mjs');
+  assert.deepEqual(checkRecord(r), [], 'the server (checkRecord) takes a wheel record');
+  assert.deepEqual(checkRecord(log.all[0]), [], 'and the v2 session head');
+});

@@ -27,6 +27,10 @@
 //   mark     { idx, name, trackMs, beat?, atMs?, rawMs?, markSource? }   key M (R13), e.g. kickIn, transition1, bar1:
 //            snapped to reference beat `beat` (qa/marks.mjs), trackMs = atMs; rawMs the press; qa/marks-apply.mjs applies them
 //   key      { shown }                                       the answer-key lamp (R7: the gate run needs 0 s)
+//   wheel    { kind, hint, medianMs, sixShare, driftDegPerBar, state, idx?, id?, posMs }   v2: the phase-wheel hint once it
+//            held 0.5 s (ctx = when it began); kind on | nudge | flip | tap | grey | none. Reported, never scored
+//   sample.wheel { kind, ms } (v2): the wheel's hint kind and marker ms at that sample
+// v1 and v2 logs both parse (v2 only adds the wheel fields).
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -60,7 +64,9 @@ function firstAtOrAfter(a, t) { let lo = 0, hi = a.length; while (lo < hi) { con
 export const RECORD_FIELDS = {
   session: ['v'], latency: [], track: ['idx', 'event'], pair: ['idx', 'posMs'], xfade: ['from', 'to', 'event'], beat: ['src'],
   sample: [], fix: ['id', 'kind'], jump: ['fromBeats', 'toBeats'], state: ['to'], mark: ['idx', 'name', 'trackMs'], key: ['shown'],
+  wheel: ['kind'],
 };
+export const SCHEMA_VERSIONS = [1, 2];
 /** every jump kind a session can log (Q9: each clock.jumps entry appears once): the tracker's own (acquire, override,
  *  side, flip, octave: #214's evidence release of a wrong octave hold, and relative: #214's re-acquire after a 4:3 /
  *  3:2 tempo move; both booked on a bar line, forward only), the
@@ -74,7 +80,7 @@ export function checkRecord(r) {
   const errs = [];
   if (!num(r.ctx)) errs.push(`${r.type}: ctx missing`);
   for (const k of RECORD_FIELDS[r.type]) if (!(k in r)) errs.push(`${r.type}: ${k} missing`);
-  if (r.type === 'session' && r.v !== 1) errs.push('session: v is not 1');
+  if (r.type === 'session' && !SCHEMA_VERSIONS.includes(r.v)) errs.push(`session: v is not ${SCHEMA_VERSIONS.join(' or ')}`);
   if (r.type === 'beat' && r.src !== 'clock' && r.src !== 'shadow') errs.push(`beat: src ${r.src}`);
   return errs;
 }
