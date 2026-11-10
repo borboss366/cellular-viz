@@ -44,6 +44,7 @@ button{cursor:pointer}.fixes button{min-width:60px}
 .deck{border:2px solid #3a4560;border-radius:10px;padding:8px;margin:6px 0}.deck.live{border-color:#d6455d}.deck.next{border-color:#2b5cff}
 .tag{font-weight:700;margin-right:8px}.live .tag{color:#d6455d}.next .tag{color:#2b5cff}
 #flash{height:40px;border-radius:8px;background:#222a3a}#flash.on{background:#fff}
+.stateBox{flex:1 1 12em;min-width:0}#state,#lane{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;min-height:1.3em}
 .msg{color:#ffd23f;min-height:2.8em}small{color:#8a96ad}
 .clockOff{background:#8b1e2d;color:#fff;padding:8px 16px;font-weight:600;overflow-wrap:anywhere}.err{color:#ff5a6e;font-weight:700}
 #helpPanel{padding:8px 16px 12px;background:#141a26;border-top:1px solid #3a4560;font-size:14px}#helpPanel h2{margin:10px 0 4px}#helpPanel ol,#helpPanel ul{margin:0;padding-left:22px}
@@ -69,9 +70,12 @@ button{cursor:pointer}.fixes button{min-width:60px}
   <h2>Go to the next track</h2>
   <ol><li>Click the next track name. Click "Load to NEXT". Wait for the name.</li><li>Push "Crossfade" or N. The old deck stops after the fade time.</li></ol>
   <h2>Fix the clock (Shift + key)</h2>
-  <ul><li>Dots at the two edges (off-beat): flip, Shift+F.</li><li>Tempo is half: x2, Shift+D. Tempo is double: /2, Shift+H.</li>
+  <ul><li>Dots at the two edges (off-beat): flip, Shift+F.</li><li>Tempo is half: x2, Shift+D. Tempo is double: /2, Shift+H. Push x2 or /2 one time only.</li>
     <li>Small offset: -10 or +10, Shift+, or Shift+.</li><li>Wrong "1": set 1, Shift+1, on the downbeat.</li>
-    <li>Wrong tempo: tap, Shift+A, on 4 or more beats.</li><li>Start again: reset, Shift+0.</li></ul>
+    <li>Wrong tempo: tap, Shift+A, on each beat, 4 times or more, evenly, less than 2 s apart. One tap only moves the beat.</li>
+    <li>reset, Shift+0, counts the bar again. It does not clear the tempo or the octave hold.</li>
+    <li>Start the clock again: reload the page (Cmd+R), then load and play the track again.</li>
+    <li>K shows or hides the key lamp (the reference beats).</li></ul>
   <h2>Marks and the bar</h2>
   <ul><li>Select a name in the Marks list. Push M on that moment. [ and ] move bar1 by one beat.</li>
     <li>Shift+S confirms the bar. Push it on the "1" while the bar 1 lamp is on.</li>
@@ -85,7 +89,7 @@ button{cursor:pointer}.fixes button{min-width:60px}
     <h2>Clock</h2>
     <div class="row"><div><small>output</small><div class="big" id="bpmOut">–</div></div>
       <div><small>tracker alone (shadow)</small><div class="big" id="bpmShadow">–</div></div>
-      <div><small>state</small><div id="state">–</div><small id="lane"></small></div></div>
+      <div class="stateBox"><small>state</small><div id="state">-</div><small id="lane"></small></div></div>
     <div class="conf"><i id="conf" style="width:0"></i></div>
     <div class="lamps"><div class="lamp beat" id="lampBeat">beat</div><div class="lamp kick" id="lampKick">kick</div>
       <div class="lamp bar" id="lampBar">bar 1</div><div class="lamp key" id="lampKey" hidden>key</div></div>
@@ -103,8 +107,8 @@ button{cursor:pointer}.fixes button{min-width:60px}
     <div class="row"><select id="tracks" size="8" style="width:100%"></select></div>
     <div class="row" style="margin-top:8px"><button id="load">Load to NEXT</button><button id="play">Play / pause ␣</button>
       <button id="next">Crossfade N</button><label>fade <input id="fadeS" type="number" min="1" max="30" value="8" style="width:4em"> s</label></div>
-    <div class="deck" id="deck0"><span class="tag">–</span><span class="name">empty</span> <small class="pos"></small></div>
-    <div class="deck" id="deck1"><span class="tag">–</span><span class="name">empty</span> <small class="pos"></small></div>
+    <div class="deck" id="deck0"><span class="tag">-</span><span class="name">empty</span> <small class="pos"></small></div>
+    <div class="deck" id="deck1"><span class="tag">-</span><span class="name">empty</span> <small class="pos"></small></div>
     <h2 style="margin-top:12px">Marks</h2>
     <div class="row"><select id="markName"></select><button id="mark">Mark M</button><button id="stepL">[ −1</button><button id="stepR">] +1</button></div>
     <div><small>bar1:</small> <span id="bar1">–</span></div>
@@ -155,6 +159,8 @@ let live = 0, fade = null, fixId = 0, keyShownS = 0, keyOn = false, keyOnAt = 0;
 const nextDeck = () => decks[1 - live];
 const posMs = (d, t = ctx.currentTime) => C.deckPosMs(d, t);
 function say(t) { $('msg').textContent = t; }
+const textCache = {};   // monitor lines: set textContent only when the text changes
+function setText(id, s) { if (textCache[id] === s) return; textCache[id] = s; $(id).textContent = s; }
 // the red banner: the clock needs a secure context (AudioWorklet), so on http://<LAN address> it is off (9 Nov sitting)
 let shownWarning = null;
 function showClockOff(ts = clock.trackerState || {}) {
@@ -171,9 +177,20 @@ async function loadTracks() {
 async function load(i, d = nextDeck()) {
   const t = tracks[i];
   if (!t) return;
-  d.el.querySelector('.name').textContent = `loading ${t.label}…`;
-  const [buf, grid] = await Promise.all([fetch(`/audio/${i}`).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)),
-    t.grid ? fetch(`/grid/${i}`).then(r => r.json()) : Promise.resolve(null)]);
+  d.el.querySelector('.name').textContent = `loading ${t.label} ...`;
+  const ok = r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r; };
+  let buf, grid;
+  try {
+    [buf, grid] = await Promise.all([fetch(`/audio/${i}`).then(ok).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)),
+      t.grid ? fetch(`/grid/${i}`).then(ok).then(r => r.json()) : Promise.resolve(null)]);
+  } catch (e) {   // a failed fetch or decode: say so on the deck and the message line, never "loading" forever
+    const text = C.loadErrorText(t.label, e);
+    if (!d.playing) Object.assign(d, { buffer: null, grid: null, beats: [], track: null, offsetS: 0, bar1: null });
+    d.el.querySelector('.name').textContent = text; say(text);
+    log.add('track', { idx: i, event: 'loadError', file: t.label, id: t.id || undefined, error: String((e && e.message) || e).slice(0, 200) });
+    render();
+    return;
+  }
   Object.assign(d, { buffer: buf, grid, beats: grid ? (grid.beats || []).filter(b => typeof b.ms === 'number').sort((a, b) => a.ms - b.ms) : [], track: t, offsetS: 0, bar1: null });
   d.el.querySelector('.name').textContent = t.label + (t.id ? ` · ${t.id}` : '');
   log.add('track', { idx: i, event: 'load', file: t.label, id: t.id || undefined, posMs: 0 });
@@ -327,11 +344,12 @@ function monitor(now, ts) {
   const r = clock.read(), d = decks[live];
   $('bpmOut').textContent = r.bpm ? r.bpm.toFixed(1) : '–';
   $('bpmShadow').textContent = shadow.bpm ? shadow.bpm.toFixed(1) : '–';
-  $('state').textContent = `${ts.state || '–'} · ${ts.status || ''}`;
+  setText('state', `${ts.state || '-'} . ${ts.status || ''}`);   // written only when it changes
   $('state').classList.toggle('err', ts.status === 'error');
   showClockOff(ts);
-  const lane = ts.lane ? `lane ${ts.lane.lane || ''} side ${ts.lane.side && ts.lane.side.last != null ? ts.lane.side.last : '–'}` : '';
-  $('lane').textContent = lane + (ts.octaveLock ? ` · octave ${ts.octaveLock}` : '');
+  const ll = C.laneLine(ts, r.bpm);   // lane, the beat side (0 or 1/2), the octave hold (red when it is far off the output)
+  setText('lane', ll.text);
+  $('lane').classList.toggle('err', ll.warn);
   $('conf').style.width = `${Math.round((r.confidence || 0) * 100)}%`;
   const heard = now - clock.latency();
   $('lampBeat').classList.toggle('on', heard - beatFlashAt >= 0 && heard - beatFlashAt < 0.1);
@@ -360,7 +378,7 @@ function scatter(now) {
   });
 }
 function render() {
-  decks.forEach(d => { d.el.className = 'deck' + (d.n === live ? ' live' : d.track ? ' next' : ''); d.el.querySelector('.tag').textContent = d.n === live ? 'LIVE' : d.track ? 'NEXT' : '–'; });
+  decks.forEach(d => { const tag = C.deckTag(d, live); d.el.className = 'deck' + (tag === 'LIVE' ? ' live' : tag === 'NEXT' ? ' next' : ''); d.el.querySelector('.tag').textContent = tag; });
   const d = decks[live];
   $('scored').textContent = $('scored').title = !d.track ? 'no track' : d.beats.length ? 'scored' : 'UNSCORED (no grid)';
   $('scored').className = 'badge' + (d.track && !d.beats.length ? ' unscored' : '');
