@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import * as S from '../../conduct-serve.mjs';
 import { wavBytes } from '../audiocheck.mjs';
 import { parseLog } from '../../conduct-score.mjs';
+import { heavyLock } from './fixtures/heavy-lock.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -129,6 +130,10 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
     assert.fail('fontconfig missing in the runner container (see #205)');
   }
 
+  // the page's frame loop logs the clock's beats: never share the CPU with tracker-corpus's decode and track runs
+  // (3c8d048: 7 clock beats while they ran in parallel; fixtures/heavy-lock.mjs)
+  const releaseHeavy = await heavyLock('conduct-smoke');
+  t.after(releaseHeavy);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'conduct-smoke-')), tracks = path.join(root, 'tracks'), sessions = path.join(root, 'sessions');
   fs.mkdirSync(tracks);
   clickTrack(tracks);
@@ -245,12 +250,21 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
     });
     await page.waitForTimeout(2500);   // two log flushes
     const state = await page.evaluate(() => window.__qa.conductor.state());
+    const lateAtEnd = await page.evaluate(() => window.__qa.clockLate || null);
     const recs = parseLog(fs.readFileSync(path.join(sessions, `${id}.jsonl`), 'utf8'));
     const n = (type, f = () => true) => recs.filter(r => r.type === type && f(r)).length;
     const summary = { records: recs.length, pending: state.pending, tracker: state.tracker && state.tracker.state,
       clockBeats: n('beat', r => r.src === 'clock'), shadowBeats: n('beat', r => r.src === 'shadow'), samples: n('sample'), pairs: n('pair'),
       marks: recs.filter(r => r.type === 'mark').map(r => `${r.name}@${r.beat}`), barOk, errors: errors.length };
-    console.log(`# conductor smoke: ${JSON.stringify(summary).slice(0, 400)}`);
+    // when each column's first beat came after play, the clock's booking counters, the tracker's states: a short clock
+    // column shows whether its lock came late (tracker) or its frame loop starved (maxGapMs, late)
+    const playAt = (recs.find(r => r.type === 'track' && r.event === 'play') || {}).ctx;
+    const firstAt = src => { const b = recs.find(r => r.type === 'beat' && r.src === src); return b && typeof playAt === 'number' ? +(b.ctx - playAt).toFixed(2) : null; };
+    summary.firstBeatS = { clock: firstAt('clock'), shadow: firstAt('shadow') };
+    summary.clockLate = lateAtEnd;
+    summary.trackerStates = state.tracker && state.tracker.states ? state.tracker.states.map(s => `${s.state}@${(+s.t).toFixed(1)}`).join(' ') : null;
+    console.log(`# conductor smoke: ${JSON.stringify(summary).slice(0, 700)}`);
+    t.diagnostic(`corpus: report: conductor smoke ${JSON.stringify(summary).slice(0, 700)}`);   // printed on a pass too
     assert.deepEqual(errors, [], 'no page errors');
     assert.equal(n('session'), 1);
     assert.ok(n('latency') >= 1, 'latency logged (R2)');

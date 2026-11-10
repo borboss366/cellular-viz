@@ -16,9 +16,15 @@
 //            tracking: phase corrections as a rate change ≤ 3 % (no jump, no rebook); tempo follows
 //            after a free-run: |error| ≤ ¼ beat slews, more jumps on the next bar line ('acquire')
 //            after a tap: defers; disagreeing > 3 % / ¼ beat for > 4 s at confidence ≥ 0.7 → 'override' at a bar line
-//   tap      seeds bpm (2+ taps) and phase; the tracker only nudges the tapped grid from then on (R5)
-//   x2/half  scales the tempo and locks the octave; the estimator can't undo it unless it leaves that octave by
-//            > 20 % for > 4 s
+//   tap      1-3 taps move the phase only; 4+ taps with even intervals (spread <= 8 %) set tempo and phase and clear
+//            the octave hold (D4); uneven taps change nothing and return a rejected fix { kind: 'tap', rejected:
+//            'uneven', spreadPct }. The tracker only nudges the tapped grid from then on (R5)
+//   x2/half  scales the tempo and sets the octave hold. The hold is set by hand and cleared by hand: a second press
+//            of the held key releases it (back to the estimate's octave at the next bar line, jump { kind: 'octave',
+//            origin }), or 4+ even taps. The estimator never clears it, except the tracker's own releases: #214 fix
+//            (c) (the estimate >= 0.75 octave away for 2 s; a hold slower than the estimate also needs the onsets to
+//            disagree), never in the first HOLD_PROTECT_BARS (16) bars after the press, and a real tempo change
+//            (> 20 % off the held octave for > 4 s)
 //   nudge    shifts the clock against the tracker (an offset); the PLL carries on underneath, so the shift stays
 //   setOne / reset  relabel only; the tracker never touches bar position
 // Every jump (tracker or hand) cancels and rebooks the clicks and future hits (#95 MUST 2); slews don't need to.
@@ -82,6 +88,7 @@
   const OFFSET_MIN = -100, OFFSET_MAX = 200, JUMPS_KEPT = 256, HITLOG_KEPT = 4096;
   const AHEAD_MIN = 0.1, AHEAD_MAX = 0.25, GAPS_KEPT = 120, GAPS_MIN = 10, PUMP_MIN_MS = 4;
   const FIX_ORIGINS = ['fix:controller', 'fix:key', 'qa'], QUANTUM = 0.003, NO_DOUBLE = 0.020, TAP_GAP = 2, TAPS_KEPT = 5;
+  const TAPS_EVEN = 4, TAP_SPREAD_PCT = 8;   // D4 on line: 4+ even taps set the tempo and clear the hold
   // Shift + key (KeyboardEvent.code) → hand fix; clear of the pages' own keys (z x c v t b [ ] `)
   const FIX_KEYS = { KeyA: ['tap'], KeyH: ['half'], KeyD: ['x2'], Digit1: ['setOne'], Comma: ['nudge', -10], Period: ['nudge', 10], Digit0: ['reset'], KeyF: ['flip'], KeyR: ['restart'] };
   const FILE_GAIN = 1, CLICK_GAIN = 0.35, FILE_LEAD = 0.05, LINE_OWN_INPUT_MS = 1500;
@@ -663,6 +670,19 @@
         tr.push(f);
         for (const fn of line.taps) { try { fn(f); } catch (e) { warnOnce('tee', 'onTrackerFrame listener: ' + ((e && e.message) || e)); } }
         if (f.rise) for (const r of f.rise) { line.rises.push(r); if (line.rises.length > 4096) line.rises.shift(); }   // the rise probe (3c truths)
+        // D4: a booked hold release lands at its bar line: back to the estimate's octave, the hold cleared
+        const rel = line.holdRelease;
+        if (rel && this.lineBeats(f.t) >= rel.atBeats) {
+          const from = this.lineBeats(f.t);
+          line.hold = null; line.holdRelease = null;
+          if (tr.octaveLock) {   // (the tracker's own fix (c) may have let it go already: then nothing to do)
+            tr.scaleTempo(rel.factor, f.t); if (tr.setOctaveLock) tr.setOctaveLock(null);
+            const jump = { type: 'jump', at: f.t, kind: 'octave', fromBeats: from, toBeats: this.lineBeats(f.t), origin: rel.origin, release: rel.kind };
+            this.jumps.push(jump);
+            if (this.jumps.length > JUMPS_KEPT) this.jumps.shift();
+            if (this.ctx && this.playing) this.lineRebook();
+          }
+        }
         for (; line.seenJumps < tr.jumps.length; line.seenJumps++) {
           const j = tr.jumps[line.seenJumps];
           const jump = { type: 'jump', at: j.at, kind: j.kind, fromBeats: j.fromBeats + line.offset, toBeats: j.toBeats + line.offset, origin: j.origin || 'tracker' };
@@ -740,7 +760,7 @@
         const lib = root.ClockTracker || trackerLibSync();
         if (!lib || typeof lib.createTracker !== 'function') return null;
         line.tracker = lib.createTracker(opts.trackerOptions || {});
-        line.seenJumps = 0; line.offset = 0; line.flipPending = null; this.oneAt = 0; this.taps = [];
+        line.seenJumps = 0; line.offset = 0; line.flipPending = null; line.hold = null; line.holdRelease = null; this.oneAt = 0; this.taps = [];
         if (this.ctx) line.lastBooked = this.dropFuture(this.ctx.currentTime);
         line.step = null;
         return { type: 'restart', at, kind: 'restart', origin };
@@ -762,21 +782,42 @@
           const d = (Number(arg) || 0) / 1000 * (tr.bpm || settings.bpm) / 60;
           line.offset += d; to = from + d;
         } else if (kind === 'x2' || kind === 'half') {
+          // D4 (#188, the user 10 Nov): a second press of the held key releases the hold. The tempo goes back to the
+          // octave it had before the press (the estimate's) at the next bar line, as jump { kind: 'octave', origin }
+          // (beats continuous there: forward only). The hold this key set is cleared with setOctaveLock(null).
+          if (line.hold && line.hold.kind === kind && tr.octaveLock) {
+            if (line.holdRelease) return null;   // already booked for the bar line
+            const bpb = settings.bpb || 4, atBeats = this.oneAt + (Math.floor((from - this.oneAt) / bpb + 1e-9) + 1) * bpb;
+            line.holdRelease = { type: 'release-scheduled', at, kind, atBeats, origin, factor: kind === 'x2' ? 0.5 : 2 };
+            return { ...line.holdRelease };
+          }
           tr.scaleTempo(kind === 'x2' ? 2 : 0.5, at);   // beats continuous at `at`, octave locked
+          line.hold = { kind, at, origin }; line.holdRelease = null;
         } else if (kind === 'setOne') {
           this.oneAt = Math.round(from);
         } else if (kind === 'reset') {
           line.offset -= Math.floor(from); this.oneAt = 0; to = from - Math.floor(from);
         } else if (kind === 'tap') {
+          // D4: 1 to 3 taps move the beat only (phase, at the tracker's tempo); from 4 taps on, the intervals must be even
+          // (spread (max - min) / median <= TAP_SPREAD_PCT): then the taps set tempo and phase and clear the octave
+          // hold; uneven taps change nothing and come back as a rejected fix { kind: 'tap', rejected: 'uneven',
+          // spreadPct } (the page flashes red), and the count starts again from this tap
           if (this.taps.length && at - this.taps[this.taps.length - 1] > TAP_GAP) this.taps = [];
           this.taps.push(at); if (this.taps.length > TAPS_KEPT) this.taps.shift();
-          let bpm = tr.bpm || settings.bpm;
-          if (this.taps.length >= 2) {
+          let bpm = tr.bpm || settings.bpm, clears = false;
+          if (this.taps.length >= TAPS_EVEN) {
             const iv = this.taps.slice(1).map((t, i) => t - this.taps[i]).sort((a, b) => a - b), med = iv[Math.floor(iv.length / 2)];
-            if (med > 0) bpm = Math.max(30, Math.min(300, 60 / med));
+            const spreadPct = med > 0 ? 100 * (iv[iv.length - 1] - iv[0]) / med : Infinity;
+            if (!(spreadPct <= TAP_SPREAD_PCT)) {
+              const n = this.taps.length;
+              this.taps = [at];
+              return { type: 'fix', at, kind: 'tap', rejected: 'uneven', spreadPct: +spreadPct.toFixed(1), taps: n, origin };
+            }
+            bpm = Math.max(30, Math.min(300, 60 / med)); clears = true;
           }
           line.offset = Math.round(line.offset);   // the tap lands a whole beat; an earlier nudge's fraction goes
           tr.tap({ t: at, bpm });
+          if (clears) { if (tr.setOctaveLock) tr.setOctaveLock(null); line.hold = null; line.holdRelease = null; }
           to = this.lineBeats(at);
         } else return null;
         this.lineRebook();

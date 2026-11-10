@@ -61,6 +61,12 @@ export const RECORD_FIELDS = {
   session: ['v'], latency: [], track: ['idx', 'event'], pair: ['idx', 'posMs'], xfade: ['from', 'to', 'event'], beat: ['src'],
   sample: [], fix: ['id', 'kind'], jump: ['fromBeats', 'toBeats'], state: ['to'], mark: ['idx', 'name', 'trackMs'], key: ['shown'],
 };
+/** every jump kind a session can log (Q9: each clock.jumps entry appears once): the tracker's own (acquire, override,
+ *  side, flip, octave: #214's evidence release of a wrong octave hold, and relative: #214's re-acquire after a 4:3 /
+ *  3:2 tempo move; both booked on a bar line, forward only), the
+ *  hand fixes clock.js books as jumps, a file seek. Any other kind is counted under session.jumps.unknown (reported,
+ *  never a parse error, so a new kind never breaks a real run's scoring). */
+export const JUMP_KINDS = ['acquire', 'override', 'side', 'flip', 'octave', 'relative', 'nudge', 'x2', 'half', 'setOne', 'reset', 'tap', 'seek', 'bar'];
 /** the problems with one record (empty when it fits schema v1) */
 export function checkRecord(r) {
   if (!r || typeof r !== 'object' || Array.isArray(r)) return ['not an object'];
@@ -273,8 +279,8 @@ const LAND_NEXT_BEAT = ['x2', 'half'], LAND_BAR = ['flip'];
 export function landing(fix, col) {
   if (num(fix.landedCtx)) return fix.landedCtx;
   const i = firstAtOrAfter(col.times, fix.ctx + 1e-9);
-  if (LAND_NEXT_BEAT.includes(fix.kind)) return i < col.times.length ? col.times[i] : fix.ctx + FRAME_S;
-  if (LAND_BAR.includes(fix.kind)) {
+  if (LAND_NEXT_BEAT.includes(fix.kind) && !fix.release) return i < col.times.length ? col.times[i] : fix.ctx + FRAME_S;
+  if (LAND_BAR.includes(fix.kind) || fix.release) {   // D4: a second x2 / half press releases the hold at the bar line
     for (let j = i; j < col.times.length; j++) if (col.bib && col.bib[j] === 1) return col.times[j];
     return fix.ctx + FRAME_S;
   }
@@ -353,7 +359,11 @@ function scoreTrack(S, tr, info, cols) {
   }
   // the user's fixes on this track (the shadow takes none): verdicts, episodes caught / late / missed
   const C = per.clock, SC = C.st.S;
-  const fixes = S.fixes.filter(f => (num(f.idx) ? f.idx === idx : f.ctx >= spanStart && f.ctx < spanEnd)).sort((a, b) => a.ctx - b.ctx).map(f => {
+  // D4: a rejected tap (uneven, the page flashed red) changed nothing, so it is not a fix (neither right nor false);
+  // it is counted in rejectedTaps
+  const mineAll = S.fixes.filter(f => (num(f.idx) ? f.idx === idx : f.ctx >= spanStart && f.ctx < spanEnd));
+  const rejectedTaps = mineAll.filter(f => f.rejected).length;
+  const fixes = mineAll.filter(f => !f.rejected).sort((a, b) => a.ctx - b.ctx).map(f => {
     const land = landing(f, C.col);
     let before = null;
     for (const b of SC) { if (b.t <= f.ctx + 1e-9) before = b; else break; }
@@ -404,16 +414,17 @@ function scoreTrack(S, tr, info, cols) {
     conducted: colOut('clock'), alone: colOut('shadow'),
     deltaInPct: rnd(C.st.inPct - per.shadow.st.inPct, 2),
     lockFrom: row && row.lockFrom === 'mark' ? (lockMark ? `mark ${lockMark.name}` : 'mark (none logged)') : 'start',
-    fixes: fixes.map(({ land, ctx, ...f }) => f), episodes,
+    fixes: fixes.map(({ land, ctx, ...f }) => f), episodes, rejectedTaps,
     falseFixes: fixes.filter(f => f.verdict === 'false').length,
     jumpsLowConf: jumps.filter(j => { const c = confAt(j.ctx); return c !== null && c < LOW_CONF; }).length,
     freeRunDriftPct: rnd(freeRunDrift, 3), freeRunHeld: freeRunDrift === null ? null : freeRunDrift <= FREERUN_DRIFT_PCT,
     barMoves: set1 ? jumps.filter(j => j.ctx >= set1.ctx && j.origin === 'tracker' && j.kind === 'bar').length : null,
     barPct: inBeats.length ? rnd(100 * inBeats.filter(b => (C.col.bib[b.i] === 1) === (b.pos === 1)).length / inBeats.length, 2) : null,
-    barReportOnly: !gridBarOk, rewinds: jumps.filter(j => j.toBeats < j.fromBeats).length,
+    barReportOnly: !gridBarOk, rewinds: jumps.filter(j => j.toBeats < j.fromBeats).length, jumpKinds: kindCounts(jumps),
     isDj, djFixesMax, gridFlags: gridFlags(grid), afterEndAtBeats: afterEndAt,
     _beats: C.pick.beats, _shadowBeats: per.shadow.pick.beats, _span: [spanStart, spanEnd], _mix: mix, _mixMid: mixMid };
 }
+function kindCounts(jumps) { const c = {}; for (const j of jumps) { const k = String(j.kind); c[k] = (c[k] || 0) + 1; } return c; }
 function gridFlags(g) {
   return { gridSuspect: typeof g.gridSuspect === 'boolean' ? g.gridSuspect : null, driftCore: num(g.driftCore) ? g.driftCore : null,
     barOk: g.barOk === true, fields: num(g.fields) ? g.fields : null };
@@ -494,9 +505,11 @@ export function scoreSession(records, info = {}) {
     episodes: { total: eps.length, caught: eps.filter(e => e.outcome === 'caught').length, late: eps.filter(e => e.outcome === 'late').length,
       missed: eps.filter(e => e.outcome === 'missed').length },
     falseFixes: sc.reduce((x, t) => x + t.falseFixes, 0), reactionBeats: { p50: rnd(pctile(react, 0.5), 2), p90: rnd(pctile(react, 0.9), 2) },
-    fixes, fixesPerTrack: sc.length ? rnd(fixes / sc.length, 3) : null, tracksWithoutFixes: sc.filter(t => !t.fixes.length).length,
+    fixes, rejectedTaps: sc.reduce((x, t) => x + t.rejectedTaps, 0), fixesPerTrack: sc.length ? rnd(fixes / sc.length, 3) : null, tracksWithoutFixes: sc.filter(t => !t.fixes.length).length,
     scoredTracks: sc.length, keyShownS: rnd(S.keyShownS, 2),
     unscored: tracks.filter(t => !t.scored).map(t => ({ label: t.label, reason: t.reason })),
+    jumps: { total: S.jumps.length, byKind: kindCounts(S.jumps), unknown: [...new Set(S.jumps.map(j => String(j.kind)).filter(k => !JUMP_KINDS.includes(k)))],
+      octave: S.jumps.filter(j => j.kind === 'octave').length, rewinds: S.jumps.filter(j => j.toBeats < j.fromBeats).length },
     pass: findings.length === 0, findings,
   };
   return { session, tracks: tracks.map(({ _beats, _shadowBeats, _span, _mix, _mixMid, ...t }) => t), windows, _beats: Object.fromEntries(sc.map(t => [t.label, t._beats])) };
@@ -520,19 +533,20 @@ export function renderReport(res) {
   L.push(`# Conductor report ${v(s.id)}`, '', `Started ${v(s.startedAt)} · input \`${s.input}\` · clock.latency ${v(s.latency.clockLatency)} s · output ${v(s.latency.outputLatency)} s · base ${v(s.latency.baseLatency)} s · visual offset ${v(s.latency.visualOffsetMs)} ms (not scored)`, '');
   L.push(`## The gate (R7): ${s.pass ? 'PASS' : 'FAIL'}`, '');
   L.push('| | conducted | tracker alone | Δ |', '|---|---|---|---|', `| inside ±35 ms, % of played time | ${v(s.inPct)} | ${v(s.alonePct)} | ${v(s.deltaPct)} |`, `| inside ±70 ms (report) | ${v(s.in70Pct)} | | |`, '');
-  L.push(`Episodes ${s.episodes.total}: caught ${s.episodes.caught}, late ${s.episodes.late}, missed ${s.episodes.missed} · reaction p50 ${v(s.reactionBeats.p50)} / p90 ${v(s.reactionBeats.p90)} beats · false fixes ${s.falseFixes} · fixes ${s.fixes} (${v(s.fixesPerTrack)} per track, ${s.tracksWithoutFixes} tracks with none) · answer key ${v(s.keyShownS)} s`, '');
+  L.push(`Episodes ${s.episodes.total}: caught ${s.episodes.caught}, late ${s.episodes.late}, missed ${s.episodes.missed} · reaction p50 ${v(s.reactionBeats.p50)} / p90 ${v(s.reactionBeats.p90)} beats · false fixes ${s.falseFixes} · fixes ${s.fixes} (${v(s.fixesPerTrack)} per track, ${s.tracksWithoutFixes} tracks with none) · rejected taps ${s.rejectedTaps} (uneven, not fixes) · answer key ${v(s.keyShownS)} s`, '');
+  L.push(`Jumps ${s.jumps.total}: ${Object.entries(s.jumps.byKind).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'} · rewinds ${s.jumps.rewinds}${s.jumps.unknown.length ? ` · unknown kinds ${s.jumps.unknown.join(', ')}` : ''}`, '');
   if (s.findings.length) { L.push('Findings:'); s.findings.forEach((f, i) => L.push(`${i + 1}. ${f}`)); L.push(''); }
-  L.push('## Tracks', '', '| track | slot | played s | in % | alone % | Δ | ±70 % | |e| p50/p90/p95 ms | lock beats | episodes | fixes right/false/none | octave | side span | conf | flags |',
-    '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+  L.push('## Tracks', '', '| track | slot | played s | in % | alone % | Δ | ±70 % | |e| p50/p90/p95 ms | lock beats | episodes | fixes right/false/none | rejected taps | octave | side span | conf | flags |',
+    '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const t of res.tracks) {
-    if (!t.scored) { L.push(`| ${t.label} | ${v(t.slot)} | ${v(t.playedS)} | UNSCORED: ${t.reason} | | | | | | | | | | | |`); continue; }
+    if (!t.scored) { L.push(`| ${t.label} | ${v(t.slot)} | ${v(t.playedS)} | UNSCORED: ${t.reason} | | | | | | | | | | | | |`); continue; }
     const c = t.conducted, a = t.alone, f = k => t.fixes.filter(x => x.verdict === k).length;
     const oct = c.octave ? `×${c.octave.factor}, flips ${c.octave.flips}` : '';
     const side = c.sideSpan ? `${c.sideSpan.beats}${c.sideSpan.capped ? ' (over 16)' : ''}` : '';
     const flags = [t.barReportOnly ? 'bar report-only' : null, t.rewinds ? `rewinds ${t.rewinds}` : null, t.barMoves ? `barMoves ${t.barMoves}` : null,
       t.jumpsLowConf ? `jumps in low conf ${t.jumpsLowConf}` : null, t.freeRunHeld === false ? `free-run drift ${t.freeRunDriftPct} %` : null,
       t.shiftMs ? `grid shift ${t.shiftMs} ms` : null].filter(Boolean).join(', ');
-    L.push(`| ${t.label} | ${v(t.slot)} | ${t.playedS} | ${v(c.inPct)} | ${v(a.inPct)} | ${v(t.deltaInPct)} | ${v(c.in70Pct)} | ${v(c.absE.p50)}/${v(c.absE.p90)}/${v(c.absE.p95)} | ${v(c.lockBeats)} (${t.lockFrom}) | ${t.episodes.length} | ${f('right')}/${f('false')}/${f('noEffect')} | ${oct} | ${side} | ${v(c.confMedian)} | ${flags} |`);
+    L.push(`| ${t.label} | ${v(t.slot)} | ${t.playedS} | ${v(c.inPct)} | ${v(a.inPct)} | ${v(t.deltaInPct)} | ${v(c.in70Pct)} | ${v(c.absE.p50)}/${v(c.absE.p90)}/${v(c.absE.p95)} | ${v(c.lockBeats)} (${t.lockFrom}) | ${t.episodes.length} | ${f('right')}/${f('false')}/${f('noEffect')} | ${t.rejectedTaps} | ${oct} | ${side} | ${v(c.confMedian)} | ${flags} |`);
   }
   if (res.windows.length) {
     L.push('', '## Transitions (R5′)', '', '| from → to | mode | overlap s | overlap in % | relock from mid / end | minConf / C₀ | conf back (beats) | rewinds | gated | conf row (report) |', '|---|---|---|---|---|---|---|---|---|---|');

@@ -73,10 +73,13 @@ with no fade.
 - Dots at the edges (off-beat): push "flip" (Shift+F).
 - Tempo is half the correct tempo: push "×2" (Shift+D). Push it one time only.
 - Tempo is double the correct tempo: push "÷2" (Shift+H). Push it one time only.
+- ×2 and ÷2 hold the octave. Press ÷2 again to release it. After ×2, press ×2 again. The tempo goes back at the
+  next bar line.
 - Small offset: push "−10" or "+10" (Shift+, or Shift+.).
 - Wrong "1": push "set 1" (Shift+1) on the downbeat.
 - Wrong tempo: push "tap" (Shift+A) on each beat, 4 times or more, evenly. Keep less than 2 seconds between taps.
-  One tap only moves the beat to the tap. It does not set the tempo.
+  Tap evenly, four or more. A red flash means the taps were uneven: nothing changed, tap again.
+  Four even taps set the tempo and release the octave hold. One to three taps only move the beat to the tap.
 - "reset" (Shift+0) counts the bar again. It does not clear the tempo or the octave hold.
 - If the tempo or the octave hold is wrong and a tap does not fix it, push "restart" (Shift+R). The clock starts again;
   the music does not stop. The clock needs a few seconds to find the beat again.
