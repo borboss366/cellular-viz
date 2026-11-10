@@ -9,6 +9,9 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { render, renderHits } from './fixtures/tracker-scenarios.mjs';
 import { BUDGET_BEATS, relockFigures, relockText } from './fixtures/relock.mjs';
+// report-only rows: test-pr.sh (the runner's copy) prints a passing file's lines only when they start with "corpus: ",
+// so these go out as "corpus: report: ..." (numbers only) and QA box sees them on every run
+const report = (t, line) => { console.log(`# ${line}`); t.diagnostic(`corpus: report: ${line}`); };
 const require = createRequire(import.meta.url);
 const T = require('../../../experiments/clock-tracker.js');
 
@@ -388,14 +391,14 @@ function hardCut(b1, b2, tc, seconds, seed = 1366) {
   return samples;
 }
 
-test('(i) re-lock cost, report-only: step-120-128 and a hard cut 128 -> 136, main b1fe5f0 beside #214 (8-beat budget)', () => {
+test('(i) re-lock cost, report-only: step-120-128 and a hard cut 128 -> 136, main b1fe5f0 beside #214 (8-beat budget)', (t) => {
   const cases = [
     { name: 'step-120-128 (6.7 %)', samples: render('step-120-128', { sr: SR }).samples, tc: 30, B: 128 },
     { name: 'hard cut 128 -> 136 (6.25 %)', samples: hardCut(128, 136, 30, 60), tc: 30, B: 136 },
   ];
   for (const c of cases) {
     const now = relockFigures(traceOf(T, c.samples, SR), c.tc, c.B), base = relockFigures(traceOf(BASE, c.samples, SR), c.tc, c.B);
-    console.log(`# re-lock ${c.name}, budget ${BUDGET_BEATS} beats | ${relockText('#214', now)} | ${relockText('main b1fe5f0', base)}`);
+    report(t, `re-lock ${c.name}, budget ${BUDGET_BEATS} beats | ${relockText('#214', now)} | ${relockText('main b1fe5f0', base)}`);
   }
 });
 
@@ -404,7 +407,7 @@ test('(i) re-lock cost, report-only: step-120-128 and a hard cut 128 -> 136, mai
 // hand x2 on music the estimator reads at half tempo goes back to the wrong octave. REPORT-ONLY: a 174 BPM drum'n'bass
 // figure (kick on 1, snare on 3 of the 174 grid, so the drums alone say 87) with hats on every 174 beat at three
 // levels; at 15 s, if the tracker reads ~87, x2 (to the right 174) is pressed; printed: whether and when it releases.
-test('(c) cost, report-only: a right x2 on a 174 figure read at 87 (does the distance-only release undo it?)', () => {
+test('(c) cost, report-only: a right x2 on a 174 figure read at 87 (does the distance-only release undo it?)', (t) => {
   const bpm = 174, P = 60 / bpm, seconds = 40;
   for (const hat of [0.15, 0.3, 0.6]) {
     const beats = [], hits = [];
@@ -421,6 +424,6 @@ test('(c) cost, report-only: a right x2 on a 174 figure read at 87 (does the dis
     let read = null, pressed = null;
     const o = run(s, { at: [{ t: 15, fn: (tr, t) => { read = tr.ownBpm; if (Math.abs(read / 87 - 1) <= 0.03) { tr.scaleTempo(2, t); pressed = t; } } }] });
     const rel = o.tr.notes.filter(n => n.kind === 'octave-release' && pressed !== null && n.t >= pressed);
-    console.log(`# (c) cost ${s.name}: tracker read ${read === null ? '-' : read.toFixed(2)} at 15 s; ${pressed === null ? 'not at ~87, so no x2 pressed' : `x2 pressed to ${(2 * read).toFixed(1)}; ${rel.length ? `RELEASED back to the wrong octave at +${(rel[0].t - pressed).toFixed(2)} s (${rel[0].why || 'fold'}, raw ${rel[0].raw.toFixed(1)})` : 'kept to the end'}; end bpm ${o.tr.ownBpm.toFixed(2)}, hold ${o.tr.octaveLock}; last check ${JSON.stringify(o.tr.hold.eval)}`}`);
+    report(t, `(c) cost ${s.name}: tracker read ${read === null ? '-' : read.toFixed(2)} at 15 s; ${pressed === null ? 'not at ~87, so no x2 pressed' : `x2 pressed to ${(2 * read).toFixed(1)}; ${rel.length ? `RELEASED back to the wrong octave at +${(rel[0].t - pressed).toFixed(2)} s (${rel[0].why || 'fold'}, raw ${rel[0].raw.toFixed(1)})` : 'kept to the end'}; end bpm ${o.tr.ownBpm.toFixed(2)}, hold ${o.tr.octaveLock}; last check ${JSON.stringify(o.tr.hold.eval)}`}`);
   }
 });

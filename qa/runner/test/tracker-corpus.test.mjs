@@ -116,7 +116,9 @@ function tempoStats(mono, ref, lib) {
   const pct = trace.length ? 100 * trace.filter(x => Math.abs(x.bpm / ref - 1) <= 0.01).length / trace.length : 0;
   return { tr, trace, lockT, pct, line: `lock ${lockT === null ? 'never' : lockT.toFixed(2) + ' s'}, within 1 % of ${ref} ${pct.toFixed(1)} % of ${(trace.length / 10).toFixed(1)} s; outside (bpm:s) ${top}; at 4:3 (${(ref * 4 / 3).toFixed(1)} +/- 2 %) ${near(4 / 3)} s, at 3:4 (${(ref * 3 / 4).toFixed(1)}) ${near(3 / 4)} s, at x2 ${near(2)} s, at /2 ${near(0.5)} s` };
 }
-function say(t, line) { console.log(`# ${line}`); t.diagnostic(line); }
+// test-pr.sh (the runner's copy) prints a passing file's lines only when they start with "corpus: ": the report rows go
+// out as "corpus: report: ..." so QA box sees them on every run (ids and numbers only, R9)
+function say(t, line) { console.log(`# ${line}`); t.diagnostic(`corpus: report: ${line}`); }
 
 // The tempo rows (304 family): the tracker alone from its first lock to the end, #214 beside main b1fe5f0 in one row.
 // REPORT-ONLY for two more box runs (VIZ research on de9b83b, 10 Nov); then hard at >= 95 % AND >= main - 2 points,
@@ -197,19 +199,19 @@ test('(c) gasolina: a right hold, armed after 2 s within 1 % of 96, never releas
 /** a wrong hold forced by scaleTempo(f) once the tracker reads 96: when it releases, by which path, when 96 is back */
 function forcedHold(mono, f) {
   const st = { lockT: null, okSince: null, rightAt: null };
-  let heldAt = null, relAt = null, backAt = null, evAtRel = null, lastEval = null;
+  let heldAt = null, relAt = null, backAt = null, evAtRel = null, lastEval = null, accAtRel = null;
   const after = [];
   const tr = track(mono, (tr, tt) => {
     untilRight(tr, tt, st);
     if (heldAt === null && st.rightAt !== null && st.rightAt - st.lockT <= 60) { tr.scaleTempo(f, tt); heldAt = tt; }
     if (heldAt === null) return;
-    if (relAt === null && tr.octaveLock === null) { relAt = tt; evAtRel = lastEval; }
+    if (relAt === null && tr.octaveLock === null) { relAt = tt; evAtRel = lastEval; accAtRel = { firstWrongS: tr.hold.firstWrongS, resets: tr.hold.resets, lastReset: tr.hold.lastReset }; }
     if (relAt === null) lastEval = tr.hold.eval;
     if (relAt !== null && backAt === null && Math.abs(tr.ownBpm / REF_G - 1) <= 0.01) backAt = tt;
     if (tt <= heldAt + 20) after.push(`${(tt - heldAt).toFixed(1)}:${tr.ownBpm.toFixed(1)}${tr.octaveLock ? 'H' : ''}`);
   });
   const rel = tr.notes.filter(n => n.kind === 'octave-release'), first = rel.find(n => heldAt !== null && n.t >= heldAt) || null;
-  const line = `hold x${f.toFixed(3)} (${heldAt === null ? '-' : (REF_G * f).toFixed(1)}): 96 for 2 s at ${st.rightAt === null ? 'never' : st.rightAt.toFixed(1) + ' s'}, hold at ${heldAt === null ? '-' : heldAt.toFixed(1) + ' s'}; released ${relAt === null ? 'never' : '+' + (relAt - heldAt).toFixed(2) + ' s'} by ${first ? (first.why || 'fold') : '-'} (lock ${first ? first.lock.toFixed(1) : '-'}, raw ${first ? first.raw.toFixed(1) : '-'}); last check before it ${JSON.stringify(evAtRel)}; 96 again ${backAt === null ? 'never' : '+' + (backAt - heldAt).toFixed(2) + ' s'}; jumps ${tr.jumps.filter(j => heldAt !== null && j.at >= heldAt).map(j => `${j.kind}@+${(j.at - heldAt).toFixed(2)}`).join(', ') || 'none'}; trace (s:bpm, H = held) ${after.filter((_, i) => i % 5 === 0).join(' ')}`;
+  const line = `hold x${f.toFixed(3)} (${heldAt === null ? '-' : (REF_G * f).toFixed(1)}): 96 for 2 s at ${st.rightAt === null ? 'never' : st.rightAt.toFixed(1) + ' s'}, hold at ${heldAt === null ? '-' : heldAt.toFixed(1) + ' s'}; released ${relAt === null ? 'never' : '+' + (relAt - heldAt).toFixed(2) + ' s'} by ${first ? (first.why || 'fold') : '-'} (lock ${first ? first.lock.toFixed(1) : '-'}, raw ${first ? first.raw.toFixed(1) : '-'}); last check before it ${JSON.stringify(evAtRel)}; accumulator: first wrong +${accAtRel && accAtRel.firstWrongS !== null && heldAt !== null ? (accAtRel.firstWrongS - heldAt).toFixed(2) : '-'} s, restarted ${accAtRel ? accAtRel.resets : '-'} times, last restart ${JSON.stringify(accAtRel && accAtRel.lastReset)}; 96 again ${backAt === null ? 'never' : '+' + (backAt - heldAt).toFixed(2) + ' s'}; jumps ${tr.jumps.filter(j => heldAt !== null && j.at >= heldAt).map(j => `${j.kind}@+${(j.at - heldAt).toFixed(2)}`).join(', ') || 'none'}; trace (s:bpm, H = held) ${after.filter((_, i) => i % 5 === 0).join(' ')}`;
   return { heldAt, relAt, backAt, first, evAtRel, line };
 }
 
