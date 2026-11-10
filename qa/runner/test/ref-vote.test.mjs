@@ -35,7 +35,10 @@ test('ref-beats-vote.sh: a fixed no-argument script, its own venv (the old .venv
   assert.equal(n.status, 0, `sh -n: ${n.stderr}`);
   assert.match(sh, /\[ \$# -eq 0 \] \|\| \{ echo "usage: sh qa\/ref-beats-vote\.sh   \(no arguments\)"/, 'refuses arguments (QA box types it the same way every time)');
   assert.match(sh, /VENV=\$DATA\/\.venv-vote/);
-  assert.doesNotMatch(sh, /\.venv-beatthis/, 'never touches the old tool\'s venv');
+  // the code (not the comments, which say it is left alone) never names the old tool's venv
+  const code = sh.split('\n').filter(l => !/^\s*#/.test(l)).map(l => l.replace(/\s+#.*$/, '')).join('\n');
+  assert.ok(code.includes('VENV=$DATA/.venv-vote'), 'the comment filter keeps the code');
+  assert.doesNotMatch(code, /venv-beatthis/, 'never touches the old tool\'s venv');
   assert.match(sh, /git\+https:\/\/github\.com\/CPJKU\/madmom/);
   assert.match(sh, /madmom-prebuilt/);
   assert.match(sh, /essentia/);
