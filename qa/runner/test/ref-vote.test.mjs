@@ -30,6 +30,42 @@ test('ref_beats_vote.py --selftest: 2-of-3 within 1 % after octave folding, 4:3 
   }
 });
 
+test('v3 (the user 19:45): bpm_of below the 50 / 100 fps frame grid, 3 of 3 with no fold accepts at any confidence, the rest unchanged; v2 results are redone', (t) => {
+  const py = spawnSync('python3', ['-c', 'import sys'], { encoding: 'utf8' });
+  if (py.error) { t.skip('no python3 here'); return; }
+  const probe = [
+    'import json, sys',
+    `sys.path.insert(0, ${JSON.stringify(QA)})`,
+    'from ref_beats_vote import bpm_of, snapped, vote, verdict, accept_reason, TOOL_VERSION',
+    'r = {}',
+    "r['b1229'] = bpm_of(snapped(122.9)); r['b1897'] = bpm_of(snapped(189.7)); r['b1229_100'] = bpm_of(snapped(122.9, fps=100))",
+    "r['b120'] = bpm_of(snapped(120.2, n=600))",
+    "v = vote({'A': 122.88, 'B': 122.95, 'C': 122.9}); r['three'] = [verdict(v, 0.7)[0], accept_reason(v, 0.7)]",
+    "v = vote({'A': 189.7, 'B': 189.5, 'C': 94.9}); r['fold'] = list(verdict(v, 1.5))",
+    "v = vote({'A': 122.9, 'B': 122.8, 'C': 140.0}); r['two'] = [verdict(v, 1.4)[0], verdict(v, 1.5)[0]]",
+    "v = vote({'A': 122.9, 'B': None, 'C': 122.9}); r['degraded'] = verdict(v, 0.7)[0]",
+    "r['version'] = TOOL_VERSION",
+    'print(json.dumps(r))',
+  ].join('\n');
+  const r = spawnSync('python3', ['-c', probe], { encoding: 'utf8' });
+  assert.equal(r.status, 0, `probe: ${r.stderr}`);
+  const o = JSON.parse(r.stdout.trim());
+  const near = (x, want) => Math.abs(x / want - 1) <= 0.003;
+  assert.ok(near(o.b1229, 122.9), `122.9 on 50 fps frames with missed + extra beats reads ${o.b1229}`);
+  assert.ok(near(o.b1897, 189.7), `189.7 reads ${o.b1897} (the old median read 187.5)`);
+  assert.ok(near(o.b1229_100, 122.9), `122.9 on 100 fps frames reads ${o.b1229_100}`);
+  assert.ok(near(o.b120, 120.2), `120.2 reads ${o.b120} (hc-03: the old median read A 125 vs B 120)`);
+  assert.equal(o.three[0], true, '3 of 3 with no fold accepts at confidence 0.7');
+  assert.match(o.three[1], /^3 of 3, no fold/);
+  assert.equal(o.fold[0], false, 'an octave fold at confidence 1.5 is still for the ear');
+  assert.match(o.fold[1], /octave ambiguous/);
+  assert.deepEqual(o.two, [false, true], '2 of 3 still needs confidence 1.5');
+  assert.equal(o.degraded, false, 'a DEGRADED (2-tracker) vote is never 3 of 3');
+  assert.equal(o.version, 3, 'TOOL_VERSION 3: every v2 .vote.json is out of date and redone');
+  const src = fs.readFileSync(path.join(QA, 'ref_beats_vote.py'), 'utf8');
+  assert.match(src, /old\.get\('toolVersion'\) == TOOL_VERSION/, 'the up-to-date check compares the tool version');
+});
+
 test('ref-beats-vote.sh: a fixed no-argument script, its own venv (the old .venv-beatthis untouched), madmom from git or the prebuilt wheel', () => {
   const sh = fs.readFileSync(path.join(QA, 'ref-beats-vote.sh'), 'utf8');
   const n = spawnSync('sh', ['-n', path.join(QA, 'ref-beats-vote.sh')], { encoding: 'utf8' });
