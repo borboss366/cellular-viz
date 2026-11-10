@@ -160,9 +160,10 @@ test('tap then tracker: a correct tap is followed (the tracker only nudges it), 
   assert.equal(c.trackerState.tapped, true);
 });
 
-test('R5 through the clock: two taps 5 % fast → exactly one override within 4 s + 1 bar', () => {
-  const s = render('128-steady', { sr: SR }), P = 60 / 128, t1 = s.beats.find(t => t >= 12), t2 = t1 + 60 / (128 * 1.05);
-  const { c } = runLine(s, { at: [{ t: t1, fn: c => c.fix('tap', QA) }, { t: t2, fn: c => c.fix('tap', QA) }] });
+test('R5 through the clock: four even taps 5 % fast → exactly one override within 4 s + 1 bar', () => {
+  // D4: the tempo needs 4+ even taps now (1-3 taps only move the phase)
+  const s = render('128-steady', { sr: SR }), P = 60 / 128, t1 = s.beats.find(t => t >= 12), Pt = 60 / (128 * 1.05), t2 = t1 + 3 * Pt;
+  const { c } = runLine(s, { at: [0, 1, 2, 3].map(k => ({ t: t1 + k * Pt, fn: c => c.fix('tap', QA) })) });
   const ov = c.jumps.filter(j => j.kind === 'override');
   console.log(`R5 clock: taps at ${t1.toFixed(3)}, ${t2.toFixed(3)}; overrides ${ov.map(j => (j.at - t2).toFixed(2) + ' s').join(', ') || 'none'}; bpm ${c.trackerState.bpm}`);
   assert.equal(ov.length, 1, 'exactly one override');
@@ -171,13 +172,15 @@ test('R5 through the clock: two taps 5 % fast → exactly one override within 4 
   assert.equal(c.trackerState.tapped, false);
 });
 
-test('x2 then tracker: the octave lock holds against the half-tempo estimate', () => {
+test('x2 then tracker: a wrong x2 holds at once, then #214 fix (c) releases it (faster hold, distance >= 0.75 octave for 2 s)', () => {
   const s = render('128-steady', { sr: SR }), tX = s.beats.find(t => t >= 12);
-  const { c } = runLine(s, { at: [{ t: tX, fn: c => c.fix('x2', QA) }] });
-  const st = c.trackerState;
-  console.log(`x2: bpm ${st.bpm}, octaveLock ${st.octaveLock}, settings.bpm ${c.settings.bpm}`);
-  assert.ok(Math.abs(st.bpm - 256) <= 3, `bpm ${st.bpm}`);
-  assert.ok(st.octaveLock && Math.abs(st.octaveLock - 256) <= 3, `octaveLock ${st.octaveLock}`);
+  let held = null;
+  const { c } = runLine(s, { at: [{ t: tX, fn: c => c.fix('x2', QA) }, { t: tX + 1, fn: c => { held = c.trackerState; } }] });
+  const st = c.trackerState, rel = c.line.tracker.notes.filter(n => n.kind === 'octave-release');
+  console.log(`x2: 1 s after bpm ${held.bpm}, octaveLock ${held.octaveLock}; end bpm ${st.bpm}, octaveLock ${st.octaveLock}; releases ${rel.map(n => `${n.why || 'fold'}@+${(n.t - tX).toFixed(2)}`).join(', ')}`);
+  assert.ok(Math.abs(held.bpm - 256) <= 3 && held.octaveLock && Math.abs(held.octaveLock - 256) <= 3, `held 1 s after: ${JSON.stringify({ bpm: held.bpm, lock: held.octaveLock })}`);
+  assert.ok(rel.length === 1 && rel[0].why === 'evidence' && rel[0].t - tX <= 4, `released by fix (c): ${JSON.stringify(rel)}`);
+  assert.ok(Math.abs(st.bpm - 128) <= 3 && st.octaveLock === null, `back to 128: ${st.bpm}`);
 });
 
 test('nudge then tracker: the shift stays (the PLL carries on underneath)', () => {
@@ -222,12 +225,12 @@ test('restart (Shift+R, #188 10 Nov): a fresh tracker; the octave hold and the t
   const key = { shiftKey: true, code: 'KeyR', target: { tagName: 'BODY' }, preventDefault() {} };
   const { c } = runLine(s, { at: [
     { t: 0, fn: c => c.onTrackerFrame(() => { tee++; }) },   // a listener like the conductor's shadow
-    { t: at(12), fn: c => c.fix('x2', QA) }, { t: at(13), fn: c => c.fix('x2', QA) }, { t: at(14), fn: c => c.fix('tap', QA) },
-    { t: at(16), fn: c => { before = { ...c.trackerState, tee }; oldTracker = c.line.tracker; ret = c.handFixKey(key); after = { ...c.trackerState, tee }; } },
+    { t: at(12), fn: c => c.fix('half', QA) }, { t: at(12.5), fn: c => c.fix('tap', QA) },
+    { t: at(13), fn: c => { before = { ...c.trackerState, tee }; oldTracker = c.line.tracker; ret = c.handFixKey(key); after = { ...c.trackerState, tee }; } },
   ] });
   const end = c.trackerState;
   console.log(`restart: before hold ${before.octaveLock} tapped ${before.tapped}; after hold ${after.octaveLock} tapped ${after.tapped} state ${after.state}; end bpm ${end.bpm} state ${end.state} hold ${end.octaveLock}; tee ${after.tee} -> ${tee}`);
-  assert.ok(before.octaveLock > 400, `two x2: the hold is two octaves up (${before.octaveLock})`);
+  assert.ok(before.octaveLock > 50 && before.octaveLock < 80, `/2: the hold is an octave down (${before.octaveLock})`);
   assert.equal(before.tapped, true);
   assert.deepEqual({ kind: ret.kind, origin: ret.origin }, { kind: 'restart', origin: 'fix:key' }, 'Shift+R is the restart key');
   assert.notEqual(c.line.tracker, oldTracker, 'a fresh tracker');
@@ -248,4 +251,104 @@ test('restart: off the line source, or with an injected tracker, it does nothing
   assert.equal(c.fix('restart', QA), null, 'an injected tracker cannot be made again');
   assert.equal(c.line.tracker, tr);
   assert.equal(c.fix('restart', { origin: 'page' }), null, 'beat authority: other origins are rejected as for every fix');
+});
+
+// ---------- D4 (#188, the user 10 Nov 15:00): second press releases the hold, even taps clear it, uneven taps rejected
+// a tracker stand-in with a real octave hold and tempo scaling (beats continuous at t), recording every call
+function holdTracker(bpm0) {
+  let bpm = bpm0, T0 = 0, B0 = 0;
+  const calls = [];
+  const tr = {
+    jumps: [], state: 'locked', confidence: 0.9, hasModel: true, tapped: false, octaveLock: null, calls,
+    get bpm() { return bpm; },
+    push() {}, beatsAt: t => B0 + (t - T0) * bpm / 60, timeOf: b => T0 + (b - B0) * 60 / bpm,
+    tap(o) { calls.push(['tap', +o.bpm.toFixed(3)]); tr.tapped = true; },
+    scaleTempo(f, t) { B0 = tr.beatsAt(t); T0 = t; bpm *= f; tr.octaveLock = bpm; calls.push(['scale', f]); },
+    setOctaveLock(b) { tr.octaveLock = b || null; calls.push(['lock', b === null ? null : b]); },
+    snapshot() { return { state: 'locked', confidence: 0.9, octaveLock: tr.octaveLock, bpm, tapped: tr.tapped, lastJump: null }; },
+  };
+  return tr;
+}
+function holdClock(bpm) {
+  const ctx = fakeContext(), tr = holdTracker(bpm);
+  let perf = 0;
+  const c = Clock.create({ source: 'line', settings: SETTINGS(false), audioContext: () => ctx, timers: false, pump: true,
+    now: () => perf, tracker: tr, lineFeed: true, keys: false });
+  c.start();
+  const until = t => { while (ctx.currentTime < t - 1e-9) { ctx.currentTime = +(ctx.currentTime + 0.01).toFixed(6); perf = ctx.currentTime * 1000; c.lineFrame({ t: ctx.currentTime, flux: 0 }); c.read(); } };
+  return { c, ctx, tr, until };
+}
+
+test('D4: a second press of the held key releases the hold at the next bar line (jump octave, origin kept, forward only)', () => {
+  for (const [kind, f, back] of [['x2', 2, 0.5], ['half', 0.5, 2]]) {
+    const { c, tr, until } = holdClock(120);
+    until(1.1);
+    const first = c.fix(kind, QA);
+    assert.equal(first.kind, kind);
+    assert.equal(tr.octaveLock, 120 * f, `${kind}: the hold is set`);
+    until(1.3);
+    const second = c.fix(kind, QA);
+    assert.equal(second.type, 'release-scheduled', `${kind}: the second press books the release`);
+    assert.equal(second.atBeats % 4, 0, `${kind}: on a bar line (${second.atBeats})`);
+    assert.equal(c.fix(kind, QA), null, `${kind}: a third press while the release is booked does nothing`);
+    assert.equal(tr.octaveLock, 120 * f, `${kind}: still held until the bar line`);
+    until(8);
+    const rel = c.jumps.filter(j => j.kind === 'octave');
+    console.log(`D4 ${kind} twice: ${JSON.stringify(rel)}; calls ${JSON.stringify(tr.calls)}`);
+    assert.equal(rel.length, 1, `${kind}: one octave jump`);
+    assert.equal(rel[0].origin, 'qa', 'logged with its origin');
+    assert.equal(rel[0].release, kind);
+    assert.ok(rel[0].toBeats >= rel[0].fromBeats, 'forward only (no rewind)');
+    assert.ok(Math.abs(rel[0].fromBeats - second.atBeats) < 0.2, `lands at the bar line: ${rel[0].fromBeats} vs ${second.atBeats}`);
+    assert.deepEqual(tr.calls.slice(-2), [['scale', back], ['lock', null]], 'back to the octave before the press, the hold cleared');
+    assert.equal(tr.octaveLock, null);
+    assert.equal(Math.round(tr.bpm), 120);
+  }
+});
+
+test('D4: x2 then half is not a release (it scales again); a hold the tracker already let go is not released twice', () => {
+  const { c, tr, until } = holdClock(120);
+  until(1.1); c.fix('x2', QA); until(1.2);
+  const h = c.fix('half', QA);
+  assert.equal(h.kind, 'half'); assert.equal(Math.round(tr.bpm), 120); assert.equal(tr.octaveLock, 120);
+  until(2.2);
+  const r = c.fix('half', QA);   // half is now the held key: its second press books the release
+  assert.equal(r.type, 'release-scheduled');
+  tr.octaveLock = null;   // the tracker's own fix (c) released it before the bar line
+  until(8);
+  assert.equal(c.jumps.filter(j => j.kind === 'octave').length, 0, 'nothing left to release: no jump');
+});
+
+test('D4: four even taps set tempo and phase and clear the hold; one to three taps only move the phase', () => {
+  const { c, tr, until } = holdClock(120);
+  until(1.0); c.fix('x2', QA);
+  const iv = 0.5, t0 = 1.5;   // 120 BPM taps, on the 10 ms frame grid
+  const out = [];
+  for (let k = 0; k < 4; k++) { until(t0 + k * iv); out.push(c.fix('tap', QA)); }
+  console.log(`D4 even taps: ${JSON.stringify(out.map(j => j && { kind: j.kind, type: j.type }))}; calls ${JSON.stringify(tr.calls)}`);
+  assert.ok(out.every(j => j && j.type === 'jump' && j.kind === 'tap'), 'every tap lands as a tap jump');
+  const taps = tr.calls.filter(x => x[0] === 'tap');
+  assert.deepEqual(taps.slice(0, 3).map(x => x[1]), [240, 240, 240], 'taps 1-3: phase only, at the held tempo');
+  assert.ok(Math.abs(taps[3][1] - 120) < 0.2, `tap 4: the tapped tempo (${taps[3][1]})`);
+  assert.deepEqual(tr.calls.at(-1), ['lock', null], 'the hold is cleared');
+  assert.equal(tr.octaveLock, null);
+});
+
+test('D4: uneven taps (spread > 8 %) are rejected: nothing changes, a fix record { kind: tap, rejected: uneven, spreadPct }', () => {
+  const { c, tr, until } = holdClock(120);
+  until(1.0); c.fix('half', QA);
+  const times = [1.5, 2.0, 2.6, 3.0], out = [];
+  for (const t of times) { until(t); out.push(c.fix('tap', QA)); }
+  const rej = out[3];
+  console.log(`D4 uneven taps: ${JSON.stringify(rej)}; calls ${JSON.stringify(tr.calls)}`);
+  assert.equal(rej.type, 'fix'); assert.equal(rej.kind, 'tap'); assert.equal(rej.rejected, 'uneven');
+  assert.ok(Math.abs(rej.spreadPct - 40) < 1, `spread (0.6 - 0.4) / 0.5 = 40 %: ${rej.spreadPct}`);
+  assert.equal(tr.calls.filter(x => x[0] === 'tap').length, 3, 'the 4th tap did not reach the tracker');
+  assert.equal(tr.octaveLock, 60, 'the hold stays');
+  assert.equal(c.jumps.filter(j => j.kind === 'tap').length, 3, 'no tap jump for the rejected one');
+  // the count starts again from the rejected tap: 3 more even taps make 4
+  const iv = 0.5; const more = [];
+  for (let k = 1; k <= 3; k++) { until(3.0 + k * iv); more.push(c.fix('tap', QA)); }
+  assert.equal(more[2].kind, 'tap'); assert.equal(more[2].type, 'jump');
+  assert.equal(tr.octaveLock, null, 'four even taps after it clear the hold');
 });

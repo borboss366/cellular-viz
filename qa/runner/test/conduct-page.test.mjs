@@ -287,7 +287,7 @@ test('conductor restart (Shift+R): the button and key are wired, it logs a fix r
   const btn = /<button data-fix="restart"[^>]*>([^<]*)<\/button>/.exec(html);
   assert.ok(btn, 'a restart button among the fix buttons');
   assert.ok(/^[\x20-\x7e]+$/.test(btn[0]), `ASCII label (#205): ${btn[0]}`);
-  assert.match(html, /j && j\.kind === 'restart' \? ' \(the clock starts again\)'/, '"last fix" reads it without fromBeats');
+  assert.match(html, /if \(j\.kind === 'restart'\) return ' \(the clock starts again\)'/, '"last fix" reads it without fromBeats');
   const src = fs.readFileSync(path.join(REPO, 'experiments', 'clock.js'), 'utf8');
   assert.match(src, /KeyR: \['restart'\]/, 'Shift+R is a clock hand-fix key (origin fix:key, logged by the page like the others)');
   assert.equal(C.pageKey({ code: 'KeyR', shiftKey: true, target: { tagName: 'BODY' } }), null, 'the page leaves Shift+R to the clock');
@@ -297,4 +297,20 @@ test('conductor restart (Shift+R): the button and key are wired, it logs a fix r
   const guide = fs.readFileSync(path.join(REPO, 'qa', 'CONDUCTOR_GUIDE.md'), 'utf8');
   assert.match(guide, /If the tempo or the octave hold is wrong and a tap does not fix it, push "restart" \(Shift\+R\)\. The clock starts again;\n  the music does not stop\./);
   assert.match(guide, /If that does not help: reload the page \(Cmd\+R\)/);
+});
+
+test('D4 on the conductor page: an uneven tap logs a rejected fix and flashes the tap button red; a release is marked; guide and Help say how', () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  assert.match(html, /if \(j && j\.rejected\) \{ rec\.rejected = j\.rejected; rec\.spreadPct = j\.spreadPct; flashReject\(\); \}/, 'the rejected tap is logged with its spread and flashes');
+  assert.match(html, /else if \(j && j\.type === 'release-scheduled'\) rec\.release = true;/, 'a second x2 / half press is marked as a release');
+  assert.match(html, /button\.reject\{background:#c0182b/, 'the red flash style');
+  assert.match(html, /querySelector\('\[data-fix="tap"\]'\)/, 'on the tap button');
+  assert.match(html, /REJECTED: uneven taps/, 'the last-fix line says so');
+  const panel = /<div id="helpPanel" hidden>([\s\S]*?)<\/div>/.exec(html)[1];
+  assert.match(panel, /Press \/2 again to release it/);
+  assert.match(panel, /Tap evenly, four or more\. A red flash means the taps were uneven\./);
+  assert.ok(/^[\x20-\x7e\s]*$/.test(panel.replace(/<[^>]+>/g, '')), 'Help stays plain ASCII (#205)');
+  const guide = fs.readFileSync(path.join(REPO, 'qa', 'CONDUCTOR_GUIDE.md'), 'utf8');
+  assert.match(guide, /Press ÷2 again to release it\./);
+  assert.match(guide, /Tap evenly, four or more\. A red flash means the taps were uneven/);
 });

@@ -227,6 +227,19 @@ test('A4 lockBeats (from start or from the kick-entry mark), A5 conf columns, A6
   assert.equal(run({ gridExtra: { barOk: true } }).tracks[0].barReportOnly, false);
 });
 
+test('D4: a rejected (uneven) tap is not a fix, it is counted in rejectedTaps; a second x2 press (release) lands at the bar line', () => {
+  const r = run({ fixes: [{ ctx: 20, id: 1, kind: 'tap', rejected: 'uneven', spreadPct: 40 }, { ctx: 30, id: 2, kind: 'x2', release: true }, { ctx: 40, id: 3, kind: 'x2' }] });
+  const t = r.tracks[0];
+  assert.equal(t.rejectedTaps, 1);
+  assert.equal(r.session.rejectedTaps, 1);
+  assert.deepEqual(t.fixes.map(f => f.id), [2, 3], 'the rejected tap is neither right nor false: not a fix');
+  assert.equal(t.fixes[0].landS, 31.5, 'the release lands on the next bar line (beat 60, pos 1)');
+  assert.equal(t.fixes[1].landS, 40.5, 'a plain x2 lands on the next beat');
+  const rep = C.renderReport(r);
+  assert.match(rep, /rejected taps 1 \(uneven, not fixes\)/);
+  assert.match(rep, /\| fixes right\/false\/none \| rejected taps \|/);
+});
+
 test('#214 jump kind octave: a known kind (Q9), parsed, counted, forward so no rewind; an unknown kind is listed, never an error', () => {
   assert.ok(C.JUMP_KINDS.includes('octave') && ['acquire', 'override', 'side', 'flip'].every(k => C.JUMP_KINDS.includes(k)));
   const { records, info } = one({ jumps: [{ ctx: 20, kind: 'octave', fromBeats: 40, toBeats: 40.5 }, { ctx: 30, kind: 'acquire', fromBeats: 60, toBeats: 60.1 }] });

@@ -44,6 +44,7 @@ button{cursor:pointer}.fixes button{min-width:60px}
 .deck{border:2px solid #3a4560;border-radius:10px;padding:8px;margin:6px 0}.deck.live{border-color:#d6455d}.deck.next{border-color:#2b5cff}
 .tag{font-weight:700;margin-right:8px}.live .tag{color:#d6455d}.next .tag{color:#2b5cff}
 #flash{height:40px;border-radius:8px;background:#222a3a}#flash.on{background:#fff}
+button.reject{background:#c0182b !important;color:#fff}
 .stateBox{flex:1 1 12em;min-width:0}#state,#lane{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;min-height:1.3em}
 .msg{color:#ffd23f;min-height:2.8em}small{color:#8a96ad}
 .clockOff{background:#8b1e2d;color:#fff;padding:8px 16px;font-weight:600;overflow-wrap:anywhere}.err{color:#ff5a6e;font-weight:700}
@@ -71,8 +72,10 @@ button{cursor:pointer}.fixes button{min-width:60px}
   <ol><li>Click the next track name. Click "Load to NEXT". Wait for the name.</li><li>Push "Crossfade" or N. The old deck stops after the fade time.</li></ol>
   <h2>Fix the clock (Shift + key)</h2>
   <ul><li>Dots at the two edges (off-beat): flip, Shift+F.</li><li>Tempo is half: x2, Shift+D. Tempo is double: /2, Shift+H. Push x2 or /2 one time only.</li>
+    <li>x2 and /2 hold the octave. Press /2 again to release it (x2 again after x2). The tempo goes back at the next bar line.</li>
     <li>Small offset: -10 or +10, Shift+, or Shift+.</li><li>Wrong "1": set 1, Shift+1, on the downbeat.</li>
     <li>Wrong tempo: tap, Shift+A, on each beat, 4 times or more, evenly, less than 2 s apart. One tap only moves the beat.</li>
+    <li>Tap evenly, four or more. A red flash means the taps were uneven. Four even taps set the tempo and release the octave hold.</li>
     <li>reset, Shift+0, counts the bar again. It does not clear the tempo or the octave hold.</li>
     <li>If the tempo or the octave hold is wrong and a tap does not fix it, push Shift+R (restart). The clock starts again; the music does not stop.</li>
     <li>If that does not help: reload the page (Cmd+R), then load and play the track again.</li>
@@ -241,12 +244,32 @@ clock.fix = (kind, arg, o) => {
   if (FIX_ORIGINS.has(origin) && C.FIX_KIND[kind]) {
     const rec = { id: ++fixId, kind: C.FIX_KIND[kind], origin, idx: decks[live].track ? decks[live].track.idx : undefined };
     if (arg !== undefined) rec.arg = arg;
-    if (j && typeof j.at === 'number') rec.landedCtx = j.at;
+    // D4: an uneven tap changed nothing (a rejected fix, never scored); a second x2 / half press releases the hold at
+    // the bar line (scored as landing there)
+    if (j && j.rejected) { rec.rejected = j.rejected; rec.spreadPct = j.spreadPct; flashReject(); }
+    else if (j && j.type === 'release-scheduled') rec.release = true;
+    else if (j && typeof j.at === 'number' && (j.type === 'jump' || j.type === 'restart')) rec.landedCtx = j.at;
     log.add('fix', rec);
-    $('lastFix').textContent = `${kind}${arg !== undefined ? ' ' + arg : ''} at ${ctx.currentTime.toFixed(2)} s${j && j.kind === 'restart' ? ' (the clock starts again)' : j ? `, beat ${j.fromBeats.toFixed(2)} → ${j.toBeats.toFixed(2)}` : ' (lands at the bar line)'}`;
+    $('lastFix').textContent = `${kind}${arg !== undefined ? ' ' + arg : ''} at ${ctx.currentTime.toFixed(2)} s${fixNote(j)}`;
   }
   return j;
 };
+// the last-fix line: what the clock did with the command
+function fixNote(j) {
+  if (!j) return ' (no effect)';
+  if (j.rejected) return ` REJECTED: uneven taps (spread ${j.spreadPct} %), nothing changed`;
+  if (j.kind === 'restart') return ' (the clock starts again)';
+  if (j.type === 'release-scheduled') return ' (releases the octave hold at the bar line)';
+  if (typeof j.fromBeats === 'number') return `, beat ${j.fromBeats.toFixed(2)} -> ${j.toBeats.toFixed(2)}`;
+  return ' (lands at the bar line)';
+}
+// D4: the tap button flashes red for 0.6 s when the taps were uneven
+function flashReject() {
+  const b = document.querySelector('[data-fix="tap"]');
+  if (!b) return;
+  b.classList.add('reject');
+  setTimeout(() => b.classList.remove('reject'), 600);
+}
 const FIX_ORIGINS = new Set(['fix:key', 'fix:controller', 'qa']);
 for (const b of document.querySelectorAll('[data-fix]')) b.onclick = () => clock.fix(b.dataset.fix, b.dataset.arg !== undefined ? Number(b.dataset.arg) : undefined, { origin: 'fix:key' });
 
