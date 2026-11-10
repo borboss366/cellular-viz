@@ -334,21 +334,109 @@ test('D4: four even taps set tempo and phase and clear the hold; one to three ta
   assert.equal(tr.octaveLock, null);
 });
 
-test('D4: uneven taps (spread > 8 %) are rejected: nothing changes, a fix record { kind: tap, rejected: uneven, spreadPct }', () => {
+test('D4: a missed tap (one interval doubled) is rejected: nothing changes, a fix record { kind: tap, rejected: uneven, tapError: missed, spreadPct }', () => {
   const { c, tr, until } = holdClock(120);
   until(1.0); c.fix('half', QA);
-  const times = [1.5, 2.0, 2.6, 3.0], out = [];
+  const times = [1.5, 2.0, 2.5, 3.5], out = [];   // the tap at 3.0 was missed
   for (const t of times) { until(t); out.push(c.fix('tap', QA)); }
   const rej = out[3];
-  console.log(`D4 uneven taps: ${JSON.stringify(rej)}; calls ${JSON.stringify(tr.calls)}`);
+  console.log(`D4 missed tap: ${JSON.stringify(rej)}; calls ${JSON.stringify(tr.calls)}`);
   assert.equal(rej.type, 'fix'); assert.equal(rej.kind, 'tap'); assert.equal(rej.rejected, 'uneven');
-  assert.ok(Math.abs(rej.spreadPct - 40) < 1, `spread (0.6 - 0.4) / 0.5 = 40 %: ${rej.spreadPct}`);
+  assert.equal(rej.tapError, 'missed');
+  assert.ok(Math.abs(rej.spreadPct - 100) < 1, `the 1.0 s interval is 100 % off the 0.5 s median: ${rej.spreadPct}`);
   assert.equal(tr.calls.filter(x => x[0] === 'tap').length, 3, 'the 4th tap did not reach the tracker');
   assert.equal(tr.octaveLock, 60, 'the hold stays');
   assert.equal(c.jumps.filter(j => j.kind === 'tap').length, 3, 'no tap jump for the rejected one');
   // the count starts again from the rejected tap: 3 more even taps make 4
   const iv = 0.5; const more = [];
-  for (let k = 1; k <= 3; k++) { until(3.0 + k * iv); more.push(c.fix('tap', QA)); }
+  for (let k = 1; k <= 3; k++) { until(3.5 + k * iv); more.push(c.fix('tap', QA)); }
   assert.equal(more[2].kind, 'tap'); assert.equal(more[2].type, 'jump');
   assert.equal(tr.octaveLock, null, 'four even taps after it clear the hold');
+});
+
+// D4 tap fit (the user 10 Nov 20:27): human taps with jitter. A seeded Park-Miller generator (exact in doubles), so
+// the jitter is the same on every run. Each tap is timed at its event (eventTs on the performance.now() clock); the
+// handler runs up to 10 ms later
+function seeded(seed) { let x = seed; return () => { x = (x * 16807) % 2147483647; return (x - 1) / 2147483646; }; }
+function jitterTaps(bpm, n, J, rnd) {
+  const { c, tr, until } = holdClock(bpm);
+  until(1.0); c.fix('x2', QA);
+  const P = 60 / bpm, out = [];
+  for (let k = 0; k < n; k++) {
+    const t = 1.5 + k * P + (2 * rnd() - 1) * J;
+    until(t);
+    out.push(c.fix('tap', { origin: 'qa', eventTs: t * 1000 }));
+  }
+  return { c, tr, out, last: out[n - 1] };
+}
+
+test('D4 tap fit: taps at 136 bpm with +-20 ms jitter, 4, 6 and 8 taps (10 seeded sets each): all accepted, the tempo from the line fit', () => {
+  const rnd = seeded(188), rows = [];
+  // the worst case for +-20 ms on a least-squares slope: 4 taps 3.6 %, 6 taps 2.3 %, 8 taps 1.7 % of 136 bpm
+  for (const [n, worstPct, eachPct, meanPct] of [[4, 3.6, 3.6, 1.2], [6, 2.3, 1.0, 0.5], [8, 1.7, 1.0, 0.6]]) {
+    const errs = [];
+    for (let s = 0; s < 10; s++) {
+      const { tr, out, last } = jitterTaps(136, n, 0.020, rnd);
+      assert.ok(out.every(j => j && j.type === 'jump' && j.kind === 'tap'), `${n} taps, set ${s}: every tap accepted`);
+      assert.equal(last.taps, n); assert.ok(last.tapBpm > 0, 'the jump carries the tap set');
+      assert.equal(tr.octaveLock, null, 'the hold is cleared');
+      const bpm = tr.calls.filter(x => x[0] === 'tap').at(-1)[1];
+      errs.push(100 * (bpm / 136 - 1));
+    }
+    const abs = errs.map(Math.abs), mean = abs.reduce((a, b) => a + b, 0) / abs.length;
+    rows.push(`${n} taps: errors % ${errs.map(e => e.toFixed(2)).join(' ')} (mean |err| ${mean.toFixed(2)})`);
+    assert.ok(abs.every(e => e <= worstPct), `${n} taps: within the +-20 ms worst case ${worstPct} %`);
+    assert.ok(abs.every(e => e <= eachPct), `${n} taps: every set within ${eachPct} %: ${errs.map(e => e.toFixed(2))}`);
+    assert.ok(mean <= meanPct, `${n} taps: mean |error| ${mean.toFixed(2)} % <= ${meanPct} %`);
+  }
+  console.log(`D4 tap fit at 136: ${rows.join(' | ')}`);
+});
+
+test('D4 tap fit: taps at 174 bpm with +-15 ms jitter (6 taps, 10 seeded sets): accepted, within 1.5 %', () => {
+  const rnd = seeded(174), errs = [];
+  for (let s = 0; s < 10; s++) {
+    const { tr, out } = jitterTaps(174, 6, 0.015, rnd);
+    assert.ok(out.every(j => j && j.type === 'jump'), `set ${s}: accepted`);
+    errs.push(100 * (tr.calls.filter(x => x[0] === 'tap').at(-1)[1] / 174 - 1));
+  }
+  console.log(`D4 tap fit at 174: errors % ${errs.map(e => e.toFixed(2)).join(' ')}`);
+  assert.ok(errs.every(e => Math.abs(e) <= 1.5), `${errs.map(e => e.toFixed(2))}`);
+});
+
+test('D4: a doubled tap (one interval halved) is rejected as double; the old 20 % spread (0.5 0.6 0.4 s) is now accepted', () => {
+  const { c, tr, until } = holdClock(120);
+  until(1.0); c.fix('half', QA);
+  const out = [];
+  for (const t of [1.5, 2.0, 2.5, 2.75]) { until(t); out.push(c.fix('tap', QA)); }   // an extra tap half way
+  const rej = out[3];
+  console.log(`D4 double tap: ${JSON.stringify(rej)}`);
+  assert.equal(rej.rejected, 'uneven'); assert.equal(rej.tapError, 'double');
+  assert.ok(Math.abs(rej.spreadPct - 50) < 1, `0.25 s is 50 % off the 0.5 s median: ${rej.spreadPct}`);
+  assert.equal(tr.octaveLock, 60, 'the hold stays');
+  // the intervals the old rule (spread <= 8 %) rejected: within 25 % of the median, so the line fit takes them
+  const b = holdClock(120);
+  b.until(1.0); b.c.fix('half', QA);
+  const res = [];
+  for (const t of [1.5, 2.0, 2.6, 3.0]) { b.until(t); res.push(b.c.fix('tap', QA)); }
+  assert.equal(res[3].type, 'jump'); assert.equal(res[3].taps, 4);
+  assert.ok(Math.abs(res[3].tapBpm - 120) < 6, `the fit of 1.5 2.0 2.6 3.0: ${res[3].tapBpm} bpm`);
+  assert.equal(b.tr.octaveLock, null);
+});
+
+test('D4: a tap is timed at its key event (eventTs), not when the handler runs; up to 8 taps are kept', () => {
+  const { c, until } = holdClock(120);
+  until(1.0);
+  until(1.512);
+  const j = c.fix('tap', { origin: 'qa', eventTs: 1500 });   // the key went down 20 ms before the handler (1.52 s)
+  assert.ok(Math.abs(j.at - 1.5) < 1e-6, `timed at the event: ${j.at}`);
+  until(1.9);
+  const late = c.fix('tap', { origin: 'qa', eventTs: 1000 });   // 0.9 s old: not a usable event time, the handler time stays
+  assert.ok(Math.abs(late.at - 1.9) < 0.011, `a stale eventTs is ignored: ${late.at}`);
+  // 10 even taps: the set uses the last 8
+  const k = holdClock(120);
+  k.until(3.0);
+  let last = null;
+  for (let i = 0; i < 10; i++) { k.until(3.5 + i * 0.5); last = k.c.fix('tap', QA); }
+  assert.equal(last.taps, 8);
+  assert.ok(Math.abs(last.tapBpm - 120) < 0.5, `${last.tapBpm}`);
 });

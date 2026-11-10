@@ -16,9 +16,11 @@
 //            tracking: phase corrections as a rate change ≤ 3 % (no jump, no rebook); tempo follows
 //            after a free-run: |error| ≤ ¼ beat slews, more jumps on the next bar line ('acquire')
 //            after a tap: defers; disagreeing > 3 % / ¼ beat for > 4 s at confidence ≥ 0.7 → 'override' at a bar line
-//   tap      1-3 taps move the phase only; 4+ taps with even intervals (spread <= 8 %) set tempo and phase and clear
-//            the octave hold (D4); uneven taps change nothing and return a rejected fix { kind: 'tap', rejected:
-//            'uneven', spreadPct }. The tracker only nudges the tapped grid from then on (R5)
+//   tap      1-3 taps move the phase only; from 4 taps (up to the last 8) the tempo is a least-squares line through
+//            the tap times, its phase at the last tap, and the octave hold is cleared (D4, the user 10 Nov 20:27). Only
+//            a missed or a doubled tap (an interval > 25 % from the median) changes nothing and returns a rejected fix
+//            { kind: 'tap', rejected: 'uneven', tapError: 'missed' | 'double', spreadPct }. The tracker only nudges the
+//            tapped grid from then on (R5)
 //   x2/half  scales the tempo and sets the octave hold. The hold is set by hand and cleared by hand: a second press
 //            of the held key releases it (back to the estimate's octave at the next bar line, jump { kind: 'octave',
 //            origin }), or 4+ even taps. The estimator never clears it, except the tracker's own releases: #214 fix
@@ -88,7 +90,9 @@
   const OFFSET_MIN = -100, OFFSET_MAX = 200, JUMPS_KEPT = 256, HITLOG_KEPT = 4096;
   const AHEAD_MIN = 0.1, AHEAD_MAX = 0.25, GAPS_KEPT = 120, GAPS_MIN = 10, PUMP_MIN_MS = 4;
   const FIX_ORIGINS = ['fix:controller', 'fix:key', 'qa'], QUANTUM = 0.003, NO_DOUBLE = 0.020, TAP_GAP = 2, TAPS_KEPT = 5;
-  const TAPS_EVEN = 4, TAP_SPREAD_PCT = 8;   // D4 on line: 4+ even taps set the tempo and clear the hold
+  // D4 on line (the user 10 Nov 20:27): 4 to 8 taps set the tempo by a line fit and clear the hold; only an interval
+  // more than TAP_OFF_MAX from the median (a missed or doubled tap) rejects the set
+  const TAPS_EVEN = 4, TAPS_LINE_KEPT = 8, TAP_OFF_MAX = 0.25, TAP_LAG_MAX = 0.25;
   // Shift + key (KeyboardEvent.code) → hand fix; clear of the pages' own keys (z x c v t b [ ] `)
   const FIX_KEYS = { KeyA: ['tap'], KeyH: ['half'], KeyD: ['x2'], Digit1: ['setOne'], Comma: ['nudge', -10], Period: ['nudge', 10], Digit0: ['reset'], KeyF: ['flip'], KeyR: ['restart'] };
   const FILE_GAIN = 1, CLICK_GAIN = 0.35, FILE_LEAD = 0.05, LINE_OWN_INPUT_MS = 1500;
@@ -439,7 +443,10 @@
         }
         if (!this.ctx || !this.playing) return null;
         if (kind === 'restart') return line ? this.lineRestart(origin, this.now({ raw: true })) : null;   // any beat state, even no model
-        const at = this.now({ raw: true }), from = this.baseBeats(at);
+        // a tap is timed at its key / click event (opts.eventTs, the event's timeStamp on the performance.now() clock):
+        // the handler's delay since the event comes off the audio-clock time (only when it is 0 to TAP_LAG_MAX s)
+        const lag = kind === 'tap' && line && opts && Number.isFinite(opts.eventTs) ? (perfNow() - opts.eventTs) / 1000 : 0;
+        const at = this.now({ raw: true }) - (lag > 0 && lag <= TAP_LAG_MAX ? lag : 0), from = this.baseBeats(at);
         if (from < 0) return null;
         if (file) return this.fileFix(kind, arg, origin, at, from);
         if (line) return this.lineFix(kind, arg, origin, at, from);
@@ -798,27 +805,46 @@
         } else if (kind === 'reset') {
           line.offset -= Math.floor(from); this.oneAt = 0; to = from - Math.floor(from);
         } else if (kind === 'tap') {
-          // D4: 1 to 3 taps move the beat only (phase, at the tracker's tempo); from 4 taps on, the intervals must be even
-          // (spread (max - min) / median <= TAP_SPREAD_PCT): then the taps set tempo and phase and clear the octave
-          // hold; uneven taps change nothing and come back as a rejected fix { kind: 'tap', rejected: 'uneven',
-          // spreadPct } (the page flashes red), and the count starts again from this tap
+          // D4 (the user 10 Nov 20:27): 1 to 3 taps move the beat only (phase, at the tracker's tempo). From 4 taps on
+          // (the last TAPS_LINE_KEPT, less than TAP_GAP s apart) the tempo is the slope of a least-squares line of tap
+          // time against tap number, the phase that line at the last tap: human jitter averages out. Only a missed or
+          // a doubled tap (an interval more than TAP_OFF_MAX from the median) changes nothing and comes back as a
+          // rejected fix { kind: 'tap', rejected: 'uneven', tapError, spreadPct } (the page flashes red); the count
+          // starts again from this tap. A tap set sets tempo and phase and clears the octave hold
           if (this.taps.length && at - this.taps[this.taps.length - 1] > TAP_GAP) this.taps = [];
-          this.taps.push(at); if (this.taps.length > TAPS_KEPT) this.taps.shift();
-          let bpm = tr.bpm || settings.bpm, clears = false;
-          if (this.taps.length >= TAPS_EVEN) {
-            const iv = this.taps.slice(1).map((t, i) => t - this.taps[i]).sort((a, b) => a - b), med = iv[Math.floor(iv.length / 2)];
-            const spreadPct = med > 0 ? 100 * (iv[iv.length - 1] - iv[0]) / med : Infinity;
-            if (!(spreadPct <= TAP_SPREAD_PCT)) {
-              const n = this.taps.length;
+          this.taps.push(at); if (this.taps.length > TAPS_LINE_KEPT) this.taps.shift();
+          const n = this.taps.length;
+          let bpm = tr.bpm || settings.bpm, clears = false, tAt = at, tapSet = null;
+          if (n >= TAPS_EVEN) {
+            const iv = this.taps.slice(1).map((t, i) => t - this.taps[i]);
+            const sorted = iv.slice().sort((a, b) => a - b), med = sorted[Math.floor(sorted.length / 2)];
+            let worst = 0, off = 0;
+            for (const d of iv) { const e = med > 0 ? Math.abs(d - med) / med : Infinity; if (!(e <= worst)) { worst = e; off = d - med; } }
+            if (!(worst <= TAP_OFF_MAX)) {
               this.taps = [at];
-              return { type: 'fix', at, kind: 'tap', rejected: 'uneven', spreadPct: +spreadPct.toFixed(1), taps: n, origin };
+              return { type: 'fix', at, kind: 'tap', rejected: 'uneven', tapError: off > 0 ? 'missed' : 'double',
+                spreadPct: +(100 * worst).toFixed(1), taps: n, origin };
             }
-            bpm = Math.max(30, Math.min(300, 60 / med)); clears = true;
+            const mx = (n - 1) / 2, my = this.taps.reduce((s, t) => s + t, 0) / n;
+            let sxx = 0, sxy = 0;
+            this.taps.forEach((t, k) => { sxx += (k - mx) * (k - mx); sxy += (k - mx) * (t - my); });
+            const slope = sxy / sxx;
+            if (!(slope > 0)) return null;
+            bpm = Math.max(30, Math.min(300, 60 / slope)); clears = true;
+            tAt = my + slope * (n - 1 - mx);   // the line at the last tap
+            tapSet = { taps: n, tapBpm: +bpm.toFixed(2) };
           }
           line.offset = Math.round(line.offset);   // the tap lands a whole beat; an earlier nudge's fraction goes
-          tr.tap({ t: at, bpm });
+          tr.tap({ t: tAt, bpm });
           if (clears) { if (tr.setOctaveLock) tr.setOctaveLock(null); line.hold = null; line.holdRelease = null; }
           to = this.lineBeats(at);
+          if (tapSet) {
+            this.lineRebook();
+            const jump = { type: 'jump', at, kind, fromBeats: from, toBeats: to, origin, ...tapSet };
+            this.jumps.push(jump);
+            if (this.jumps.length > JUMPS_KEPT) this.jumps.shift();
+            return jump;
+          }
         } else return null;
         this.lineRebook();
         const jump = { type: 'jump', at, kind, fromBeats: from, toBeats: to, origin };
@@ -850,7 +876,7 @@
         const m = FIX_KEYS[e.code];
         if (!m) return null;
         if (e.preventDefault) e.preventDefault();
-        return this.fix(m[0], m[1], { origin: 'fix:key' });
+        return this.fix(m[0], m[1], { origin: 'fix:key', eventTs: e.timeStamp });
       },
     };
     // the Shift hand-fix keys on the page (clocks the caller drives itself, timers:false, don't listen)
