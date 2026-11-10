@@ -95,10 +95,11 @@ test('checkBpm: gate rows within 1 % of the corpus BPM, bpmFitCore first, never 
 });
 
 // on the QA box, once the map is in place and the grids carry bpmFit: the real corpus, ids and numbers only.
-// REPORT-ONLY (R15, #188 6736333312): the fields-1 index fit read 4 gate tracks fast, so this prints every row and
-// never fails until the robust-fit converter has two clean runs; then it goes hard again (1 % stays 1 %).
-const REAL_CORPUS_HARD = false;
-test('the real corpus on the box: every gate track with a fitted tempo against 1 % (report-only for now; skips without the map)', (t) => {
+// HARD again (user, 10 Nov 12:15): every test-pr since #195 read "13 checked, 1 skipped, 0 off, 3 grid flagged" on
+// the robust-fit converter (R15, #188 6736333312). Flagged grids stay "grid flagged" and never fail; octaveFree rows
+// fold their fit to the nearest octave of the corpus BPM first; 1 % stays 1 %.
+const REAL_CORPUS_HARD = true;
+test('the real corpus on the box: every gate track with a fitted tempo against 1 % (hard; flagged grids n/a; skips without the map)', (t) => {
   const tracks = A.audioDir();
   if (!fs.existsSync(tracks)) { t.skip('no tracks folder here'); return; }
   const map = C.loadMap(tracks);
@@ -108,6 +109,35 @@ test('the real corpus on the box: every gate track with a fitted tempo against 1
   const bad = checked.filter(x => x.ok === false);
   if (!REAL_CORPUS_HARD) { t.diagnostic(`corpus: report-only (R15): ${bad.length} off, not failing`); return; }
   assert.deepEqual(bad.map(x => `${x.id} ${x.field} ${x.fit} vs ${x.bpm}`), [], 'gate tracks off their corpus BPM by more than 1 %');
+});
+
+test('octave folding: an octaveFree row folds its fit by x2 or /2 to the corpus BPM before the 1 % check; others never fold', () => {
+  assert.deepEqual([C.octaveFold(140, 70), C.octaveFold(70, 140), C.octaveFold(35, 140), C.octaveFold(560, 140), C.octaveFold(1100, 137), C.octaveFold(126, 126)],
+    [0.5, 2, 4, 0.25, 0.25, 1], 'nearest octave, at most two steps');
+  const rows = [
+    { id: 'free-hi', status: 'gate', bpm: 78, octaveFree: true }, { id: 'free-lo', status: 'gate', bpm: 150, octaveFree: true },
+    { id: 'free-ok', status: 'gate', bpm: 120, octaveFree: true }, { id: 'free-off', status: 'gate', bpm: 78, octaveFree: true },
+    { id: 'strict', status: 'gate', bpm: 78, octaveFree: false }, { id: 'free-flag', status: 'gate', bpm: 97, octaveFree: true },
+  ];
+  const resolved = [
+    { id: 'free-hi', grid: { bpmFitCore: 156.4 }, reason: null }, { id: 'free-lo', grid: { bpmFitCore: 75.3 }, reason: null },
+    { id: 'free-ok', grid: { bpmFitCore: 120.5 }, reason: null }, { id: 'free-off', grid: { bpmFitCore: 160 }, reason: null },
+    { id: 'strict', grid: { bpmFitCore: 156.4 }, reason: null }, { id: 'free-flag', grid: { bpmFitCore: 300, gridSuspect: true }, reason: null },
+  ];
+  const res = C.checkBpm(rows, resolved), r = Object.fromEntries(res.map(x => [x.id, x]));
+  assert.equal(r['free-hi'].fold, 0.5); assert.equal(r['free-hi'].ok, true, '156.4 / 2 = 78.2 is within 1 % of 78');
+  assert.equal(r['free-lo'].fold, 2); assert.equal(r['free-lo'].ok, true, '75.3 x 2 = 150.6');
+  assert.equal(r['free-ok'].fold, 1); assert.equal(r['free-ok'].ok, true);
+  assert.equal(r['free-off'].ok, false, '160 / 2 = 80 is 2.6 % off: folding never hides a wrong tempo');
+  assert.equal(r.strict.fold, 1); assert.equal(r.strict.ok, false, 'not octaveFree: never folded');
+  assert.equal(r['free-flag'].flagged, true); assert.equal(r['free-flag'].ok, null, 'a flagged grid stays n/a (R15), folded or not');
+  assert.equal(r['free-hi'].fit, 156.4, 'fit stays the grid number');
+  const lines = C.reportLines(res);
+  assert.equal(lines[0], 'corpus: bpm 6 checked, 0 skipped, 2 off, 1 grid flagged');
+  assert.match(lines.find(l => l.startsWith('corpus: free-hi ')), /^corpus: free-hi bpmFitCore 156\.40 folded \/2 = 78\.20 vs 78 \(0\.26 %\) ok; /);
+  assert.match(lines.find(l => l.startsWith('corpus: free-lo ')), /bpmFitCore 75\.30 folded x2 = 150\.60 vs 150 /);
+  assert.match(lines.find(l => l.startsWith('corpus: strict ')), /^corpus: strict bpmFitCore 156\.40 vs 78 \(100\.51 %\) OFF; /);
+  assert.ok(lines.every(l => /^[\x20-\x7e]+$/.test(l)), 'ASCII lines');
 });
 
 test('R9: the corpus: lines test-pr prints carry ids and numbers, never a stem or file name', () => {
