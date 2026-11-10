@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""Reference beats by a vote of three trackers (#188, the user 10 Nov 17:27, VIZ research's ruling): for fast and
+hard music (the hardcore batch hc-01..hc-11) where Beat This! alone gave 7/11 gridSuspect grids.
+
+Run it through qa/ref-beats-vote.sh (the venv, the GPU lock, the grids). For each corpus track on the box (ids from
+corpus-map.json beside the tracks folder; R9: ids only in every line it prints, never a file name):
+  A  Beat This! frame logits (Audio2Frames, 50 fps) decoded by madmom's DBNBeatTrackingProcessor (min_bpm..max_bpm),
+     the bar positions by DBNDownBeatTrackingProcessor(beats_per_bar=[4]) on the same logits
+  B  madmom RNNBeatProcessor + the same DBN (100 fps)
+  C  essentia RhythmExtractor2013(method='multifeature', minTempo, maxTempo <= 250), with its confidence
+The vote: two of three agree within 1 % after octave folding (x2, /2, x4, /4). The gate: 2-of-3 AND essentia
+confidence >= 1.5 accepts; anything else is flagged for the user's ear. The tempo range is wide (110-260 by default,
+never a hard-coded 140-220: hc-06 130, hc-07 128, hc-01 122.9); a corpus row may set refMinBpm / refMaxBpm, used
+only when the wide vote does not agree.
+
+Outputs, next to the track (beat times only; the audio is read in place, never copied):
+  <stem>.vote.json   every track: each tracker's bpm, beats and seconds, agreement, confidence, accepted / flagged
+  <stem>.vote.beats  every accepted track: time<TAB>beat-in-bar (the .ref.beats format), for comparison
+  <stem>.ref.beats + <stem>.ref.json (tool 'vote')  ONLY for rows with refTool 'vote' in qa/corpus.json and only when
+     accepted; ref_beats.py leaves such tracks alone. The other rows' .ref.* (the 22 tracks before the batch) are never
+     touched: their vote is a report next to their existing grid.
+
+  --selftest   the vote and folding rules on fixed numbers (no audio, no torch): what the node test runs
+"""
+import argparse
+import json
+import math
+import os
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+WIDE = (110.0, 260.0)          # the default range (VIZ research: wide, with the vote and octave folding)
+ESSENTIA_MAX = 250.0           # RhythmExtractor2013's maxTempo limit
+AGREE = 0.01                   # 1 %
+CONF_MIN = 1.5                 # essentia confidence for an accepted grid
+FPS_BT, FPS_MM = 50, 100
+TOOL_VERSION = 1
+NO_ROW = {}
+
+
+# ---------------------------------------------------------------- the rules (pure, tested by --selftest)
+def fold(a, b):
+    """the octave factor (a power of two, x4 at most) that brings b nearest to a, and the error after it"""
+    if not (a and b and a > 0 and b > 0):
+        return None, None
+    k = 2.0 ** max(-2, min(2, round(math.log2(a / b))))
+    return k, abs(a / (b * k) - 1)
+
+
+def vote(bpms):
+    """bpms: {'A': x, 'B': y, 'C': z} (None when a tracker failed) -> the agreeing pairs and the pick.
+    The pick prefers A (Beat This!), then B, then C, among the trackers in an agreeing pair."""
+    names = [n for n in ('A', 'B', 'C') if bpms.get(n)]
+    pairs = []
+    for i, p in enumerate(names):
+        for q in names[i + 1:]:
+            k, err = fold(bpms[p], bpms[q])
+            if err is not None and err <= AGREE:
+                pairs.append({'pair': p + q, 'fold': k, 'errPct': round(100 * err, 3)})
+    agreeing = sorted({c for pr in pairs for c in pr['pair']})
+    pick = next((n for n in ('A', 'B', 'C') if n in agreeing), None)
+    octave_split = any(pr['fold'] != 1 for pr in pairs)   # some agreement needed an octave fold: worth an ear
+    return {'pairs': pairs, 'agree': len(agreeing) >= 2, 'agreeing': agreeing, 'pick': pick, 'octaveSplit': octave_split}
+
+
+def verdict(v, conf):
+    """accepted only when two trackers agree AND essentia is confident; the reason otherwise"""
+    if not v['agree']:
+        return False, 'no two trackers agree within 1 % (after octave folding)'
+    if conf is None or conf < CONF_MIN:
+        return False, f'essentia confidence {conf if conf is None else round(conf, 2)} < {CONF_MIN}'
+    return True, None
+
+
+def bpm_of(beats):
+    """the median-interval tempo of a beat list (robust to a few missed or extra beats)"""
+    if beats is None or len(beats) < 8:
+        return None
+    ivs = sorted(b - a for a, b in zip(beats[:-1], beats[1:]) if b > a)
+    med = ivs[len(ivs) // 2] if ivs else 0
+    return round(60.0 / med, 3) if med > 0 else None
+
+
+def positions(beats, downbeats, tol=0.05):
+    """beat-in-bar for each beat: 1 at a beat within tol s of a downbeat, then counting on (irregular bars kept)"""
+    out, pos, j = [], 0, 0
+    for t in beats:
+        while j < len(downbeats) and downbeats[j] < t - tol:
+            j += 1
+        if j < len(downbeats) and abs(downbeats[j] - t) <= tol:
+            pos = 1
+        else:
+            pos = pos + 1 if pos else 1
+        out.append(pos)
+    return out
+
+
+def selftest():
+    cases = []
+    # a hardcore track: Beat This! and madmom at 200, essentia at 100 (folded x2): all three agree
+    v = vote({'A': 200.0, 'B': 199.6, 'C': 100.1}); cases.append(('octave fold', v['agree'] and v['pick'] == 'A' and v['octaveSplit'] is True and len(v['pairs']) == 3))
+    v = vote({'A': 200.0, 'B': 199.6, 'C': 200.3}); cases.append(('same octave', v['agree'] and v['octaveSplit'] is False))
+    # 87.7 (the half DBN range let in) vs 175.5: folds
+    v = vote({'A': 87.7, 'B': 175.5, 'C': None}); cases.append(('half folds', v['agree'] and v['pick'] == 'A' and v['octaveSplit'] is True))
+    # 1.2 % apart: no agreement
+    v = vote({'A': 200.0, 'B': 202.4, 'C': 150.0}); cases.append(('1.2 % is out', not v['agree']))
+    # only B and C agree: B is the pick
+    v = vote({'A': 133.0, 'B': 180.0, 'C': 180.9}); cases.append(('B and C', v['agree'] and v['pick'] == 'B' and v['pairs'][0]['pair'] == 'BC'))
+    # 4:3 is not an octave: no agreement
+    v = vote({'A': 136.0, 'B': 181.3, 'C': None}); cases.append(('4:3 is not folded', not v['agree']))
+    ok, why = verdict(vote({'A': 200.0, 'B': 200.5, 'C': 200.2}), 1.2); cases.append(('low confidence flags', not ok and 'confidence' in why))
+    ok, why = verdict(vote({'A': 200.0, 'B': 200.5, 'C': 200.2}), 3.1); cases.append(('accepted', ok and why is None))
+    cases.append(('bpm_of', bpm_of([i * 0.3 for i in range(20)]) == 200.0))
+    cases.append(('positions', positions([0, .3, .6, .9, 1.2, 1.5], [0, 1.2]) == [1, 2, 3, 4, 1, 2]))
+    cases.append(('wide range', WIDE == (110.0, 260.0) and ESSENTIA_MAX == 250.0))
+    bad = [n for n, ok in cases if not ok]
+    print(json.dumps({'selftest': 'ok' if not bad else 'FAIL', 'cases': len(cases), 'failed': bad}))
+    return 1 if bad else 0
+
+
+# ---------------------------------------------------------------- the trackers (heavy imports inside)
+class Trackers:
+    def __init__(self, model):
+        import numpy as np
+        import soxr
+        from beat_this.inference import Audio2Frames
+        from madmom.features.beats import RNNBeatProcessor, DBNBeatTrackingProcessor
+        from madmom.features.downbeats import DBNDownBeatTrackingProcessor
+        import essentia.standard as es
+        self.np, self.soxr, self.es = np, soxr, es
+        self.DBN, self.DDBN = DBNBeatTrackingProcessor, DBNDownBeatTrackingProcessor
+        t = time.time()
+        self.a2f = Audio2Frames(checkpoint_path=model, device='cpu')
+        self.rnn = RNNBeatProcessor()
+        self.loadS = round(time.time() - t, 1)
+
+    def activations(self, mono, sr):
+        """the expensive part, once per track: Beat This! logits (A) and madmom's RNN activation (B), 44.1 kHz audio (C)"""
+        np = self.np
+        t = time.time()
+        bl, dl = self.a2f(mono, sr)
+        sig = lambda x: 1.0 / (1.0 + np.exp(-x.cpu().numpy().astype(np.float64)))
+        beat, down = sig(bl), sig(dl)
+        tA = time.time() - t
+        t = time.time()
+        a44 = mono if sr == 44100 else self.soxr.resample(mono, sr, 44100).astype(np.float32)
+        from madmom.audio.signal import Signal
+        act = self.rnn(Signal(a44, sample_rate=44100, num_channels=1))
+        tB = time.time() - t
+        return {'beat': beat, 'down': down, 'act': act, 'a44': np.ascontiguousarray(a44, dtype=np.float32), 'tA': tA, 'tB': tB}
+
+    def decode(self, acts, lo, hi):
+        np = self.np
+        out = {}
+        t = time.time()
+        a = self.DBN(min_bpm=lo, max_bpm=hi, fps=FPS_BT)(acts['beat'])
+        both = np.stack([np.clip(acts['beat'] - acts['down'], 0, 1), acts['down']], axis=1)
+        d = self.DDBN(beats_per_bar=[4], min_bpm=lo, max_bpm=hi, fps=FPS_BT)(both)
+        downs = [float(r[0]) for r in d if int(r[1]) == 1]
+        out['A'] = {'beats': [float(x) for x in a], 'downbeats': downs, 'seconds': round(acts['tA'] + time.time() - t, 1)}
+        t = time.time()
+        b = self.DBN(min_bpm=lo, max_bpm=hi, fps=FPS_MM)(acts['act'])
+        out['B'] = {'beats': [float(x) for x in b], 'seconds': round(acts['tB'] + time.time() - t, 1)}
+        t = time.time()
+        bpm, ticks, conf, _, _ = self.es.RhythmExtractor2013(method='multifeature', minTempo=int(max(40, min(lo, 180))),
+                                                             maxTempo=int(min(ESSENTIA_MAX, max(hi, 60))))(acts['a44'])
+        out['C'] = {'beats': [float(x) for x in ticks], 'essentiaBpm': round(float(bpm), 3), 'confidence': round(float(conf), 3),
+                    'seconds': round(time.time() - t, 1)}
+        for k in ('A', 'B'):
+            out[k]['bpm'] = bpm_of(out[k]['beats'])
+        out['C']['bpm'] = out['C']['essentiaBpm'] or bpm_of(out['C']['beats'])
+        return out
+
+
+def write_beats(path, beats, pos):
+    with open(path + '.tmp', 'w') as f:
+        for t, p in zip(beats, pos):
+            f.write(f'{t:.3f}\t{p}\n')
+    os.replace(path + '.tmp', path)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('--dir', help='the private tracks folder (QA_AUDIO_DIR)')
+    ap.add_argument('--model', default='final0')
+    ap.add_argument('--force', action='store_true', help='vote again on tracks whose .vote.json is up to date')
+    ap.add_argument('--selftest', action='store_true')
+    a = ap.parse_args()
+    if a.selftest:
+        return selftest()
+    if not a.dir:
+        ap.error('--dir is required')
+
+    from ref_beats import source_tracks, sha256, version
+    with open(os.path.join(HERE, 'corpus.json')) as f:
+        rows = {r['id']: r for r in json.load(f)}
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(a.dir)), 'corpus-map.json')) as f:
+            id_of = {stem: i for i, stem in json.load(f)['tracks'].items()}
+    except (OSError, ValueError, KeyError):
+        print('vote: no corpus-map.json beside the tracks folder: nothing to do (ids only, R9)')
+        return 1
+    tracks = [(id_of[s], s, p) for s, p, _ in source_tracks(a.dir) if s in id_of]
+    # the vote rows first (the hardcore batch), then the rest as a report
+    tracks.sort(key=lambda x: (rows.get(x[0], NO_ROW).get('refTool') != 'vote', x[0]))
+    n_vote = sum(1 for t in tracks if rows.get(t[0], NO_ROW).get('refTool') == 'vote')
+    n_unmapped = len(source_tracks(a.dir)) - len(tracks)
+    print(f'vote: {len(tracks)} corpus tracks ({n_vote} vote rows), {n_unmapped} source tracks not in the map (skipped)')
+
+    import numpy as np
+    import soundfile as sf
+    trk, summary = None, []
+    for tid, stem, path in tracks:
+        row = rows.get(tid, {})
+        base = os.path.join(a.dir, stem)
+        digest = sha256(path)
+        if not a.force and os.path.isfile(base + '.vote.json'):
+            try:
+                old = json.load(open(base + '.vote.json'))
+                if old.get('sha256') == digest and old.get('toolVersion') == TOOL_VERSION and old.get('model') == a.model:
+                    print(f'vote: {tid} up to date ({"accepted" if old.get("accepted") else "flagged"}), skipped')
+                    summary.append(old)
+                    continue
+            except (OSError, ValueError):
+                pass
+        try:
+            sig, sr = sf.read(path, dtype='float32', always_2d=True)
+        except Exception as e:
+            print(f'vote: {tid} cannot be decoded ({type(e).__name__}), skipped')
+            continue
+        mono = np.ascontiguousarray(sig.mean(axis=1))
+        if trk is None:
+            trk = Trackers(a.model)
+            print(f'vote: models loaded in {trk.loadS} s')
+        acts = trk.activations(mono, sr)
+        rng, rng_name = WIDE, 'wide'
+        res = trk.decode(acts, *rng)
+        bpms = {k: res[k]['bpm'] for k in ('A', 'B', 'C')}
+        v = vote(bpms)
+        if not v['agree'] and row.get('refMinBpm') and row.get('refMaxBpm'):   # the per-id range, only on disagreement
+            rng, rng_name = (float(row['refMinBpm']), float(row['refMaxBpm'])), 'override'
+            res = trk.decode(acts, *rng)
+            bpms = {k: res[k]['bpm'] for k in ('A', 'B', 'C')}
+            v = vote(bpms)
+        conf = res['C']['confidence']
+        ok, why = verdict(v, conf)
+        pick = v['pick']
+        grid_beats = res[pick]['beats'] if (ok and pick) else []
+        pos = positions(grid_beats, res['A']['downbeats']) if grid_beats else []
+        seconds = round(len(mono) / sr, 2)
+        meta = {
+            'id': tid, 'toolVersion': TOOL_VERSION, 'model': a.model, 'sha256': digest, 'seconds': seconds,
+            'range': {'name': rng_name, 'minBpm': rng[0], 'maxBpm': rng[1], 'essentiaMax': ESSENTIA_MAX},
+            'trackers': {
+                'A': {'name': 'beat-this+dbn', 'bpm': bpms['A'], 'beats': len(res['A']['beats']), 'downbeats': len(res['A']['downbeats']), 'seconds': res['A']['seconds']},
+                'B': {'name': 'madmom-rnn+dbn', 'bpm': bpms['B'], 'beats': len(res['B']['beats']), 'seconds': res['B']['seconds']},
+                'C': {'name': 'essentia-multifeature', 'bpm': bpms['C'], 'beats': len(res['C']['beats']), 'confidence': conf, 'seconds': res['C']['seconds']},
+            },
+            'vote': v, 'accepted': ok, 'flagged': None if ok else why, 'pick': pick if ok else None,
+            'bpm': bpms[pick] if (ok and pick) else None, 'corpusBpm': row.get('bpm'), 'refTool': row.get('refTool'),
+            'versions': {k: version(k) for k in ('beat-this', 'madmom', 'madmom-prebuilt', 'essentia', 'torch', 'numpy')},
+            'created': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        }
+        if ok:
+            write_beats(base + '.vote.beats', grid_beats, pos)
+            if row.get('refTool') == 'vote':   # only the batch's rows get a new reference grid
+                write_beats(base + '.ref.beats', grid_beats, pos)
+                ref = {'track': os.path.basename(path), 'sha256': digest, 'tool': 'vote', 'model': a.model, 'pick': pick,
+                       'beats': len(grid_beats), 'downbeats': sum(1 for p in pos if p == 1), 'medianBpm': bpms[pick],
+                       'seconds': seconds, 'vote': os.path.basename(base) + '.vote.json', 'created': meta['created']}
+                with open(base + '.ref.json.tmp', 'w') as f:
+                    json.dump(ref, f, indent=1)
+                os.replace(base + '.ref.json.tmp', base + '.ref.json')
+                meta['wroteRef'] = True
+        # the earlier rows: the vote next to their existing grid's fitted tempo (the grid itself is not touched)
+        try:
+            g = json.load(open(base + '.beatgrid.json'))
+            fit = g.get('bpmFitCore') or g.get('bpmFit')
+            meta['gridBpm'] = round(float(fit), 3) if fit else None
+            meta['gridSuspect'] = g.get('gridSuspect')
+            if fit and meta['bpm']:
+                k, err = fold(float(fit), meta['bpm'])
+                meta['vsGrid'] = {'fold': k, 'diffPct': round(100 * err, 3)}
+        except (OSError, ValueError, TypeError):
+            meta['gridBpm'] = None
+        with open(base + '.vote.json.tmp', 'w') as f:
+            json.dump(meta, f, indent=1)
+        os.replace(base + '.vote.json.tmp', base + '.vote.json')
+        summary.append(meta)
+        T = meta['trackers']
+        print(f'vote: {tid} {seconds:.0f} s | A {T["A"]["bpm"]} ({T["A"]["seconds"]} s) B {T["B"]["bpm"]} ({T["B"]["seconds"]} s) '
+              f'C {T["C"]["bpm"]} conf {conf} ({T["C"]["seconds"]} s) | agree {"+".join(p["pair"] for p in v["pairs"]) or "none"} '
+              f'{"(octave split)" if v["octaveSplit"] else ""}| range {rng_name} | '
+              f'{"ACCEPTED " + str(meta["bpm"]) + (" -> .ref.beats" if meta.get("wroteRef") else " (report)") if ok else "FLAGGED: " + why}'
+              f' | corpus {row.get("bpm")} | grid {meta.get("gridBpm")} (suspect {meta.get("gridSuspect")}) vs vote {meta.get("vsGrid")}')
+
+    # the runtime of one ~5-minute track, three ways
+    timed = [m for m in summary if m.get('trackers') and m.get('seconds')]
+    if timed:
+        m = min(timed, key=lambda x: abs(x['seconds'] - 300))
+        T = m['trackers']
+        print(f'vote: runtime on {m["id"]} ({m["seconds"]:.0f} s of audio): A beat-this+dbn {T["A"]["seconds"]} s, '
+              f'B madmom {T["B"]["seconds"]} s, C essentia {T["C"]["seconds"]} s')
+    acc = sum(1 for m in summary if m.get('accepted'))
+    print(f'vote: {acc} accepted, {len(summary) - acc} flagged of {len(summary)}')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

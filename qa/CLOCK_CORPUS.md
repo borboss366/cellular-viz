@@ -85,6 +85,29 @@ Per cut window the truth is a least-squares straight grid through the reference 
 
 Real transitions, EQ moves, breakdowns. 90 % or more of played time inside the gate, at most one hand fix per transition. The number the party is judged on.
 
+## The hardcore batch (hc-01 … hc-11, report-only, slot T14)
+
+The user's hardcore tracks, uploaded 10 Nov. Their ids map to files in the box's own corpus-map.json; this file names neither artists nor titles for them yet. The first reference grids (Beat This! alone, 18:20) were gridSuspect on 7 of 11, so these rows take their reference from **the three-tracker vote** (`qa/ref-beats-vote.sh`, `refTool: "vote"` in corpus.json):
+
+- **A** Beat This! frame logits decoded by madmom's DBN beat tracker; bar positions from madmom's DBN downbeat tracker (4 beats a bar) on the same logits. **B** madmom's RNN beat activation and the same DBN. **C** essentia's RhythmExtractor2013, multifeature, with its confidence.
+- **Range:** wide, 110–260 BPM (essentia stops at 250), never a fixed 140–220: hc-06 (~130), hc-07 (~128) and hc-01 (~122.9) sit below that band. A row may set `refMinBpm` / `refMaxBpm`; the vote uses them only when the wide vote does not agree.
+- **Accepted** when two of three agree within 1 % after octave folding **and** essentia's confidence is at least 1.5; otherwise **flagged** for the user's ear. gridSuspect stays a reported number.
+- The vote also runs, as a report, on the 22 earlier tracks: their `.ref.*` files and grids are never touched by it.
+
+| Id | BPM | Status | Reference |
+|---|---|---|---|
+| hc-01 | ~122.9 (user) | report-only | vote |
+| hc-02 | pending | report-only | vote |
+| hc-03 | pending | report-only | vote |
+| hc-04 | pending | report-only | vote |
+| hc-05 | pending | report-only | vote |
+| hc-06 | ~130 (user) | report-only | vote |
+| hc-07 | ~128 (user) | report-only | vote |
+| hc-08 | pending | report-only | vote |
+| hc-09 | pending | report-only | vote |
+| hc-10 | pending | report-only | vote |
+| hc-11 | pending | report-only | vote |
+
 ## Reading the corpus
 
 Per track: the share of played time inside the gate (±35 ms), for the tracker alone (the shadow) and for the conducted clock, plus p50, p90 and p95 of the error as reported numbers. The corpus number: how many tracks need no hand fix, and how many fixes the rest needed.
