@@ -25,6 +25,9 @@ Outputs, next to the track (beat times only; the audio is read in place, never c
      touched: their vote is a report next to their existing grid.
 
   --selftest   the vote and folding rules on fixed numbers (no audio, no torch): what the node test runs
+  --trackers 2 DEGRADED (ref-beats-vote.sh passes it when madmom does not import): A and B both need madmom (its DBN),
+     so they are off; A0 beat-this-minimal (Beat This!'s own peak picking: no DBN, no tempo range, its downbeats give
+     the meter) and C essentia vote, and both must agree. Every .vote.json and line says so; no .ref.beats is written.
 """
 import argparse
 import json
@@ -45,6 +48,8 @@ WIN_BARS = 8                   # the tempo curve's window
 FPS_BT, FPS_MM = 50, 100
 TOOL_VERSION = 2   # 2: range 60-260, meters 2-7, octave candidates, tempo curve (the user 17:39)
 NO_ROW = {}
+SETS = {3: 'A+B+C', 2: 'A0+C (degraded: no madmom)'}
+NAMES = {'A': 'beat-this+dbn', 'A0': 'beat-this-minimal', 'B': 'madmom-rnn+dbn', 'C': 'essentia-multifeature'}
 
 
 # ---------------------------------------------------------------- the rules (pure, tested by --selftest)
@@ -172,25 +177,41 @@ def selftest():
     cases.append(('bpm_of', bpm_of([i * 0.3 for i in range(20)]) == 200.0))
     cases.append(('positions', positions([0, .3, .6, .9, 1.2, 1.5], [0, 1.2]) == [1, 2, 3, 4, 1, 2]))
     cases.append(('wide range', WIDE == (60.0, 260.0) and ESSENTIA_MAX == 250.0 and METERS == [2, 3, 4, 5, 6, 7]))
+    # degraded (no madmom): A0 sits in A's slot and B is None, so the two left must agree (2 of 2)
+    v = vote({'A': 140.0, 'B': None, 'C': 140.6}); cases.append(('degraded: 2 of 2 agree', v['agree'] and v['pick'] == 'A' and v['pairs'][0]['pair'] == 'AC'))
+    v = vote({'A': 140.0, 'B': None, 'C': 105.0}); cases.append(('degraded: 2 of 2 disagree flags', not v['agree'] and not verdict(v, 4.0)[0]))
     bad = [n for n, ok in cases if not ok]
     print(json.dumps({'selftest': 'ok' if not bad else 'FAIL', 'cases': len(cases), 'failed': bad}))
     return 1 if bad else 0
 
 
 # ---------------------------------------------------------------- the trackers (heavy imports inside)
+def madmom_error():
+    """None when madmom (beats + downbeats) imports, else the short reason"""
+    try:
+        import madmom.features.beats, madmom.features.downbeats  # noqa: F401
+        return None
+    except Exception as e:
+        return f'{type(e).__name__}: {str(e)[:160]}'
+
+
 class Trackers:
-    def __init__(self, model):
+    def __init__(self, model, n=3):
         import numpy as np
         import soxr
         from beat_this.inference import Audio2Frames
-        from madmom.features.beats import RNNBeatProcessor, DBNBeatTrackingProcessor
-        from madmom.features.downbeats import DBNDownBeatTrackingProcessor
         import essentia.standard as es
-        self.np, self.soxr, self.es = np, soxr, es
-        self.DBN, self.DDBN = DBNBeatTrackingProcessor, DBNDownBeatTrackingProcessor
+        self.np, self.soxr, self.es, self.n = np, soxr, es, n
         t = time.time()
         self.a2f = Audio2Frames(checkpoint_path=model, device='cpu')
-        self.rnn = RNNBeatProcessor()
+        if n == 3:
+            from madmom.features.beats import RNNBeatProcessor, DBNBeatTrackingProcessor
+            from madmom.features.downbeats import DBNDownBeatTrackingProcessor
+            self.DBN, self.DDBN = DBNBeatTrackingProcessor, DBNDownBeatTrackingProcessor
+            self.rnn = RNNBeatProcessor()
+        else:
+            from beat_this.model.postprocessor import Postprocessor   # 'minimal' needs no madmom
+            self.minimal = Postprocessor(type='minimal', fps=FPS_BT)
         self.loadS = round(time.time() - t, 1)
 
     def activations(self, mono, sr):
@@ -203,15 +224,39 @@ class Trackers:
         tA = time.time() - t
         t = time.time()
         a44 = mono if sr == 44100 else self.soxr.resample(mono, sr, 44100).astype(np.float32)
-        from madmom.audio.signal import Signal
-        act = self.rnn(Signal(a44, sample_rate=44100, num_channels=1))
+        act = None
+        if self.n == 3:
+            from madmom.audio.signal import Signal
+            act = self.rnn(Signal(a44, sample_rate=44100, num_channels=1))
         tB = time.time() - t
-        return {'beat': beat, 'down': down, 'act': act, 'a44': np.ascontiguousarray(a44, dtype=np.float32), 'tA': tA, 'tB': tB}
+        return {'beat': beat, 'down': down, 'bl': bl, 'dl': dl, 'act': act, 'a44': np.ascontiguousarray(a44, dtype=np.float32), 'tA': tA, 'tB': tB}
 
     def decode(self, acts, lo, hi):
-        np = self.np
         out = {}
         t = time.time()
+        if self.n != 3:
+            # DEGRADED: Beat This!'s own peak picking in A's slot (no range), no B
+            a, d = self.minimal(acts['bl'], acts['dl'])
+            a, downs = [float(x) for x in a], [float(x) for x in d]
+            meter, bars = meter_of(list(zip(a, positions(a, downs))))
+            out['A'] = {'beats': a, 'downbeats': downs, 'meter': meter, 'bars': bars, 'seconds': round(acts['tA'] + time.time() - t, 1)}
+            out['B'] = None
+        else:
+            out.update(self._dbn(acts, lo, hi, t))
+        t = time.time()
+        bpm, ticks, conf, _, _ = self.es.RhythmExtractor2013(method='multifeature', minTempo=int(max(40, min(lo, 180))),
+                                                             maxTempo=int(min(ESSENTIA_MAX, max(hi, 60))))(acts['a44'])
+        out['C'] = {'beats': [float(x) for x in ticks], 'essentiaBpm': round(float(bpm), 3), 'confidence': round(float(conf), 3),
+                    'seconds': round(time.time() - t, 1)}
+        for k in ('A', 'B'):
+            if out[k]:
+                out[k]['bpm'] = bpm_of(out[k]['beats'])
+        out['C']['bpm'] = out['C']['essentiaBpm'] or bpm_of(out['C']['beats'])
+        return out
+
+    def _dbn(self, acts, lo, hi, t):
+        np = self.np
+        out = {}
         a = self.DBN(min_bpm=lo, max_bpm=hi, fps=FPS_BT)(acts['beat'])
         both = np.stack([np.clip(acts['beat'] - acts['down'], 0, 1), acts['down']], axis=1)
         d = self.DDBN(beats_per_bar=METERS, min_bpm=lo, max_bpm=hi, fps=FPS_BT)(both)
@@ -222,15 +267,13 @@ class Trackers:
         t = time.time()
         b = self.DBN(min_bpm=lo, max_bpm=hi, fps=FPS_MM)(acts['act'])
         out['B'] = {'beats': [float(x) for x in b], 'seconds': round(acts['tB'] + time.time() - t, 1)}
-        t = time.time()
-        bpm, ticks, conf, _, _ = self.es.RhythmExtractor2013(method='multifeature', minTempo=int(max(40, min(lo, 180))),
-                                                             maxTempo=int(min(ESSENTIA_MAX, max(hi, 60))))(acts['a44'])
-        out['C'] = {'beats': [float(x) for x in ticks], 'essentiaBpm': round(float(bpm), 3), 'confidence': round(float(conf), 3),
-                    'seconds': round(time.time() - t, 1)}
-        for k in ('A', 'B'):
-            out[k]['bpm'] = bpm_of(out[k]['beats'])
-        out['C']['bpm'] = out['C']['essentiaBpm'] or bpm_of(out['C']['beats'])
         return out
+
+
+def writes_ref(row, accepted, degraded):
+    """a new <stem>.ref.beats only for a refTool 'vote' row (the hc batch), only when accepted, never from a DEGRADED
+    (2-tracker) vote; every other row keeps its old reference (the vote is a report next to it)"""
+    return bool(accepted) and not degraded and (row or {}).get('refTool') == 'vote'
 
 
 def write_beats(path, beats, pos):
@@ -246,11 +289,22 @@ def main():
     ap.add_argument('--model', default='final0')
     ap.add_argument('--force', action='store_true', help='vote again on tracks whose .vote.json is up to date')
     ap.add_argument('--selftest', action='store_true')
+    ap.add_argument('--trackers', type=int, choices=(2, 3), default=3, help='2: DEGRADED, no madmom (A0 + C)')
     a = ap.parse_args()
     if a.selftest:
         return selftest()
     if not a.dir:
         ap.error('--dir is required')
+    n_trk = a.trackers
+    if n_trk == 3:
+        err = madmom_error()
+        if err:
+            print(f'vote: madmom does not import ({err}): DEGRADED to 2 trackers')
+            n_trk = 2
+    tset = SETS[n_trk]
+    degraded = None if n_trk == 3 else ('no madmom: A beat-this+dbn and B madmom-rnn+dbn are off; '
+                                        'A0 beat-this-minimal (no DBN, no range) + C essentia must both agree; no .ref.beats')
+    print(f'vote: trackers {tset}' + (f' | DEGRADED: {degraded}' if degraded else ''))
 
     from ref_beats import source_tracks, sha256, version
     with open(os.path.join(HERE, 'corpus.json')) as f:
@@ -278,7 +332,8 @@ def main():
         if not a.force and os.path.isfile(base + '.vote.json'):
             try:
                 old = json.load(open(base + '.vote.json'))
-                if old.get('sha256') == digest and old.get('toolVersion') == TOOL_VERSION and old.get('model') == a.model:
+                if (old.get('sha256') == digest and old.get('toolVersion') == TOOL_VERSION and old.get('model') == a.model
+                        and old.get('trackerSet', SETS[3]) == tset):
                     print(f'vote: {tid} up to date ({"accepted" if old.get("accepted") else "flagged"}), skipped')
                     summary.append(old)
                     continue
@@ -291,17 +346,17 @@ def main():
             continue
         mono = np.ascontiguousarray(sig.mean(axis=1))
         if trk is None:
-            trk = Trackers(a.model)
+            trk = Trackers(a.model, n_trk)
             print(f'vote: models loaded in {trk.loadS} s')
         acts = trk.activations(mono, sr)
         rng, rng_name = WIDE, 'wide'
         res = trk.decode(acts, *rng)
-        bpms = {k: res[k]['bpm'] for k in ('A', 'B', 'C')}
+        bpms = {k: (res[k] or {}).get('bpm') for k in ('A', 'B', 'C')}
         v = vote(bpms)
         if not v['agree'] and row.get('refMinBpm') and row.get('refMaxBpm'):   # the per-id range, only on disagreement
             rng, rng_name = (float(row['refMinBpm']), float(row['refMaxBpm'])), 'override'
             res = trk.decode(acts, *rng)
-            bpms = {k: res[k]['bpm'] for k in ('A', 'B', 'C')}
+            bpms = {k: (res[k] or {}).get('bpm') for k in ('A', 'B', 'C')}
             v = vote(bpms)
         conf = res['C']['confidence']
         ok, why = verdict(v, conf)
@@ -314,10 +369,12 @@ def main():
         curve = tempo_curve(grid_beats or res['A']['beats'], meter or 4)
         meta = {
             'id': tid, 'toolVersion': TOOL_VERSION, 'model': a.model, 'sha256': digest, 'seconds': seconds,
+            'trackerSet': tset, 'degraded': degraded,
             'range': {'name': rng_name, 'minBpm': rng[0], 'maxBpm': rng[1], 'essentiaMax': ESSENTIA_MAX},
             'trackers': {
-                'A': {'name': 'beat-this+dbn', 'bpm': bpms['A'], 'beats': len(res['A']['beats']), 'downbeats': len(res['A']['downbeats']), 'seconds': res['A']['seconds']},
-                'B': {'name': 'madmom-rnn+dbn', 'bpm': bpms['B'], 'beats': len(res['B']['beats']), 'seconds': res['B']['seconds']},
+                'A': {'name': NAMES['A' if n_trk == 3 else 'A0'], 'bpm': bpms['A'], 'beats': len(res['A']['beats']), 'downbeats': len(res['A']['downbeats']), 'seconds': res['A']['seconds']},
+                'B': ({'name': NAMES['B'], 'bpm': bpms['B'], 'beats': len(res['B']['beats']), 'seconds': res['B']['seconds']} if res['B']
+                      else {'name': NAMES['B'], 'off': 'madmom does not import', 'bpm': None, 'seconds': None}),
                 'C': {'name': 'essentia-multifeature', 'bpm': bpms['C'], 'beats': len(res['C']['beats']), 'confidence': conf, 'seconds': res['C']['seconds']},
             },
             'meter': meter, 'barLengths': res['A'].get('bars'), 'tempoCurve': curve, 'candidates': v['candidates'],
@@ -328,7 +385,7 @@ def main():
         }
         if ok:
             write_beats(base + '.vote.beats', grid_beats, pos)
-            if row.get('refTool') == 'vote':   # only the batch's rows get a new reference grid
+            if writes_ref(row, ok, degraded):   # only the batch's rows, accepted, 3 trackers
                 write_beats(base + '.ref.beats', grid_beats, pos)
                 ref = {'track': os.path.basename(path), 'sha256': digest, 'tool': 'vote', 'model': a.model, 'pick': pick,
                        'beats': len(grid_beats), 'downbeats': sum(1 for p in pos if p == 1), 'medianBpm': bpms[pick],
@@ -353,7 +410,8 @@ def main():
         os.replace(base + '.vote.json.tmp', base + '.vote.json')
         summary.append(meta)
         T = meta['trackers']
-        print(f'vote: {tid} {seconds:.0f} s | A {T["A"]["bpm"]} ({T["A"]["seconds"]} s) B {T["B"]["bpm"]} ({T["B"]["seconds"]} s) '
+        print(f'vote: {tid} {seconds:.0f} s | {"DEGRADED A0+C | " if degraded else ""}'
+              f'A {T["A"]["bpm"]} ({T["A"]["seconds"]} s) B {T["B"]["bpm"] if res["B"] else "off"} ({T["B"]["seconds"]} s) '
               f'C {T["C"]["bpm"]} conf {conf} ({T["C"]["seconds"]} s) | agree {"+".join(p["pair"] for p in v["pairs"]) or "none"} '
               f'{"(octave split: " + " / ".join(str(c) for c in v["candidates"]) + ") " if v["octaveSplit"] else ""}| range {rng_name} | '
               f'meter {meter} {res["A"].get("bars")} | tempo 8-bar p5/p50/p95 '
@@ -366,10 +424,11 @@ def main():
     if timed:
         m = min(timed, key=lambda x: abs(x['seconds'] - 300))
         T = m['trackers']
-        print(f'vote: runtime on {m["id"]} ({m["seconds"]:.0f} s of audio): A beat-this+dbn {T["A"]["seconds"]} s, '
-              f'B madmom {T["B"]["seconds"]} s, C essentia {T["C"]["seconds"]} s')
+        print(f'vote: runtime on {m["id"]} ({m["seconds"]:.0f} s of audio): A {T["A"]["name"]} {T["A"]["seconds"]} s, '
+              f'B madmom {T["B"]["seconds"] if T["B"].get("seconds") is not None else "off"} s, C essentia {T["C"]["seconds"]} s')
     acc = sum(1 for m in summary if m.get('accepted'))
-    print(f'vote: {acc} accepted, {len(summary) - acc} flagged of {len(summary)}')
+    print(f'vote: {acc} accepted, {len(summary) - acc} flagged of {len(summary)} | trackers {tset}'
+          + (f' | DEGRADED: {degraded}' if degraded else ''))
     return 0
 
 

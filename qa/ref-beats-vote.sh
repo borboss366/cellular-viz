@@ -10,7 +10,9 @@
 #   1. the first time: a venv of its own, $DATA/.venv-vote (the old ref-beats.sh venv, .venv-beatthis, is not
 #      touched, so the 22 earlier tracks' tool stays exactly as it was), with CPU torch, beat-this, essentia, soundfile,
 #      soxr, numpy < 2 and madmom: from git (CPJKU/madmom) when this container has git and a C compiler, else the
-#      prebuilt wheel madmom-prebuilt (cp311 manylinux, no compiler needed). It says which one it used.
+#      prebuilt wheel madmom-prebuilt (cp311 manylinux, no compiler needed). It says which one it used. The prebuilt
+#      wheel's metadata is fixed inside the venv (mm_fix), then `import madmom, essentia, beat_this` is checked before
+#      any voting: no Beat This! or essentia stops the run; no madmom runs it DEGRADED with 2 trackers (A0 + C).
 #   2. the vote on every corpus track on the box (ids from corpus-map.json), the rows with refTool "vote" in
 #      qa/corpus.json first (hc-01..hc-11); a track whose .vote.json matches its sha256 is skipped. Accepted vote rows
 #      get a new <stem>.ref.beats (tool 'vote'); every other row only gets <stem>.vote.json / .vote.beats as a report.
@@ -54,14 +56,69 @@ EOF
 fi
 PIP() { "$PY" -m pip install -q "$@"; }
 
+# ---- madmom's metadata (box, 10 Nov): madmom/__init__.py sets __version__ = distribution("madmom").version, but the
+#      prebuilt wheel registers itself as madmom-prebuilt (madmom_prebuilt-*.dist-info), so `import madmom` fails with
+#      PackageNotFoundError. Inside .venv-vote only: a minimal madmom-<version>.dist-info (METADATA, Name: madmom) beside
+#      the package; if the import still fails, that one line in the venv's madmom/__init__.py gets a try/except.
+#      Idempotent; a no-op when madmom is not installed, already resolves (a git build), or sits outside the venv.
+mm_fix() {
+  "$PY" - <<'EOF' || echo "madmom-fix: failed (see above); the check below decides"
+import importlib, importlib.util, os, re, sys
+from importlib import metadata
+spec = importlib.util.find_spec('madmom')
+if spec is None or not spec.submodule_search_locations:
+    sys.exit(0)
+pkg = list(spec.submodule_search_locations)[0]
+site = os.path.dirname(pkg)
+if not os.path.realpath(site).startswith(os.path.realpath(sys.prefix) + os.sep):
+    print('madmom-fix: madmom is outside ' + sys.prefix + ', left alone')
+    sys.exit(0)
+try:
+    metadata.distribution('madmom')
+    sys.exit(0)
+except metadata.PackageNotFoundError:
+    pass
+try:
+    ver = metadata.version('madmom-prebuilt')
+except metadata.PackageNotFoundError:
+    ver = '0.17.post1'
+d = os.path.join(site, 'madmom-' + ver + '.dist-info')
+os.makedirs(d, exist_ok=True)
+with open(os.path.join(d, 'METADATA'), 'w') as f:
+    f.write('Metadata-Version: 2.1\nName: madmom\nVersion: ' + ver + '\nSummary: metadata shim for madmom-prebuilt (cellular-viz qa/ref-beats-vote.sh)\n')
+with open(os.path.join(d, 'INSTALLER'), 'w') as f:
+    f.write('ref-beats-vote.sh\n')
+importlib.invalidate_caches()
+try:
+    metadata.distribution('madmom')
+    print('madmom-fix: wrote ' + os.path.basename(d) + ' (Name: madmom) beside the prebuilt wheel')
+    sys.exit(0)
+except metadata.PackageNotFoundError:
+    pass
+init = os.path.join(pkg, '__init__.py')
+src = open(init).read()
+line = re.compile(r'^__version__ = distribution\(["\']madmom["\']\)\s*\.version[ \t]*$', re.M)
+if line.search(src):
+    src = line.sub("try:\n    __version__ = distribution('madmom').version\nexcept Exception:  # ref-beats-vote.sh: prebuilt wheel\n    __version__ = '" + ver + "'", src, count=1)
+    with open(init, 'w') as f:
+        f.write(src)
+    print('madmom-fix: the dist-info did not resolve; patched the version line in the venv madmom/__init__.py')
+else:
+    print('madmom-fix: the dist-info did not resolve and the version line was not found: left as is')
+EOF
+}
+
 # ---- packages (first run, or when one is missing) ---------------------------------------------------------------
-if ! "$PY" -c 'import torch, soundfile, numpy, soxr, beat_this.inference, essentia.standard, madmom.features.downbeats' >/dev/null 2>&1; then
+CORE='import torch, soundfile, numpy, soxr, beat_this.inference, essentia.standard'
+MM='import madmom.features.beats, madmom.features.downbeats'
+mm_fix
+if ! "$PY" -c "$CORE; $MM" >/dev/null 2>&1; then
   echo "installing into $VENV (first run: several minutes, ~3 GB)"
   PIP "numpy<2" || die "pip could not install numpy<2"
   PIP torch torchaudio --index-url https://download.pytorch.org/whl/cpu || die "pip could not install CPU torch"
   PIP tqdm einops soxr rotary-embedding-torch soundfile beat-this "numpy<2" || die "pip could not install beat-this"
   PIP essentia "numpy<2" || die "pip could not install essentia"
-  if ! "$PY" -c 'import madmom' >/dev/null 2>&1; then
+  if ! "$PY" -c 'import importlib.util, sys; sys.exit(importlib.util.find_spec("madmom") is None)' >/dev/null 2>&1; then
     if command -v git >/dev/null 2>&1 && { command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; }; then
       echo "madmom: from git (CPJKU/madmom, built here)"
       PIP cython "numpy<2" scipy mido || die "pip could not install madmom's build deps"
@@ -71,8 +128,20 @@ if ! "$PY" -c 'import torch, soundfile, numpy, soxr, beat_this.inference, essent
       PIP --only-binary=:all: madmom-prebuilt "numpy<2" scipy mido || die "pip could not install madmom-prebuilt"
     fi
   fi
-  "$PY" -c 'import torch, soundfile, numpy, soxr, beat_this.inference, essentia.standard, madmom.features.downbeats' \
-    || die "installed, but the imports fail (see above)"
+  mm_fix
+fi
+
+# ---- the check, before any voting: Beat This! and essentia are required; without madmom the vote runs DEGRADED -----
+"$PY" -c "$CORE" || die "STOP: torch / beat-this / essentia / soundfile / soxr do not import in $VENV (see above); no vote ran"
+VOTE_MODE=3
+if "$PY" -c "import madmom, essentia, beat_this; $MM" >"$DATA/.cache/madmom-check.txt" 2>&1; then
+  echo "check: import madmom, essentia, beat_this: ok (3 trackers: A beat-this+dbn, B madmom-rnn+dbn, C essentia)"
+else
+  VOTE_MODE=2
+  echo "check: import madmom FAILED: $(tail -n 1 "$DATA/.cache/madmom-check.txt")"
+  echo "DEGRADED: madmom is off, so A beat-this+dbn and B madmom-rnn+dbn are off. The vote runs with 2 trackers:"
+  echo "  A0 beat-this-minimal (Beat This!'s own peak picking, no DBN, no tempo range) and C essentia; both must agree."
+  echo "  Every .vote.json says degraded; no .ref.beats is written (a reference needs the 3-tracker vote)."
 fi
 "$PY" - <<'EOF'
 from importlib import metadata
@@ -84,7 +153,7 @@ EOF
 
 # ---- the vote, holding the GPU lock so it never overlaps a build -------------------------------------------------
 RC=0
-nice -n 10 sh "$HERE/gpu-lock.sh" ref-beats-vote "$PY" "$HERE/ref_beats_vote.py" --dir "$TRACKS" || RC=$?
+nice -n 10 sh "$HERE/gpu-lock.sh" ref-beats-vote "$PY" "$HERE/ref_beats_vote.py" --dir "$TRACKS" --trackers "$VOTE_MODE" || RC=$?
 
 # ---- the grids for the changed references (edits kept) -----------------------------------------------------------
 if command -v node >/dev/null 2>&1; then
