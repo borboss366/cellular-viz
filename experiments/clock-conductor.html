@@ -38,7 +38,8 @@ h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#8a96ad;ma
 .conf{height:10px;background:#222a3a;border-radius:5px;overflow:hidden}.conf>i{display:block;height:100%;background:#2b5cff}
 .bands{display:flex;gap:4px;height:70px;align-items:flex-end}.bands>i{flex:1;background:#2b5cff;min-height:2px}.bands>i:nth-child(2){background:#5b85ff}
 .bandLabels{display:flex;gap:4px;margin-top:2px;font-size:11px;line-height:1.2;color:#8a96ad}.bandLabels>span{flex:1;min-width:0;text-align:center;white-space:nowrap;overflow:hidden}.bandLabels>.k{color:#ff7a2b;font-weight:700}
-#scatter{width:100%;height:60px;background:#0b0e14;border-radius:6px}
+.wheelBox{display:flex;gap:12px;align-items:center;margin:6px 0}#wheel{width:220px;height:220px;flex:0 0 220px;background:#0b0e14;border-radius:50%}
+#wheelHint{font-size:18px;font-weight:700;min-height:1.4em}#wheelHint.grey{color:#8a96ad;font-weight:400}.wheelLegend{font-size:11px;color:#8a96ad;line-height:1.35}
 button,select,input{font:inherit;color:inherit;background:#222a3a;border:1px solid #3a4560;border-radius:8px;padding:6px 10px}
 button{cursor:pointer}.fixes button{min-width:60px}
 .deck{border:2px solid #3a4560;border-radius:10px;padding:8px;margin:6px 0}.deck.live{border-color:#d6455d}.deck.next{border-color:#2b5cff}
@@ -71,7 +72,7 @@ button.reject{background:#c0182b !important;color:#fff}
   <h2>Go to the next track</h2>
   <ol><li>Click the next track name. Click "Load to NEXT". Wait for the name.</li><li>Push "Crossfade" or N. The old deck stops after the fade time.</li></ol>
   <h2>Fix the clock (Shift + key)</h2>
-  <ul><li>Dots at the two edges (off-beat): flip, Shift+F.</li><li>Tempo is half: x2, Shift+D. Tempo is double: /2, Shift+H. Push x2 or /2 one time only.</li>
+  <ul><li>Read the wheel: top = the clock beat. The line under it names the key to push.</li><li>Main lobe at the bottom (half a beat off): flip, Shift+F.</li><li>Tempo is half: x2, Shift+D. Tempo is double: /2, Shift+H. Push x2 or /2 one time only.</li>
     <li>x2 and /2 hold the octave. Press /2 again to release it (x2 again after x2). The tempo goes back at the next bar line.</li>
     <li>Small offset: -10 or +10, Shift+, or Shift+.</li><li>Wrong "1": set 1, Shift+1, on the downbeat.</li>
     <li>Wrong tempo: tap, Shift+A, on each beat, less than 2 s apart. One to three taps only move the beat.</li>
@@ -97,7 +98,11 @@ button.reject{background:#c0182b !important;color:#fff}
     <div class="conf"><i id="conf" style="width:0"></i></div>
     <div class="lamps"><div class="lamp beat" id="lampBeat">beat</div><div class="lamp kick" id="lampKick">kick</div>
       <div class="lamp bar" id="lampBar">bar 1</div><div class="lamp key" id="lampKey" hidden>key</div></div>
-    <canvas id="scatter" width="600" height="60"></canvas>
+    <div class="wheelBox"><canvas id="wheel" width="220" height="220"></canvas>
+      <div><div id="wheelHint" class="grey">-</div>
+        <div class="wheelLegend">Top = the clock beat. A kick right of the top (clockwise) comes after the beat: the clock is early. Left: the clock is late.<br>
+        Ring = the kicks of the last 8 bars (older ones fade). Extra lobes are the groove, not an error.<br>
+        Bright mark = the kicks near the beat, with the error in ms. Grey = the clock is not locked.</div></div></div>
     <div class="bands" id="bands"></div>
     <div class="bandLabels" id="bandLabels"></div>
     <div class="fixes row" style="margin-top:10px">
@@ -282,13 +287,22 @@ const FIX_ORIGINS = new Set(['fix:key', 'fix:controller', 'qa']);
 for (const b of document.querySelectorAll('[data-fix]')) b.onclick = e => clock.fix(b.dataset.fix, b.dataset.arg !== undefined ? Number(b.dataset.arg) : undefined, { origin: 'fix:key', eventTs: e.timeStamp });
 
 let seenJumps = 0, lastState = null, lastShadowState = null, kickPrev = -200, kickAt = -1, lastSample = 0, beatFlashAt = -1;
-const onsets = [];
+const kicks = [];   // the phase wheel: each kick's time and its place on the clock's beat count when it was heard
+let lastFrameT = 0, wheelNow = null;
 let lastFrameMs = -1e9;   // performance.now() of the last tracker frame: the band bars draw only while frames come
 function onFrame(f) {
   lastFrameMs = performance.now();
   for (const at of shadowBeats(t => shadow.beatsAt(t), b => shadow.timeOf(b), f.t)) log.add('beat', { src: 'shadow', ctx: at });
   const k = f.bands ? f.bands.kick : null;
-  if (typeof k === 'number') { if (k - kickPrev > 6) { kickAt = f.t; onsets.push(f.t); if (onsets.length > 16) onsets.shift(); } kickPrev = k; }
+  lastFrameT = f.t;
+  if (typeof k === 'number') {
+    if (k - kickPrev > 6) {
+      kickAt = f.t;
+      const b = clock.trackerState && clock.line && clock.line.tracker ? clock.lineBeats(f.t) : NaN;
+      if (Number.isFinite(b) && b >= 0) { kicks.push({ t: f.t, b }); if (kicks.length > 256) kicks.shift(); }
+    }
+    kickPrev = k;
+  }
   if (shadow.state !== lastShadowState) { log.add('state', { src: 'shadow', from: lastShadowState, to: shadow.state }); lastShadowState = shadow.state; }
 }
 
@@ -393,22 +407,49 @@ function monitor(now, ts) {
   if (keyOn && d.playing && d.beats.length) { const near = C.barLamp(d.beats.map(b => ({ ...b, pos: 1 })), posMs(d, heard), 60); $('lampKey').classList.toggle('on', near.on); }
   const bandsLive = ts.status === 'listening' && performance.now() - lastFrameMs < 1000;   // not "live": that is the LIVE deck (TDZ, #208)
   $('bands').innerHTML = C.bandHeights(r.bands, Clock.BANDS, bandsLive).map(h => `<i style="height:${h}px"></i>`).join('');
-  scatter(now);
+  drawWheel(ts);
   for (const x of decks) x.el.querySelector('.pos').textContent = x.track ? `${(Math.max(0, x.playing ? posMs(x, heard) : x.offsetS * 1000) / 1000).toFixed(1)} s` : '';
   $('nrec').textContent = log.all.length;
   $('keyS').textContent = (keyShownS + (keyOn ? now - keyOnAt : 0)).toFixed(1);
 }
-function scatter(now) {
-  const cv = $('scatter'), g = cv.getContext('2d'), W = cv.width, H = cv.height;
-  g.clearRect(0, 0, W, H); g.fillStyle = '#3a4560'; g.fillRect(W / 2, 0, 1, H);
-  const P = 60 / (clock.read({ raw: true }).bpm || 120);
-  g.fillStyle = '#ff7a2b';
-  onsets.forEach((t, k) => {
-    const b = clock.trackerState && clock.line && clock.line.tracker ? clock.lineBeats(t) : -1;
-    if (b < 0) return;
-    const ph = b - Math.round(b);   // −½ … ½ of a beat
-    g.fillRect(W / 2 + ph * W - 2, 4 + (k % 8) * 6, 4, 4);
+// the phase wheel (the user 10 Nov 20:46; VIZ research): replaces the orange dots. The numbers come from
+// C.phaseWheel (tested in node); this only draws them. Canvas text is ASCII only (#205)
+function drawWheel(ts) {
+  const cv = $('wheel'), g = cv.getContext('2d'), W = cv.width, cx = W / 2, cy = cv.height / 2, R = W / 2 - 8;
+  const nowB = clock.trackerState && clock.line && clock.line.tracker ? clock.lineBeats(lastFrameT) : NaN;
+  const wv = C.phaseWheel(kicks, { bpm: clock.read({ raw: true }).bpm || 120, bpb: settings.bpb || 4, nowBeats: Number.isFinite(nowB) ? nowB : null, state: ts.state || null });
+  wheelNow = wv;
+  const xy = (deg, r) => [cx + r * Math.sin(deg * Math.PI / 180), cy - r * Math.cos(deg * Math.PI / 180)];
+  g.clearRect(0, 0, W, cv.height);
+  g.globalAlpha = wv.grey ? 0.35 : 1;
+  g.strokeStyle = '#3a4560'; g.lineWidth = 1;
+  g.beginPath(); g.arc(cx, cy, R, 0, 2 * Math.PI); g.stroke();
+  g.beginPath(); g.arc(cx, cy, R * 0.45, 0, 2 * Math.PI); g.stroke();
+  // the clock beat at 12 o'clock, half a beat at 6
+  g.strokeStyle = '#e8e8e8'; g.lineWidth = 2;
+  let p = xy(0, R * 0.45), q = xy(0, R + 4); g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.stroke();
+  g.strokeStyle = '#3a4560'; p = xy(180, R * 0.45); q = xy(180, R); g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.stroke();
+  // the ring: one spoke per angle bin, its length the weight of the kicks there
+  const top = Math.max(1e-9, ...wv.bins);
+  g.strokeStyle = wv.grey ? '#8a96ad' : '#ff7a2b'; g.lineWidth = 5;
+  wv.bins.forEach((v, i) => {
+    if (v <= 0) return;
+    const deg = i * 360 / wv.bins.length, a = xy(deg, R * 0.47), b = xy(deg, R * 0.47 + (R * 0.5) * v / top);
+    g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
   });
+  // the marker: the median kick near the beat, with its signed error in ms
+  if (wv.medianPhase !== null && !wv.grey) {
+    const deg = wv.medianPhase * 360, m = xy(deg, R - 2);
+    g.fillStyle = '#ffd23f'; g.beginPath(); g.arc(m[0], m[1], 7, 0, 2 * Math.PI); g.fill();
+    g.font = '13px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(`${wv.medianMs > 0 ? '+' : ''}${wv.medianMs} ms`, cx, cy);
+  } else if (wv.grey) {
+    g.fillStyle = '#e8e8e8'; g.font = '13px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(wv.hint, cx, cy);
+  }
+  g.globalAlpha = 1;
+  setText('wheelHint', wv.hint || '-');
+  $('wheelHint').classList.toggle('grey', wv.grey || wv.kind === 'none');
 }
 function render() {
   decks.forEach(d => { const tag = C.deckTag(d, live); d.el.className = 'deck' + (tag === 'LIVE' ? ' live' : tag === 'NEXT' ? ' next' : ''); d.el.querySelector('.tag').textContent = tag; });
@@ -453,7 +494,11 @@ await loadTracks();
 
 window.__qa = Object.assign(window.__qa || {}, { conductor: {
   log, clock, shadow, decks, get tracks() { return tracks; }, start, load, play: playPause, next, mark, step, barOk,
-  setOffset, toggleKey, state: () => ({ live, input: inputMode, records: log.all.length, pending: log.pending.length, failed: log.failed,
+  setOffset, toggleKey,
+  // the phase wheel's numbers (the user 20:46): median ms, the 6 o'clock weight, the drift per bar, the hint
+  wheel: () => wheelNow && { medianMs: wheelNow.medianMs, sixShare: wheelNow.sixShare, six: wheelNow.six, twelve: wheelNow.twelve,
+    driftDegPerBar: wheelNow.driftDegPerBar, hint: wheelNow.hint, kind: wheelNow.kind, grey: wheelNow.grey, kicks: wheelNow.kicks },
+  state: () => ({ live, input: inputMode, records: log.all.length, pending: log.pending.length, failed: log.failed,
     decks: decks.map(d => ({ track: d.track && d.track.idx, playing: d.playing, posMs: d.track ? Math.round(d.playing ? posMs(d) : d.offsetS * 1000) : null, bar1: d.bar1 })),
     tracker: clock.trackerState, shadow: { bpm: shadow.bpm, state: shadow.state, confidence: shadow.confidence } }),
 } });
