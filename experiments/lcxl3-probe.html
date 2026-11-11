@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LCXL3 probe</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  Launch Control XL 3 probe (#188, docs/LCXL3_RESEARCH.md section 8). Self-contained: no clock, no conductor, no
+  imports, nothing the box serves. Open it in Chrome on the Mac (file:// or localhost), allow MIDI with SysEx.
+  It answers what the guide leaves open:
+    1. the key test: in DAW mode, which ports carry the controls (the guide: "will report on the DAW In/Out (USB)
+       interface only"). Does the MIDI port (Resolume's) still get data while this page holds DAW mode?
+    2. the button CCs (the guide has them only as images), by pressing each button;
+    3. the palette indices (B0h <idx> <colour>) for green / amber / red / off, and the RGB SysEx (01 53);
+    4. row 1 encoders in relative mode (B6h 45h 7Fh; CCs + 40h), decoded to +/- detents;
+    5. the display, text only (06h to target 35h);
+    6. whether the LEDs answer local presses in DAW mode.
+  It leaves DAW mode on the Leave button, on pagehide and on beforeunload. A crash can leave the device in DAW mode
+  with dark LEDs: power-cycle it, it powers up in Standalone mode.
+  Download lcxl3.map.json at the end. Plain ASCII labels.
+-->
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;font:14px/1.4 system-ui,sans-serif;background:#0b0e14;color:#dde3ee}
+header{padding:10px 16px;background:#141a26;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+h1{font-size:18px;margin:0}h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:#8a96ad;margin:0 0 6px}
+main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;padding:12px}
+section{background:#141a26;border-radius:10px;padding:12px;min-width:0}
+section.wide{grid-column:1 / -1}
+button,select,input{font:inherit;color:inherit;background:#222a3a;border:1px solid #3a4560;border-radius:7px;padding:5px 9px}
+button{cursor:pointer}button.go{background:#2b5cff}button.stop{background:#8b1e2d}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}td,th{border-bottom:1px solid #222a3a;padding:3px 6px;text-align:left;font-size:13px}
+.bad{background:#8b1e2d;color:#fff;padding:8px 12px;border-radius:8px}.ok{color:#7ddc8a}.warn{color:#ffd23f}
+.big{font-size:64px;font-weight:700;font-variant-numeric:tabular-nums;text-align:center}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+pre{background:#0b0e14;border-radius:6px;padding:6px;max-height:260px;overflow:auto;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+small{color:#8a96ad}
+</style>
+</head>
+<body>
+<header>
+  <h1>LCXL3 probe</h1>
+  <button class="go" id="connect">1. Allow MIDI (with SysEx)</button>
+  <span id="status">not connected</span>
+  <span style="margin-left:auto"></span>
+  <button class="stop" id="leave">Leave DAW mode</button>
+  <button id="download">Download lcxl3.map.json</button>
+</header>
+<div id="banner" class="bad" hidden></div>
+<main>
+  <section class="wide">
+    <h2>Ports</h2>
+    <div class="row"><small>DAW out (DAW mode, LEDs, display go here):</small> <select id="outSel"></select></div>
+    <table id="ports"><thead><tr><th>kind</th><th>name</th><th>manufacturer</th><th>state</th><th>connection</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section class="wide">
+    <h2>2. Key test: which ports get data in DAW mode?</h2>
+    <div class="row">
+      <button class="go" id="dawOn">DAW mode ON (9F 0C 7F)</button>
+      <button id="dawOff">DAW mode OFF (9F 0C 00)</button>
+      <span>phase: <b id="phase">before</b></span>
+    </div>
+    <small>Push DAW mode ON. Move fader 1 up and down. Push DAW mode OFF. Move fader 1 again. Read the table: one
+      row per input port, messages counted per phase.</small>
+    <table id="counts"><thead><tr><th>input port</th><th>before</th><th>DAW on</th><th>DAW off</th><th>last message</th></tr></thead><tbody></tbody></table>
+    <div id="keyVerdict" class="warn"></div>
+  </section>
+
+  <section>
+    <h2>3. Buttons</h2>
+    <div class="row"><button class="go" id="learnBtn">Learn buttons: on</button><button id="learnClear">Clear</button></div>
+    <small>With DAW mode ON, press each button once, left to right, top row then bottom row, then the other buttons.
+      Each new control gets a row.</small>
+    <table id="buttons"><thead><tr><th>#</th><th>port</th><th>type</th><th>ch</th><th>number</th><th>value</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section>
+    <h2>4. Palette</h2>
+    <div class="row"><small>button index (CC):</small> <input id="palIdx" type="number" min="0" max="127" value="0" style="width:5em">
+      <button id="palUse">use last learned</button></div>
+    <div class="big" id="palN">0</div>
+    <div class="row">
+      <button id="palPrev">- 1</button><button id="palNext">+ 1</button><button id="palAuto">auto 4/s</button>
+      <button id="palOff">LED off (0)</button>
+    </div>
+    <div class="row"><small>This colour is:</small>
+      <button data-mark="green">green</button><button data-mark="amber">amber</button><button data-mark="red">red</button>
+      <button data-mark="off">off</button><button data-mark="flashing">flashes / pulses</button></div>
+    <div id="palMarks"></div>
+    <div class="row"><button id="rgb">RGB test: neon pink (01 53)</button></div>
+  </section>
+
+  <section>
+    <h2>5. Row 1 encoders, relative mode</h2>
+    <div class="row"><button class="go" id="relOn">Relative ON (B6 45 7F)</button><button id="relOff">Relative OFF (B6 45 00)</button></div>
+    <small>Push Relative ON. Turn each encoder in row 1 one detent left, then one detent right. Relative CCs are 77-84
+      (4Dh-54h) on channel 16; value 64 = no move.</small>
+    <table id="rel"><thead><tr><th>encoder</th><th>CC</th><th>last delta</th><th>sum</th></tr></thead><tbody></tbody></table>
+    <div id="relVerdict" class="warn">no relative message yet</div>
+  </section>
+
+  <section>
+    <h2>6. Display (text only)</h2>
+    <div class="row"><input id="t1" value="CONDUCTOR" maxlength="16"><input id="t2" value="READY" maxlength="16"></div>
+    <div class="row"><button class="go" id="dispShow">Show text (target 35h)</button><button id="dispCancel">Cancel display (04 35 00)</button></div>
+    <small>Configure 04 35 01, text 06 35 00 / 06 35 01, then show 04 35 7F. Text is ASCII 20h-7Eh.</small>
+  </section>
+
+  <section>
+    <h2>7. LEDs on local presses</h2>
+    <small>With DAW mode ON and no LED message sent, press a button. Does its LED light by itself?</small>
+    <div class="row"><button data-local="yes">yes, it lights</button><button data-local="no">no, it stays dark</button><span id="localAns"></span></div>
+  </section>
+
+  <section class="wide">
+    <h2>Log (in and out)</h2>
+    <div class="row"><button id="logClear">Clear log</button><small id="logCount">0 lines</small></div>
+    <pre id="log"></pre>
+  </section>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const hex = b => b.toString(16).toUpperCase().padStart(2, '0');
+const SYSEX = [0xF0, 0x00, 0x20, 0x29, 0x02, 0x15];   // Novation, Launch Control XL 3
+const state = {
+  access: null, phase: 'before', learning: true,
+  counts: {},            // input name -> { before, on, off, last }
+  buttons: [],           // { port, type, channel, number, value }
+  palette: { index: null, green: null, amber: null, red: null, off: null, flashing: [] },
+  relative: {},          // cc -> { delta, sum }
+  localLeds: null, dawModeSent: false, log: [], sent: [],
+};
+let palN = 0, palTimer = null;
+
+function log(line) {
+  const t = (performance.now() / 1000).toFixed(3);
+  state.log.push(`${t} ${line}`);
+  if (state.log.length > 2000) state.log.shift();
+  $('log').textContent = state.log.slice(-200).join('\n');
+  $('log').scrollTop = 1e9;
+  $('logCount').textContent = `${state.log.length} lines`;
+}
+function banner(text) { $('banner').hidden = !text; $('banner').textContent = text || ''; }
+
+function outputs() { return state.access ? [...state.access.outputs.values()] : []; }
+function inputs() { return state.access ? [...state.access.inputs.values()] : []; }
+function dawOut() {
+  const id = $('outSel').value, all = outputs();
+  return all.find(o => o.id === id) || all.find(o => /daw/i.test(o.name)) || null;
+}
+function send(bytes, why) {
+  const out = dawOut();
+  if (!out) { log(`NOT SENT (no DAW out): ${why}`); banner('No DAW output port. Plug in the controller and pick the DAW out above.'); return false; }
+  try { out.send(bytes); } catch (e) { log(`SEND FAILED ${why}: ${e.name} ${e.message}`); banner(`Send failed: ${e.name}. SysEx needs the MIDI permission with SysEx.`); return false; }
+  const line = `OUT ${out.name}: ${bytes.map(hex).join(' ')}  (${why})`;
+  state.sent.push(line); log(line);
+  return true;
+}
+
+// ---- ports ----
+function listPorts() {
+  const tb = $('ports').tBodies[0], sel = $('outSel'), keep = sel.value;
+  tb.innerHTML = '';
+  for (const [kind, list] of [['in', inputs()], ['out', outputs()]]) for (const p of list) {
+    const tr = tb.insertRow();
+    for (const v of [kind, p.name, p.manufacturer || '', p.state, p.connection]) tr.insertCell().textContent = v;
+  }
+  sel.innerHTML = '';
+  for (const o of outputs()) { const op = document.createElement('option'); op.value = o.id; op.textContent = o.name; sel.appendChild(op); }
+  const daw = outputs().find(o => /daw/i.test(o.name));
+  sel.value = outputs().some(o => o.id === keep) ? keep : daw ? daw.id : (outputs()[0] || {}).id || '';
+  for (const i of inputs()) {
+    i.onmidimessage = e => onMessage(i, e);
+    if (!state.counts[i.name]) state.counts[i.name] = { before: 0, on: 0, off: 0, last: '' };
+  }
+  drawCounts();
+  $('status').textContent = `${inputs().length} in, ${outputs().length} out; sysex ${state.access && state.access.sysexEnabled ? 'yes' : 'NO'}`;
+}
+
+// ---- incoming ----
+function onMessage(port, e) {
+  const d = [...e.data], st = d[0], type = st >> 4, ch = (st & 15) + 1;
+  const c = state.counts[port.name] || (state.counts[port.name] = { before: 0, on: 0, off: 0, last: '' });
+  c[state.phase === 'DAW on' ? 'on' : state.phase === 'DAW off' ? 'off' : 'before']++;
+  c.last = d.map(hex).join(' ');
+  log(`IN  ${port.name}: ${c.last}  ${decode(d)}`);
+  drawCounts();
+  if (type === 0xB && ch === 16 && d[1] >= 0x4D && d[1] <= 0x54) relative(d[1], d[2]);
+  if (state.learning && (type === 0xB || type === 0x9) && d[2] > 0 && !(type === 0xB && ch === 16)) learn(port, type, ch, d[1], d[2]);
+}
+function decode(d) {
+  const type = d[0] >> 4, ch = (d[0] & 15) + 1, n = d[1];
+  if (d[0] === 0xF0) return 'sysex';
+  if (type === 0xB && ch === 16 && n >= 5 && n <= 12) return `fader ${n - 4}`;
+  if (type === 0xB && ch === 16 && n >= 13 && n <= 36) return `encoder row ${Math.floor((n - 13) / 8) + 1} #${(n - 13) % 8 + 1}`;
+  if (type === 0xB && ch === 16 && n >= 0x4D && n <= 0x64) return `encoder (relative) row ${Math.floor((n - 0x4D) / 8) + 1} #${(n - 0x4D) % 8 + 1}`;
+  if (ch === 7) return 'channel 7 (Shift / feature)';
+  if (ch === 1) return `channel 1 ${type === 0xB ? 'CC' : type === 0x9 ? 'note on' : type === 0x8 ? 'note off' : 'status ' + hex(d[0])}`;
+  return `ch ${ch}`;
+}
+function drawCounts() {
+  const tb = $('counts').tBodies[0];
+  tb.innerHTML = '';
+  for (const [name, c] of Object.entries(state.counts)) {
+    const tr = tb.insertRow();
+    for (const v of [name, c.before, c.on, c.off, c.last]) tr.insertCell().textContent = v;
+  }
+  const withOn = Object.entries(state.counts).filter(([, c]) => c.on > 0).map(([n]) => n);
+  const withOff = Object.entries(state.counts).filter(([, c]) => c.off > 0).map(([n]) => n);
+  $('keyVerdict').textContent = state.dawModeSent
+    ? `DAW on: data on ${withOn.join(', ') || 'no port yet'}. DAW off: data on ${withOff.join(', ') || 'no port yet'}.`
+    : 'Push DAW mode ON first.';
+}
+
+// ---- learn buttons ----
+function learn(port, type, ch, number, value) {
+  const kind = type === 0xB ? 'CC' : 'note';
+  if (state.buttons.some(b => b.port === port.name && b.type === kind && b.channel === ch && b.number === number)) return;
+  state.buttons.push({ port: port.name, type: kind, channel: ch, number, value });
+  const tr = $('buttons').tBodies[0].insertRow();
+  for (const v of [state.buttons.length, port.name, kind, ch, number, value]) tr.insertCell().textContent = v;
+}
+
+// ---- palette ----
+function showPal() {
+  $('palN').textContent = palN;
+  const idx = Number($('palIdx').value) || 0;
+  send([0xB0, idx & 127, palN & 127], `palette: button ${idx} colour ${palN}`);
+}
+function drawMarks() {
+  const p = state.palette;
+  $('palMarks').textContent = `green ${p.green ?? '-'} . amber ${p.amber ?? '-'} . red ${p.red ?? '-'} . off ${p.off ?? '-'} . flashing ${p.flashing.join(', ') || '-'}`;
+}
+
+// ---- relative ----
+function relative(cc, v) {
+  const r = state.relative[cc] || (state.relative[cc] = { delta: 0, sum: 0 });
+  r.delta = v - 64; r.sum += r.delta;
+  const tb = $('rel').tBodies[0];
+  tb.innerHTML = '';
+  for (const [k, x] of Object.entries(state.relative).sort((a, b) => a[0] - b[0])) {
+    const tr = tb.insertRow();
+    for (const val of [`row ${Math.floor((k - 0x4D) / 8) + 1} #${(k - 0x4D) % 8 + 1}`, k, (x.delta > 0 ? '+' : '') + x.delta, x.sum]) tr.insertCell().textContent = val;
+  }
+  $('relVerdict').textContent = 'relative mode confirmed: row 1 sends CC 77-84 with 64 +/- detents';
+  $('relVerdict').className = 'ok';
+}
+
+// ---- display ----
+const ascii = s => [...String(s)].map(c => c.charCodeAt(0)).filter(b => b >= 0x20 && b <= 0x7E).slice(0, 16);
+
+// ---- leave ----
+function leave(why) {
+  if (!state.access) return;
+  for (const b of state.buttons) if (b.type === 'CC' && b.channel === 1) send([0xB0, b.number, 0], `${why}: LED off`);
+  send([...SYSEX, 0x04, 0x35, 0x00, 0xF7], `${why}: cancel display`);
+  send([0xB6, 0x45, 0x00], `${why}: row 1 absolute`);
+  send([0x9F, 0x0C, 0x00], `${why}: DAW mode off`);
+  state.dawModeSent = false; state.phase = 'DAW off'; $('phase').textContent = state.phase;
+}
+
+// ---- wiring ----
+$('connect').onclick = async () => {
+  banner('');
+  if (!window.isSecureContext) { banner('This page is not a secure context: Web MIDI is off. Open it as file:// or from http://localhost.'); return; }
+  if (!navigator.requestMIDIAccess) { banner('This browser has no Web MIDI. Use Chrome.'); return; }
+  try {
+    state.access = await navigator.requestMIDIAccess({ sysex: true });
+  } catch (e) {
+    banner(`MIDI was not allowed (${e.name}). Click the icon left of the address and allow MIDI, then reload.`);
+    log(`requestMIDIAccess failed: ${e.name} ${e.message}`); return;
+  }
+  log(`MIDI allowed; sysexEnabled ${state.access.sysexEnabled}; origin ${location.protocol}`);
+  if (!state.access.sysexEnabled) banner('SysEx is not allowed: no display, no RGB. Allow MIDI with SysEx and reload.');
+  state.access.onstatechange = e => { log(`statechange ${e.port.type} ${e.port.name} ${e.port.state} ${e.port.connection}`); listPorts(); };
+  listPorts();
+};
+$('outSel').onchange = () => log(`DAW out set to ${(dawOut() || {}).name}`);
+$('dawOn').onclick = () => { if (send([0x9F, 0x0C, 0x7F], 'DAW mode on')) { state.dawModeSent = true; state.phase = 'DAW on'; $('phase').textContent = state.phase; drawCounts(); } };
+$('dawOff').onclick = () => { if (send([0x9F, 0x0C, 0x00], 'DAW mode off')) { state.phase = 'DAW off'; $('phase').textContent = state.phase; drawCounts(); } };
+$('learnBtn').onclick = () => { state.learning = !state.learning; $('learnBtn').textContent = `Learn buttons: ${state.learning ? 'on' : 'off'}`; };
+$('learnClear').onclick = () => { state.buttons = []; $('buttons').tBodies[0].innerHTML = ''; };
+$('palUse').onclick = () => { const b = [...state.buttons].reverse().find(x => x.type === 'CC' && x.channel === 1); if (b) $('palIdx').value = b.number; };
+$('palPrev').onclick = () => { palN = (palN + 127) % 128; showPal(); };
+$('palNext').onclick = () => { palN = (palN + 1) % 128; showPal(); };
+$('palAuto').onclick = () => {
+  if (palTimer) { clearInterval(palTimer); palTimer = null; $('palAuto').textContent = 'auto 4/s'; return; }
+  palTimer = setInterval(() => { palN = (palN + 1) % 128; showPal(); }, 250); $('palAuto').textContent = 'stop auto';
+};
+$('palOff').onclick = () => { palN = 0; showPal(); };
+for (const b of document.querySelectorAll('[data-mark]')) b.onclick = () => {
+  const k = b.dataset.mark; state.palette.index = Number($('palIdx').value) || 0;
+  if (k === 'flashing') { if (!state.palette.flashing.includes(palN)) state.palette.flashing.push(palN); } else state.palette[k] = palN;
+  log(`palette: ${k} = ${palN}`); drawMarks();
+};
+$('rgb').onclick = () => { const idx = Number($('palIdx').value) || 0; send([...SYSEX, 0x01, 0x53, idx & 127, 0x7F, 0x10, 0x40, 0xF7], `RGB test on ${idx}`); };
+$('relOn').onclick = () => { send([0x9F, 0x0B, 0x7F], 'feature controls on'); send([0xB6, 0x45, 0x7F], 'row 1 relative'); };
+$('relOff').onclick = () => send([0xB6, 0x45, 0x00], 'row 1 absolute');
+$('dispShow').onclick = () => {
+  send([...SYSEX, 0x04, 0x35, 0x01, 0xF7], 'display: configure stationary, name + text value');
+  send([...SYSEX, 0x06, 0x35, 0x00, ...ascii($('t1').value), 0xF7], 'display: field 0');
+  send([...SYSEX, 0x06, 0x35, 0x01, ...ascii($('t2').value), 0xF7], 'display: field 1');
+  send([...SYSEX, 0x04, 0x35, 0x7F, 0xF7], 'display: show');
+};
+$('dispCancel').onclick = () => send([...SYSEX, 0x04, 0x35, 0x00, 0xF7], 'display: cancel');
+for (const b of document.querySelectorAll('[data-local]')) b.onclick = () => { state.localLeds = b.dataset.local === 'yes'; $('localAns').textContent = `recorded: ${b.dataset.local}`; log(`local LEDs in DAW mode: ${b.dataset.local}`); };
+$('logClear').onclick = () => { state.log = []; log('log cleared'); };
+$('leave').onclick = () => leave('Leave button');
+addEventListener('pagehide', () => leave('pagehide'));
+addEventListener('beforeunload', () => leave('beforeunload'));
+$('download').onclick = () => {
+  const ports = { inputs: inputs().map(p => p.name), outputs: outputs().map(p => p.name), dawOut: (dawOut() || {}).name || null };
+  const keyTest = Object.fromEntries(Object.entries(state.counts).map(([n, c]) => [n, { before: c.before, dawOn: c.on, dawOff: c.off }]));
+  const relCCs = Object.keys(state.relative).map(Number).sort((a, b) => a - b);
+  const map = {
+    device: 'lcxl3', made: new Date().toISOString(), origin: location.protocol, sysexEnabled: !!(state.access && state.access.sysexEnabled),
+    ports, portNameHint: 'DAW',
+    channels: { pots: 16, buttons: 1, feature: 7 },
+    keyTest: { counts: keyTest, dawModeSent: state.dawModeSent,
+      midiPortDataWhileDawOn: Object.entries(state.counts).filter(([n, c]) => !/daw/i.test(n) && c.on > 0).map(([n]) => n) },
+    faders: [5, 6, 7, 8, 9, 10, 11, 12], encoders: [[13, 20], [21, 28], [29, 36]],
+    buttons: state.buttons,
+    palette: state.palette,
+    relative: { row1: relCCs.length > 0, ccsSeen: relCCs },
+    localLedsInDawMode: state.localLeds,
+    display: { textTarget: 0x35, bitmap: 'not tested (text only)' },
+    sent: state.sent.slice(-200),
+  };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(map, null, 2)], { type: 'application/json' }));
+  a.download = 'lcxl3.map.json'; a.click();
+  const l = document.createElement('a');
+  l.href = URL.createObjectURL(new Blob([state.log.join('\n') + '\n'], { type: 'text/plain' }));
+  l.download = 'lcxl3-probe-log.txt'; l.click();
+  log('downloaded lcxl3.map.json and lcxl3-probe-log.txt');
+};
+if (!window.isSecureContext) banner('This page is not a secure context: Web MIDI is off. Open it as file:// or from http://localhost.');
+log(`page loaded; ${location.protocol}; secure context ${window.isSecureContext}; Web MIDI ${'requestMIDIAccess' in navigator}`);
+</script>
+</body>
+</html>
