@@ -272,13 +272,20 @@ const metronome = Clock.create({ source: query.get('clock') || 'metronome', sett
 const lanes = {
   read() {
     const C = metronome.read(), A = audio.read();   // beats and phase from the clock, lanes from audio-in
-    const out = { kick: A.kick, snare: A.snare, hat: A.hat, pad: 0, beatPhase: 0, barPhase: 0, clock: C };
+    const w = Number.isFinite(A.beatWeight) ? A.beatWeight : 1;   // no-beat mode (below)
+    nb.step(A.energy || audio.energy, w, performance.now() / 1000);
+    const out = { kick: A.kick, snare: A.snare, hat: A.hat, pad: 0, beatPhase: 0, barPhase: 0, clock: C, w };
     if (C.beats >= 0) {
       out.beatPhase = C.phase;
       out.barPhase = C.bars - Math.floor(C.bars);
       const bar = Math.floor(C.bars) % params.padBars;
       out.pad = 0.5 - 0.5 * Math.cos(2 * Math.PI * (bar + out.barPhase) / params.padBars);
     }
+    // the blend: every mapping reads these, so each goes w·(the clock's lane) + (1 − w)·(the music's stand-in);
+    // beat keeps the clock's own values (the palette's bar steps). beatPhase / barPhase reach no mapping yet.
+    out.beat = { kick: out.kick, snare: out.snare, hat: out.hat, pad: out.pad };
+    out.kick = NoBeat.mix(w, out.kick, nb.kick); out.snare = NoBeat.mix(w, out.snare, nb.snare);
+    out.hat = NoBeat.mix(w, out.hat, nb.hat); out.pad = NoBeat.mix(w, out.pad, nb.swell);
     return out;
   },
 };
@@ -290,6 +297,59 @@ const BEAT_LANES = ['kick', 'snare', 'hat'];   // kick → μ and blobs, snare �
 // then audio.due(BEAT_LANES) right after the read, which logs each hit the visuals just reached in __qa.beatLog.
 const audio = AudioIn.create({ clock: metronome, source: query.get('audio') || 'clock' }).start();
 window.__qa = AudioIn.qa(audio, window.__qa || {});   // __qa.beatLog, frame, beatLanes, events (Clock.qaEvents), audioIn
+
+// ---------- no-beat mode (apartment MVP Task 3; audio-in's beat weight and energy, #230) ----------
+// Every beat-locked effect here is mix = w·beat + (1 − w)·energy, w = A.beatWeight from audio.read() (0 = no confident
+// beat; it ramps over one bar, never jumps). The energy stand-ins come from the music itself (A.energy):
+//   kick   E.kick, the audio's own low-band onsets (never the clock's hits); kickOnset: a fresh one this frame
+//   snare  an onset envelope of mid + upperMid over their 0.4 s mean (τ 120 ms, the clock's snare tail)
+//   hat    the same on presence + air (τ 40 ms)
+//   low    sub + kick over their 1 s mean, −1..1: a bass pulse
+//   swell  0..1: the loudness of the last 1.5 s against the last 12 s (0.5 = as loud as usual)
+// NoBeat.phase(align): a counter that takes the beat value's steps at w = 1 and the energy rate at w = 0, so it never
+// jumps when w moves; with align it slides back onto that grid while w rises to 1 (whole at w = 1).
+const NoBeat = {
+  mix: (w, beat, energy) => w * beat + (1 - w) * energy,
+  lanes() {
+    const clamp = (x, l, h) => Math.max(l, Math.min(h, x));
+    const s = { w: 1, kick: 0, snare: 0, hat: 0, low: 0, swell: 0.5, level: 0, kickOnset: false, snareOnset: false,
+      t: null, pk: 0, ps: 0, mS: 0, mH: 0, mL: 0, sh: 0, lg: 0 };
+    s.step = (E, w, tSec) => {
+      const b = E.bands, first = s.t === null, dt = first ? 0 : Math.max(0, Math.min(0.25, tSec - s.t));
+      const v = x => (Number.isFinite(x) ? x : 0), mid = (v(b.mid) + v(b.upperMid)) / 2, hi = (v(b.presence) + v(b.air)) / 2, lo = (v(b.sub) + v(b.kick)) / 2;
+      const lvl = v(E.level), a = tau => 1 - Math.exp(-dt / tau);
+      s.t = tSec; s.w = Number.isFinite(w) ? Math.max(0, Math.min(1, w)) : 1; s.level = lvl;
+      if (first) { s.mS = mid; s.mH = hi; s.mL = lo; s.sh = s.lg = lvl; }
+      s.snare = Math.max(s.snare * Math.exp(-dt / 0.12), clamp(6 * (mid - s.mS - 0.02), 0, 1));
+      s.hat = Math.max(s.hat * Math.exp(-dt / 0.04), clamp(6 * (hi - s.mH - 0.02), 0, 1));
+      s.low = clamp(4 * (lo - s.mL), -1, 1);
+      s.mS += (mid - s.mS) * a(0.4); s.mH += (hi - s.mH) * a(0.4); s.mL += (lo - s.mL) * a(1);
+      s.sh += (lvl - s.sh) * a(1.5); s.lg += (lvl - s.lg) * a(12);
+      s.swell = clamp(0.5 + 2.5 * (s.sh - s.lg), 0, 1);
+      const k = v(E.kick); s.kickOnset = k > 0.35 && k > s.pk + 0.15; s.kick = k; s.pk = k;
+      s.snareOnset = s.snare >= 0.5 && s.ps < 0.5; s.ps = s.snare;
+      return s;
+    };
+    return s;
+  },
+  phase(align) {
+    const p = { v: null, b: 0, w: 1 };
+    p.step = (beatVal, eDelta, w) => {
+      if (p.v === null || !Number.isFinite(p.v)) p.v = beatVal;
+      else {
+        p.v += w * (beatVal - p.b) + (1 - w) * eDelta;
+        if (align && w > p.w && p.w < 1) { const off = p.v - beatVal, fr = off - Math.round(off / align) * align; p.v -= fr * Math.min(1, (w - p.w) / (1 - p.w)); }
+      }
+      p.b = beatVal; p.w = w; return p.v;
+    };
+    p.sync = () => { p.v = null; return p; };   // the next step starts on the beat value (▶ Play restarts the clock)
+    return p;
+  },
+};
+const nb = NoBeat.lanes();
+// palette drift: the pad plus a step on every bar on the clock; at w = 0 the same 0.17 per bar at the clock's tempo,
+// × (0.5 + loudness), without the steps, plus the swell's moves
+const palDrift = NoBeat.phase(null);
 
 // ---------- WebGL setup ----------
 const canvas = document.getElementById('c');
@@ -717,7 +777,7 @@ for (const ev of ['pointerup', 'pointercancel']) canvas.addEventListener(ev, e =
 const $ = id => document.getElementById(id);
 
 $('play').onclick = () => {
-  if (metronome.playing) metronome.stop(); else metronome.start();
+  if (metronome.playing) metronome.stop(); else { metronome.start(); palDrift.sync(); }
   $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
   $('play').classList.toggle('on', metronome.playing);
 };
@@ -1081,12 +1141,15 @@ function step(dt, mu, sigma, blob, cut) {
 const bar = v => '█'.repeat(Math.round(v * 8)).padEnd(8, '·');   // HUD level meter
 
 let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
-let prevKick = 0, blobs = 0, autoFrame = 0, prevBarPhase = 0, barCount = 0;
+let prevKick = 0, blobs = 0, autoFrame = 0, prevBarPhase = 0, barCount = 0, lastNow = 0, prevSwell = 0.5, lastBlobAt = 0;
 function frame(now) {
   audio.frameStart(now);   // __qa.frame, t, dt (clock port)
   resize();
-  const L = lanes.read();   // the only place the visuals learn about the music
+  const L = lanes.read();   // the only place the visuals learn about the music (blended by the beat weight L.w)
   audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
+  const dt = lastNow ? Math.min(0.1, Math.max(0, (now - lastNow) / 1000)) : 0; lastNow = now;
+  const barS = audio.bw && audio.bw.barS > 0 ? audio.bw.barS : params.bpb * 60 / params.bpm;
+  const beatSide = L.w >= 0.5;   // no-beat mode: below ½ the blobs and cuts keep at most one per bar / per 2 s
 
   // Mappings: lane levels → rule tweaks and shader inputs.
   const muEff = params.mu + (maps.mKickMu ? 0.005 * L.kick : 0);
@@ -1105,12 +1168,12 @@ function frame(now) {
   // Crowded: cut a hole on the downbeat (every 2 s when the metronome is stopped) and skip the blob.
   const culling = auto.on && auto.cutting && !params.paused;
   let blob = null, cut = null;
-  if (culling && (downbeat || (!metronome.playing && now - auto.lastCut > AUTO.cutEverySecs * 1000))) {
+  if (culling && ((downbeat && beatSide) || ((!metronome.playing || !beatSide) && now - auto.lastCut > AUTO.cutEverySecs * 1000))) {
     cut = [Math.random() * SIZE, Math.random() * SIZE, AUTO.cutRadius * SIZE, 1];
     auto.lastCut = now; auto.cuts++;
-  } else if ((maps.mKickBlob && downbeat && !culling) || auto.pendingBlob > 0) {
+  } else if ((maps.mKickBlob && downbeat && !culling && (beatSide || now - lastBlobAt >= barS * 1000)) || auto.pendingBlob > 0) {
     blob = [Math.random() * SIZE, Math.random() * SIZE, params.R * (1 + 0.6 * Math.random()), 1];
-    if (auto.pendingBlob > 0) auto.pendingBlob--; else blobs++;
+    if (auto.pendingBlob > 0) auto.pendingBlob--; else { blobs++; lastBlobAt = now; }
   }
 
   if (!params.paused) {
@@ -1125,7 +1188,9 @@ function frame(now) {
   prevBarPhase = L.barPhase;
   const bloomEff = params.fxBloom * (params.fxBloomBeat ? 1 + 1.5 * L.kick : 1);
   const lightAngle = 0.8 + 1.2 * L.snare + 0.1 * now / 1000;   // the snare swings the light
-  const palPhase = params.fxPalDrift ? 0.25 * L.pad + 0.17 * barCount : 0;
+  const palV = palDrift.step(0.25 * L.beat.pad + 0.17 * barCount, 0.17 * dt / barS * (0.5 + nb.level) + 0.25 * (nb.swell - prevSwell), L.w);
+  prevSwell = nb.swell;
+  const palPhase = params.fxPalDrift ? palV : 0;
   const zoomEff = 1 + (params.fxZoom - 1) * (1 + 2 * L.kick);   // trails zoom harder on the kick
 
   // Draw into the feedback texture (reading last frame's), then copy it to the screen.
@@ -1164,6 +1229,7 @@ function frame(now) {
   gl.uniform1i(copyProg.u.uSrc, 0);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   fbCur = 1 - fbCur;
+  window.__qa.nobeat = { w: L.w, kick: L.kick, snare: L.snare, hat: L.hat, pad: L.pad, palPhase: palV, swell: nb.swell, kickOnset: nb.kickOnset };
 
   frames++;
   if (now - lastFpsTime > 500) {
@@ -1177,7 +1243,7 @@ function frame(now) {
       ? `${params.preset} · ${params.bpm} bpm · ${state} · ${fps} fps · ` +
         (auto.on ? `cover ${(Math.max(0, auto.coverSmooth) * 100).toFixed(0)}% · ${auto.note}` : 'auto off')
       :
-      `metronome · ${params.preset} · ${params.bpm} bpm ${params.bpb}/4 · ${state}\n` +
+      `metronome · ${params.preset} · ${params.bpm} bpm ${params.bpb}/4 · ${state} · beat weight ${L.w.toFixed(2)}\n` +
       `kick  ${bar(L.kick)} ${L.kick.toFixed(2)}   beat ${L.beatPhase.toFixed(2)}\n` +
       `snare ${bar(L.snare)} ${L.snare.toFixed(2)}   bar  ${L.barPhase.toFixed(2)}\n` +
       `hat   ${bar(L.hat)} ${L.hat.toFixed(2)}\n` +

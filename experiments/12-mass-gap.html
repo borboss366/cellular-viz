@@ -110,6 +110,60 @@ const metronome = Clock.create({ source: query.get('clock') || 'metronome', sett
 const BEAT_LANES = ['kick', 'snare', 'hat'];   // kick → field, tube and lava; snare → the scene edge; all three → the level bars
 const audio = AudioIn.create({ clock: metronome, source: query.get('audio') || 'clock' }).start();
 
+// ---------- no-beat mode (apartment MVP Task 3; audio-in's beat weight and energy, #230) ----------
+// Every beat-locked effect here is mix = w·beat + (1 − w)·energy, w = A.beatWeight from audio.read() (0 = no confident
+// beat; it ramps over one bar, never jumps). The energy stand-ins come from the music itself (A.energy):
+//   kick   E.kick, the audio's own low-band onsets (never the clock's hits); kickOnset: a fresh one this frame
+//   snare  an onset envelope of mid + upperMid over their 0.4 s mean (τ 120 ms, the clock's snare tail)
+//   hat    the same on presence + air (τ 40 ms)
+//   low    sub + kick over their 1 s mean, −1..1: a bass pulse
+//   swell  0..1: the loudness of the last 1.5 s against the last 12 s (0.5 = as loud as usual)
+// NoBeat.phase(align): a counter that takes the beat value's steps at w = 1 and the energy rate at w = 0, so it never
+// jumps when w moves; with align it slides back onto that grid while w rises to 1 (whole at w = 1).
+const NoBeat = {
+  mix: (w, beat, energy) => w * beat + (1 - w) * energy,
+  lanes() {
+    const clamp = (x, l, h) => Math.max(l, Math.min(h, x));
+    const s = { w: 1, kick: 0, snare: 0, hat: 0, low: 0, swell: 0.5, level: 0, kickOnset: false, snareOnset: false,
+      t: null, pk: 0, ps: 0, mS: 0, mH: 0, mL: 0, sh: 0, lg: 0 };
+    s.step = (E, w, tSec) => {
+      const b = E.bands, first = s.t === null, dt = first ? 0 : Math.max(0, Math.min(0.25, tSec - s.t));
+      const v = x => (Number.isFinite(x) ? x : 0), mid = (v(b.mid) + v(b.upperMid)) / 2, hi = (v(b.presence) + v(b.air)) / 2, lo = (v(b.sub) + v(b.kick)) / 2;
+      const lvl = v(E.level), a = tau => 1 - Math.exp(-dt / tau);
+      s.t = tSec; s.w = Number.isFinite(w) ? Math.max(0, Math.min(1, w)) : 1; s.level = lvl;
+      if (first) { s.mS = mid; s.mH = hi; s.mL = lo; s.sh = s.lg = lvl; }
+      s.snare = Math.max(s.snare * Math.exp(-dt / 0.12), clamp(6 * (mid - s.mS - 0.02), 0, 1));
+      s.hat = Math.max(s.hat * Math.exp(-dt / 0.04), clamp(6 * (hi - s.mH - 0.02), 0, 1));
+      s.low = clamp(4 * (lo - s.mL), -1, 1);
+      s.mS += (mid - s.mS) * a(0.4); s.mH += (hi - s.mH) * a(0.4); s.mL += (lo - s.mL) * a(1);
+      s.sh += (lvl - s.sh) * a(1.5); s.lg += (lvl - s.lg) * a(12);
+      s.swell = clamp(0.5 + 2.5 * (s.sh - s.lg), 0, 1);
+      const k = v(E.kick); s.kickOnset = k > 0.35 && k > s.pk + 0.15; s.kick = k; s.pk = k;
+      s.snareOnset = s.snare >= 0.5 && s.ps < 0.5; s.ps = s.snare;
+      return s;
+    };
+    return s;
+  },
+  phase(align) {
+    const p = { v: null, b: 0, w: 1 };
+    p.step = (beatVal, eDelta, w) => {
+      if (p.v === null || !Number.isFinite(p.v)) p.v = beatVal;
+      else {
+        p.v += w * (beatVal - p.b) + (1 - w) * eDelta;
+        if (align && w > p.w && p.w < 1) { const off = p.v - beatVal, fr = off - Math.round(off / align) * align; p.v -= fr * Math.min(1, (w - p.w) / (1 - p.w)); }
+      }
+      p.b = beatVal; p.w = w; return p.v;
+    };
+    p.sync = () => { p.v = null; return p; };   // the next step starts on the beat value (▶ Play restarts the clock)
+    return p;
+  },
+};
+const nb = NoBeat.lanes();
+// the section timeline (scenes, build-ups, drops): the clock's bars at w = 1; at w = 0 it runs on at the clock's tempo
+// × (0.75 + 0.5·loudness), and slides back onto whole bars while w comes back, so a scene or a drop never jumps
+const timeline = NoBeat.phase(1);
+let nbFill = 0; // no-beat mode: splats owed to the music's loudness (one per 1 / (1.5·level) s), for kickless passages
+
 // ---------- WebGL basics ----------
 const canvas = document.getElementById('c');
 const hud = document.getElementById('hud');
@@ -350,11 +404,18 @@ const MODULES = {
       const ramp = drop ? Math.min(1, S.dropPhase * (params.bars - Math.max(1, params.bars - 2)) * params.bpb) : 0;   // gap fades in over 1 beat, not a step (#88 rise gate)
       field.mass = Number.isFinite(PIN.m) ? PIN.m : params.gap * ramp;
       field.coupling = Number.isFinite(PIN.k) ? PIN.k : 0.06 * ramp;
-      if (field.auto && S.beatEdge) {   // one coloured impulse per beat, bigger on the downbeat
+      // the impulses go through the blend by size: the clock's at w, the music's own at 1 − w
+      if (field.auto && S.beatEdge && S.w > 0) {   // one coloured impulse per beat, bigger on the downbeat
         const c = COLOURS[Math.floor(Math.random() * 3)];
-        musicSplat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), c, S.downbeat ? 1.6 : 1.0, S.downbeat ? 9 : 6);
+        musicSplat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), c, (S.downbeat ? 1.6 : 1.0) * S.w, S.downbeat ? 9 : 6);
       }
-      if (field.auto && S.snareEdge) musicSplat(80 + Math.random() * (N - 160), 80 + Math.random() * (N - 160), COLOURS[Math.floor(Math.random() * 3)], 0.6, 4);
+      if (field.auto && S.snareEdge && S.w > 0) musicSplat(80 + Math.random() * (N - 160), 80 + Math.random() * (N - 160), COLOURS[Math.floor(Math.random() * 3)], 0.6 * S.w, 4);
+      if (field.auto && S.w < 1) {   // no-beat mode: a kick heard (a strong one as the downbeat), a snare heard, the loudness
+        const we = 1 - S.w, big = S.eKick && S.eKickAmp > 0.8;
+        if (S.eKick) musicSplat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), COLOURS[Math.floor(Math.random() * 3)], (big ? 1.6 : 1.0) * we, big ? 9 : 6);
+        if (S.eSnare) musicSplat(80 + Math.random() * (N - 160), 80 + Math.random() * (N - 160), COLOURS[Math.floor(Math.random() * 3)], 0.6 * we, 4);
+        if (S.eFill) musicSplat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), COLOURS[Math.floor(Math.random() * 3)], 0.7 * we, 6);
+      }
       kgRun(field.mass, field.coupling);
       // colour on the grid, smoothed over 170 ms (frame-rate independent; a long gap starts fresh)
       const tdt = toneLast ? Math.max(0, S.now - toneLast) : 1e9; toneLast = S.now;
@@ -395,7 +456,7 @@ const MODULES = {
     render(slot, S) {
       const asp = S.W / S.H, u = S.buildPhase, w = S.dropPhase;
       const r = S.drop ? 0.25 + 1.1 : 0.25 + 1.1 * u;   // separation in screen units
-      const wob = 0.02 * Math.sin(S.bars * Math.PI * 2);
+      const wob = NoBeat.mix(S.w, 0.02 * Math.sin(S.bars * Math.PI * 2), 0.02 * S.low);   // per bar; no-beat: the bass pulse
       let A = [-r / 2, wob], B = [r / 2, -wob], P1 = [0, 0], P2 = [0, 0];
       if (S.drop) {   // the snap: the pieces fly apart with a new pair at the break
         const fly = 0.6 * w;
@@ -536,7 +597,7 @@ const $ = id => document.getElementById(id);
 const PIN = { m: parseFloat(query.get('m')), k: parseFloat(query.get('k')) };
 $('play').onclick = () => {
   if (metronome.playing) metronome.stop(); else metronome.start();
-  clockStart = performance.now();
+  clockStart = performance.now(); timeline.sync();
   $('play').textContent = metronome.playing ? '■ Stop' : '▶ Play';
   $('play').classList.toggle('on', metronome.playing);
 };
@@ -584,7 +645,7 @@ function resize() {
   sizeSlots(canvas.width, canvas.height);
 }
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
-let lastBeat = -1, lastSnare = 0;
+let lastBeat = -1, lastSnare = 0, lastNow = 0;
 const errors = [];
 function frame(now) {
   audio.frameStart(now);   // __qa.frame, t, dt (clock port)
@@ -596,8 +657,17 @@ function draw(now) {
   resize();
   const L = Object.assign(metronome.read(), audio.read());   // bars and bpm from the clock, kick/snare/hat from audio-in
   audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
-  const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb) + (window.__qaShift || 0);   // __qaShift: forceDrop moves the clock (QA, #88)
-  window.__qaNowBars = bars;
+  const dt = lastNow ? Math.min(0.1, Math.max(0, (now - lastNow) / 1000)) : 0; lastNow = now;
+  const w = Number.isFinite(L.beatWeight) ? L.beatWeight : 1;   // no-beat mode (A.beatWeight, A.energy)
+  nb.step(L.energy || audio.energy, w, now / 1000);
+  const barS = audio.bw && audio.bw.barS > 0 ? audio.bw.barS : params.bpb * 60 / params.bpm;
+  const shift = window.__qaShift || 0;   // __qaShift: forceDrop moves the clock (QA, #88), past the blend
+  const clockBars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb);
+  const bars = clockBars + shift;   // the clock's phase: beat edges, the pad, the tube's wobble
+  const tbars = Math.max(0, timeline.step(clockBars, dt / barS * (0.75 + 0.5 * Math.min(1, nb.level)), w)) + shift;   // the section timeline (never before bar 0: SCENES[idx])
+  window.__qaNowBars = tbars;
+  nbFill = w < 1 ? nbFill + dt * 1.5 * nb.level : 0;
+  const eFill = nbFill >= 1; if (eFill) nbFill -= 1;
   const beat = Math.floor(bars * params.bpb);
   const beatEdge = beat !== lastBeat, downbeat = beatEdge && beat % params.bpb === 0;
   lastBeat = beat;
@@ -605,19 +675,27 @@ function draw(now) {
   const W = canvas.width, H = canvas.height;
   let cur, prev = null, mix = 1, sectionBars;
   if (params.scene === 'auto') {
-    const idx = Math.floor(bars / params.bars);
+    const idx = Math.floor(tbars / params.bars);
     cur = SCENES[idx % SCENES.length];
-    sectionBars = bars - idx * params.bars;
+    sectionBars = tbars - idx * params.bars;
     if (idx > 0 && sectionBars < 1) { prev = SCENES[(idx - 1) % SCENES.length]; mix = sectionBars; }
-  } else { cur = params.scene; sectionBars = bars % params.bars; }
+  } else { cur = params.scene; sectionBars = tbars % params.bars; }
   const buildBars = Math.max(1, params.bars - 2), drop = sectionBars >= buildBars;
-  const S = { W, H, L, bars, now, beatEdge, downbeat, snareEdge, drop,
+  // the drum levels the scenes read: the clock's lanes at w = 1, the music's kick and snare / hat stand-ins at w = 0
+  const Lb = { kick: NoBeat.mix(w, L.kick, nb.kick), snare: NoBeat.mix(w, L.snare, nb.snare), hat: NoBeat.mix(w, L.hat, nb.hat) };
+  const S = { W, H, L: Lb, bars, now, beatEdge, downbeat, snareEdge, drop, w, low: nb.low,
+              eKick: nb.kickOnset, eKickAmp: nb.kick, eSnare: nb.snareOnset, eFill,
               buildPhase: Math.min(1, sectionBars / buildBars), dropPhase: drop ? (sectionBars - buildBars) / (params.bars - buildBars) : 0,
-              pad: 0.5 - 0.5 * Math.cos(bars / 4 * Math.PI * 2) };
+              pad: NoBeat.mix(w, 0.5 - 0.5 * Math.cos(bars / 4 * Math.PI * 2), nb.swell) };   // the 4-bar LFO; no-beat: the swell
   // the field keeps running underneath even when another scene shows, so it's alive when it fades in
-  if (cur !== 'field' && prev !== 'field') { field.mass = 0; field.coupling = 0; if (field.auto && beatEdge) musicSplat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), COLOURS[beat % 3], 1.0); kgRun(0, 0); }
+  if (cur !== 'field' && prev !== 'field') {
+    field.mass = 0; field.coupling = 0;
+    if (field.auto && beatEdge && w > 0) musicSplat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), COLOURS[beat % 3], 1.0 * w);
+    if (field.auto && nb.kickOnset && w < 1) musicSplat(60 + Math.random() * (N - 120), 60 + Math.random() * (N - 120), COLOURS[Math.floor(Math.random() * 3)], 1.0 * (1 - w));
+    kgRun(0, 0);
+  }
   const hasB = renderSlot(1, cur, S);
-  const hasA = prev ? renderSlot(0, prev, { ...S, beatEdge: false, snareEdge: false }) : false;
+  const hasA = prev ? renderSlot(0, prev, { ...S, beatEdge: false, snareEdge: false, eKick: false, eSnare: false, eFill: false }) : false;
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, W, H);
@@ -629,15 +707,15 @@ function draw(now) {
   gl.uniform1f(compProg.u.uHasOB, hasB ? 1 : 0);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-  Object.assign(window.__qa, { scene: cur, bars, drop, mass: field.mass, coupling: field.coupling, simTime: field.simTime,
-                               tube: { ...tubeState } });
+  Object.assign(window.__qa, { scene: cur, bars: tbars, clockBars: bars, drop, mass: field.mass, coupling: field.coupling, simTime: field.simTime,
+                               tube: { ...tubeState }, nobeat: { w, timelineOffset: tbars - bars, kick: Lb.kick, snare: Lb.snare, hat: Lb.hat, pad: S.pad, swell: nb.swell, low: nb.low } });
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
   if (now - lastHud > 200) {
     lastHud = now;
     const state = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
     hud.textContent = `Mass Gap · ${cur}${prev ? ` ← ${prev}` : ''} · ${drop ? 'DROP' : 'build-up'} · ${params.bpm} bpm · ${state}\n` +
-      `m ${field.mass.toFixed(2)} · κ ${field.coupling.toFixed(2)} · sim t ${field.simTime.toFixed(0)}\n${W}×${H} · ${fps} fps`;
+      `m ${field.mass.toFixed(2)} · κ ${field.coupling.toFixed(2)} · sim t ${field.simTime.toFixed(0)} · beat weight ${w.toFixed(2)}\n${W}×${H} · ${fps} fps`;
   }
 }
 
