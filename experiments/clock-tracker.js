@@ -99,6 +99,10 @@
     // jump kinds 'rescan' / 'secondlook')
     acqBeats: 24, acqMargin: 1.15, acqMaxSecs: 8, secondLookAt: 8, acqPeaks: 3, acqDedup: 0.015, acqSame: 0.04,
     acqRatios: [1, 2, 1 / 2, 4 / 3, 3 / 4, 3 / 2, 2 / 3],
+    // box run 4ac9fd7 (Orchestrator's rules a-c and the swing trap): a scan moves the tempo only on best.score >=
+    // acqFloor; a non-octave relative needs >= acqRelScore; the second look and re-acquire scans need the best >=
+    // acqLookRatio x the current tempo's score; a re-acquire never takes a relative of the tempo it lost
+    acqFloor: 0.25, acqRelScore: 0.5, acqLookRatio: 1.5,
     // the octave hold's evidence release (fix c, the user's ruling 10 Nov 14:57): the estimate is >= holdOct octaves from
     // the hold for > holdSecs, and, only when the hold is SLOWER than the estimate, R at the hold < holdFast x R there.
     // A hold faster than the estimate needs the distance alone (holdSlow is logged as support). Then the hold goes and
@@ -559,7 +563,14 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
           bpm = 0.7 * bpm + 0.3 * raw;
         } else { pend = null; return; }
       }
-      else if (dev > 0.1) { pend = null; if (++bigCount < 6) return; bpm = raw; moved = true; }   // not locked: a real change holds for ~1 s
+      else if (dev > 0.1) {   // not locked: a real change holds for ~1 s
+        // re-acquiring after a lock loss (box run 4ac9fd7, the swing trap: the lock went in the 4:3 break and the
+        // acquisition took the break's 146.7 from the ACF): a non-octave relative of the last locked tempo never lands
+        // here; the tempo stays the last locked one, as through a kick dropout. (A decisive-scan exception would not
+        // hold: the break is a perfect 146.7 comb, every 24-beat scan inside it scores ~0.9 at ratio >> 1.5.)
+        if (everLocked && lastConfidentBpm && relKind(raw, lastConfidentBpm) === 'relative') { pend = null; bigCount = 0; acq.reacqHeld++; return; }
+        pend = null; if (++bigCount < 6) return; bpm = raw; moved = true;
+      }
       else { bigCount = 0; pend = null; bpm = 0.7 * bpm + 0.3 * raw; }
       setPeriod(own, 60 / bpm, t);
       // ruling (2): a tempo move that lands a fresh relative pick re-acquires the phase at the next bar line
@@ -681,9 +692,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     let decisionLast = null;
     const mid = a => { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
     /** 'octave' | 'relative' | null: how a candidate tempo relates to the current one */
-    function relKind(b) {
-      if (!(b > 0) || !(bpm > 0)) return null;
-      const q = b / bpm;
+    function relKind(b, ref = bpm) {
+      if (!(b > 0) || !(ref > 0)) return null;
+      const q = b / ref;
       if (Math.abs(q / 2 - 1) <= C.tempoTol || Math.abs(q * 2 - 1) <= C.tempoTol) return 'octave';
       return C.relRatios.some(r => Math.abs(q / r - 1) <= C.tempoTol) ? 'relative' : null;
     }
@@ -807,7 +818,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
 
     // ---- F4: the first lock picks its tempo from a scan; the same scan at every re-acquire and once more after 8 s
     let acfLast = null, firstLockT = null, secondLookDone = false, rescanDue = null;
-    const acq = { firstLock: null, last: null, secondLook: null, rescans: [], waits: 0, relBlocked: 0 };
+    const acq = { firstLock: null, last: null, secondLook: null, rescans: [], waits: 0, relBlocked: 0, reacqHeld: 0 };
     function acfPeaks() {   // the top acqPeaks local maxima of the last ACF, as bpm (parabolic lag)
       if (!acfLast) return [];
       const { r, Lmin, Lmax } = acfLast, pk = [];
@@ -837,7 +848,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       for (const o of pts) { const x = o.t / Pc - phi, k = Math.round(x); if (Math.abs(x - k) <= C.fitInlier) { win += o.s; ks.add(k); } }
       const span = Math.round((pts[0].t - pts[pts.length - 1].t) / Pc) + 1;
       const inl = win / w, cov = Math.min(1, ks.size / span), pr = prior(b);
-      return { bpm: b, score: inl * cov * R * pr, inl, cov, R, prior: pr, n: pts.length, beatT: (Math.round(pts[0].t / Pc - phi) + phi) * Pc };
+      return { bpm: b, score: inl * cov * R * pr, inl, cov, R, prior: pr, n: pts.length, span, beatT: (Math.round(pts[0].t / Pc - phi) + phi) * Pc };
     }
     const sb = x => x ? { bpm: +x.bpm.toFixed(2), score: r3(x.score), inl: r3(x.inl), cov: r3(x.cov), R: r3(x.R) } : null;
     const brief = s => ({ t: +s.t.toFixed(3), best: sb(s.best), second: sb(s.second), ratio: s.ratio === Infinity ? null : r3(s.ratio), decisive: s.decisive, n: s.n });
@@ -860,23 +871,35 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       return res;
     }
     // the first lock: only on a decisive scan, or after acqMaxSecs on the best; the period and the beat move to it
+    // box run 4ac9fd7: scans moved good tempos on weak evidence (scary-monsters 139.99 -> 124.5 on a best score of
+    // 0.074, children 146.34 -> 97.14 on 0.161, gasolina 96.05 -> 127.91 at ratio 1.20). A scan may replace the
+    // current tempo only when its best scores >= acqFloor; a non-octave relative of the current tempo (4:3, 3:2 ...)
+    // also needs >= acqRelScore. Good moves for scale: voodoo-people 0.726 at ratio 24.8, block-rockin-beats ratio 4.5
+    function mayMove(b, ref) {
+      if (!(b.score >= C.acqFloor)) return 'floor';
+      if (relKind(b.bpm, ref) === 'relative' && !(b.score >= C.acqRelScore)) return 'relative';
+      return null;
+    }
     function firstLockGate(to) {
       const waited = to - (acqSince === null ? to : acqSince), s = scan(to);
       if (!s) { acq.firstLock = { t: +to.toFixed(3), bpm: +bpm.toFixed(2), scan: null, waitedS: r3(waited) }; return true; }
-      if (!s.decisive && waited < C.acqMaxSecs) { acq.waits++; return false; }
-      const from = bpm;
-      if (Math.abs(s.best.bpm / bpm - 1) > C.acqDedup) {
+      const differs = Math.abs(s.best.bpm / bpm - 1) > C.acqDedup, blocked = differs ? mayMove(s.best, bpm) : null;
+      // a scan too weak to move the tempo does not hold the lock back either
+      if (!blocked && !s.decisive && waited < C.acqMaxSecs) { acq.waits++; return false; }
+      const from = bpm, cur = scoreAt(bpm, to);
+      if (differs && !blocked) {
         setPeriod(own, 60 / s.best.bpm, to); bpm = s.best.bpm;
         own.B0 -= frac(ownBeats(s.best.beatT)); own.pending = 0;   // not locked yet: the beat snaps onto the grid
         estHoldUntil = to + C.acWindow; bigCount = 0; pend = null;
       }
       fit.lastValidT = to;
-      acq.firstLock = { t: +to.toFixed(3), from: +from.toFixed(2), bpm: +bpm.toFixed(2), scan: brief(s), waitedS: r3(waited), forced: !s.decisive };
+      acq.firstLock = { t: +to.toFixed(3), from: +from.toFixed(2), bpm: +bpm.toFixed(2), scan: brief(s), cur: sb(cur), waitedS: r3(waited), forced: !s.decisive && !blocked,
+        ...(blocked ? { kept: blocked } : {}) };
       return true;
     }
     function acqNote(rec) { if (rec.kind === 'secondlook') acq.secondLook = rec; else { acq.rescans.push(rec); if (acq.rescans.length > 8) acq.rescans.shift(); } }
     // a re-acquire ('rescan') or the second look: the best candidate replaces the current tempo only when it beats
-    // the current tempo's own score by acqMargin; the beat follows at the next bar line (rephase)
+    // the current tempo's own score by acqLookRatio; the beat follows at the next bar line (rephase)
     function rescan(t, kind) {
       const rec = { t: +t.toFixed(3), kind, from: +bpm.toFixed(2) };
       if (tapModel || octaveLock) { rec.skipped = tapModel ? 'tap' : 'hold'; return acqNote(rec); }
@@ -884,9 +907,14 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (!s || !cur || !(cur.score > 0)) { rec.skipped = 'few'; return acqNote(rec); }
       const b = s.best, ratio = b.score / cur.score;
       Object.assign(rec, { scan: brief(s), cur: sb(cur), ratio: r3(ratio) });
-      if (Math.abs(b.bpm / bpm - 1) <= C.acqSame || ratio < C.acqMargin) { rec.kept = true; return acqNote(rec); }
-      // a re-acquire does not move to a non-octave relative (the swing trap's break re-acquires inside the 4:3 comb)
-      if (kind === 'rescan' && relKind(b.bpm) === 'relative') { rec.kept = true; rec.why = 'relative'; return acqNote(rec); }
+      // the second look and the re-acquire scans need the best to beat the current tempo by acqLookRatio (1.5; the
+      // first lock's acqMargin 1.15 let gasolina 1.20, sicko-mode 1.29 and children 1.36 through), the floor, and for
+      // a relative acqRelScore; a re-acquire never moves to a relative of the tempo it lost (the swing trap)
+      if (Math.abs(b.bpm / bpm - 1) <= C.acqSame) { rec.kept = true; return acqNote(rec); }
+      if (ratio < C.acqLookRatio) { rec.kept = true; rec.why = 'ratio'; return acqNote(rec); }
+      const blocked = mayMove(b, bpm);
+      if (blocked) { rec.kept = true; rec.why = blocked; return acqNote(rec); }
+      if (kind === 'rescan' && relKind(b.bpm) === 'relative') { rec.kept = true; rec.why = 'relative-reacquire'; return acqNote(rec); }
       setPeriod(own, 60 / b.bpm, t); bpm = b.bpm;
       tempoDecision(t, kind, b.bpm, true); tempoMoves++;
       estHoldUntil = t + C.acWindow; pend = null; bigCount = 0;
@@ -1052,7 +1080,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         return { tempoMovesLocked: Object.values(movesBy).reduce((a, b) => a + b, 0), movesBy: { ...movesBy }, tempoRefusals: refused, refusedBy: { ...fit.rejects },
           last: decisionLast, fit: fit.last, fitAdjusts: fit.adjusts, steps: fit.steps, fallbackBlends: fit.fallbackBlends,
           short: { steps: fit.shortSteps, refines: fit.shortRefines, last: fit.shortLast, cand: fit.stepCand ? { bpm: +(60 / fit.stepCand.P).toFixed(2), n: fit.stepCand.n } : null },
-          acq: { firstLock: acq.firstLock, secondLook: acq.secondLook, rescans: acq.rescans.slice(), last: acq.last, waits: acq.waits, relBlocked: acq.relBlocked } };
+          acq: { firstLock: acq.firstLock, secondLook: acq.secondLook, rescans: acq.rescans.slice(), last: acq.last, waits: acq.waits, relBlocked: acq.relBlocked, reacqHeld: acq.reacqHeld },
+          pendSkips: fit.pendSkips };
       },
       get notes() { return notes; }, get relative() { return relReport(); }, get hold() { return holdReport(); }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
       get jumps() { return jumps; }, get stateLog() { return stateLog; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,

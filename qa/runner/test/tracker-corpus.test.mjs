@@ -342,9 +342,11 @@ function shadowRow(mono, ref, lib) {
   // F4: the first-lock scan (best, runner-up, ratio, wait), the second look, the re-acquire scans, blocked relatives,
   // and F3's short-window steps
   const a = r && r.acq, c = x => x ? `${x.bpm} (${x.score})` : '-';
-  const acqText = !a ? null : `F4 first lock ${a.firstLock ? `${a.firstLock.from ?? '-'} -> ${a.firstLock.bpm} after ${a.firstLock.waitedS} s${a.firstLock.forced ? ' (forced at the cap)' : ''}, scan best ${c(a.firstLock.scan && a.firstLock.scan.best)} vs ${c(a.firstLock.scan && a.firstLock.scan.second)} ratio ${a.firstLock.scan ? a.firstLock.scan.ratio : '-'}` : 'none'}`
-    + `; second look ${a.secondLook ? (a.secondLook.skipped ? 'skipped ' + a.secondLook.skipped : a.secondLook.to ? `moved ${a.secondLook.from} -> ${a.secondLook.to} (ratio ${a.secondLook.ratio})` : `kept ${a.secondLook.from} (best ${c(a.secondLook.scan && a.secondLook.scan.best)}, ratio ${a.secondLook.ratio})`) : 'not reached'}`
-    + `; re-acquire scans ${a.rescans.length} (moved ${a.rescans.filter(x => x.to).length}); relatives blocked while locked ${a.relBlocked}; short-window steps ${r.short ? r.short.steps : '-'}`;
+  // one scan decision: best / runner-up / current with their scores, the ratio best / current, moved or kept (why)
+  const look = x => x.skipped ? `@${x.t} skipped ${x.skipped}` : `@${x.t} ${x.to ? `moved ${x.from} -> ${x.to}` : `kept ${x.from}${x.why ? ' (' + x.why + ')' : ''}`}, best ${c(x.scan && x.scan.best)}, second ${c(x.scan && x.scan.second)}, cur ${c(x.cur)}, ratio ${x.ratio}`;
+  const acqText = !a ? null : `F4 first lock ${a.firstLock ? `${a.firstLock.from ?? '-'} -> ${a.firstLock.bpm} after ${a.firstLock.waitedS} s${a.firstLock.forced ? ' (forced at the cap)' : ''}${a.firstLock.kept ? ' (kept: ' + a.firstLock.kept + ')' : ''}, best ${c(a.firstLock.scan && a.firstLock.scan.best)}, second ${c(a.firstLock.scan && a.firstLock.scan.second)}, cur ${c(a.firstLock.cur)}, ratio ${a.firstLock.scan ? a.firstLock.scan.ratio : '-'}` : 'none'}`
+    + `; second look ${a.secondLook ? look(a.secondLook) : 'not reached'}`
+    + `; re-acquire scans ${a.rescans.length}${a.rescans.length ? ': ' + a.rescans.map(look).join(' | ') : ''}; relatives blocked while locked ${a.relBlocked}, while re-acquiring ${a.reacqHeld ?? '-'}; short-window steps ${r.short ? r.short.steps : '-'}`;
   return { lockT, firstLockBpm, pct: n ? 100 * inN / n : 0, longest, moves: r ? r.tempoMovesLocked : tr.relative.tempoMoves, refusals: r ? r.tempoRefusals : null, diag: diag && acqText ? `${diag}; ${acqText}` : diag };
 }
 test('F3 shadow rows: main 501cfe1 beside the tracker under test on every accepted toolVersion 3 vote ref; never more than 2 points below main (hard; box only)', async (t) => {
