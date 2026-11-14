@@ -303,6 +303,9 @@ test('(i) re-lock cost on real crossfades, report-only: the #17 mode B render an
 const BASE501 = require('./fixtures/clock-tracker-501cfe1.cjs');
 const SHADOW_SECS = 180;
 const RECOVERY = ['voodoo-people', 'children', 'block-rockin-beats', 'hc-06'];   // the F2 losses; target >= 60 % after F4
+// the user (14 Nov 12:00): where main itself is below this share within 2 % of the ref, the no-regression check is
+// report-only (main barely tracks it; today hc-02, hc-04, hc-09, hc-11); every other track stays hard
+const NOREG_MAIN_MIN_PCT = 25;
 function voteRefs() {
   const dir = A.audioDir();
   if (!fs.existsSync(dir)) return { skip: 'no tracks folder here' };
@@ -349,22 +352,24 @@ function shadowRow(mono, ref, lib) {
     + `; re-acquire scans ${a.rescans.length}${a.rescans.length ? ': ' + a.rescans.map(look).join(' | ') : ''}; relatives blocked while locked ${a.relBlocked}, while re-acquiring ${a.reacqHeld ?? '-'}; short-window steps ${r.short ? r.short.steps : "-"} (capped by the 8 s cooldown ${r.short && r.short.capped !== undefined ? r.short.capped : "-"})`;
   return { lockT, firstLockBpm, pct: n ? 100 * inN / n : 0, longest, moves: r ? r.tempoMovesLocked : tr.relative.tempoMoves, refusals: r ? r.tempoRefusals : null, diag: diag && acqText ? `${diag}; ${acqText}` : diag };
 }
-test('F3 shadow rows: main 501cfe1 beside the tracker under test on every accepted toolVersion 3 vote ref; never more than 2 points below main (hard; box only)', async (t) => {
+test(`F3 shadow rows: main 501cfe1 beside the tracker under test on every accepted toolVersion 3 vote ref; never more than 2 points below main (hard where main >= ${NOREG_MAIN_MIN_PCT} %, report-only below; box only)`, async (t) => {
   await heavy(t);   // one heavy box test at a time (fixtures/heavy-lock.mjs)
   const v = voteRefs();
   if (v.skip) { t.skip(v.skip); return; }
   if (!v.refs.length) { t.skip('no accepted toolVersion 3 vote refs beside the tracks'); return; }
   let rows = 0;
-  const worse = [];
+  const worse = [], soft = [];   // hard regressions; regressions on report-only tracks (main < NOREG_MAIN_MIN_PCT)
   const fmt = (r, label) => `${label} ${r.pct.toFixed(1)} % within 2 %, longest locked excursion ${r.longest.toFixed(1)} s, tempoMovesLocked ${r.moves}, tempoRefusals ${r.refusals === null || r.refusals === undefined ? '-' : r.refusals}, lock ${r.lockT === null ? 'never' : r.lockT.toFixed(1) + ' s'}`;
   for (const { id, ref } of v.refs) {
     const f = trackFile(id);
     const d = f.skip ? f : await decode(f, SHADOW_SECS);   // not cached: up to 33 tracks
     if (d.skip) { say(t, `F3 ${id}: skipped (${d.skip})`); continue; }
     const now = shadowRow(d.mono, ref, T), base = shadowRow(d.mono, ref, BASE501);
-    const regress = now.pct < base.pct - 2;
-    if (regress) worse.push(`${id}: now ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %`);
-    say(t, `F3 ${id} ref ${ref} (${(d.mono.length / SR).toFixed(0)} s): ${fmt(now, 'now')} | ${fmt(base, 'main 501cfe1')} | delta ${(now.pct - base.pct).toFixed(1)} points | ${regress ? 'REGRESSION (> 2 points below main) [hard]' : 'no regression [hard]'} | ${now.pct >= 95 ? 'would pass' : 'would FAIL'} >= 95 % [report-only]`);
+    const regress = now.pct < base.pct - 2, hard = base.pct >= NOREG_MAIN_MIN_PCT;
+    if (regress && hard) worse.push(`${id}: now ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %`);
+    if (regress && !hard) soft.push(`${id}: now ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %`);
+    const mark = hard ? '[hard]' : `[report-only: main < ${NOREG_MAIN_MIN_PCT} %]`;
+    say(t, `F3 ${id} ref ${ref} (${(d.mono.length / SR).toFixed(0)} s): ${fmt(now, 'now')} | ${fmt(base, 'main 501cfe1')} | delta ${(now.pct - base.pct).toFixed(1)} points | ${regress ? 'REGRESSION (> 2 points below main)' : 'no regression'} ${mark} | ${now.pct >= 95 ? 'would pass' : 'would FAIL'} >= 95 % [report-only]`);
     if (now.diag) say(t, `F3 ${id} tempo: ${now.diag}`);
     // report-only: tempoMovesLocked (target <= 2), the first lock's tempo and its ratio to the ref
     const fl = x => x.firstLockBpm === null ? 'never' : `${x.firstLockBpm.toFixed(2)} (x${(x.firstLockBpm / ref).toFixed(3)})`;
@@ -372,6 +377,6 @@ test('F3 shadow rows: main 501cfe1 beside the tracker under test on every accept
     if (RECOVERY.includes(id)) say(t, `F3 recovery ${id}: now ${now.pct.toFixed(1)} % within 2 % (main ${base.pct.toFixed(1)} %), target >= 60 % after F4 ${now.pct >= 60 ? 'met' : 'not met'} [report-only]`);
     rows++;
   }
-  say(t, `F3 shadow rows: ${rows} of ${v.refs.length} accepted toolVersion 3 refs; regressions ${worse.length}${worse.length ? ': ' + worse.join('; ') : ''}`);
+  say(t, `F3 shadow rows: ${rows} of ${v.refs.length} accepted toolVersion 3 refs; regressions ${worse.length}${worse.length ? ': ' + worse.join('; ') : ''} [hard]; on tracks where main < ${NOREG_MAIN_MIN_PCT} % ${soft.length}${soft.length ? ': ' + soft.join('; ') : ''} [report-only: main < ${NOREG_MAIN_MIN_PCT} %]`);
   assert.deepEqual(worse, [], 'within 2 points of main on every track');
 });
