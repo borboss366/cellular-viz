@@ -45,6 +45,8 @@ function tick() {
 requestAnimationFrame(tick);
 try { toggle(); } catch (e) { /* no autoplay: press start */ }
 window.__qa = Object.assign(window.__qa || {}, { publisher: { clock, publisher, state: () => ({ playing: clock.playing, sent: publisher.sent, events: publisher.events, beats: clock.read({ raw: true }).beats }) } });
+// the clockLate row (#95 6704930372 item 2: every page on the clock exposes it)
+Object.defineProperty(window.__qa, 'clockLate', { get: () => clock.lateStats, configurable: true, enumerable: true });
 </script>
 </body>
 </html>
