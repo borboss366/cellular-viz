@@ -98,6 +98,9 @@
     // the long fit's chain (box run dd840c6): onsets >= fitStrongRel of the strongest of the last 2 s, a whole number
     // of beats apart within fitChainTol per beat
     fitStrongRel: 0.25, fitChainTol: 0.1,
+    // box run a8f6cd1 (hc-12, swung jazz locked near 60 for 140): a chain holding under fitSupport of the window's
+    // strong onsets is rejected ('support'), so a weakly supported wrong tempo no longer keeps the fallback away
+    fitSupport: 0.3,
     // F4 (VIZ research's spec, the user 14 Nov 02:45): the first lock's tempo from a scan. Candidates: the top acqPeaks
     // ACF peaks x acqRatios (deduped within acqDedup); each scored over acqBeats beats of strong broadband onsets as
     // inlierFrac x coverage x R x prior. The first lock waits until the best beats the runner-up (another tempo, more
@@ -813,6 +816,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       }
       const inw = pts.map(p => p.t);   // the chain, newest first (inw[0] is the anchor)
       if (pts.length < C.fitMinOnsets) return fitReject(t, 'few');
+      if (pts.length < C.fitSupport * cand.length) return fitReject(t, 'support');   // the chain explains too few of the strong onsets
       const ks = pts.map(p => p.k), span = Math.max(...ks) - Math.min(...ks), distinct = new Set(ks).size;
       if (span < C.fitMinSpanBeats) return fitReject(t, 'span');
       if (distinct / span < C.fitCoverage) return fitReject(t, 'coverage');
