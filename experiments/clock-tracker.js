@@ -115,6 +115,14 @@
     // A hold faster than the estimate needs the distance alone (holdSlow is logged as support). Then the hold goes and
     // the model moves to the estimate's octave
     holdOct: 0.75, holdSlow: 0.8, holdFast: 0.6, holdSecs: 2, holdProtectBars: HOLD_PROTECT_BARS,
+    // the side at the first lock (the half-beat fix A; VIZ research's ruling, the user's go 14 Nov 17:21). The low
+    // lane's circular mean lands on the louder of two lobes half a beat apart, and on trance / garage / techno that is
+    // the off-beat bass. Now two hypotheses, the beat at the model's phase 0 or at 1/2, are scored by the low lane's
+    // onset weight within +-sideBin beat of each over the last sideBeats beats; the larger wins unless they are within
+    // sideTie of each other, then the brighter attack wins (broadband / low onset strength at each low onset, the
+    // broadband onset taken from sideBrightLead s before it to sideBrightLag s after it: a kick has a click, an off-beat
+    // bass usually not; the low lane hears a kick 45-80 ms after broadband does)
+    sideBeats: 16, sideBin: 0.125, sideTie: 0.2, sideBrightLead: 0.1, sideBrightLag: 0.03,
   };
 
   // ---------------------------------------------------------------- analysis (worklet and node)
@@ -325,7 +333,26 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // lane's R small (Sandstorm ≈ 0.1–0.4), its weight near the beat vs near the off-beat says where the kick is.
     let sideOffset = 0, sideSince = null, sideLast = null, sideAtLock = null, sideHand = false;
     const sideLog = [];
-    function sideMoveNeeded(l) { return l && l.R !== null && Math.abs(l.phase) > 0.25 && l.off > l.on; }
+    // fix A: the side by two hypotheses (phase 0 or 1/2 of the model) instead of the circular mean (see DEFAULTS)
+    function sideDecide(t) {
+      const from = Math.max(acqSince === null ? -Infinity : acqSince, t - C.sideBeats * own.P), bo = lanes.broad.onsets;
+      const bins = [{ w: 0, b: 0, n: 0 }, { w: 0, b: 0, n: 0 }];
+      for (const o of lanes.low.onsets) {
+        if (o.t <= from || o.t > t) continue;
+        const ph = Math.abs(frac(ownBeats(o.t))), h = ph <= C.sideBin ? 0 : 0.5 - ph <= C.sideBin ? 1 : -1;
+        if (h < 0) continue;
+        let sb = 0;   // the broadband onset at this low onset (the attack's brightness)
+        for (let i = bo.length - 1; i >= 0 && bo[i].t >= o.t - C.sideBrightLead; i--) if (bo[i].t <= o.t + C.sideBrightLag) sb = Math.max(sb, bo[i].s);
+        bins[h].w += o.s; bins[h].b += sb; bins[h].n++;
+      }
+      const [h0, h1] = bins, mx = Math.max(h0.w, h1.w), bright = B => (B.w > 0 ? B.b / B.w : 0);
+      const d = { w0: r3(h0.w), w1: r3(h1.w), n0: h0.n, n1: h1.n, bright0: r3(bright(h0)), bright1: r3(bright(h1)),
+        brightRatio: bright(h0) > 0 ? r3(bright(h1) / bright(h0)) : null, by: null, side: 0 };
+      if (h0.n + h1.n < C.laneMinOnsets || !(mx > 0)) { d.by = 'too few'; return d; }
+      if (Math.abs(h0.w - h1.w) > C.sideTie * mx) { d.by = 'weight'; d.side = h1.w > h0.w ? 0.5 : 0; }
+      else { d.by = 'brightness'; d.side = bright(h1) > bright(h0) ? 0.5 : 0; }
+      return d;
+    }
     function sideAt(t, l, why) {   // the side moves half a beat (forward: beats never run back)
       sideLog.push({ t: +t.toFixed(3), why, phase: r3(l.phase), R: r3(l.R), on: r3(l.on), off: r3(l.off), n: l.n });
       notes.push({ t, kind: 'side', why, phase: l.phase, R: l.R });
@@ -337,9 +364,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     }
     // the first lock: the low lane's side over everything it heard since acquisition began, silently (nothing booked)
     function sideAtFirstLock(t) {
-      const l = laneStat(lanes.low, t, acqSince);
-      sideAtLock = l.R === null ? 'no R' : { phase: r3(l.phase), R: r3(l.R), on: r3(l.on), off: r3(l.off), n: l.n };
-      if (sideMoveNeeded(l) && !tapModel) { sideAt(t, l, 'first lock'); own.B0 += 0.5; own.pending = 0; sideOffset = sideOffset ? 0 : 0.5; }
+      const l = laneStat(lanes.low, t, acqSince), d = sideDecide(t);
+      sideAtLock = { ...(l.R === null ? { R: null } : { phase: r3(l.phase), R: r3(l.R), on: r3(l.on), off: r3(l.off), n: l.n }), decide: d };
+      if (d.side === 0.5 && !tapModel) { sideAt(t, l, `first lock (${d.by})`); own.B0 += 0.5; own.pending = 0; sideOffset = sideOffset ? 0 : 0.5; }
     }
     function laneReport() {
       const j0 = jumps.length ? jumps[0].at : null, st = x => ({ R: r3(x.R), R2: r3(x.R2), n: x.n, phase: r3(x.phase), on: r3(x.on), off: r3(x.off) });

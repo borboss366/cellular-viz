@@ -398,12 +398,20 @@ const GATE_SECS = 180;
 function gateRun(mono, lib) {
   const beats = [], samples = [], counter = CD.beatCounter();
   let lockT = null;
-  track(mono, (tr, tt) => {
+  const tr = track(mono, (tr, tt) => {
     if (lockT === null && tr.state === 'locked') lockT = tt;
     for (const at of counter(t => tr.beatsAt(t), b => tr.timeOf(b), tt)) beats.push(at);
     samples.push({ t: tt, bpm: tr.bpm || null, conf: tr.confidence, state: tr.state });
   }, lib);
-  return { beats, samples, lockT };
+  // the side at the first lock (half-beat fix A: the two bin weights, the brightness, the choice) and the side moves
+  const side = tr.snapshot ? tr.snapshot().lane.side : null;
+  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null };
+}
+/** the side decision at the first lock, as text (main 501cfe1 has no two-hypothesis decision: its circular mean) */
+function sideText(r) {
+  const a = r.side && r.side.atLock, d = a && typeof a === 'object' ? a.decide : null;
+  if (!d) return `circular mean ${a && typeof a === 'object' ? `phase ${a.phase} R ${a.R}` : JSON.stringify(a)}, side moves ${r.sideMoves}`;
+  return `w0 ${d.w0} (n ${d.n0}) vs w1/2 ${d.w1} (n ${d.n1}), brightness ${d.bright0} vs ${d.bright1} (ratio ${d.brightRatio}), by ${d.by}, side ${d.side}, side moves ${r.sideMoves}`;
 }
 /** a one-track session log of that run (track time = render time) through the conductor scorer */
 function gateScore(run, id, row, grid, secs) {
@@ -457,7 +465,8 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
     say(t, `gate-table ${row.id} | gate ${row.status}${flags ? ' (' + flags + ')' : ''} | before inside-gate ${fmt(bi)} % | after inside-gate ${fmt(ai)} % | before lock ${fmt(before.lockT)} s | after lock ${fmt(after.lockT)} s`
       + ` | delta ${fmt(delta)} points | first 8 in-gate beats before ${fmt(b.run8)} s, after ${fmt(a.run8)} s | p90 |e| before ${fmt(b.tr.alone.absE.p90)} ms, after ${fmt(a.tr.alone.absE.p90)} ms`
       + ` | octave factor before ${b.tr.alone.octave ? b.tr.alone.octave.factor : 1}, after ${a.tr.alone.octave ? a.tr.alone.octave.factor : 1} | ${secs} s, grid ${gridFlag}`
-      + ` | ref tool ${ref && ref.toolVersion !== undefined ? 'v' + ref.toolVersion : '-'}, vote ${vote ? (vote.accepted ? `accepted v${vote.toolVersion}` : 'flagged') : 'none'} [report-only]`);
+      + ` | ref tool ${ref && ref.toolVersion !== undefined ? 'v' + ref.toolVersion : '-'}, vote ${vote ? (vote.accepted ? `accepted v${vote.toolVersion}` : 'flagged') : 'none'}`
+      + ` | side at lock: after ${sideText(after)}; before ${sideText(before)} [report-only]`);
   }
   const pct = s => (s.playedS > 0 ? 100 * s.inS / s.playedS : null);
   say(t, `gate-table summary: ${n} of ${rows.length} non-hc rows scored (first ${GATE_SECS} s) | inside-gate, time-weighted: before ${fmt(pct(sum.before))} %, after ${fmt(pct(sum.after))} %`
