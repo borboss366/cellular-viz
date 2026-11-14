@@ -103,6 +103,21 @@ def verdict(v, conf):
     return True, None
 
 
+EAR_RULE = 1   # the user-ear A+B rule (the user's go 14 Nov 13:18); a flagged user-ear row voted before it re-votes once
+
+
+def user_ear_ab(row, bpms):
+    """the user-ear rule: a row the user checked by ear (bpmSource 'user-ear', with refMinBpm / refMaxBpm) is accepted
+    when trackers A and B agree within 1 % (no octave fold) and both lie inside the ear range, even when C is off or
+    essentia's confidence is low (C stays in the json as a report). hc-03: A 160.37, B 160.11, C 161.89 at confidence
+    1.195, range 153.6-166.4. A DEGRADED vote (no B) never qualifies."""
+    row = row or NO_ROW
+    lo, hi, a, b = row.get('refMinBpm'), row.get('refMaxBpm'), bpms.get('A'), bpms.get('B')
+    if row.get('bpmSource') != 'user-ear' or not (lo and hi and a and b):
+        return False
+    return abs(a / b - 1) <= AGREE and float(lo) <= a <= float(hi) and float(lo) <= b <= float(hi)
+
+
 def accept_reason(v, conf):
     """why an accepted vote was accepted, for .vote.json and the line"""
     n, of = len(v['agreeing']), v.get('trackers', 3)
@@ -270,6 +285,16 @@ def selftest():
     cases.append(('tool version 3', TOOL_VERSION == 3))
     cases.append(('positions', positions([0, .3, .6, .9, 1.2, 1.5], [0, 1.2]) == [1, 2, 3, 4, 1, 2]))
     cases.append(('wide range', WIDE == (60.0, 260.0) and ESSENTIA_MAX == 250.0 and METERS == [2, 3, 4, 5, 6, 7]))
+    # the user-ear A+B rule (the user's go 14 Nov 13:18)
+    ear = {'bpmSource': 'user-ear', 'refMinBpm': 153.6, 'refMaxBpm': 166.4}
+    h3 = {'A': 160.37, 'B': 160.11, 'C': 161.89}
+    cases.append(('user-ear AB: hc-03 is flagged by the vote (confidence 1.195) and accepted by the rule',
+                  not verdict(vote(h3), 1.195)[0] and user_ear_ab(ear, h3)))
+    cases.append(('user-ear AB: A and B more than 1 % apart refused', not user_ear_ab(ear, {'A': 160.37, 'B': 157.0, 'C': 161.89})))
+    cases.append(('user-ear AB: A or B outside the ear range refused', not user_ear_ab(ear, {'A': 166.9, 'B': 166.2, 'C': 161.89})
+                  and not user_ear_ab(ear, {'A': 153.5, 'B': 154.0, 'C': None})))
+    cases.append(('user-ear AB: a non-user-ear row refused', not user_ear_ab({**ear, 'bpmSource': 'user'}, h3) and not user_ear_ab({}, h3)))
+    cases.append(('user-ear AB: DEGRADED (no B) refused', not user_ear_ab(ear, {'A': 160.37, 'B': None, 'C': 161.89})))
     # the per-row plan (14 Nov ear checks): an ear-checked row decodes in its narrow range from the start, a meter row
     # fixes the downbeat DBN, any other row is as before (wide, meters 2-7, no plan key so its .vote.json stays fresh)
     cases.append(('plain row: wide, meters 2-7, no key', row_plan({'bpm': 128, 'bpmSource': 'user'}) == (WIDE, 'wide', METERS, None)))
@@ -477,7 +502,9 @@ def main():
             try:
                 old = json.load(open(base + '.vote.json'))
                 if (old.get('sha256') == digest and old.get('toolVersion') == TOOL_VERSION and old.get('model') == a.model
-                        and old.get('trackerSet', SETS[3]) == tset and old.get('plan') == row_plan(row)[3]):
+                        and old.get('trackerSet', SETS[3]) == tset and old.get('plan') == row_plan(row)[3]
+                        # a flagged user-ear row voted before the user-ear A+B rule votes again once; accepted rows stay
+                        and (old.get('accepted') or (row or NO_ROW).get('bpmSource') != 'user-ear' or old.get('earRule') == EAR_RULE)):
                     print(f'vote: {tid} up to date ({"accepted" if old.get("accepted") else "flagged"}), skipped')
                     summary.append(old)
                     continue
@@ -506,6 +533,9 @@ def main():
             conf = res['C']['confidence']
             ok, why = verdict(v, conf)
             pick = v['pick']
+            accepted_by = 'vote' if ok else None
+            if not ok and not degraded and user_ear_ab(row, bpms):   # the user-ear A+B rule; C is a report only
+                ok, why, pick, accepted_by = True, None, 'A', 'user-ear-AB'
             grid_beats = res[pick]['beats'] if (ok and pick) else []
             pos = positions(grid_beats, res['A']['downbeats']) if grid_beats else []
             seconds = round(len(mono) / sr, 2)
@@ -526,7 +556,10 @@ def main():
                     'C': {'name': 'essentia-multifeature', 'bpm': bpms['C'], 'beats': len(res['C']['beats']), 'confidence': conf, 'seconds': res['C']['seconds']},
                 },
                 'meter': meter, 'barLengths': res['A'].get('bars'), 'tempoCurve': curve, 'candidates': v['candidates'],
-                'vote': v, 'accepted': ok, 'accept': accept_reason(v, conf) if ok else None, 'flagged': None if ok else why,
+                'vote': v, 'accepted': ok, 'acceptedBy': accepted_by, 'earRule': EAR_RULE,
+                'accept': (f'user-ear: A {bpms["A"]} and B {bpms["B"]} within 1 % inside the ear range {row.get("refMinBpm")}-{row.get("refMaxBpm")}'
+                           f' (C {bpms["C"]}, confidence {conf}: report only)') if accepted_by == 'user-ear-AB' else (accept_reason(v, conf) if ok else None),
+                'flagged': None if ok else why,
                 'pick': pick if ok else None,
                 'bpm': bpms[pick] if (ok and pick) else None, 'corpusBpm': row.get('bpm'), 'refTool': row.get('refTool'),
                 'versions': {k: version(k) for k in ('beat-this', 'madmom', 'madmom-prebuilt', 'essentia', 'torch', 'numpy')},
