@@ -733,7 +733,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       ln.lastOnsetT = tb;
       const o = { t: tb + off * dtHop - delay, s: b };
       ln.onsets.push(o);
-      while (ln.onsets.length && ln.onsets[0].t < o.t - Math.max(C.refineWindow, 10)) ln.onsets.shift();
+      // kept for the refine window, 10 s, and (F3) the fit's fitBeats beats at slow tempos
+      while (ln.onsets.length && ln.onsets[0].t < o.t - Math.max(C.refineWindow, 10, own.P ? C.fitBeats * own.P + 1 : 0)) ln.onsets.shift();
       return o;
     }
 
