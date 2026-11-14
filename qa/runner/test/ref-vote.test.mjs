@@ -267,3 +267,26 @@ test('tracker C range (14 Nov: hc-03 153.6-166.4 crashed essentia, maxTempo must
   assert.deepEqual(o.wide, [60, 250], 'the wide range is unchanged');
   for (const [id, [mn, mx]] of Object.entries(o.all)) assert.ok(mx - mn > 20, `${id}: essentia ${mn}-${mx}`);
 });
+
+test('user-ear A+B rule (the user 14 Nov 13:18): a user-ear row is accepted when A and B agree within 1 % inside the ear range, C report only; flagged user-ear rows re-vote once', (t) => {
+  const py = fs.readFileSync(path.join(QA, 'ref_beats_vote.py'), 'utf8');
+  assert.match(py, /if not ok and not degraded and user_ear_ab\(row, bpms\):/, 'only after the normal rules flag, never DEGRADED');
+  assert.match(py, /'acceptedBy': accepted_by, 'earRule': EAR_RULE/, 'the vote json records acceptedBy and the rule version');
+  assert.match(py, /old\.get\('accepted'\) or \(row or NO_ROW\)\.get\('bpmSource'\) != 'user-ear' or old\.get\('earRule'\) == EAR_RULE/, 'flagged user-ear rows re-vote, accepted ones stay');
+  assert.match(py, /'C': \{'name': 'essentia-multifeature', 'bpm': bpms\['C'\], .*'confidence': conf/, "C's values and confidence stay in the json");
+  const py3 = spawnSync('python3', ['-c', 'import sys'], { encoding: 'utf8' });
+  if (py3.error) { t.diagnostic('no python3 here: user_ear_ab on the real hc-03 row not run'); return; }
+  const probe = [
+    'import json, sys',
+    `sys.path.insert(0, ${JSON.stringify(QA)})`,
+    'from ref_beats_vote import user_ear_ab, vote, verdict',
+    `rows = {r['id']: r for r in json.load(open(${JSON.stringify(path.join(QA, 'corpus.json'))}))}`,
+    "h3 = {'A': 160.37, 'B': 160.11, 'C': 161.89}",
+    "print(json.dumps([verdict(vote(h3), 1.195)[0], user_ear_ab(rows['hc-03'], h3), user_ear_ab(rows['hc-03'], {'A': 160.37, 'B': 157.0, 'C': None}),",
+    "  user_ear_ab(rows['hc-03'], {'A': 166.9, 'B': 166.2, 'C': None}), user_ear_ab(rows['hc-06'], {'A': 130.1, 'B': 130.0, 'C': None})]))",
+  ].join('\n');
+  const r = spawnSync('python3', ['-c', probe], { encoding: 'utf8' });
+  assert.equal(r.status, 0, `probe: ${r.stderr}`);
+  assert.deepEqual(JSON.parse(r.stdout.trim()), [false, true, false, false, false],
+    'hc-03 flagged by the vote, accepted by the rule; A/B apart, outside the range and a non-user-ear row (hc-06) refused');
+});
