@@ -519,3 +519,13 @@ test('F3 hard cut 128 -> 136 at 30 s: a stable lock within 8 beats (hard)', (t) 
   report(t, `F3 hard cut 128 -> 136: ${relockText('now', f)}`);
   assert.ok(f.stable && f.stable.beats <= BUDGET_BEATS, `stable lock after ${f.stable ? f.stable.beats : 'never'} beats (budget ${BUDGET_BEATS})`);
 });
+
+test('F4 first lock from the scan: steady 128 locks at 128 within 1 % with a decisive scan, and the second look keeps it (hard)', (t) => {
+  const s = steadyScenario({ sr: SR }), { o } = bpmTrace(s), r = tempoRep(o.tr), a = r && r.acq;
+  assert.ok(o.lockT !== null, 'locks');
+  report(t, `F4 steady 128: lock ${o.lockT.toFixed(2)} s, first lock ${JSON.stringify(a && a.firstLock)}, second look ${JSON.stringify(a && a.secondLook)}, waits ${a && a.waits}`);
+  assert.ok(a && a.firstLock && a.firstLock.scan, 'the first lock ran the scan (tr.tempoReport.acq.firstLock)');
+  assert.ok(Math.abs(a.firstLock.bpm / 128 - 1) <= 0.01, `first lock at ${a.firstLock.bpm}`);
+  assert.equal(a.firstLock.forced, false, 'the scan was decisive (no wait to the cap)');
+  assert.ok(a.secondLook && !a.secondLook.to, `the second look keeps 128: ${JSON.stringify(a.secondLook)}`);
+});
