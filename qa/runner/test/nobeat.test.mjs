@@ -203,3 +203,20 @@ test('--nobeat-audio: corpus id with an optional excerpt (default born-slippy 0-
   assert.deepEqual([src.loop, src.loopStart, src.loopEnd], [true, 30, 60]);
   assert.deepEqual(ai.excerpt, { from: 30, to: 60 });
 });
+
+test('beat weight: steps once per frame, at frameStart\'s time; beatWeight() and read() later in the same frame do not move it again (VIZ pages, #231)', () => {
+  const { clock, a } = mk();
+  a.frameStart(1000);   // ms, rAF's argument
+  assert.equal(a.bw.w, 1);
+  clock.c.conf = 0;     // the fade starts: one bar = 2 s at 120
+  a.frameStart(1000 + 1000 / 60);
+  const w1 = a.bw.w;
+  assert.ok(w1 < 1 && w1 > 0.99, `one frame of the fade: ${w1}`);
+  for (let i = 0; i < 5; i++) { assert.equal(a.beatWeight(), w1, 'beatWeight() in the same frame'); assert.equal(a.read().beatWeight, w1, 'read() in the same frame'); }
+  a.frameStart(1000 + 2000 / 60);
+  assert.ok(a.bw.w < w1, 'the next frame moves it');
+  const e1 = a.stepEnergy(Object.fromEntries(AudioIn.BANDS.map(b => [b, 0.5]))), e2 = a.stepEnergy(Object.fromEntries(AudioIn.BANDS.map(b => [b, 0.9])));
+  assert.equal(e2.level, e1.level, 'the energy steps on the frame time too: a second step in the same frame does not move it');
+  const before = a.bw.w;
+  assert.ok(a.beatWeight(99) < before, 'an explicit time still steps (tests)');
+});
