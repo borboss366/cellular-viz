@@ -383,3 +383,83 @@ test(`F3 shadow rows: main 501cfe1 beside the tracker under test on every accept
   say(t, `F3 shadow rows: ${rows} of ${v.refs.length} accepted toolVersion 3 refs; regressions ${worse.length}${worse.length ? ': ' + worse.join('; ') : ''} [hard]; on report-only tracks (main < ${NOREG_MAIN_MIN_PCT} % or a waiver) ${soft.length}${soft.length ? ': ' + soft.join('; ') : ''} [report-only: main < ${NOREG_MAIN_MIN_PCT} %]`);
   assert.deepEqual(worse, [], 'within 2 points of main on every track');
 });
+
+// ---------------------------------------------------------------- the 4/4 party set, inside the gate (the reviewer's
+// close-out, the user's go 14 Nov 15:00). REPORT-ONLY. One row per non-hc corpus track with audio and a grid: the
+// tracker alone (the conductor's shadow) scored by the conductor scorer (qa/conduct-score.mjs: the share of played time
+// inside the +/-35 ms gate, octaveFree and backbeatOk as the corpus row says), BEFORE = main 501cfe1's tracker
+// (vendored) beside AFTER = the tracker under test (on main: F3/F4 as merged in 44308b4), on the same first GATE_SECS s.
+// lock s = the tracker's first 'locked' state; run s = the first run of 8 in-gate beats. A grid the scorer would
+// refuse (gridSuspect, driftCore > 20) is scored anyway and flagged. Ids only (R9).
+const SCORE = await import('../../conduct-score.mjs');
+const CD = await import('../../../experiments/conductor.mjs');
+const GATE_SECS = 180;
+/** one tracker over the audio: its output beats (as the conductor logs the shadow's), 0.1 s samples, first lock */
+function gateRun(mono, lib) {
+  const beats = [], samples = [], counter = CD.beatCounter();
+  let lockT = null;
+  track(mono, (tr, tt) => {
+    if (lockT === null && tr.state === 'locked') lockT = tt;
+    for (const at of counter(t => tr.beatsAt(t), b => tr.timeOf(b), tt)) beats.push(at);
+    samples.push({ t: tt, bpm: tr.bpm || null, conf: tr.confidence, state: tr.state });
+  }, lib);
+  return { beats, samples, lockT };
+}
+/** a one-track session log of that run (track time = render time) through the conductor scorer */
+function gateScore(run, id, row, grid, secs) {
+  const rec = [{ type: 'session', ctx: 0, v: 1, id: `gate-${id}`, input: 'line:page' }, { type: 'latency', ctx: 0, clockLatency: 0 },
+    { type: 'track', ctx: 0, idx: 0, event: 'load', id }, { type: 'track', ctx: 0, idx: 0, event: 'play', posMs: 0 }];
+  for (let s = 5; s < secs; s += 5) rec.push({ type: 'pair', ctx: s, idx: 0, posMs: s * 1000 });
+  rec.push({ type: 'track', ctx: secs, idx: 0, event: 'end', posMs: secs * 1000 });
+  for (const t of run.beats) rec.push({ type: 'beat', ctx: t, src: 'shadow' }, { type: 'beat', ctx: t, src: 'clock' });
+  for (const s of run.samples) { const c = { bpm: s.bpm, conf: s.conf, state: s.state }; rec.push({ type: 'sample', ctx: s.t, clock: c, shadow: c }); }
+  const g = { ...grid };
+  delete g.gridSuspect; delete g.driftCore;   // scored anyway; the flag is printed
+  const res = SCORE.scoreSession(rec, { 0: { id, row, grid: g } }), tr = res.tracks[0];
+  const B = (res._beats[tr.label] || []).filter(b => !b.excl);
+  let run8 = null;
+  for (let i = 0, n = 0; i < B.length; i++) { n = B[i].cls === 'in' ? n + 1 : 0; if (n === 8) { run8 = B[i - 7].t; break; } }
+  return { tr, run8 };
+}
+test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time to lock, main 501cfe1 beside the tracker under test (report-only; box only)`, async (t) => {
+  await heavy(t);   // one heavy box test at a time (fixtures/heavy-lock.mjs)
+  const dir = A.audioDir();
+  if (!fs.existsSync(dir)) { t.skip('no tracks folder here'); return; }
+  const map = C.loadMap(dir);
+  if (map.missing) { t.skip('no corpus-map.json beside the tracks'); return; }
+  const rows = C.loadCorpus().filter(r => !/^hc-/.test(r.id));
+  const json = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+  const sum = { before: { inS: 0, playedS: 0 }, after: { inS: 0, playedS: 0 } }, gateSum = { before: { inS: 0, playedS: 0 }, after: { inS: 0, playedS: 0 } };
+  let n = 0, better = 0, worse = 0, same = 0;
+  const worseIds = [], fmt = x => (x === null || x === undefined ? '-' : Number(x).toFixed(1));
+  for (const row of rows) {
+    const stem = map.tracks[row.id];
+    if (!stem) { say(t, `gate-table ${row.id}: skipped (not in the map)`); continue; }
+    const grid = json(path.join(dir, `${stem}.beatgrid.json`));
+    if (!grid || !Array.isArray(grid.beats)) { say(t, `gate-table ${row.id}: skipped (no grid)`); continue; }
+    const f = trackFile(row.id);
+    const d = f.skip ? f : await decode(f, GATE_SECS);
+    if (d.skip) { say(t, `gate-table ${row.id}: skipped (${d.skip})`); continue; }
+    const secs = Math.floor(d.mono.length / SR);
+    const before = gateRun(d.mono, BASE501), after = gateRun(d.mono, T);
+    const b = gateScore(before, row.id, row, grid, secs), a = gateScore(after, row.id, row, grid, secs);
+    if (!b.tr.scored || !a.tr.scored) { say(t, `gate-table ${row.id}: not scored (${b.tr.reason || a.tr.reason})`); continue; }
+    const bi = b.tr.alone.inPct, ai = a.tr.alone.inPct, delta = ai - bi;
+    n++;
+    if (delta > 2) better++; else if (delta < -2) { worse++; worseIds.push(`${row.id} ${fmt(delta)}`); } else same++;
+    for (const [k, x] of [['before', b.tr], ['after', a.tr]]) {
+      sum[k].inS += x.alone.inPct / 100 * x.playedS; sum[k].playedS += x.playedS;
+      if (row.status === 'gate') { gateSum[k].inS += x.alone.inPct / 100 * x.playedS; gateSum[k].playedS += x.playedS; }
+    }
+    const vote = json(path.join(dir, `${stem}.vote.json`)), ref = json(path.join(dir, `${stem}.ref.json`));
+    const flags = [row.octaveFree ? 'octaveFree' : null, row.backbeatOk ? 'backbeatOk' : null, row.lockFrom === 'mark' ? 'lockFrom mark' : null].filter(Boolean).join(', ');
+    const gridFlag = grid.gridSuspect === true || (Number.isFinite(grid.driftCore) && grid.driftCore > 20) ? `flagged (gridSuspect ${grid.gridSuspect === true}, driftCore ${fmt(grid.driftCore)}), scored anyway` : 'ok';
+    say(t, `gate-table ${row.id} | gate ${row.status}${flags ? ' (' + flags + ')' : ''} | before inside-gate ${fmt(bi)} % | after inside-gate ${fmt(ai)} % | before lock ${fmt(before.lockT)} s | after lock ${fmt(after.lockT)} s`
+      + ` | delta ${fmt(delta)} points | first 8 in-gate beats before ${fmt(b.run8)} s, after ${fmt(a.run8)} s | p90 |e| before ${fmt(b.tr.alone.absE.p90)} ms, after ${fmt(a.tr.alone.absE.p90)} ms`
+      + ` | octave factor before ${b.tr.alone.octave ? b.tr.alone.octave.factor : 1}, after ${a.tr.alone.octave ? a.tr.alone.octave.factor : 1} | ${secs} s, grid ${gridFlag}`
+      + ` | ref tool ${ref && ref.toolVersion !== undefined ? 'v' + ref.toolVersion : '-'}, vote ${vote ? (vote.accepted ? `accepted v${vote.toolVersion}` : 'flagged') : 'none'} [report-only]`);
+  }
+  const pct = s => (s.playedS > 0 ? 100 * s.inS / s.playedS : null);
+  say(t, `gate-table summary: ${n} of ${rows.length} non-hc rows scored (first ${GATE_SECS} s) | inside-gate, time-weighted: before ${fmt(pct(sum.before))} %, after ${fmt(pct(sum.after))} %`
+    + ` | status gate rows only: before ${fmt(pct(gateSum.before))} %, after ${fmt(pct(gateSum.after))} % | rows better > 2 points ${better}, worse > 2 points ${worse}${worseIds.length ? ' (' + worseIds.join('; ') + ')' : ''}, within 2 points ${same} [report-only]`);
+});

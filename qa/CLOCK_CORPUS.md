@@ -4,7 +4,7 @@ What the conducted clock is judged on for the step-1 gate (#188: rulings R1–R1
 
 **House rule (R9).** No audio file names and no folder paths in this file, ever: artist, title, BPM, character, role and expectation only. The box keeps file names in its own untracked manifest. Audio never leaves the machine it sits on; only beat-grid sidecars do.
 
-**Constants are frozen while the corpus grows.** A new track adds a row, never a knob. A failing track gets a numbered finding that names a rule, not a number.
+**Constants are frozen while the corpus grows.** A new track adds a row, never a knob. A failing track gets a numbered finding that names a rule, not a number. The frozen set is the F3/F4 tracker as merged (main 44308b4): every named constant of the tracker is listed under "Frozen tracker constants" below, with the source file's sha256, and `qa/runner/test/tracker-frozen.test.mjs` fails when the code and that list differ.
 
 ## Status and flags
 
@@ -117,7 +117,113 @@ Per track: the share of played time inside the gate (±35 ms), for the tracker a
 
 Every BPM used by a rule comes from a least-squares fit over the window, never from the median of 20 ms-quantised beat intervals (that median carries up to ±2.2 %). Drift is `driftCore`: the peak-to-peak of a 16-beat moving fit over the track minus its first and last 30 s. Bar positions are trusted only when a grid's `barOk` is true, which needs the user's Shift+S confirmation with the bar lamp shown; 13 of the 16 new grids are `barSuspect`.
 
-Constants are frozen while the corpus grows: a new track adds a row, never a knob. A failing track gets a numbered finding that names a rule, not a number.
+Constants are frozen while the corpus grows (the list is under "Frozen tracker constants"): a new track adds a row, never a knob. A failing track gets a numbered finding that names a rule, not a number.
+
+## Frozen tracker constants (F3/F4, main 44308b4)
+
+The live tracker as merged on 14 Nov: F3 (the locked tempo from a fit of the onsets, with the short-window step path) and F4 (the first-lock candidate scan, the second look and the re-acquire scans). These are its values. Changing any of them, or any line of the tracker, needs a decision first, and this list and the sha256 change in the same PR: `qa/runner/test/tracker-frozen.test.mjs` compares both with the code.
+
+- tracker source sha256: `484a90b5cfa9f8817e146b6d6b0cfa9911ddf6da2a7e62bf3943c01255b107d7`
+
+Module constants:
+
+| Constant | Value |
+|---|---|
+| `ANALYSIS_DELAY_MS` | `12` |
+| `HOLD_PROTECT_BARS` | `16` |
+| `EDGES` | `[20, 60, 120, 250, 500, 2000, 4000, 8000, 16000]` |
+| `BANDS` | `[sub, kick, low, lowMid, mid, upperMid, presence, air]` |
+
+The tracker's defaults (`DEFAULTS`, in the code's order; F3's are `fitBeats` to `fitChainTol`, F4's are `acqBeats` to `acqLookRatio`):
+
+| Constant | Value |
+|---|---|
+| `minBpm` | `60` |
+| `maxBpm` | `180` |
+| `priorBpm` | `120` |
+| `priorOct` | `0.7` |
+| `halfLag` | `0.55` |
+| `acWindow` | `4` |
+| `refineWindow` | `8` |
+| `estHz` | `6` |
+| `onsetK` | `2` |
+| `onsetWin` | `1` |
+| `refractory` | `0.15` |
+| `floorRel` | `0.15` |
+| `peakTau` | `10` |
+| `strongRel` | `0.4` |
+| `acqConf` | `0.4` |
+| `lockConf` | `0.5` |
+| `lostConf` | `0.3` |
+| `acqWindow` | `0.5` |
+| `trackWindow` | `0.25` |
+| `trackGain` | `0.15` |
+| `driftOnsets` | `4` |
+| `driftMin` | `0.02` |
+| `confAlpha` | `0.15` |
+| `confTau` | `1.0` |
+| `maxRate` | `0.03` |
+| `refRel` | `0.3` |
+| `reacqJump` | `0.25` |
+| `reacqOnsets` | `3` |
+| `bpb` | `4` |
+| `escapeTempo` | `0.03` |
+| `escapePhase` | `0.25` |
+| `escapeSecs` | `4` |
+| `escapeConf` | `0.7` |
+| `laneBeats` | `8` |
+| `laneMinOnsets` | `4` |
+| `relRatios` | `[4/3, 3/2, 2/3, 3/4]` |
+| `relMargin` | `1.2` |
+| `relMinGain` | `0.1` |
+| `relSecs` | `8` |
+| `relMinR0` | `0.2` |
+| `tempoTol` | `0.03` |
+| `tempoHoldN` | `12` |
+| `trustR` | `0.3` |
+| `trustTol` | `0.01` |
+| `relMinR` | `0.25` |
+| `relMinGainR` | `0.15` |
+| `relEverySecs` | `8` |
+| `fitBeats` | `16` |
+| `fitMinOnsets` | `8` |
+| `fitMinSpanBeats` | `8` |
+| `fitInlier` | `0.15` |
+| `fitMinPairGap` | `2` |
+| `fitCoverage` | `0.5` |
+| `fitHz` | `6` |
+| `fitAccept` | `0.12` |
+| `tempoRateMax` | `0.02` |
+| `stepPct` | `0.03` |
+| `stepEstimates` | `12` |
+| `fallbackAfter` | `2` |
+| `stepOnsets` | `4` |
+| `stepResid` | `0.1` |
+| `stepAgree` | `0.025` |
+| `stepNear` | `0.4` |
+| `stepYoungBeats` | `8` |
+| `fitNewestOff` | `0.08` |
+| `stepSlewRate` | `0.06` |
+| `stepSlewBeats` | `8` |
+| `stepCooldown` | `8` |
+| `fitStrongRel` | `0.25` |
+| `fitChainTol` | `0.1` |
+| `acqBeats` | `24` |
+| `acqMargin` | `1.15` |
+| `acqMaxSecs` | `8` |
+| `secondLookAt` | `8` |
+| `acqPeaks` | `3` |
+| `acqDedup` | `0.015` |
+| `acqSame` | `0.04` |
+| `acqRatios` | `[1, 2, 1/2, 4/3, 3/4, 3/2, 2/3]` |
+| `acqFloor` | `0.25` |
+| `acqRelScore` | `0.5` |
+| `acqLookRatio` | `1.5` |
+| `holdOct` | `0.75` |
+| `holdSlow` | `0.8` |
+| `holdFast` | `0.6` |
+| `holdSecs` | `2` |
+| `holdProtectBars` | `16` |
 
 ## Still owed
 
