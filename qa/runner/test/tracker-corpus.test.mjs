@@ -17,7 +17,7 @@ import http from 'node:http';
 import { createRequire } from 'node:module';
 import { BUDGET_BEATS, relockFigures, relockText } from './fixtures/relock.mjs';
 import { heavyLock } from './fixtures/heavy-lock.mjs';
-const heavy = async t => { const release = await heavyLock('tracker-corpus'); t.after(release); };
+const heavy = async t => { const release = await heavyLock('tracker-corpus', { signal: t.signal }); t.after(release); };
 
 const require = createRequire(import.meta.url);
 const T = require('../../../experiments/clock-tracker.js');

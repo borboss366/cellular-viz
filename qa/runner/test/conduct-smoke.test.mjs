@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import * as S from '../../conduct-serve.mjs';
 import { wavBytes } from '../audiocheck.mjs';
 import { parseLog } from '../../conduct-score.mjs';
-import { heavyLock } from './fixtures/heavy-lock.mjs';
+import { heavyLock, SMOKE_TIMEOUT_MS } from './fixtures/heavy-lock.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -89,7 +89,7 @@ function bisectRepo(root) {
   return root;
 }
 
-test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (box only)', { timeout: 300e3 }, async t => {
+test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (box only)', { timeout: SMOKE_TIMEOUT_MS + 120e3 }, async t => {
   const home = qaHome();
   if (!home) { t.skip('no runner settings here (not the box)'); return; }
   // everything verbose goes to a log file that stays on the box; test-pr's output gets compact lines only
@@ -132,7 +132,8 @@ test('the conductor page in Chromium: plays, tracks, marks and logs schema v1 (b
 
   // the page's frame loop logs the clock's beats: never share the CPU with tracker-corpus's decode and track runs
   // (3c8d048: 7 clock beats while they ran in parallel; fixtures/heavy-lock.mjs)
-  const releaseHeavy = await heavyLock('conduct-smoke');
+  const releaseHeavy = await heavyLock('conduct-smoke', { signal: t.signal });
+  if (t.signal.aborted) { releaseHeavy(); return; }   // #231: never launch Chromium after the test has ended
   t.after(releaseHeavy);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'conduct-smoke-')), tracks = path.join(root, 'tracks'), sessions = path.join(root, 'sessions');
   fs.mkdirSync(tracks);
