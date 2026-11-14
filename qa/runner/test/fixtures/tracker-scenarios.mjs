@@ -178,3 +178,31 @@ export function rampScenario({ sr = 44100, from = 126, to = 139, rampBeats = 128
   s.bpmAt = t => { let i = 0; while (i + 1 < beats.length && beats[i + 1] <= t) i++; return i + 1 < beats.length ? 60 / (beats[i + 1] - beats[i]) : to; };
   return s;
 }
+
+// F2 additions (the user 14 Nov 02:14), all outside BUILD:
+// the swing trap: 16 bars of the groove at 110, 16 bars of a break with only dotted-eighth hits (0.75 beat apart, a
+// comb at 4:3 = 146.7), 8 bars of the groove again. The true tempo is 110 throughout.
+export function swingTrapScenario({ sr = 44100, bpm = 110 } = {}) {
+  const beats = steadyBeats(bpm, LEAD + 160 * 60 / bpm + 0.01).slice(0, 160), P = 60 / bpm;
+  const tB = beats[64], tR = beats[128], hits = [...groove(beats, { to: 64 }), ...groove(beats, { from: 128 })];
+  for (let j = 0; tB + j * 0.75 * P < tR - 1e-9; j++) hits.push({ t: tB + j * 0.75 * P, lane: 'kick', vel: j % 4 === 0 ? 1 : 0.85, beat: 64 + j * 0.75 });
+  hits.sort((a, b) => a.t - b.t);
+  const s = make(`swing-trap-${bpm}`, sr, { duration: beats[159] + P + 1, beats, bpm, hits, events: [{ t: tB, kind: 'break' }, { t: tR, kind: 'return' }] });
+  s.breakStart = tB; s.breakEnd = tR;
+  return s;
+}
+// a plain steady track: the groove at 128 for 64 bars
+export function steadyScenario({ sr = 44100, bpm = 128, barsN = 64 } = {}) {
+  const P = 60 / bpm, beats = steadyBeats(bpm, LEAD + barsN * 4 * P + 0.01).slice(0, barsN * 4);
+  return make(`steady-${bpm}-x${barsN}`, sr, { duration: beats[beats.length - 1] + P + 1, beats, bpm, hits: groove(beats) });
+}
+// a kick dropout: 16 bars of the groove at 124, 8 bars of hats only (no kicks, no snares), 16 bars of the groove
+export function kickDropoutScenario({ sr = 44100, bpm = 124 } = {}) {
+  const P = 60 / bpm, beats = steadyBeats(bpm, LEAD + 160 * P + 0.01).slice(0, 160);
+  const hits = [...groove(beats, { to: 64 }), ...groove(beats, { from: 96 })];
+  for (let i = 64; i < 96; i++) { hits.push({ t: beats[i], lane: 'hat', vel: 0.9, beat: i }); hits.push({ t: beats[i] + P / 2, lane: 'hat', vel: 0.7, beat: i + 0.5 }); }
+  hits.sort((a, b) => a.t - b.t);
+  const s = make(`kick-dropout-${bpm}`, sr, { duration: beats[159] + P + 1, beats, bpm, hits, events: [{ t: beats[64], kind: 'kicks-out' }, { t: beats[96], kind: 'kicks-back' }] });
+  s.gapStart = beats[64]; s.gapEnd = beats[96];
+  return s;
+}

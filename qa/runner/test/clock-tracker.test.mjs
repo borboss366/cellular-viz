@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
-import { render, renderHits, rampScenario } from './fixtures/tracker-scenarios.mjs';
+import { render, renderHits, rampScenario, swingTrapScenario, steadyScenario, kickDropoutScenario } from './fixtures/tracker-scenarios.mjs';
 import { BUDGET_BEATS, relockFigures, relockText } from './fixtures/relock.mjs';
 // report-only rows: test-pr.sh (the runner's copy) prints a passing file's lines only when they start with "corpus: ",
 // so these go out as "corpus: report: ..." (numbers only) and QA box sees them on every run
@@ -470,4 +470,48 @@ test('F2 gate report: snapshot().gate and tr.gate carry the counters, the consta
   const t0 = s.duration - 1;
   o.tr.scaleTempo(2, t0); o.tr.tap({ t: t0 + 0.1, bpm: 128 });
   assert.equal(o.tr.gate.tempoMovesLocked, before.tempoMovesLocked); assert.equal(o.tr.gate.tempoRefusals, before.tempoRefusals);
+});
+
+// F2 additions (the user 14 Nov 02:14), hard from the first run
+const BASE501 = require('./fixtures/clock-tracker-501cfe1.cjs');
+/** the longest run (s) of 0.1 s samples, locked and outside tol of ref */
+function longestOut(trace, ref, tol) {
+  let run = 0, best = 0;
+  for (const x of trace) { if (x.state === 'locked' && Math.abs(x.bpm / ref - 1) > tol) { run += 0.1; best = Math.max(best, run); } else run = 0; }
+  return +best.toFixed(1);
+}
+const outside = (trace, ref, tol) => trace.filter(x => Math.abs(x.bpm / ref - 1) > tol);
+const pts = a => a.slice(0, 6).map(x => `${x.t.toFixed(1)}:${x.bpm.toFixed(1)}${x.state === 'locked' ? '' : '(' + x.state + ')'}`).join(' ');
+
+test('F2 swing trap: 110 with a 16-bar dotted-eighth break (a 4:3 comb), the clock stays at 110 within 1 %, no locked excursion over 2 s (hard; main beside it)', (t) => {
+  const s = swingTrapScenario({ sr: SR }), { o, trace } = bpmTrace(s);
+  assert.ok(o.lockT !== null, 'locks');
+  const after = trace.filter(x => x.t >= o.lockT), out = outside(after, 110, 0.01), longest = longestOut(after, 110, 0.01);
+  const base = traceOf(BASE501, s.samples, SR), bl = base.find(x => x.state === 'locked'), bAfter = bl ? base.filter(x => x.t >= bl.t) : [];
+  const g = o.tr.gate;
+  report(t, `F2 swing trap 110 (break ${s.breakStart.toFixed(1)}-${s.breakEnd.toFixed(1)} s): F2 lock ${o.lockT.toFixed(2)} s, ${out.length}/${after.length} samples outside 1 %${out.length ? ` (${pts(out)})` : ''}, longest locked excursion ${longest} s, gate moves ${g.tempoMovesLocked} refusals ${g.tempoRefusals} (last ${JSON.stringify(g.last)})`);
+  report(t, `F2 swing trap 110, main 501cfe1: lock ${bl ? bl.t.toFixed(2) + ' s' : 'never'}, ${outside(bAfter, 110, 0.01).length}/${bAfter.length} samples outside 1 %${outside(bAfter, 110, 0.01).length ? ` (${pts(outside(bAfter, 110, 0.01))})` : ''}, longest locked excursion ${longestOut(bAfter, 110, 0.01)} s`);
+  assert.deepEqual(out.map(x => `${x.t.toFixed(1)}:${x.bpm.toFixed(2)}`), [], 'at 110 +/- 1 % for the whole fixture');
+  assert.ok(longest <= 2, `longest locked excursion ${longest} s`);
+});
+
+test('F2 steady 128 x 64 bars: tempoMovesLocked <= 2 and the tempo within 0.5 % after the lock (hard)', (t) => {
+  const s = steadyScenario({ sr: SR }), { o, trace } = bpmTrace(s);
+  assert.ok(o.lockT !== null, 'locks');
+  const after = trace.filter(x => x.t >= o.lockT), out = outside(after, 128, 0.005), g = o.tr.gate;
+  report(t, `F2 steady 128 x 64 bars: lock ${o.lockT.toFixed(2)} s, ${out.length}/${after.length} samples outside 0.5 %${out.length ? ` (${pts(out)})` : ''}, tempoMovesLocked ${g.tempoMovesLocked}, tempoRefusals ${g.tempoRefusals}, end ${o.tr.ownBpm.toFixed(2)}`);
+  assert.ok(g.tempoMovesLocked <= 2, `tempoMovesLocked ${g.tempoMovesLocked}: ${JSON.stringify(g)}`);
+  assert.deepEqual(out.map(x => `${x.t.toFixed(1)}:${x.bpm.toFixed(2)}`), [], 'within 0.5 % after the lock');
+});
+
+test('F2 kick dropout 124: 8 bars of hats only, the tempo within 1 % of 124 through the gap and locked again within 4 beats of the kicks (hard)', (t) => {
+  const s = kickDropoutScenario({ sr: SR }), { o, trace } = bpmTrace(s), P = 60 / 124;
+  assert.ok(o.lockT !== null, 'locks');
+  const after = trace.filter(x => x.t >= o.lockT), gap = after.filter(x => x.t >= s.gapStart && x.t <= s.gapEnd), out = outside(after, 124, 0.01);
+  const back = trace.find(x => x.t >= s.gapEnd && x.state === 'locked'), relockBeats = back ? (back.t - s.gapEnd) / P : null;
+  const states = [...new Set(gap.map(x => x.state))].join(',');
+  report(t, `F2 kick dropout 124 (gap ${s.gapStart.toFixed(1)}-${s.gapEnd.toFixed(1)} s): lock ${o.lockT.toFixed(2)} s, ${out.length}/${after.length} samples outside 1 %${out.length ? ` (${pts(out)})` : ''}, states in the gap ${states}, locked again ${relockBeats === null ? 'never' : relockBeats.toFixed(1) + ' beats'} after the kicks return; gate refusals ${o.tr.gate.tempoRefusals}`);
+  assert.deepEqual(outside(gap, 124, 0.01).map(x => `${x.t.toFixed(1)}:${x.bpm.toFixed(2)}`), [], 'within 1 % of 124 through the gap');
+  assert.deepEqual(out.map(x => `${x.t.toFixed(1)}:${x.bpm.toFixed(2)}`), [], 'within 1 % of 124 after the lock');
+  assert.ok(relockBeats !== null && relockBeats <= 4, `locked again after ${relockBeats} beats`);
 });

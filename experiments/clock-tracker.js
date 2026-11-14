@@ -85,6 +85,10 @@
     // drift() is judged on the driftOnsets in-window onsets its own line was fitted to, not the last 8 beats of all
     // broadband onsets (a fresh step mixes both tempos there and ties; off-beat hats shrink every R toward 0)
     gateR: 0.05, gateBeats: 8, gateMinOnsets: 4, gateEmaR: 0, gateFree: 0.005, gateLogN: 16,
+    // the swing trap (the user 14 Nov 02:14): a dotted-eighth break is a perfect comb at 4:3 for as long as it lasts,
+    // so R over 8 beats of it passes the gate. While the tempo sits on the home tempo, a candidate at a non-octave
+    // relative of it (relRatios, within tempoTol) is refused ('home-relative')
+    gateHomeRel: true,
     // the octave hold's evidence release (fix c, the user's ruling 10 Nov 14:57): the estimate is >= holdOct octaves from
     // the hold for > holdSecs, and, only when the hold is SLOWER than the estimate, R at the hold < holdFast x R there.
     // A hold faster than the estimate needs the distance alone (holdSlow is logged as support). Then the hold goes and
@@ -364,6 +368,11 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     }
     function tempoGate(path, cand, t, { margin = C.gateR, times = null } = {}) {
       if (state !== 'locked' || !own.P || !(cand > 0) || !(bpm > 0)) return true;
+      if (C.gateHomeRel && trustedBpm && Math.abs(bpm / trustedBpm - 1) <= C.trustTol && C.relRatios.some(r => Math.abs(cand / (trustedBpm * r) - 1) <= C.tempoTol)) {
+        gateLast = { t: +t.toFixed(3), path, cur: +bpm.toFixed(2), cand: +cand.toFixed(2), Rcur: null, Rcand: null, n: null, ok: false, why: 'home-relative', home: +trustedBpm.toFixed(2) };
+        gateRefusals++; gateLog.push(gateLast); if (gateLog.length > C.gateLogN) gateLog.shift();
+        return false;
+      }
       const since = t - C.gateBeats * own.P;
       const cur = times ? timesStat(60 / bpm, times) : gateStat(60 / bpm, since), nw = times ? timesStat(60 / cand, times) : gateStat(60 / cand, since);
       const few = cur.nIn < C.gateMinOnsets;

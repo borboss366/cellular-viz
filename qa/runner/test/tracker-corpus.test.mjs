@@ -328,20 +328,26 @@ function shadowRow(mono, ref, lib) {
   const g = tr.gate;
   return { lockT, pct: n ? 100 * inN / n : 0, longest, moves: g ? g.tempoMovesLocked : tr.relative.tempoMoves, refusals: g ? g.tempoRefusals : null, few: g ? g.fewOnsets : null };
 }
-test('F2 shadow rows, report-only: main 501cfe1 beside the F2 gate on every accepted toolVersion 3 vote ref (box only)', async (t) => {
+// the no-regression rule (the user 14 Nov 02:14, HARD): on every such track F2's share within 2 % may not be more
+// than 2 points below main's; the >= 95 % per-track target stays report-only for two runs
+test('F2 shadow rows: main 501cfe1 beside the F2 gate on every accepted toolVersion 3 vote ref; F2 never more than 2 points below main (hard; box only)', async (t) => {
   await heavy(t);   // one heavy box test at a time (fixtures/heavy-lock.mjs)
   const v = voteRefs();
   if (v.skip) { t.skip(v.skip); return; }
   if (!v.refs.length) { t.skip('no accepted toolVersion 3 vote refs beside the tracks'); return; }
   let rows = 0;
+  const worse = [];
   const fmt = (r, label) => `${label} ${r.pct.toFixed(1)} % within 2 %, longest locked excursion ${r.longest.toFixed(1)} s, tempoMovesLocked ${r.moves}, tempoRefusals ${r.refusals === null ? '-' : `${r.refusals} (few-onsets ${r.few})`}, lock ${r.lockT === null ? 'never' : r.lockT.toFixed(1) + ' s'}`;
   for (const { id, ref } of v.refs) {
     const f = trackFile(id);
     const d = f.skip ? f : await decode(f, F2_SECS);   // not cached: up to 33 tracks
     if (d.skip) { say(t, `F2 ${id}: skipped (${d.skip})`); continue; }
     const now = shadowRow(d.mono, ref, T), base = shadowRow(d.mono, ref, BASE501);
-    say(t, `F2 ${id} ref ${ref} (${(d.mono.length / SR).toFixed(0)} s): ${fmt(now, 'F2')} | ${fmt(base, 'main 501cfe1')} | delta ${(now.pct - base.pct).toFixed(1)} points`);
+    const regress = now.pct < base.pct - 2;
+    if (regress) worse.push(`${id}: F2 ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %`);
+    say(t, `F2 ${id} ref ${ref} (${(d.mono.length / SR).toFixed(0)} s): ${fmt(now, 'F2')} | ${fmt(base, 'main 501cfe1')} | delta ${(now.pct - base.pct).toFixed(1)} points | ${regress ? 'REGRESSION (> 2 points below main) [hard]' : 'no regression [hard]'} | ${now.pct >= 95 ? 'would pass' : 'would FAIL'} >= 95 % [report-only]`);
     rows++;
   }
-  say(t, `F2 shadow rows: ${rows} of ${v.refs.length} accepted toolVersion 3 refs`);
+  say(t, `F2 shadow rows: ${rows} of ${v.refs.length} accepted toolVersion 3 refs; regressions ${worse.length}${worse.length ? ': ' + worse.join('; ') : ''}`);
+  assert.deepEqual(worse, [], 'F2 within 2 points of main on every track');
 });
