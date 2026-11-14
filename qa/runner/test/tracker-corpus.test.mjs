@@ -317,7 +317,10 @@ function voteRefs() {
 }
 function shadowRow(mono, ref, lib) {
   let lockT = null, n = 0, inN = 0, run = 0, longest = 0;
+  const seen = new Map();   // every gate decision (F2 only), polled every 0.1 s from gate.last
   const tr = track(mono, (tr, tt) => {
+    const gl = tr.gate && tr.gate.last;
+    if (gl && !seen.has(`${gl.t}|${gl.path}`)) seen.set(`${gl.t}|${gl.path}`, gl);
     if (lockT === null && tr.state === 'locked') lockT = tt;
     if (lockT === null) return;
     n++;
@@ -326,7 +329,14 @@ function shadowRow(mono, ref, lib) {
     if (!ok && tr.state === 'locked') { run += 0.1; longest = Math.max(longest, run); } else run = 0;
   }, lib);
   const g = tr.gate;
-  return { lockT, pct: n ? 100 * inN / n : 0, longest, moves: g ? g.tempoMovesLocked : tr.relative.tempoMoves, refusals: g ? g.tempoRefusals : null, few: g ? g.fewOnsets : null };
+  // the refusal diagnosis (Orchestrator, 14 Nov): which paths refused, and was the refused candidate near the ref
+  // while the current tempo was not (the gate holding a wrong tempo)?
+  const near = b => Math.abs(b / ref - 1) <= 0.02, dec = [...seen.values()];
+  const refused = dec.filter(d => !d.ok), heldWrong = refused.filter(d => near(d.cand) && !near(d.cur));
+  const by = a => Object.entries(a.reduce((o, d) => ({ ...o, [d.path]: (o[d.path] || 0) + 1 }), {})).map(([k, v]) => `${k} ${v}`).join(', ') || 'none';
+  const awayMoves = dec.filter(d => d.ok && d.path !== 'ema' && near(d.cur) && !near(d.cand));
+  const diag = g ? `refused by path ${by(refused)}; refused while the candidate was near the ref and the current tempo was not: ${heldWrong.length} (${by(heldWrong)})${heldWrong.length ? ', e.g. ' + JSON.stringify(heldWrong.slice(0, 2)) : ''}; accepted moves away from the ref ${awayMoves.length} (${by(awayMoves)}); ema blends ${g.emaBlends}` : null;
+  return { lockT, pct: n ? 100 * inN / n : 0, longest, moves: g ? g.tempoMovesLocked : tr.relative.tempoMoves, refusals: g ? g.tempoRefusals : null, few: g ? g.fewOnsets : null, diag };
 }
 // the no-regression rule (the user 14 Nov 02:14, HARD): on every such track F2's share within 2 % may not be more
 // than 2 points below main's; the >= 95 % per-track target stays report-only for two runs
@@ -346,6 +356,7 @@ test('F2 shadow rows: main 501cfe1 beside the F2 gate on every accepted toolVers
     const regress = now.pct < base.pct - 2;
     if (regress) worse.push(`${id}: F2 ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %`);
     say(t, `F2 ${id} ref ${ref} (${(d.mono.length / SR).toFixed(0)} s): ${fmt(now, 'F2')} | ${fmt(base, 'main 501cfe1')} | delta ${(now.pct - base.pct).toFixed(1)} points | ${regress ? 'REGRESSION (> 2 points below main) [hard]' : 'no regression [hard]'} | ${now.pct >= 95 ? 'would pass' : 'would FAIL'} >= 95 % [report-only]`);
+    if (now.diag) say(t, `F2 ${id} gate: ${now.diag}`);
     rows++;
   }
   say(t, `F2 shadow rows: ${rows} of ${v.refs.length} accepted toolVersion 3 refs; regressions ${worse.length}${worse.length ? ': ' + worse.join('; ') : ''}`);

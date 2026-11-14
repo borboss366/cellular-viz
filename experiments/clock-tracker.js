@@ -85,10 +85,14 @@
     // drift() is judged on the driftOnsets in-window onsets its own line was fitted to, not the last 8 beats of all
     // broadband onsets (a fresh step mixes both tempos there and ties; off-beat hats shrink every R toward 0)
     gateR: 0.05, gateBeats: 8, gateMinOnsets: 4, gateEmaR: 0, gateFree: 0.005, gateLogN: 16,
-    // the swing trap (the user 14 Nov 02:14): a dotted-eighth break is a perfect comb at 4:3 for as long as it lasts,
-    // so R over 8 beats of it passes the gate. While the tempo sits on the home tempo, a candidate at a non-octave
-    // relative of it (relRatios, within tempoTol) is refused ('home-relative')
-    gateHomeRel: true,
+    // after the first box run (dccdfdd): the gate held a WRONG tempo as firmly as a right one (block-rockin-beats,
+    // archangel), and slowed the step follower. So: (1) a candidate at a non-octave relative of the current tempo
+    // (relRatios, within tempoTol) is judged over gateRelBeats beats, not 8: a dotted-eighth break is a perfect 4:3
+    // comb for as long as it lasts (the swing trap), the music's own relative wins over 16 bars; this replaces the
+    // home-relative refusal, which kept a wrong home. (2) a current tempo with R < gateWeakR has no support to
+    // protect: margin 0. (3) drift() (a direct fit, not the ACF) and the home return (ruling 1: coming back is
+    // immediate) are judged with margin 0. EMA blends are counted apart (emaBlends), not as tempoMovesLocked
+    gateRelBeats: 64, gateWeakR: 0.2,
     // the octave hold's evidence release (fix c, the user's ruling 10 Nov 14:57): the estimate is >= holdOct octaves from
     // the hold for > holdSecs, and, only when the hold is SLOWER than the estimate, R at the hold < holdFast x R there.
     // A hold faster than the estimate needs the distance alone (holdSlow is logged as support). Then the hold goes and
@@ -248,7 +252,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     let trustedBpm = null, trustedAt = null, homeReturns = 0;   // ruling (1): the home tempo
     let relPick = null, relLandT = null, relMoves = 0;   // ruling (2): the last relative pick, the last landed move
     const relEvals = [], relStats = { n: 0, closest: 0, closestAt: null };
-    let gateMoves = 0, gateRefusals = 0, gateFew = 0, gateLast = null;   // F2: the tempo gate's counters
+    let gateMoves = 0, gateRefusals = 0, gateFew = 0, gateLast = null, gateEma = 0;   // F2: the tempo gate's counters
+    const gateMovesBy = {}, gateRefusedBy = {};
     const gateLog = [];
 
     const ownBeats = t => own.B0 + (t - own.T0) / own.P;
@@ -368,17 +373,17 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     }
     function tempoGate(path, cand, t, { margin = C.gateR, times = null } = {}) {
       if (state !== 'locked' || !own.P || !(cand > 0) || !(bpm > 0)) return true;
-      if (C.gateHomeRel && trustedBpm && Math.abs(bpm / trustedBpm - 1) <= C.trustTol && C.relRatios.some(r => Math.abs(cand / (trustedBpm * r) - 1) <= C.tempoTol)) {
-        gateLast = { t: +t.toFixed(3), path, cur: +bpm.toFixed(2), cand: +cand.toFixed(2), Rcur: null, Rcand: null, n: null, ok: false, why: 'home-relative', home: +trustedBpm.toFixed(2) };
-        gateRefusals++; gateLog.push(gateLast); if (gateLog.length > C.gateLogN) gateLog.shift();
-        return false;
-      }
-      const since = t - C.gateBeats * own.P;
+      const rel = !times && C.relRatios.some(r => Math.abs(cand / (bpm * r) - 1) <= C.tempoTol);
+      const since = t - (rel ? C.gateRelBeats : C.gateBeats) * own.P;
       const cur = times ? timesStat(60 / bpm, times) : gateStat(60 / bpm, since), nw = times ? timesStat(60 / cand, times) : gateStat(60 / cand, since);
-      const few = cur.nIn < C.gateMinOnsets;
-      const ok = !few && cur.R !== null && nw.R !== null && nw.R >= cur.R + margin;
-      gateLast = { t: +t.toFixed(3), path, cur: +bpm.toFixed(2), cand: +cand.toFixed(2), Rcur: r3(cur.R), Rcand: r3(nw.R), n: cur.nIn, ok, ...(few ? { why: 'few-onsets' } : {}) };
-      if (ok) { gateMoves++; return true; }
+      const few = cur.nIn < C.gateMinOnsets, weak = cur.R !== null && cur.R < C.gateWeakR;
+      const m = weak ? 0 : margin;
+      const ok = !few && cur.R !== null && nw.R !== null && nw.R >= cur.R + m;
+      gateLast = { t: +t.toFixed(3), path, cur: +bpm.toFixed(2), cand: +cand.toFixed(2), Rcur: r3(cur.R), Rcand: r3(nw.R), n: cur.nIn, m, ok,
+        ...(rel ? { rel: true } : {}), ...(few ? { why: 'few-onsets' } : {}) };
+      const byPath = ok ? gateMovesBy : gateRefusedBy;
+      byPath[path] = (byPath[path] || 0) + 1;
+      if (ok) { if (path === 'ema') gateEma++; else gateMoves++; return true; }
       gateRefusals++; if (few) gateFew++;
       gateLog.push(gateLast); if (gateLog.length > C.gateLogN) gateLog.shift();
       return false;
@@ -563,7 +568,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (state === 'locked' && dev > C.tempoTol) {
         if (trustedBpm && Math.abs(raw / trustedBpm - 1) <= C.trustTol) {
           // ruling (1): back to the home tempo on the first estimate (F2: through the gate)
-          if (!tempoGate('home', raw, t)) return;
+          if (!tempoGate('home', raw, t, { margin: 0 })) return;
           bpm = raw; pend = null; bigCount = 0; tempoMoves++; homeReturns++; moved = true;
           tempoHold = { t: +t.toFixed(3), cand: +raw.toFixed(2), n: 1, home: +trustedBpm.toFixed(2) };
         } else {
@@ -713,7 +718,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       for (const o of recent) res = Math.max(res, Math.abs(o.t - (mt + (o.k - mk) * P)));
       if (!(P > 0) || res > 0.1 * P || Math.abs(P / own.P - 1) <= C.driftMin) return;
       // F2: judged on the in-window onsets the line was fitted to (the kicks), not the last 8 beats of everything
-      if (!tempoGate('drift', 60 / P, to, { times: recent.map(o => o.t) })) return;
+      if (!tempoGate('drift', 60 / P, to, { times: recent.map(o => o.t), margin: 0 })) return;
       setPeriod(own, P, to);
       bpm = 60 / P; estHoldUntil = to + C.acWindow; bigCount = 0; pend = null;
       const e = frac(ownBeats(to) + own.pending);   // the phase error left at the new period, slewed from here
@@ -808,8 +813,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       resets: holdResets, lastReset: holdLastReset, firstWrongS: holdFirstWrong === null ? null : +holdFirstWrong.toFixed(3),
       protectedUntil: protect ? { t: +protect.t.toFixed(3), beat: protect.beat, bar: protect.bar } : null, protectSkips,
       releases: notes.filter(n => n.kind === 'octave-release').slice(-4).map(n => ({ t: +n.t.toFixed(3), why: n.why || 'fold', lock: +n.lock.toFixed(2), raw: +n.raw.toFixed(2) })) });
-    const gateReport = () => ({ tempoMovesLocked: gateMoves, tempoRefusals: gateRefusals, fewOnsets: gateFew, last: gateLast, refusals: gateLog.slice(),
-      R: C.gateR, beats: C.gateBeats, minOnsets: C.gateMinOnsets, emaR: C.gateEmaR, free: C.gateFree });
+    const gateReport = () => ({ tempoMovesLocked: gateMoves, emaBlends: gateEma, tempoRefusals: gateRefusals, fewOnsets: gateFew, movesBy: { ...gateMovesBy }, refusedBy: { ...gateRefusedBy },
+      last: gateLast, refusals: gateLog.slice(),
+      R: C.gateR, beats: C.gateBeats, minOnsets: C.gateMinOnsets, emaR: C.gateEmaR, free: C.gateFree, relBeats: C.gateRelBeats, weakR: C.gateWeakR });
     function read(t) {
       const b = outBeats(t), P = tapModel ? tapModel.P : own.P;
       const rel = b - barOrigin, bar = Math.floor(rel / C.bpb);
