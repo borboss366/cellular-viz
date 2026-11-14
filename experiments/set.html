@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>set launcher</title>
+<!--
+  The set launcher (the apartment MVP, Task 2). It reads set.json (next to this page; edit it to change the set) and
+  opens each scene in its own 1920x1080 window with the set's query string, for example
+    16-hodge-kaleidoscope.html?clock=shared&audio=line&in=BlackHole&capture=1
+  Open the conductor (clock-conductor.html) in the same browser: the scenes follow its clock (?clock=shared) and its
+  panic buttons. Resolume (or OBS) captures each window. Plain ASCII only (#205).
+  Logic: set.js (SetLib). __qa.set = { set, urls, errors, opened }.
+-->
+<style>
+:root{color-scheme:dark}
+body{margin:0;font:16px/1.45 system-ui,sans-serif;background:#0b0e14;color:#dde3ee;padding:16px 20px;max-width:980px}
+h1{font-size:20px;margin:0 0 12px}h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#8a96ad;margin:18px 0 8px}
+button{font:inherit;padding:6px 14px;border-radius:8px;border:0;background:#2b5cff;color:#fff;cursor:pointer}
+table{border-collapse:collapse;width:100%}td{padding:6px 8px;border-bottom:1px solid #222a3a;vertical-align:baseline}
+code{font:13px ui-monospace,Menlo,monospace;color:#b9c3d6;overflow-wrap:anywhere}
+.err{background:#5a1a1a;padding:8px 12px;border-radius:8px;white-space:pre-wrap}
+small{color:#8a96ad}
+</style>
+</head>
+<body>
+<h1>Set launcher</h1>
+<p><button id="openAll">Open all scenes</button> <small id="status">loading set.json</small></p>
+<div id="errors"></div>
+<table id="list"></table>
+<h2>Steps</h2>
+<ol>
+  <li>Open the conductor page in this browser. Start the audio there.</li>
+  <li>Push "Open" for each scene (or "Open all scenes"). Each scene opens in its own window.</li>
+  <li>In each scene window, push a key or click one time. This starts the audio of that window.</li>
+  <li>In Resolume, capture each scene window.</li>
+</ol>
+<p><small>If only one window opens with "Open all scenes", let this site open pop-ups (the browser blocks the others), or push "Open" for each scene.</small></p>
+<script src="set.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const qa = { set: null, urls: [], errors: [], opened: [] };
+window.__qa = Object.assign(window.__qa || {}, { set: qa });
+const ascii = s => String(s).replace(/[^\x20-\x7e]/g, '?');
+function open(i) {
+  const w = window.open(qa.urls[i], SetLib.windowName(i), SetLib.windowFeatures(qa.set, i));
+  qa.opened.push({ i, url: qa.urls[i], ok: !!w });
+  $('status').textContent = w ? `opened: ${qa.set.scenes[i].name || qa.set.scenes[i].page}` : 'the browser blocked the window: let this site open pop-ups';
+  return w;
+}
+function render() {
+  const list = $('list'); list.textContent = '';
+  qa.set.scenes.forEach((s, i) => {
+    const tr = document.createElement('tr');
+    const name = document.createElement('td'); name.textContent = ascii(s.name || s.page);
+    const url = document.createElement('td'); const code = document.createElement('code'); code.textContent = ascii(qa.urls[i]); url.appendChild(code);
+    const act = document.createElement('td'); const b = document.createElement('button'); b.textContent = 'Open'; b.onclick = () => open(i); act.appendChild(b);
+    tr.append(name, url, act); list.appendChild(tr);
+  });
+}
+async function load() {
+  try {
+    const res = await fetch('set.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`set.json: HTTP ${res.status}`);
+    const set = await res.json();
+    qa.errors = SetLib.validate(set);
+    if (qa.errors.length) throw new Error('set.json has problems:\n' + qa.errors.join('\n'));
+    qa.set = set; qa.urls = set.scenes.map(s => SetLib.buildUrl(set, s));
+    render();
+    $('status').textContent = `${set.scenes.length} scenes`;
+  } catch (e) {
+    const d = document.createElement('div'); d.className = 'err'; d.textContent = ascii(e && e.message || e); $('errors').appendChild(d);
+    $('status').textContent = 'set.json did not load';
+  }
+}
+$('openAll').onclick = () => { if (qa.set) qa.set.scenes.forEach((s, i) => open(i)); };
+load();
+</script>
+</body>
+</html>

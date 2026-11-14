@@ -6,11 +6,12 @@
 // ?clock=line (#173; docs/CELLULAR_VIZ_BRIEF_TRACKER.md D2; #95 comment 6560018120): the live tracker
 // (clock-tracker.js, loaded next to this file when the page hasn't) listens to the line input in an AudioWorklet and
 // steers the beats; the clock still owns them. Its input is audio-in's line/mic stream when the page has one
-// (?audio=line, attached by audio-in), else the default input after 1.5 s. beats = the tracker's output + an offset
+// (?audio=line, attached by audio-in), else after 1.5 s its own input: ?in=<label substring> picks that input by
+// label with no chooser (Clock.pickInput; no match: the default input and a warning). beats = the tracker's output + an offset
 // the hand fixes own. The drum lanes are the page's patterns laid on the tracked sixteenths (silent unless
 // settings.click, the ear check), as on file:. Nothing is booked before the first lock. clock.trackerState (and
 // __qa.tracker through audio-in) = { state: acquire|locked|free-run, confidence, octaveLock, bpm, tapped, lastJump,
-// status, error, states }.
+// status, error, states, device }.
 // Who moves the beats on line, by authority (#95):
 //   tracker  acquiring (confidence < 0.4): may jump, logged jump { kind: 'acquire', origin: 'tracker' }
 //            tracking: phase corrections as a rate change ≤ 3 % (no jump, no rebook); tempo follows
@@ -86,7 +87,8 @@
 // says "shared clock lost"; the next message re-locks silently (a slew, unless the publisher jumped meanwhile).
 // Hand fixes do nothing on a scene (the conductor owns them). The page shows a small "shared" badge (opts.badge false:
 // none). clock.sharedState = { state: waiting|locked|free-run, msgs, jumpsIn, lastErrMs, lost, skipped }.
-//   Clock.publish(clock, { timers, post, epochNow }) → { tick(), stop(), sent }: the conductor side
+//   Clock.publish(clock, { timers, post, epochNow }) → { tick(), panic(mode), stop(), sent }: the conductor side;
+//   panic(mode) sends { type: 'panic', v: 1, t, mode: blackout|calm|clear } on the same channel (panic.js in every scene)
 //
 // Booking under long frames (#95, 31 Oct): read() and hitsDue() call schedule() first, at most once per frame, so a
 // frame longer than the 25 ms timer can't push the booking past its look-ahead; the look-ahead is
@@ -142,6 +144,26 @@
   function defaultContext() {
     const AC = root.AudioContext || root.webkitAudioContext;
     return new AC();
+  }
+  // a query parameter of the page (null in node or without it)
+  function queryParam(name) { try { return new URLSearchParams(root.location.search).get(name); } catch (e) { return null; } }
+  // ?in=<label substring> (the apartment MVP, Task 2): the audioinput whose label contains it (case-insensitive), else null
+  function pickInput(devices, want) {
+    if (!want) return null;
+    const w = String(want).toLowerCase();
+    return (devices || []).find(d => d && d.kind === 'audioinput' && (d.label || '').toLowerCase().includes(w)) || null;
+  }
+  // pages started without a user gesture (?capture=1 presses Play by itself) have a suspended AudioContext: the
+  // first key or click anywhere resumes every clock's context
+  const contexts = [];
+  let gestureHooked = false;
+  function resumeOnGesture(ctx) {
+    if (!ctx || contexts.includes(ctx)) return;
+    contexts.push(ctx);
+    if (gestureHooked || typeof root.addEventListener !== 'function') return;
+    gestureHooked = true;
+    const go = () => { for (const c of contexts) if (c.state === 'suspended' && c.resume) { try { c.resume(); } catch (e) {} } };
+    root.addEventListener('keydown', go, true); root.addEventListener('pointerdown', go, true);
   }
 
   // ---------- file: grids (#95 sidecar v2) ----------
@@ -285,6 +307,7 @@
           if (file || line || shared) { this.clickBus = ctx.createGain(); this.clickBus.connect(ctx.destination); }
           this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
           const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+          if (useTimers) resumeOnGesture(ctx);
         }
         this.ctx.resume(); this.setMuted(settings.muted);
         this.nextTime = this.ctx.currentTime + 0.05; this.step = 0; this.hits = []; this.steps = []; this.hitLog = []; this.dueAt = 0;
@@ -660,7 +683,7 @@
           if (ch) { ch.onmessage = e => this.sharedMessage(e && e.data); shared.channel = ch; }
           else warnOnce('channel', 'shared source: BroadcastChannel is not available');
         }
-        if (opts.badge !== false && root.document && root.document.body && !shared.badge) {
+        if (opts.badge !== false && queryParam('capture') !== '1' && root.document && root.document.body && !shared.badge) {
           const b = root.document.createElement('div');
           b.id = 'clockSharedBadge';
           b.style.cssText = 'position:fixed;left:8px;bottom:6px;z-index:2147483000;font:11px ui-monospace,Menlo,monospace;color:rgba(255,255,255,0.45);pointer-events:none';
@@ -829,11 +852,30 @@
         }).catch(e => { line.status = 'error'; line.error = String((e && e.message) || e); warnOnce('worklet', 'line source: ' + line.error); });
         return true;
       },
+      // ?in=<label substring> (opts.inputLabel in tests): that input by deviceId, no chooser; no match (or no ?in=):
+      // the browser's default input, as before, with a warning (line.device says what was opened)
       openLineInput() {
         const md = root.navigator && root.navigator.mediaDevices;
-        if (!md || !md.getUserMedia) { line.status = 'error'; line.error = 'getUserMedia is not available'; return; }
-        md.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
-          .then(s => { if (!line.input) this.attachInput(this.ctx.createMediaStreamSource(s)); })
+        const gum = opts.getUserMedia || (md && md.getUserMedia ? c => md.getUserMedia(c) : null);
+        const enumerate = opts.enumerateDevices || (md && md.enumerateDevices ? () => md.enumerateDevices() : () => Promise.resolve([]));
+        if (!gum) { line.status = 'error'; line.error = 'getUserMedia is not available'; return Promise.resolve(); }
+        const CLEAN = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+        const want = opts.inputLabel !== undefined ? opts.inputLabel : queryParam('in');
+        const pick = async () => {
+          if (!want) return null;
+          let devs = await enumerate();
+          if (devs.length && devs.every(d => !d.label)) {   // labels stay empty until the page has mic permission once
+            const s = await gum({ audio: CLEAN }); try { s.getTracks().forEach(t => t.stop()); } catch (e) {}
+            devs = await enumerate();
+          }
+          const d = pickInput(devs, want);
+          if (!d) warnOnce('in', `line source: no audio input matches "${want}" (inputs: ${devs.filter(x => x.kind === 'audioinput').map(x => x.label || '?').join(', ') || 'none'}); using the default input`);
+          return d;
+        };
+        return pick().then(d => {
+          line.device = { wanted: want || null, label: d ? d.label : null, deviceId: d ? d.deviceId : null, matched: !!d };
+          return gum({ audio: d ? { deviceId: { exact: d.deviceId }, ...CLEAN } : CLEAN });
+        }).then(s => { if (!line.input) this.attachInput(this.ctx.createMediaStreamSource(s)); })
           .catch(e => { line.status = 'error'; line.error = String((e && e.message) || e); warnOnce('input', 'line source: ' + line.error); });
       },
       // one analysis frame { t, flux, bands } (from the worklet, or a test): the tracker steps, its jumps rebook
@@ -1031,7 +1073,7 @@
       get trackerState() {
         if (!line) return null;
         const s = line.tracker && line.tracker.snapshot ? line.tracker.snapshot() : { state: 'acquire', confidence: 0, octaveLock: null, bpm: 0, tapped: false, lastJump: null };
-        return { ...s, status: line.status, error: line.error, offsetBeats: +line.offset.toFixed(4), states: line.stateLog.slice(-16) };
+        return { ...s, status: line.status, error: line.error, offsetBeats: +line.offset.toFixed(4), states: line.stateLog.slice(-16), device: line.device || null };
       },
 
       // a keydown from the page: Shift + a hand-fix key → fix(…, { origin: 'fix:key' }); anything else is ignored
@@ -1081,13 +1123,21 @@
         post(m); this.sent++; this.last = e;
         return m;
       },
+      // the conductor's panic for every scene (panic.js listens): 'blackout' | 'calm' | 'clear', set outright in each window
+      panic(mode) {
+        if (mode !== 'blackout' && mode !== 'calm' && mode !== 'clear') return null;
+        const m = { type: 'panic', v: 1, t: now(), mode };
+        post(m); this.panics++;
+        return m;
+      },
+      panics: 0,
       stop() { clearInterval(this.timer); this.timer = 0; if (ch) { try { ch.close(); } catch (err) {} ch = null; } },
     };
     if (opts.timers !== false) pub.timer = setInterval(() => pub.tick(), SHARED_PUBLISH_MS / 2);
     return pub;
   }
 
-  const api = { create, publish, qaEvents, parseGrid, makeWarp, TAU, LANES, BANDS, OFFSET_MIN, OFFSET_MAX, SHARED_CHANNEL, SHARED_LOST_MS };
+  const api = { create, publish, pickInput, qaEvents, parseGrid, makeWarp, TAU, LANES, BANDS, OFFSET_MIN, OFFSET_MAX, SHARED_CHANNEL, SHARED_LOST_MS };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.Clock = api;
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this));   // node's `this` is module.exports

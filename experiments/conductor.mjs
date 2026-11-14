@@ -62,6 +62,7 @@ export function importProfiles(text) {
  * the page's own keys → an action, or null (Shift + the clock's keys stay the clock's hand fixes):
  *   M mark · [ / ] step bar1 · Shift+S confirm the bar (only with the bar lamp shown) · Alt+, / Alt+. offset ±
  *   Space play/pause · N next with a crossfade · K the answer-key lamp · ? the Help panel
+ *   B blackout every scene · ` calm every scene (the apartment MVP: panic over the shared clock's channel; again: clear)
  */
 export function pageKey(e) {
   if (!e || e.ctrlKey || e.metaKey) return null;
@@ -72,7 +73,13 @@ export function pageKey(e) {
   if (e.key === '?') return { type: 'help' };   // the Help panel (Shift+/ on most layouts)
   if (e.shiftKey) return e.code === 'KeyS' ? { type: 'barOk' } : null;
   return { KeyM: { type: 'mark' }, BracketLeft: { type: 'step', delta: -1 }, BracketRight: { type: 'step', delta: 1 },
-    Space: { type: 'playPause' }, KeyN: { type: 'next' }, KeyK: { type: 'keyLamp' } }[e.code] || null;
+    Space: { type: 'playPause' }, KeyN: { type: 'next' }, KeyK: { type: 'keyLamp' },
+    KeyB: { type: 'panic', mode: 'blackout' }, Backquote: { type: 'panic', mode: 'calm' } }[e.code] || null;
+}
+/** the panic message the conductor sends for a button or key: the same mode again clears (as B and ` do in a scene) */
+export function panicNext(current, mode) {
+  if (mode === 'clear') return 'clear';
+  return current === mode ? 'clear' : mode;
 }
 
 // ---------- the clock-off banner and the band bars (9 Nov sitting: the LAN address is not a secure context) ----------
