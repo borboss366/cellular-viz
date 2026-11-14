@@ -282,7 +282,7 @@
           this.master.connect(ctx.destination);
           // file: the track goes through master (and so the analyser audio-in hangs on it); the ear-check clicks don't.
           // line: nothing plays but the ear-check clicks
-          if (file || line) { this.clickBus = ctx.createGain(); this.clickBus.connect(ctx.destination); }
+          if (file || line || shared) { this.clickBus = ctx.createGain(); this.clickBus.connect(ctx.destination); }
           this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
           const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
         }

@@ -148,12 +148,12 @@ test('shared: a phase error up to 1/4 beat slews (no jump); over 1/4 beat jumps 
   run(W, P, 2000);
   // the publisher moves +0.2 beat and the event is not sent (a stand-in for drift): the receiver slews
   const quiet = ms => { P.pc.fix('nudge', ms, { origin: 'qa' }); P.pub.seenJumps = P.pc.jumps.length; };
-  quiet(100);
-  const slewStart = Math.abs(W.recv.baseBeats(W.hNow()) - P.pc.read({ raw: true }).beats);
-  run(W, P, 300);
+  quiet(100);   // the metronome carries the new count from its next sixteenth on
+  run(W, P, 400);
   assert.equal(W.recv.jumps.length, 0, '0.2 beat: no jump');
+  // 5 % of 120 bpm = 0.1 beat/s: after ~0.3 s of slewing about 0.17 beat is left
   const mid = Math.abs(W.recv.baseBeats(W.hNow()) - P.pc.read({ raw: true }).beats);
-  assert.ok(mid < slewStart && mid > 0.001, `slewing: ${slewStart.toFixed(3)} -> ${mid.toFixed(3)} beat after 0.3 s`);
+  assert.ok(mid > 0.1 && mid < 0.195, `slewing, not snapping: ${mid.toFixed(3)} beat left after 0.4 s`);
   run(W, P, 6000);
   assert.ok(Math.abs(W.recv.baseBeats(W.hNow()) - P.pc.read({ raw: true }).beats) * 500 < 1, 'slewed in');
   quiet(700);   // 1.4 beat: over 1/4 beat
