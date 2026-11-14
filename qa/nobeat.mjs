@@ -3,7 +3,9 @@
 //   2. locked    the clock's own confidence again (forceConfidence(null)): back to 1 within one bar
 //   3. nobeat-2  forced to 0 again
 // Per phase: the beat weight and the energy envelopes every frame (from __qa.beatWeight / __qa.energy, which
-// audio-in.js defines), the rAF frame intervals, and one still (PNG) at the end for the user's grading.
+// audio-in.js defines), the rAF frame intervals, and one still (PNG) at the end for the user's grading: the run folder
+// is a grading run (results.json + stills/0N-<phase>.png, gradeRun below), so the viewer's /grade lists it and shows
+// one card per phase with keep / maybe / dull.
 // Rows: weight at the target one bar (+0.5 s) into each phase; no step larger than the one-bar ramp allows (no pops);
 // no NaN in the weight or the energy; the frame budget (rAF interval p95 <= 17.5 ms, the 60 Hz frame); the scene
 // alive (no page error, the panic calm fallback never took over, the WebGL context not lost).
@@ -63,17 +65,32 @@ export function phaseRows(rec, { target, secs }) {
 export async function runNoBeat(page, { phaseSecs = 30, outDir = null } = {}) {
   await page.evaluate(RECORDER);
   const phases = [];
-  for (const ph of PHASES) {
+  for (const [i, ph] of PHASES.entries()) {
     await page.evaluate(c => { window.__qa.forceConfidence(c); window.__nb.rec = []; window.__nb.last = null; window.__nb.on = true; }, ph.conf);
     await page.waitForTimeout(phaseSecs * 1000);
     const rec = await page.evaluate(() => { window.__nb.on = false; return window.__nb.rec; });
     let still = null;
-    if (outDir) { fs.mkdirSync(outDir, { recursive: true }); still = path.join(outDir, `${ph.name}.png`); await page.screenshot({ path: still }); }
+    if (outDir) { const sd = path.join(outDir, 'stills'); fs.mkdirSync(sd, { recursive: true }); still = path.join(sd, stillName(i, ph.name)); await page.screenshot({ path: still }); }
     phases.push({ name: ph.name, target: ph.target, rows: phaseRows(rec, { target: ph.target, secs: phaseSecs }), still });
   }
   await page.evaluate(() => window.__qa.forceConfidence(null));
   const alive = await page.evaluate(() => ({ panic: window.__panic ? window.__panic.mode : null, lost: window.__nb.lost }));
   return { phases, alive };
+}
+
+/** the still's file name, as the viewer looks it up (serve.mjs stillOf: NN-<label>.png in stills/) */
+export const stillName = (i, label) => `${String(i + 1).padStart(2, '0')}-${label.replace(/[^\w-]+/g, '-')}.png`;
+
+/** the run folder's results.json for the grading page (qa/serve.mjs): one result per phase, no video, a still each.
+ *  meta.gpu decides whether /grade lists it (software renderers are listed under "other runs") */
+export function gradeRun({ page, query = '', secs, res, verdictLines = [], pass = null, gpu = '', renderer = '', stamp = '' }) {
+  return {
+    meta: { exp: page, kind: 'nobeat', gpu, renderer, warm: 3, dur: secs, stamp,
+      note: `no-beat mode: one still per phase (confidence 0 / locked / confidence 0, ${secs} s each)${pass === false ? '; a QA row failed, see check.md' : ''}` },
+    results: res.phases.map((p, i) => ({
+      label: p.name, url: `${page}?${query}`, phase: i + 1, target: p.target, still: `stills/${stillName(i, p.name)}`,
+      detail: verdictLines[i] || '', rows: p.rows })),
+  };
 }
 
 /** the gate per phase and overall; budget optional (report-only on software rendering) */

@@ -118,3 +118,41 @@ test('the no-beat QA row (qa/nobeat.mjs): at target one bar in, no pop, no NaN, 
   assert.match(cli, /runNoBeat\(page, \{ phaseSecs: SECS, outDir: out \}\)/);
   assert.match(cli, /arg\('secs', 30\)/, '30 s phases by default');
 });
+
+test('the no-beat stills on the grading page: /grade lists the run, its page has one card per phase, verdicts grade it', async () => {
+  const os = await import('node:os'), { spawn } = await import('node:child_process');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nobeat-grade-')), stamp = '2026-11-14-1700';
+  const dir = path.join(home, 'qa', '16-hodge-kaleidoscope', 'runs', stamp);
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a5b70000000049454e44ae426082', 'hex');
+  const rows = { frames: 10 };
+  const res = { phases: NB.PHASES.map((p, i) => ({ name: p.name, target: p.target, rows, still: path.join(dir, 'stills', NB.stillName(i, p.name)) })), alive: { panic: 'off', lost: 0 } };
+  fs.mkdirSync(path.join(dir, 'stills'), { recursive: true });
+  for (const p of res.phases) fs.writeFileSync(p.still, png);
+  const run = NB.gradeRun({ page: '16-hodge-kaleidoscope.html', query: 'capture=1', secs: 30, res, verdictLines: ['nobeat-1: pass', 'locked: pass', 'nobeat-2: pass'], pass: true, gpu: 'AMD Radeon 780M', stamp });
+  assert.deepEqual(run.results.map(r => [r.label, r.still]), [['nobeat-1', 'stills/01-nobeat-1.png'], ['locked', 'stills/02-locked.png'], ['nobeat-2', 'stills/03-nobeat-2.png']]);
+  assert.ok(run.results.every(r => !r.video), 'stills only');
+  fs.writeFileSync(path.join(dir, 'results.json'), JSON.stringify(run));
+  const port = 20000 + Math.floor(Math.random() * 20000);
+  const child = spawn(process.execPath, [path.join(QA, 'serve.mjs'), '--port', String(port)], { env: { ...process.env, QA_HOME: home, QA_NOTES_DIR: path.join(home, 'notes') }, stdio: ['ignore', 'pipe', 'pipe'] });
+  try {
+    await new Promise((resolve, reject) => { const t = setTimeout(() => reject(new Error('viewer did not start')), 10e3);
+      child.stdout.on('data', d => { if (String(d).includes(`:${port}`)) { clearTimeout(t); resolve(); } }); child.on('exit', c => reject(new Error(`viewer exited ${c}`))); });
+    const base = `http://127.0.0.1:${port}`, link = `/run/16-hodge-kaleidoscope/${stamp}`;
+    let grade = await (await fetch(`${base}/grade`)).text();
+    assert.ok(grade.includes(`href="${link}"><b>`) && grade.includes('grade the stills'), 'listed to grade, linked to its stills');
+    assert.match(grade, /Runs to grade \(1\)/);
+    const page = await (await fetch(`${base}${link}`)).text();
+    for (const [i, p] of NB.PHASES.entries()) {
+      assert.ok(page.includes(`data-label="${p.name}"`), `${p.name}: a card`);
+      assert.ok(page.includes(`/file/16-hodge-kaleidoscope/${stamp}/stills/${NB.stillName(i, p.name)}`), `${p.name}: its still`);
+    }
+    assert.ok(!page.includes('NaN%'), 'no video numbers on a stills card');
+    assert.equal((await fetch(`${base}/file/16-hodge-kaleidoscope/${stamp}/stills/02-locked.png`)).status, 200);
+    for (const p of NB.PHASES) {
+      const r = await fetch(`${base}${link}/verdict`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ label: p.name, verdict: 'keep', note: '' }) });
+      assert.equal(r.status, 200);
+    }
+    grade = await (await fetch(`${base}/grade`)).text();
+    assert.match(grade, /Runs to grade \(0\)/); assert.match(grade, /Graded \(1\)/);
+  } finally { child.kill(); fs.rmSync(home, { recursive: true, force: true }); }
+});
