@@ -25,7 +25,7 @@ export const RECORDER = `(() => {
     requestAnimationFrame(tick);
     if (!nb.on) { nb.last = ts; return; }
     const q = window.__qa || {}, b = q.beatWeight || null, e = q.energy || null;
-    nb.rec.push({ ts, dt: nb.last === null ? null : ts - nb.last, w: b ? b.w : null, target: b ? b.target : null, barS: b ? b.barS : null,
+    nb.rec.push({ ts, dt: nb.last === null ? null : ts - nb.last, w: b ? b.w : null, target: b ? b.target : null, barS: b ? b.barS : null, at: b ? b.at : null,
       e: e ? [e.kick, e.level, ...Object.values(e.bands || {})] : null });
     nb.last = ts;
   };
@@ -45,7 +45,11 @@ export function phaseRows(rec, { target, secs }) {
   }
   const ok = rec.filter(r => Number.isFinite(r.w));
   for (let i = 1; i < ok.length; i++) {
-    const dt = (ok[i].ts - ok[i - 1].ts) / 1000, barS = ok[i].barS > 0 ? ok[i].barS : 2;
+    // the time the weight itself moved over (its own stepWeight clock, s), not the recorder's rAF stamps: on a slow
+    // software-rendered frame the page's step lands a ms or two later than the frame stamp says (#231 at e9d7bbd: a
+    // step of 0.061 against an allowed 0.060 on a 63 ms frame that the rAF stamps called 62 ms)
+    const own = Number.isFinite(ok[i].at) && Number.isFinite(ok[i - 1].at) && ok[i].at >= ok[i - 1].at;
+    const dt = own ? ok[i].at - ok[i - 1].at : (ok[i].ts - ok[i - 1].ts) / 1000, barS = ok[i].barS > 0 ? ok[i].barS : 2;
     const step = Math.abs(ok[i].w - ok[i - 1].w), allowed = 1.5 * Math.min(1, dt) / barS + 0.01;   // smoothstep's slope is at most 1.5
     if (step - allowed > out.maxStep - out.maxStepAllowed) { out.maxStep = step; out.maxStepAllowed = allowed; }
   }
