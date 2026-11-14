@@ -339,7 +339,13 @@ function shadowRow(mono, ref, lib) {
   const awayMoves = dec.filter(d => d.ok && d.path !== 'fit' && near(d.cur) && !near(d.cand));
   const fitOk = dec.filter(d => d.ok && d.path === 'fit' && d.cand > 0), fitNear = fitOk.filter(d => near(d.cand)).length;
   const diag = r ? `moves by path ${JSON.stringify(r.movesBy || {})}; fit rejects by reason ${JSON.stringify(r.refusedBy || {})}; fit samples near the ref ${fitNear}, away ${fitOk.length - fitNear}; refused by path ${by(refused)}; refused while the candidate was near the ref and the current tempo was not: ${heldWrong.length} (${by(heldWrong)})${heldWrong.length ? ', e.g. ' + JSON.stringify(heldWrong.slice(0, 2)) : ''}; accepted moves away from the ref ${awayMoves.length} (${by(awayMoves)})` : null;
-  return { lockT, firstLockBpm, pct: n ? 100 * inN / n : 0, longest, moves: r ? r.tempoMovesLocked : tr.relative.tempoMoves, refusals: r ? r.tempoRefusals : null, diag };
+  // F4: the first-lock scan (best, runner-up, ratio, wait), the second look, the re-acquire scans, blocked relatives,
+  // and F3's short-window steps
+  const a = r && r.acq, c = x => x ? `${x.bpm} (${x.score})` : '-';
+  const acqText = !a ? null : `F4 first lock ${a.firstLock ? `${a.firstLock.from ?? '-'} -> ${a.firstLock.bpm} after ${a.firstLock.waitedS} s${a.firstLock.forced ? ' (forced at the cap)' : ''}, scan best ${c(a.firstLock.scan && a.firstLock.scan.best)} vs ${c(a.firstLock.scan && a.firstLock.scan.second)} ratio ${a.firstLock.scan ? a.firstLock.scan.ratio : '-'}` : 'none'}`
+    + `; second look ${a.secondLook ? (a.secondLook.skipped ? 'skipped ' + a.secondLook.skipped : a.secondLook.to ? `moved ${a.secondLook.from} -> ${a.secondLook.to} (ratio ${a.secondLook.ratio})` : `kept ${a.secondLook.from} (best ${c(a.secondLook.scan && a.secondLook.scan.best)}, ratio ${a.secondLook.ratio})`) : 'not reached'}`
+    + `; re-acquire scans ${a.rescans.length} (moved ${a.rescans.filter(x => x.to).length}); relatives blocked while locked ${a.relBlocked}; short-window steps ${r.short ? r.short.steps : '-'}`;
+  return { lockT, firstLockBpm, pct: n ? 100 * inN / n : 0, longest, moves: r ? r.tempoMovesLocked : tr.relative.tempoMoves, refusals: r ? r.tempoRefusals : null, diag: diag && acqText ? `${diag}; ${acqText}` : diag };
 }
 test('F3 shadow rows: main 501cfe1 beside the tracker under test on every accepted toolVersion 3 vote ref; never more than 2 points below main (hard; box only)', async (t) => {
   await heavy(t);   // one heavy box test at a time (fixtures/heavy-lock.mjs)
