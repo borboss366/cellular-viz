@@ -1,5 +1,5 @@
 // The three-tracker reference vote (#188, the user 10 Nov 17:27; VIZ research's ruling): qa/ref_beats_vote.py and its
-// fixed script qa/ref-beats-vote.sh, and the unusual tempo / meter rows hc-01..hc-11 (the user 17:39: hard for the tracker,
+// fixed script qa/ref-beats-vote.sh, and the unusual tempo / meter rows hc-01..hc-12 (the user 17:39: hard for the tracker,
 // not a genre) in qa/corpus.json. The trackers themselves
 // (torch, beat-this, madmom, essentia) only exist in the box's venv, so here: the vote rules (--selftest), the files
 // parse, the old path for the 22 earlier tracks is untouched, and the rows are well formed. ids only (R9).
@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 const QA = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const rows = JSON.parse(fs.readFileSync(path.join(QA, 'corpus.json'), 'utf8'));
-const HC = Array.from({ length: 11 }, (_, i) => `hc-${String(i + 1).padStart(2, '0')}`);
+const HC = Array.from({ length: 12 }, (_, i) => `hc-${String(i + 1).padStart(2, '0')}`);
 
 test('ref_beats_vote.py --selftest: 2-of-3 within 1 % after octave folding, 4:3 never folds, confidence 1.5 gates (3.5 after an octave fold), wide 60-260, meters 2-7, tempo curve', (t) => {
   const py = spawnSync('python3', ['-c', 'import sys; print(sys.version_info >= (3, 9))'], { encoding: 'utf8' });
@@ -168,7 +168,7 @@ test('the old ref_beats.py path: unchanged for the 22 earlier rows, and it leave
   assert.deepEqual(others.filter(r => r.refTool !== undefined).map(r => r.id), [], 'no earlier row moves to the vote');
 });
 
-test('corpus.json: hc-01..hc-11 by id, report-only, refTool vote; optional refMinBpm/refMaxBpm sane; R9 (no file names)', () => {
+test('corpus.json: hc-01..hc-12 by id, report-only, refTool vote; optional refMinBpm/refMaxBpm sane; R9 (no file names)', () => {
   const by = Object.fromEntries(rows.map(r => [r.id, r]));
   for (const id of HC) {
     const r = by[id];
@@ -186,6 +186,49 @@ test('corpus.json: hc-01..hc-11 by id, report-only, refTool vote; optional refMi
   assert.match(md, /2, 3, 4, 5, 6 or 7 beats a bar/);
   assert.doesNotMatch(md, /hardcore/i, "the batch is unusual tempo / meter, not a genre (the user, 17:39)");
   const py = fs.readFileSync(path.join(QA, "ref_beats_vote.py"), "utf8");
-  assert.match(py, /beats_per_bar=METERS/, "the downbeat DBN may choose 2..7 beats a bar");
+  assert.match(py, /beats_per_bar=meters/, "the downbeat DBN gets the row's meters");
+  assert.match(py, /meters = \[int\(m\)\] if m else METERS/, "2..7 beats a bar unless the row sets a meter");
   assert.match(py, /^WIDE = \(60\.0, 260\.0\)/m);
+});
+
+test('the 14 Nov ear checks: hc-03/04/09/10/11 bpm by ear with a narrow range (about +-4 %) decoded first, hc-02 173.05 and meter 5, hc-12 140.16 from the vote, hc-05/08 no tempo and no ref (ids only, R9)', (t) => {
+  const by = Object.fromEntries(rows.map(r => [r.id, r]));
+  const EAR = { 'hc-03': 160, 'hc-04': 90.91, 'hc-09': 189.1, 'hc-10': 107.5, 'hc-11': 172 };
+  for (const [id, bpm] of Object.entries(EAR)) {
+    const r = by[id];
+    assert.equal(r.bpm, bpm, `${id}: bpm by ear`);
+    assert.equal(r.bpmSource, 'user-ear', `${id}: bpmSource`);
+    assert.ok(r.refMinBpm < bpm && bpm < r.refMaxBpm, `${id}: ${r.refMinBpm} < ${bpm} < ${r.refMaxBpm}`);
+    for (const [edge, want] of [[r.refMinBpm, 0.96], [r.refMaxBpm, 1.04]]) assert.ok(Math.abs(edge / bpm - want) <= 0.002, `${id}: ${edge} is about ${want} x ${bpm}`);
+    assert.equal(r.status, 'report', `${id}: still report-only until the vote re-runs`);
+  }
+  for (const id of ['hc-05', 'hc-08']) {
+    const r = by[id];
+    assert.equal(r.bpm, null, `${id}: no single tempo`);
+    assert.equal(r.noRef, true, `${id}: the vote never writes a reference`);
+    assert.ok(r.refMinBpm === undefined && r.refMaxBpm === undefined, `${id}: no range`);
+  }
+  assert.equal(by['hc-02'].meter, 5, 'hc-02: 5 beats a bar');
+  assert.deepEqual([by['hc-02'].bpm, by['hc-02'].bpmSource, by['hc-02'].refMinBpm], [173.05, 'vote', undefined], 'hc-02: the accepted vote, no range');
+  assert.deepEqual([by['hc-12'].bpm, by['hc-12'].bpmSource, by['hc-12'].refTool, by['hc-12'].status], [140.16, 'vote', 'vote', 'report'], 'hc-12: the accepted vote (box-only map)');
+  for (const r of rows) if (r.meter !== undefined) assert.ok(Number.isInteger(r.meter) && r.meter >= 2 && r.meter <= 7, `${r.id}: meter ${r.meter}`);
+  const py3 = spawnSync('python3', ['-c', 'import sys'], { encoding: 'utf8' });
+  if (py3.error) { t.diagnostic('no python3 here: row_plan / writes_ref on the real rows not run'); return; }
+  const probe = [
+    'import json, sys',
+    `sys.path.insert(0, ${JSON.stringify(QA)})`,
+    'from ref_beats_vote import row_plan, writes_ref, WIDE',
+    `rows = {r['id']: r for r in json.load(open(${JSON.stringify(path.join(QA, 'corpus.json'))}))}`,
+    "out = {i: [list(row_plan(rows[i])[0]), row_plan(rows[i])[1], row_plan(rows[i])[2], row_plan(rows[i])[3]] for i in ('hc-02', 'hc-03', 'hc-05', 'hc-06')}",
+    "out['noRef'] = [writes_ref(rows['hc-05'], True, None), writes_ref(rows['hc-08'], True, None), writes_ref(rows['hc-03'], True, None)]",
+    'print(json.dumps(out))',
+  ].join('\n');
+  const r = spawnSync('python3', ['-c', probe], { encoding: 'utf8' });
+  assert.equal(r.status, 0, `row_plan: ${r.stderr}`);
+  const o = JSON.parse(r.stdout.trim());
+  assert.deepEqual(o['hc-02'], [[60, 260], 'wide', [5], { range: null, meter: 5 }], 'hc-02: wide range, meter 5 only');
+  assert.deepEqual(o['hc-03'], [[153.6, 166.4], 'ear', [2, 3, 4, 5, 6, 7], { range: [153.6, 166.4], meter: null }], 'hc-03: the ear range first');
+  assert.deepEqual(o['hc-05'], [[60, 260], 'wide', [2, 3, 4, 5, 6, 7], null], 'hc-05: as before (no plan key: stays up to date)');
+  assert.deepEqual(o['hc-06'], [[60, 260], 'wide', [2, 3, 4, 5, 6, 7], null], 'hc-06: untouched');
+  assert.deepEqual(o.noRef, [false, false, true], 'noRef rows never write a .ref.beats; an ear row does when accepted');
 });
