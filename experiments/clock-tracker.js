@@ -803,7 +803,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         const e = Math.abs(frac(ownBeats(cand[i]) + own.pending));
         if (e < near) { near = e; i0 = i; }
       }
-      if (i0 < 0 || near > C.trackWindow) return fitReject(t, 'window');
+      if (i0 < 0 || near > C.fitInlier) return fitReject(t, 'window');   // the anchor within fitInlier (0.15) of the model's beat: in the swing trap's break a kick a quarter beat early anchored a chain 1 % slow
       const pts = [{ k: 0, t: cand[i0] }];
       let last = cand[i0], kk = 0;
       for (let i = i0 + 1; i < cand.length; i++) {
