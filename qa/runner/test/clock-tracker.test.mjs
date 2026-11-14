@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
-import { render, renderHits } from './fixtures/tracker-scenarios.mjs';
+import { render, renderHits, rampScenario } from './fixtures/tracker-scenarios.mjs';
 import { BUDGET_BEATS, relockFigures, relockText } from './fixtures/relock.mjs';
 // report-only rows: test-pr.sh (the runner's copy) prints a passing file's lines only when they start with "corpus: ",
 // so these go out as "corpus: report: ..." (numbers only) and QA box sees them on every run
@@ -434,4 +434,40 @@ test('(c) cost, report-only: a right x2 on a 174 figure read at 87 (does the dis
     const rel = o.tr.notes.filter(n => n.kind === 'octave-release' && pressed !== null && n.t >= pressed);
     report(t, `(c) cost ${s.name}: tracker read ${read === null ? '-' : read.toFixed(2)} at 15 s; ${pressed === null ? 'not at ~87, so no x2 pressed' : `x2 pressed to ${(2 * read).toFixed(1)}; protected until +${protectS.toFixed(2)} s (${o.tr.hold.protectSkips} checks skipped); ${rel.length ? `RELEASED back to the wrong octave at +${(rel[0].t - pressed).toFixed(2)} s, ${(rel[0].t - pressed - protectS).toFixed(2)} s after the protection (${rel[0].why || 'fold'}, raw ${rel[0].raw.toFixed(1)})` : `kept to the end (${(seconds - pressed - protectS).toFixed(1)} s past the protection)`}; end bpm ${o.tr.ownBpm.toFixed(2)}, hold ${o.tr.octaveLock}; last check ${JSON.stringify(o.tr.hold.eval)}`}`);
   }
+});
+
+// ---------------------------------------------------------------- F2: the tempo gate (the user 14 Nov 02:08)
+// Every tempo change while locked passes one gate (R(candidate) >= R(current) + gateR over the last 8 beats). It must
+// not stop the tracker from following a real, gradual tempo change: a +10 % ramp over 32 bars.
+test('F2 ramp: +10 % from 126 to 139 over 32 bars, the tempo within 1 % of the true tempo with a lag of 4 s or less (hard)', (t) => {
+  const s = rampScenario({ sr: SR }), { o, trace } = bpmTrace(s);
+  assert.ok(o.lockT !== null, 'locks');
+  const from = o.lockT + 8 * 60 / 126, lag = 4;
+  // within 1 % of the true tempo at some moment of the last `lag` seconds (the true tempo only rises)
+  const checked = trace.filter(x => x.t >= from && x.t <= s.duration - 0.5);
+  const bad = checked.filter(x => {
+    const lo = Math.min(s.bpmAt(x.t - lag), s.bpmAt(x.t)), hi = Math.max(s.bpmAt(x.t - lag), s.bpmAt(x.t));
+    return !(x.bpm >= lo * 0.99 && x.bpm <= hi * 1.01);
+  });
+  const g = o.tr.gate;
+  const at = x => `${x.t.toFixed(1)}:${x.bpm.toFixed(2)}/${s.bpmAt(x.t).toFixed(2)}`;
+  report(t, `F2 ramp 126 -> 139 over 32 bars: lock ${o.lockT.toFixed(2)} s, ${bad.length}/${checked.length} samples outside (1 %, lag <= ${lag} s)${bad.length ? `, first ${bad.slice(0, 6).map(at).join(' ')}` : ''}; end bpm ${o.tr.ownBpm.toFixed(2)}; gate: tempoMovesLocked ${g.tempoMovesLocked}, tempoRefusals ${g.tempoRefusals} (few-onsets ${g.fewOnsets}); last refusals ${JSON.stringify(g.refusals.slice(-3))}`);
+  assert.ok(checked.length > 400, `${checked.length} samples checked`);
+  assert.deepEqual(bad.map(at), [], 'the tempo follows the ramp within 1 % and 4 s');
+  assert.ok(Math.abs(o.tr.ownBpm / 139 - 1) <= 0.01, `ends at 139: ${o.tr.ownBpm}`);
+});
+
+test('F2 gate report: snapshot().gate and tr.gate carry the counters, the constants and the refusal log fields', () => {
+  assert.deepEqual([T.DEFAULTS.gateR, T.DEFAULTS.gateBeats, T.DEFAULTS.gateMinOnsets], [0.05, 8, 4]);
+  const s = render('step-120-128', { sr: SR }), o = run(s), g = o.tr.snapshot().gate;
+  for (const k of ['tempoMovesLocked', 'tempoRefusals', 'fewOnsets', 'refusals', 'R', 'beats', 'minOnsets']) assert.ok(k in g, `${k} in ${JSON.stringify(g)}`);
+  assert.ok(Number.isInteger(g.tempoMovesLocked) && Number.isInteger(g.tempoRefusals));
+  for (const r of g.refusals) for (const k of ['t', 'path', 'cur', 'cand', 'Rcur', 'Rcand', 'n']) assert.ok(k in r, `${k} in ${JSON.stringify(r)}`);
+  assert.ok(g.refusals.every(r => ['ema', 'hold', 'home', 'relative', 'drift'].includes(r.path)));
+  console.log(`F2 gate on step-120-128: ${JSON.stringify(g)}`);
+  // the hand hold and taps never pass the gate: x2 then a tap leave the counters as they were
+  const before = { ...o.tr.gate };
+  const t0 = s.duration - 1;
+  o.tr.scaleTempo(2, t0); o.tr.tap({ t: t0 + 0.1, bpm: 128 });
+  assert.equal(o.tr.gate.tempoMovesLocked, before.tempoMovesLocked); assert.equal(o.tr.gate.tempoRefusals, before.tempoRefusals);
 });

@@ -162,3 +162,19 @@ export function render(name, { sr = 44100 } = {}) {
   return b(sr);
 }
 export function scenarios({ sr = 44100 } = {}) { return NAMES.map(n => render(n, { sr })); }
+
+// F2 (the user 14 Nov 02:08): a tempo ramp, +10 % from 126 to 139 over 32 bars (128 beats, the tempo rising by the
+// same step every beat), with 8 bars steady at 126 before it and 8 bars at 139 after; the usual groove. Not in BUILD
+// (the scenario list other tests walk); bpmAt(t) is the true tempo at t (the beat interval that contains t).
+export function rampScenario({ sr = 44100, from = 126, to = 139, rampBeats = 128, lead = 32, tail = 32 } = {}) {
+  const ivals = [];
+  for (let k = 0; k < lead; k++) ivals.push(60 / from);
+  for (let k = 1; k <= rampBeats; k++) ivals.push(60 / (from + (to - from) * k / rampBeats));
+  for (let k = 0; k < tail; k++) ivals.push(60 / to);
+  const beats = gridFrom(ivals), duration = beats[beats.length - 1] + 1;
+  const name = `ramp-${from}-${to}`;
+  const s = make(name, sr, { duration, beats, bpm: [from, to], hits: groove(beats), events: [{ t: beats[lead], kind: 'ramp-start' }, { t: beats[lead + rampBeats], kind: 'ramp-end' }] });
+  s.rampStart = beats[lead]; s.rampEnd = beats[lead + rampBeats];
+  s.bpmAt = t => { let i = 0; while (i + 1 < beats.length && beats[i + 1] <= t) i++; return i + 1 < beats.length ? 60 / (beats[i + 1] - beats[i]) : to; };
+  return s;
+}
