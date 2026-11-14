@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Reference beats by a vote of three trackers (#188, the user 10 Nov 17:27, VIZ research's ruling): for tracks that
-are hard FOR THE TRACKER (the batch hc-01..hc-11: odd meters, swing, unusual or slow tempos, maybe polyrhythm; the
+are hard FOR THE TRACKER (the batch hc-01..hc-12: odd meters, swing, unusual or slow tempos, maybe polyrhythm; the
 user's correction 17:39, not the hardcore genre) where Beat This! alone gave 7/11 gridSuspect grids.
 
 Run it through qa/ref-beats-vote.sh (the venv, the GPU lock, the grids). For each corpus track on the box (ids from

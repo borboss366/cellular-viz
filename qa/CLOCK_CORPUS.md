@@ -85,7 +85,7 @@ Per cut window the truth is a least-squares straight grid through the reference 
 
 Real transitions, EQ moves, breakdowns. 90 % or more of played time inside the gate, at most one hand fix per transition. The number the party is judged on.
 
-## Unusual tempo / meter tracks (hc-01 … hc-11, report-only, slot T14)
+## Unusual tempo / meter tracks (hc-01 … hc-12, report-only, slot T14)
 
 The user's batch of 10 Nov: tracks that are **hard for the tracker**, not a genre: odd meters, swing, unusual or slow tempos, maybe polyrhythm. Their ids map to files in the box's own corpus-map.json; this file names neither artists nor titles for them yet. The first reference grids (Beat This! alone, 18:20) were gridSuspect on 7 of 11, with 3.49, 3.15, 2.46, 1.86 and 2.07 beats a bar: those may be real odd meters, not errors. These rows take their reference from **the three-tracker vote** (`qa/ref-beats-vote.sh`, `refTool: "vote"` in corpus.json):
 
@@ -99,7 +99,7 @@ The user's batch of 10 Nov: tracks that are **hard for the tracker**, not a genr
 | Id | BPM | Status | Reference |
 |---|---|---|---|
 | hc-01 | ~122.9 (user) | report-only | vote |
-| hc-02 | pending; 5 beats a bar (user, 14 Nov: `meter: 5`) | report-only | vote, downbeat DBN on 5 only |
+| hc-02 | 173.05 (the accepted vote); 5 beats a bar (the user's bar presses, 14 Nov: `meter: 5`) | report-only | vote, downbeat DBN on 5 only |
 | hc-03 | 160 (user by ear, 14 Nov; range 153.6-166.4) | report-only | vote, ear range first |
 | hc-04 | 90.91 (user by ear, 14 Nov; range 87.27-94.55) | report-only | vote, ear range first |
 | hc-05 | none: the tempo drifts (user by ear, 14 Nov) | report-only | none (`noRef`; the vote is a report) |
@@ -108,7 +108,8 @@ The user's batch of 10 Nov: tracks that are **hard for the tracker**, not a genr
 | hc-08 | none: the tempo floats (user by ear, 14 Nov) | report-only | none (`noRef`; the vote is a report) |
 | hc-09 | 189.1 (user by ear, 14 Nov; range 181.5-196.7) | report-only | vote, ear range first |
 | hc-10 | 107.5 (user by ear, 14 Nov; range 103.2-111.8) | report-only | vote, ear range first |
-| hc-11 | 170 (user by ear, 14 Nov; range 163.2-176.8) | report-only | vote, ear range first |
+| hc-11 | 172 (user by ear and the log check, 14 Nov; range 165.1-178.9) | report-only | vote, ear range first |
+| hc-12 | 140.16 (the accepted vote, 14 Nov; added later, the box map only) | report-only | vote |
 
 ## Reading the corpus
 
