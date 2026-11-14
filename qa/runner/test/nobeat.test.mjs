@@ -115,7 +115,7 @@ test('the no-beat QA row (qa/nobeat.mjs): at target one bar in, no pop, no NaN, 
   assert.ok(none.noHelper > 0);
   assert.deepEqual(NB.PHASES.map(p => [p.name, p.conf, p.target]), [['nobeat-1', 0, 0], ['locked', null, 1], ['nobeat-2', 0, 0]]);
   const cli = fs.readFileSync(path.join(QA, 'check-nobeat.mjs'), 'utf8');
-  assert.match(cli, /runNoBeat\(page, \{ phaseSecs: SECS, outDir: out \}\)/);
+  assert.match(cli, /runNoBeat\(page, \{ phaseSecs: SECS, outDir: out[,\s}]/, 'the CLI passes the phase length and the output folder (plus gotoPhase for --nobeat-audio)');
   assert.match(cli, /arg\('secs', 30\)/, '30 s phases by default');
 });
 
