@@ -21,6 +21,8 @@
 //                      forgets it). ?in=blackhole is the same (the apartment MVP's name for it; ?in= wins over ?device=). No match: a warning banner on the page, __qa.audioIn.warning, the default input. Lanes are band-onset envelopes (sub+kick → kick, mid → snare,
 //                      air → hat) with the clock's TAU decay, so the pages' mappings read the same.
 //   'file:<url>'       a decoded file, looped through the speakers and the analyser; lanes as for 'mic'.
+//                      ?audioFrom=<s>&audioTo=<s> (opts.fileFrom / fileTo) play and loop only that excerpt
+//                      (qa/check-nobeat.mjs plays a beatless intro this way).
 // Anything else falls back to 'clock' and says so in .fallback (as the clock does). Analysis runs once per read();
 // the fixed 57 Hz AudioWorklet cadence comes with the live tracker (clock PR 3).
 //
@@ -33,6 +35,18 @@
 // __qa.beatLog (the check-shared beat-match row): due(lanes) pushes one entry per hit it hands out,
 //   { time, lane, now, beats, frame, t, dt }   (time: the hit's audio time; now: clock.now(); t, dt in seconds)
 // capped at 4096. Include with <script src="audio-in.js"></script> after clock.js; node's tests use require.
+//
+// No-beat mode (the apartment MVP, Task 3): when the clock can't be trusted, a scene runs on the music's energy
+// instead of its beats. read() also returns
+//   beatWeight  0..1: 1 = drive the beat-driven path, 0 = the energy-driven path. Its target is 0 while the clock's
+//               confidence is < 0.4, the shared clock is not locked (?clock=shared: waiting or lost), or the clock
+//               has no beats (not playing); else 1. It ramps to the target over one bar of the current tempo
+//               (linear, eased with smoothstep, so it never jumps). audio.beatWeight() returns the same number.
+//   energy      { bands: { sub ... air } 0..1 envelopes (fast attack, 250 ms release), kick: 0..1 envelope of the
+//               low-band onsets heard (the audio's own, never the clock's), level: the mean band envelope }
+// Use: mix = A.beatWeight * beatDriven + (1 - A.beatWeight) * energyDriven. QA: __qa.forceConfidence(c) replaces
+// the confidence the weight sees (null: the clock's own again); __qa.beatWeight = { w, r, target, conf, lost,
+// forced, barS }; __qa.energy = the last energy.
 (function (root) {
   'use strict';
 
@@ -43,6 +57,9 @@
   const MIN_GAP = { kick: 0.1, snare: 0.1, hat: 0.05 };
   const DB_FLOOR = -90, DB_SPAN = 70, LOG_KEPT = 4096, LOG_FRAMES = 4000;   // LOG_FRAMES: ~66 s of audio log at 60 fps
   const nowSec = () => (root.performance ? root.performance.now() : Date.now()) / 1000;   // the frame clock (rAF time)
+  // no-beat mode: below this confidence the beat weight heads to 0; the energy envelopes' attack and release (s)
+  const BEAT_CONF_MIN = 0.4, ENERGY_ATTACK = 0.01, ENERGY_RELEASE = 0.25;
+  const smooth = r => r * r * (3 - 2 * r);
 
   // magnitude spectrum (dB per bin) → 8 band levels 0..1 (mean over each band's bins, dB mapped −90 … −20 → 0 … 1)
   function bandLevels(db, sampleRate, out) {
@@ -106,6 +123,59 @@
       lanes: { kick: onsetLane('kick'), snare: onsetLane('snare'), hat: onsetLane('hat') },
       beatLog: [], beatLanes: null, frame: 0, t: null, dt: 0, rafDt: 0, now: null,
       log: [], logOn: source !== 'clock' || !!opts.log, dbFrame: -1, openedAt: null,
+      // no-beat mode: the weight's state (r: the linear ramp, w = smoothstep(r)), the forced confidence (QA), energy
+      bw: { r: null, w: 0, target: 0, conf: 0, lost: false, forced: null, barS: 2, at: null },
+      energyState: { env: ZERO(), kick: 0, level: 0, at: null }, eKick: onsetLane('kick'),
+      // now: real seconds (tests pass their own); c: this frame's clock.read() when the caller has it
+      stepWeight(c, now) {
+        const b = this.bw, t = Number.isFinite(now) ? now : (opts.nowSec ? opts.nowSec() : nowSec());
+        const r0 = c || clock.read();
+        const bpm = r0.bpm > 0 ? r0.bpm : 120, bpb = clock.settings && clock.settings.bpb > 0 ? clock.settings.bpb : 4;
+        b.barS = bpb * 60 / bpm;
+        const conf = b.forced !== null ? b.forced : (Number.isFinite(r0.confidence) ? r0.confidence : 0);
+        const sh = clock.sharedState;
+        b.lost = !!(sh && sh.state !== 'locked');
+        b.conf = conf;
+        const beating = b.forced !== null ? true : !!clock.playing && r0.beats >= 0;
+        b.target = conf >= BEAT_CONF_MIN && !b.lost && beating ? 1 : 0;
+        if (b.r === null) b.r = b.target;   // the first frame starts where it should be (no fade on load)
+        else {
+          const dt = Math.max(0, Math.min(1, t - (b.at === null ? t : b.at)));   // a stalled frame moves it at most 1 s
+          const step = dt / b.barS;
+          b.r = b.target > b.r ? Math.min(b.target, b.r + step) : Math.max(b.target, b.r - step);
+        }
+        b.at = t; b.w = smooth(b.r);
+        return b.w;
+      },
+      beatWeight(now) { return this.stepWeight(null, now); },
+      forceConfidence(c) { this.bw.forced = c === null || c === undefined || !Number.isFinite(+c) ? null : Math.max(0, Math.min(1, +c)); return this.bw.forced; },
+      // the energy envelopes from this frame's band levels (and the low-band onsets for kick)
+      stepEnergy(bands, now, audioT) {
+        const e = this.energyState, t = Number.isFinite(now) ? now : (opts.nowSec ? opts.nowSec() : nowSec());
+        const first = e.at === null, dt = first ? 0 : Math.max(0, Math.min(0.25, t - e.at)); e.at = t;
+        let sum = 0;
+        for (const k of BANDS) {
+          const v = Number.isFinite(bands[k]) ? bands[k] : 0, prev = e.env[k];
+          const tau = v > prev ? ENERGY_ATTACK : ENERGY_RELEASE;
+          e.env[k] = first ? v : prev + (v - prev) * (1 - Math.exp(-dt / tau));   // the same frame again (dt 0): unchanged
+          sum += e.env[k];
+        }
+        e.level = sum / BANDS.length;
+        const L = this.eKick, lvl = ((Number.isFinite(bands.sub) ? bands.sub : 0) + (Number.isFinite(bands.kick) ? bands.kick : 0)) / 2;
+        const at = Number.isFinite(audioT) ? audioT : t;
+        L.step(lvl, at);
+        let k = 0;
+        for (const h of L.hits) { const d = at - h.time; if (d >= 0) k = Math.max(k, h.vel * (1 - Math.exp(-d / 0.005)) * Math.exp(-d / TAU.kick)); }
+        e.kick = k;
+        return { bands: { ...e.env }, kick: e.kick, level: e.level };
+      },
+      get energy() { const e = this.energyState; return { bands: { ...e.env }, kick: e.kick, level: e.level }; },
+      // the energy alone, for a page with its own analyser path (16b never calls read()): once per frame
+      readEnergy() {
+        if (!this.running || !this.attach() || !this.analyser) return this.energy;
+        if (!(this.dbFrame === this.frame)) { this.analyser.getFloatFrequencyData(this.db); this.dbFrame = this.frame; }
+        return this.stepEnergy(bandLevels(this.db, this.ctx.sampleRate, {}), undefined, this.ctx.currentTime);
+      },
       // start() / stop(): reading is on between them; start() before the clock exists is fine (attached on read)
       start() { this.running = true; this.attach(); return this; },
       stop() {
@@ -138,7 +208,12 @@
           this.status = 'loading';
           Promise.resolve(source.slice(5)).then(fetchFn).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => {
             const s = this.input = ctx.createBufferSource(); s.buffer = buf; s.loop = true;
-            s.connect(this.analyser); s.connect(ctx.destination); s.start(); this.status = 'file'; this.openedAt = nowSec();
+            const q = k => { try { const v = new URLSearchParams(root.location.search).get(k); return v === null ? null : +v; } catch (e) { return null; } };
+            const from = Math.max(0, Math.min(buf.duration || 0, Number.isFinite(opts.fileFrom) ? opts.fileFrom : (q('audioFrom') || 0)));
+            const to = Number.isFinite(opts.fileTo) ? opts.fileTo : q('audioTo');
+            if (from > 0 || (Number.isFinite(to) && to > from)) { s.loopStart = from; if (Number.isFinite(to) && to > from) s.loopEnd = Math.min(to, buf.duration || to); }
+            this.excerpt = { from, to: Number.isFinite(to) && to > from ? to : null };
+            s.connect(this.analyser); s.connect(ctx.destination); s.start(0, from); this.status = 'file'; this.openedAt = nowSec();
           }, e => { this.error = String(e && e.message || e); this.status = 'error'; });
         }
         return true;
@@ -185,6 +260,7 @@
         this.dt = Number.isFinite(now) && Number.isFinite(this.now) ? Math.max(0, now - this.now) : 0;
         this.now = Number.isFinite(now) ? now : null;
         if (this.logOn && this.running && this.ctx && this.analyser && (source === 'clock' || this.input)) this.sampleLog();
+        this.stepWeight();   // the beat weight moves every frame, also on pages that never call read() (16b)
         return this.frame;
       },
       // one analyser reading for the frame's log entry (#141 audio checks); read() reuses it in the same frame
@@ -210,7 +286,7 @@
       // the frame's audio (#85 frame().audio): call once per frame
       read() {
         const c = clock.read();
-        const out = { level: c.level, kick: c.kick, snare: c.snare, hat: c.hat, bands: ZERO(), wave: null };
+        const out = { level: c.level, kick: c.kick, snare: c.snare, hat: c.hat, bands: ZERO(), wave: null, beatWeight: this.stepWeight(c), energy: this.energy };
         if (!this.running || !this.attach() || !this.analyser) return out;
         const fresh = !(this.logOn && this.dbFrame === this.frame);   // frameStart's log reading, if this frame has one
         if (fresh) this.analyser.getFloatFrequencyData(this.db);
@@ -226,6 +302,7 @@
           }
           out.level = Math.max(out.kick, out.snare, out.hat);
         }
+        out.energy = this.stepEnergy(out.bands, undefined, this.ctx.currentTime);
         return out;
       },
       // the clock hits the visuals reached this frame, on the page's lanes, each once; logged in beatLog for QA.
@@ -261,6 +338,9 @@
     def('clockLate', () => (a.clock.lateStats ? a.clock.lateStats : null));   // #95: steps booked late (should be 0), largest frame gap, look-ahead
     def('fixRejected', () => a.clock.fixRejected || []);
     def('sharedClock', () => (a.clock.sharedState !== undefined ? a.clock.sharedState : null));   // ?clock=shared: state, msgs, lastErrMs, lost (null elsewhere)
+    def('beatWeight', () => ({ ...a.bw }));   // no-beat mode: { w, r, target, conf, lost, forced, barS, at }
+    def('energy', () => a.energy);
+    target.forceConfidence = c => a.forceConfidence(c);   // QA: the confidence the beat weight sees (null: the clock's)
     def('tracker', () => (a.clock.trackerState !== undefined ? a.clock.trackerState : null));   // #95 SHOULD 8: line source state (null elsewhere)   // #95 beat authority: fix() calls from non-fix origins (should stay empty)
     def('events', () => (root.Clock && root.Clock.qaEvents ? root.Clock.qaEvents(a.clock) : [...(a.clock.hitLog || a.clock.events || [])]));
     def('audioIn', () => ({ source: a.source, requested: a.requested, fallback: a.fallback, status: a.status, error: a.error,
