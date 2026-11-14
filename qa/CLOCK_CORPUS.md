@@ -91,6 +91,7 @@ The user's batch of 10 Nov: tracks that are **hard for the tracker**, not a genr
 
 - **A** Beat This! frame logits decoded by madmom's DBN beat tracker; bar positions from madmom's DBN downbeat tracker, which may choose 2, 3, 4, 5, 6 or 7 beats a bar; the meter it picks is reported per track. **B** madmom's RNN beat activation and the same DBN. **C** essentia's RhythmExtractor2013, multifeature, with its confidence.
 - **Range:** wide, 60–260 BPM (essentia stops at 250): 87.7 (hc-05) and 91.06 (hc-04) may be the true tempos, and hc-06 (~130), hc-07 (~128) and hc-01 (~122.9) must fit too. A row may set `refMinBpm` / `refMaxBpm`; the vote uses them only when the wide vote does not agree.
+- **Ear checks (14 Nov):** a row with `bpmSource: "user-ear"` and `refMinBpm` / `refMaxBpm` (about ±4 % around the tempo the user heard) is decoded in that range from the start, so an agreement in the wrong octave cannot win. A row with `meter` gives the downbeat DBN that meter only. A row with `noRef: true` never gets a `.ref.beats`. A changed range or meter votes again (the plan is kept in `.vote.json`).
 - **Accepted** when two of three agree within 1 % after octave folding **and** essentia's confidence is at least 1.5. When the agreement needed an octave fold, no prior picks the octave: both candidates are reported and the track is flagged for the user's ear, unless essentia's confidence is at least 3.5. gridSuspect stays a reported number.
 - **Swing and tempo changes:** each track's line carries its tempo over 8-bar windows (p5 / p50 / p95 and the spread), so a drifting or swung track shows as one instead of being forced to a single BPM.
 - The vote also runs, as a report, on the 22 earlier tracks: their `.ref.*` files and grids are never touched by it.
@@ -98,16 +99,16 @@ The user's batch of 10 Nov: tracks that are **hard for the tracker**, not a genr
 | Id | BPM | Status | Reference |
 |---|---|---|---|
 | hc-01 | ~122.9 (user) | report-only | vote |
-| hc-02 | pending | report-only | vote |
-| hc-03 | pending | report-only | vote |
-| hc-04 | pending (91.06 old grid, maybe true) | report-only | vote |
-| hc-05 | pending (87.7 old grid, maybe true) | report-only | vote |
+| hc-02 | pending; 5 beats a bar (user, 14 Nov: `meter: 5`) | report-only | vote, downbeat DBN on 5 only |
+| hc-03 | 160 (user by ear, 14 Nov; range 153.6-166.4) | report-only | vote, ear range first |
+| hc-04 | 90.91 (user by ear, 14 Nov; range 87.27-94.55) | report-only | vote, ear range first |
+| hc-05 | none: the tempo drifts (user by ear, 14 Nov) | report-only | none (`noRef`; the vote is a report) |
 | hc-06 | ~130 (user) | report-only | vote |
 | hc-07 | ~128 (user) | report-only | vote |
-| hc-08 | pending | report-only | vote |
-| hc-09 | pending | report-only | vote |
-| hc-10 | pending | report-only | vote |
-| hc-11 | pending | report-only | vote |
+| hc-08 | none: the tempo floats (user by ear, 14 Nov) | report-only | none (`noRef`; the vote is a report) |
+| hc-09 | 189.1 (user by ear, 14 Nov; range 181.5-196.7) | report-only | vote, ear range first |
+| hc-10 | 107.5 (user by ear, 14 Nov; range 103.2-111.8) | report-only | vote, ear range first |
+| hc-11 | 170 (user by ear, 14 Nov; range 163.2-176.8) | report-only | vote, ear range first |
 
 ## Reading the corpus
 
