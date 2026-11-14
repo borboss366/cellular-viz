@@ -201,7 +201,7 @@ const heardAnalyser = () => {   // the shared analyser once the clock has its Au
   return audio.analyser;
 };
 // ---------- no-beat mode (apartment MVP Task 3; audio-in's beat weight and energy, #230) ----------
-// Every beat-locked effect here is mix = w·beat + (1 − w)·energy, w = audio.beatWeight() (0 = no confident beat; it
+// Every beat-locked effect here is mix = w·beat + (1 − w)·energy, w = the beat weight frameStart stepped (0 = no confident beat; it
 // ramps over one bar, never jumps). This page never calls audio.read(): audio.readEnergy() once per frame instead.
 // The energy stand-ins come from the music itself (audio-in's band envelopes):
 //   kick   E.kick, the audio's own low-band onsets (never the clock's hits); kickOnset: a fresh one this frame
@@ -696,7 +696,10 @@ function draw(now) {
   const bars = beats / params.bpb;
   readBands(dt);
   // no-beat mode: the weight and the music's own energy, once per frame (16b reads no audio.read())
-  const w = audio.beatWeight(), E = audio.readEnergy();
+  // the weight audio.frameStart() stepped at the top of this frame. Not audio.beatWeight(): that steps the fade a second
+  // time on performance.now() mid-frame, so the step between two frames follows the draw's timing jitter, not the rAF
+  // interval (the no-beat smoke saw 0.061 against the ramp's 0.060 on software WebGL, #231 @e9d7bbd)
+  const w = audio.bw && Number.isFinite(audio.bw.w) ? audio.bw.w : audio.beatWeight(), E = audio.readEnergy();
   nb.step(E, w, now / 1000);
   const barS = audio.bw && audio.bw.barS > 0 ? audio.bw.barS : params.bpb * 60 / params.bpm;
   const path = w >= 0.5 ? 'beat' : 'energy';   // who changes shapes (a change is a morph, so the hand-over never pops)
