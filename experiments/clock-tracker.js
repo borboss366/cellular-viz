@@ -86,9 +86,11 @@
     // F3 step path (box run f165caf: 120 -> 128 re-locked in 28 beats). The long fit only sees in-window onsets, and
     // after a 6 % step the new beats leave the window (0.06 beat a beat, the PLL corrects 0.03) before they are half
     // of it. The short check fits the last stepOnsets strong onsets on their own chained grid (not filtered by the
-    // window), max residual stepResid x P; a fit more than stepPct off that agrees within stepAgree for stepHoldBeats
-    // beats is adopted at once and the long window restarts at the step
-    stepOnsets: 6, stepResid: 0.06, stepAgree: 0.015, stepHoldBeats: 1, stepNear: 0.4,
+    // window), max residual stepResid x P (main's drift(): 4 onsets, 0.1 P); a fit more than stepPct off, confirmed
+    // once by a fit on a newer onset within stepAgree, is adopted at once and the long window restarts at the step;
+    // for stepYoungBeats beats after it the short fit sets the period directly (box run 4ac9fd7: adopted at beat 5
+    // with 6 onsets, the 0.22-beat phase error then took 12 beats to slew out; main 4.3)
+    stepOnsets: 4, stepResid: 0.1, stepAgree: 0.025, stepNear: 0.4, stepYoungBeats: 8, fitNewestOff: 0.08,
     // F4 (VIZ research's spec, the user 14 Nov 02:45): the first lock's tempo from a scan. Candidates: the top acqPeaks
     // ACF peaks x acqRatios (deduped within acqDedup); each scored over acqBeats beats of strong broadband onsets as
     // inlierFrac x coverage x R x prior. The first lock waits until the best beats the runner-up (another tempo, more
@@ -674,7 +676,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
 
     // ---- F3: the locked tempo from a fit
     const fit = { lastAt: -1e9, lastValidT: -1e9, stepRun: 0, adjusts: 0, steps: 0, fallbackBlends: 0, rejects: {}, last: null,
-      resetT: -1e9, young: false, stepCand: null, shortSteps: 0, shortRefines: 0, shortLast: null };
+      resetT: -1e9, young: false, stepAt: -1e9, stepCand: null, shortSteps: 0, shortRefines: 0, shortLast: null, pendSkips: 0 };
     const movesBy = {};
     let decisionLast = null;
     const mid = a => { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
@@ -725,7 +727,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       let res = 0;
       for (const p of pts) res = Math.max(res, Math.abs(p.t - (b + Ps * p.k)));
       if (!(Ps > 0) || res > C.stepResid * Ps) return { why: 'resid' };
-      return { P: Ps, b, n };
+      return { P: Ps, b, n, anchor: strong[i0] };
     }
     function stepTick(t, dt) {
       const s = shortFit(t);
@@ -735,16 +737,20 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (Math.abs(dev) <= C.stepPct || Math.abs(dev) > C.fitAccept) {
         fit.stepCand = null;
         // right after a step the long window is young (under fitMinSpanBeats): the short fit refines the period,
-        // under the rate limit
+        // directly for stepYoungBeats beats after the step, then under the rate limit
         if (fit.young && Math.abs(dev) > 0.002 && Math.abs(dev) <= C.stepPct) {
-          const lim = C.tempoRateMax * dt * own.P, newP = own.P + Math.max(-lim, Math.min(lim, s.P - own.P));
+          const lim = t - fit.stepAt < C.stepYoungBeats * own.P ? Infinity : C.tempoRateMax * dt * own.P;
+          const newP = own.P + Math.max(-lim, Math.min(lim, s.P - own.P));
           setPeriod(own, newP, t); bpm = 60 / newP; fit.shortRefines++;
         }
         return;
       }
-      if (fit.stepCand && Math.abs(s.P / fit.stepCand.P - 1) <= C.stepAgree) { fit.stepCand.P = s.P; fit.stepCand.n++; }
-      else fit.stepCand = { P: s.P, since: t, n: 1 };
-      if (t - fit.stepCand.since < C.stepHoldBeats * s.P) return;
+      // a candidate is confirmed once: by a fit on a newer onset (one more beat) within stepAgree; it adopts that
+      // newer fit. Fits on the same onsets (6 a second) only update it
+      const fresh = !fit.stepCand || Math.abs(s.P / fit.stepCand.P - 1) > C.stepAgree;
+      if (fresh) { fit.stepCand = { P: s.P, since: t, n: 1, anchor: s.anchor }; return; }
+      if (s.anchor <= fit.stepCand.anchor + 0.5 * s.P) { fit.stepCand.P = s.P; return; }
+      fit.stepCand.n++;
       // adopt: the period at once; the beat onto the short line (a pending correction, slewed under the 3 % rule).
       // A line half a beat off the model is the off-beat stream: not adopted
       const eAt = frac(ownBeats(t) - (t - s.b) / s.P);   // the model's beat at the line's beat, at the new period
@@ -753,7 +759,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       own.pending = -frac(ownBeats(s.b));
       tempoDecision(t, 'step', 60 / s.P, true); tempoMoves++; fit.steps++; fit.shortSteps++;
       // the long window restarts at the step (its older onsets are the old tempo); the ACF waits one window
-      fit.resetT = t - (C.stepOnsets + 0.5) * s.P; fit.young = true; fit.lastValidT = t; fit.stepRun = 0; fit.stepCand = null;
+      fit.resetT = t - (C.stepOnsets + 0.5) * s.P; fit.young = true; fit.stepAt = t; fit.lastValidT = t; fit.stepRun = 0; fit.stepCand = null;
       estHoldUntil = t + C.acWindow; pend = null; bigCount = 0;
     }
     function fitTick(t) {
@@ -792,8 +798,11 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       }
       if (Math.abs(newP - P) > 1e-12) { setPeriod(own, newP, t); bpm = 60 / newP; fit.adjusts++; }
       // the phase: the model's beat onto the fitted line (as a pending correction, slewed under the 3 % rule); not
-      // while the short check holds a step candidate (the long line then still leans on the old tempo)
-      if (!fit.stepCand) own.pending = -frac(ownBeats(b));
+      // while the short check holds a step candidate, nor while the newest onset already sits off the long line by
+      // more than fitNewestOff beats (a change is starting: the line still leans on the old tempo, and writing it would
+      // undo the PLL's correction 6 times a second)
+      if (fit.stepCand || Math.abs(inw[0] - b) > C.fitNewestOff * Pfit) fit.pendSkips++;
+      else own.pending = -frac(ownBeats(b));
     }
 
     // ---- F4: the first lock picks its tempo from a scan; the same scan at every re-acquire and once more after 8 s
