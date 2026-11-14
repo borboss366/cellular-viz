@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "about": "The set for set.html (the apartment MVP). Edit freely: scenes are pages in this folder; query adds to or overrides defaults (null removes a key).",
+  "defaults": { "clock": "shared", "audio": "line", "in": "BlackHole", "capture": "1" },
+  "window": { "width": 1920, "height": 1080 },
+  "scenes": [
+    { "name": "Hodge Kaleidoscope", "page": "16-hodge-kaleidoscope.html" },
+    { "name": "Mass Gap", "page": "12-mass-gap.html" },
+    { "name": "Lenia Effects", "page": "06-lenia-effects.html" }
+  ]
+}
