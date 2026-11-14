@@ -260,7 +260,7 @@ test('conductor load(): a failed fetch or decode says "could not load <name>: <r
   const load = html.match(/async function load\(i, d = nextDeck\(\)\) \{([\s\S]*?)\n\}/)[1];
   assert.match(load, /try \{[\s\S]*decodeAudioData[\s\S]*\} catch \(e\) \{/, 'fetch and decode inside try');
   assert.match(load, /if \(!r\.ok\) throw new Error\(`HTTP \$\{r\.status\}`\)/, 'an HTTP error is an error, not a decode of an error page');
-  assert.match(load, /C\.loadErrorText\(t\.label, e\)/);
+  assert.match(load, /C\.loadErrorText\(want\.label, e\)/);
   assert.match(load, /textContent = text; say\(text\);/, 'on the deck line and in the message line');
   assert.match(load, /event: 'loadError'/);
   const { checkRecord } = await import('../../conduct-score.mjs');
@@ -451,4 +451,20 @@ test('wheel log on the page: a "wheel" record through log.add with the state, th
   const { checkRecord } = await import('../../conduct-score.mjs');
   assert.deepEqual(checkRecord(r), [], 'the server (checkRecord) takes a wheel record');
   assert.deepEqual(checkRecord(log.all[0]), [], 'and the v2 session head');
+});
+
+test('conductor load() by name (14 Nov: hc-09 logged while another track played): list again, /audio/s/<stem>, the X-Track-Stem check, loadError and a new list on a change', () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  const load = html.match(/async function load\(i, d = nextDeck\(\)\) \{([\s\S]*?)\n\}/)[1];
+  assert.match(load, /await loadTracks\(want\.label\);\s*t = tracks\.find\(x => x\.label === want\.label\);/, 'the list is fetched again before each load and the track found by its stem');
+  assert.match(load, /fetch\(`\/audio\/s\/\$\{key\}`\)/, 'the audio by stem');
+  assert.match(load, /fetch\(`\/grid\/s\/\$\{key\}`\)/, 'the grid by stem');
+  assert.doesNotMatch(load, /fetch\(`\/audio\/\$\{i\}`\)|fetch\(`\/grid\/\$\{i\}`\)/, 'never by place');
+  assert.match(load, /r\.headers\.get\('x-track-stem'\)/, 'the server says what it sent');
+  assert.match(load, /decodeURIComponent\(s\) !== stem\) throw new Error\('track list changed'\)/);
+  assert.match(load, /if \(r\.status === 409\) throw new Error\('track list changed'\)/);
+  assert.match(load, /if \(changed\) \{ try \{ await loadTracks\(\); \}/, 'a change draws the list again');
+  assert.match(load, /log\.add\('track', \{ idx: t \? t\.idx : i, event: 'loadError', file: want\.label/);
+  assert.match(html, /log\.add\('track', \{ idx: t\.idx, event: 'load', file: t\.label/, 'the load record names the track found by stem');
+  assert.match(html, /if \(k\) \$\('tracks'\)\.value = String\(k\.idx\);/, 'the selection stays on the same track');
 });

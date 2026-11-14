@@ -17,8 +17,12 @@
 //   GET  /api/tracks             [{ idx, label, id, kind: 'track' | 'mix', grid: bool, marks }]  (label: the file stem,
 //                                shown on this machine only; id: the corpus id from corpus-map.json, or the mix name;
 //                                marks: the names qa/corpus.json lists for that id, for the page's mark menu)
-//   GET  /audio/<idx>            the track's bytes (Range supported)
-//   GET  /grid/<idx>             its reference grid (<stem>.beatgrid.json), 404 without one
+//   GET  /audio/s/<stem>         the track's bytes by its file stem (Range supported); what the page uses (the list on
+//                                the page can be older than the folder: hc-09 once played another track, 14 Nov)
+//   GET  /grid/s/<stem>          its reference grid (<stem>.beatgrid.json), 404 without one
+//   GET  /audio/<idx>[?stem=s]   the same by place in the list; with ?stem= and another track at that place: 409
+//   GET  /grid/<idx>[?stem=s]    { error: 'track list changed' }
+//   Every audio and grid answer carries X-Track-Stem (the stem, URI-encoded), so the page can check what it got.
 //   POST /log/<session>          JSONL lines appended to <sessions>/<session>.jsonl; every line must fit schema v1
 //                                (qa/conduct-score.mjs checkRecord) and stay ≤ 64 KB (R9), else 400 and nothing is written
 //   GET  /log/<session>          the session so far (the page's download)
@@ -53,11 +57,11 @@ export function listTracks(dir) {
   return out.map((t, idx) => ({ ...t, idx, grid: fs.existsSync(t.gridPath) }));
 }
 
-function sendFile(req, res, file, type) {
+function sendFile(req, res, file, type, extra = {}) {
   let st;
   try { st = fs.statSync(file); } catch { return send(res, 404, 'not found'); }
   const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
-  const head = { 'content-type': type || TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'accept-ranges': 'bytes', 'cache-control': 'no-store' };
+  const head = { 'content-type': type || TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'accept-ranges': 'bytes', 'cache-control': 'no-store', ...extra };
   if (range && (range[1] || range[2])) {
     let a = range[1] ? +range[1] : st.size - +range[2], b = range[1] && range[2] ? +range[2] : st.size - 1;
     if (!(a >= 0 && a <= b && b < st.size)) { res.writeHead(416, { 'content-range': `bytes */${st.size}` }); return res.end(); }
@@ -100,10 +104,23 @@ export function createHandler({ tracksDir, sessionsDir, repo = REPO }) {
         const marksOf = Object.fromEntries(rows.map(r => [r.id, r.marks || []]));
         return json(res, 200, listTracks(tracksDir).map(t => ({ idx: t.idx, label: t.stem, id: t.id, kind: t.kind, grid: t.grid, marks: (t.id && marksOf[t.id]) || [] })));
       }
-      if ((req.method === 'GET' || req.method === 'HEAD') && (parts[0] === 'audio' || parts[0] === 'grid') && parts.length === 2 && /^\d+$/.test(parts[1])) {
-        const t = listTracks(tracksDir)[+parts[1]];
-        if (!t) return send(res, 404, 'no such track');
-        return parts[0] === 'audio' ? sendFile(req, res, t.path) : sendFile(req, res, t.gridPath, 'application/json');
+      if ((req.method === 'GET' || req.method === 'HEAD') && (parts[0] === 'audio' || parts[0] === 'grid')) {
+        // by stem (/audio/s/<stem>), or by place with an optional ?stem= check (409 when the list has moved)
+        const serve = t => {
+          const extra = { 'x-track-stem': encodeURIComponent(t.stem) };
+          return parts[0] === 'audio' ? sendFile(req, res, t.path, undefined, extra) : sendFile(req, res, t.gridPath, 'application/json', extra);
+        };
+        if (parts.length === 3 && parts[1] === 's') {
+          const t = listTracks(tracksDir).find(x => x.stem === parts[2]);
+          return t ? serve(t) : send(res, 404, 'no such track');
+        }
+        if (parts.length === 2 && /^\d+$/.test(parts[1])) {
+          const t = listTracks(tracksDir)[+parts[1]];
+          if (!t) return send(res, 404, 'no such track');
+          const want = url.searchParams.get('stem');
+          if (want !== null && want !== t.stem) return json(res, 409, { error: 'track list changed', idx: +parts[1] });
+          return serve(t);
+        }
       }
       if (parts[0] === 'log' && parts.length === 2 && SESSION_RE.test(parts[1])) {
         const file = path.join(sessionsDir, `${parts[1]}.jsonl`);
