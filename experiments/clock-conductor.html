@@ -289,6 +289,7 @@ for (const b of document.querySelectorAll('[data-fix]')) b.onclick = e => clock.
 let seenJumps = 0, lastState = null, lastShadowState = null, kickPrev = -200, kickAt = -1, lastSample = 0, beatFlashAt = -1;
 const kicks = [];   // the phase wheel: each kick's time and its place on the clock's beat count when it was heard
 let lastFrameT = 0, wheelNow = null;
+const wheelLog = C.wheelHintLog();   // a 'wheel' log record when the hint changes and holds 0.5 s (the user 22:27)
 let lastFrameMs = -1e9;   // performance.now() of the last tracker frame: the band bars draw only while frames come
 function onFrame(f) {
   lastFrameMs = performance.now();
@@ -381,7 +382,8 @@ function tick() {
   if (now - lastSample >= C.SAMPLE_S) {
     lastSample = now;
     const r = clock.read({ raw: true }), s = shadow.snapshot ? shadow.snapshot() : {};
-    log.add('sample', { clock: { bpm: r.bpm, conf: r.confidence, state: ts.state || null }, shadow: { bpm: shadow.bpm || null, conf: shadow.confidence, state: shadow.state } });
+    log.add('sample', { clock: { bpm: r.bpm, conf: r.confidence, state: ts.state || null }, shadow: { bpm: shadow.bpm || null, conf: shadow.confidence, state: shadow.state },
+      wheel: wheelNow ? { kind: C.wheelKind(wheelNow), ms: wheelNow.medianMs } : null });
   }
   for (const d of decks) if (d.playing && d.track && now - d.lastPair >= C.PAIR_S) { d.lastPair = now; log.add('pair', { idx: d.track.idx, posMs: Math.round(posMs(d, now)) }); }
   if (fade && now >= fade.end) { log.add('xfade', { from: fade.from, to: fade.to, event: 'end', mode: 'B', ctx: fade.end }); stopDeck(fade.out); fade = null; render(); }
@@ -419,6 +421,12 @@ function drawWheel(ts) {
   const nowB = clock.trackerState && clock.line && clock.line.tracker ? clock.lineBeats(lastFrameT) : NaN;
   const wv = C.phaseWheel(kicks, { bpm: clock.read({ raw: true }).bpm || 120, bpb: settings.bpb || 4, nowBeats: Number.isFinite(nowB) ? nowB : null, state: ts.state || null });
   wheelNow = wv;
+  const wrec = wheelLog(ctx.currentTime, wv);
+  if (wrec) {
+    const dl = decks[live], tr = dl.track;
+    log.add('wheel', { ...wrec, state: ts.state || null, idx: tr ? tr.idx : undefined, id: tr ? tr.id || undefined : undefined,
+      posMs: tr && dl.playing ? Math.round(posMs(dl, wrec.ctx)) : null });
+  }
   const xy = (deg, r) => [cx + r * Math.sin(deg * Math.PI / 180), cy - r * Math.cos(deg * Math.PI / 180)];
   g.clearRect(0, 0, W, cv.height);
   g.globalAlpha = wv.grey ? 0.35 : 1;

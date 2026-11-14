@@ -203,3 +203,22 @@ export function phaseWheel(kicks, { bpm = 120, bpb = 4, nowBeats = null, state =
   out.hint = medianMs < 0 ? `+10 (Shift+.) about ${n} times` : `-10 (Shift+,) about ${n} times`;
   return out;
 }
+
+// ---------- the wheel hint in the session log (the user 10 Nov 22:27) ----------
+export const WHEEL_HOLD_S = 0.5;
+/** the hint kind as logged: on | nudge | flip | tap | grey (not locked) | none (waiting for kicks) */
+export const wheelKind = w => (!w ? 'none' : w.grey ? 'grey' : w.kind || 'none');
+/** a debounced logger: call it every frame with (ctx seconds, the wheel); it returns the record fields once a new hint
+ *  (kind + text) has held for holdS (ctx = when that hint began), else null. A flicker shorter than holdS writes
+ *  nothing, and the same hint never twice in a row. */
+export function wheelHintLog(holdS = WHEEL_HOLD_S) {
+  let logged = null, cand = null, since = 0;
+  return (t, w) => {
+    const kind = wheelKind(w), hint = (w && w.hint) || '', key = `${kind}|${hint}`;
+    if (key === logged) { cand = null; return null; }
+    if (key !== cand) { cand = key; since = t; return null; }
+    if (t - since < holdS) return null;
+    logged = key; cand = null;
+    return { ctx: since, kind, hint, medianMs: w ? w.medianMs : null, sixShare: w ? w.sixShare : null, driftDegPerBar: w ? w.driftDegPerBar : null };
+  };
+}
