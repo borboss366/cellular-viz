@@ -513,3 +513,9 @@ test('F3 kick dropout 124: 8 bars of hats only, the tempo within 1 % of 124 thro
   assert.deepEqual(out.map(x => `${x.t.toFixed(1)}:${x.bpm.toFixed(2)}`), [], 'within 1 % of 124 after the lock');
   assert.ok(relockBeats !== null && relockBeats <= 4, `locked again after ${relockBeats} beats`);
 });
+
+test('F3 hard cut 128 -> 136 at 30 s: a stable lock within 8 beats (hard)', (t) => {
+  const f = relockFigures(traceOf(T, hardCut(128, 136, 30, 60), SR), 30, 136);
+  report(t, `F3 hard cut 128 -> 136: ${relockText('now', f)}`);
+  assert.ok(f.stable && f.stable.beats <= BUDGET_BEATS, `stable lock after ${f.stable ? f.stable.beats : 'never'} beats (budget ${BUDGET_BEATS})`);
+});
