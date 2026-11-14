@@ -154,3 +154,35 @@ test('conduct-serve --socket: a stale file at the path is replaced, the socket i
     fs.rmSync(fx.root, { recursive: true, force: true });
   }
 });
+
+test('conduct-serve by stem (14 Nov: hc-09 logged while another track played): a file added after the list was read never answers for the old place', async () => {
+  const fx = fixture();
+  const A = Buffer.alloc(40, 0xa), B = Buffer.alloc(50, 0xb), Cc = Buffer.alloc(60, 0xc);
+  for (const f of fs.readdirSync(fx.tracks)) if (f !== 'renders') fs.rmSync(path.join(fx.tracks, f), { recursive: true, force: true });
+  fs.rmSync(path.join(fx.tracks, 'renders'), { recursive: true, force: true });
+  fs.writeFileSync(path.join(fx.tracks, 'a.wav'), A);
+  fs.writeFileSync(path.join(fx.tracks, 'c.wav'), Cc);
+  fs.writeFileSync(path.join(fx.tracks, 'c.beatgrid.json'), JSON.stringify({ version: 2, beats: [{ ms: 100 }] }));
+  await withServer(fx, async base => {
+    const list = await (await fetch(`${base}/api/tracks`)).json();
+    assert.deepEqual(list.map(t => [t.idx, t.label]), [[0, 'a'], [1, 'c']], 'c is idx 1');
+    fs.writeFileSync(path.join(fx.tracks, 'b.wav'), B);   // the folder changes after the page read its list
+    const byPlace = await fetch(`${base}/audio/1?stem=c`);
+    assert.equal(byPlace.status, 409, 'the place moved: track list changed, never b');
+    assert.equal((await byPlace.json()).error, 'track list changed');
+    assert.equal((await fetch(`${base}/grid/1?stem=c`)).status, 409);
+    const byStem = await fetch(`${base}/audio/s/c`);
+    assert.equal(byStem.status, 200);
+    assert.equal(byStem.headers.get('x-track-stem'), 'c');
+    assert.deepEqual(Buffer.from(await byStem.arrayBuffer()), Cc, '/audio/s/c is c');
+    const grid = await fetch(`${base}/grid/s/c`);
+    assert.equal(grid.headers.get('x-track-stem'), 'c');
+    assert.deepEqual((await grid.json()).beats, [{ ms: 100 }], '/grid/s/c is c\'s grid');
+    const plain = await fetch(`${base}/audio/1`);
+    assert.equal(plain.headers.get('x-track-stem'), 'b', 'without ?stem= the place answers, and says which track it sent');
+    assert.deepEqual(Buffer.from(await plain.arrayBuffer()), B);
+    assert.equal((await fetch(`${base}/audio/2?stem=c`)).status, 200, 'the new place with the right stem');
+    assert.equal((await fetch(`${base}/audio/s/nope`)).status, 404);
+    assert.equal((await fetch(`${base}/audio/s/c`, { headers: { range: 'bytes=0-9' } })).status, 206, 'Range by stem too');
+  });
+});
