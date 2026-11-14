@@ -463,7 +463,7 @@ test('F2 gate report: snapshot().gate and tr.gate carry the counters, the consta
   for (const k of ['tempoMovesLocked', 'tempoRefusals', 'fewOnsets', 'refusals', 'R', 'beats', 'minOnsets']) assert.ok(k in g, `${k} in ${JSON.stringify(g)}`);
   assert.ok(Number.isInteger(g.tempoMovesLocked) && Number.isInteger(g.tempoRefusals));
   for (const r of g.refusals) for (const k of ['t', 'path', 'cur', 'cand', 'Rcur', 'Rcand', 'n']) assert.ok(k in r, `${k} in ${JSON.stringify(r)}`);
-  assert.ok(g.refusals.every(r => ['ema', 'hold', 'home', 'relative', 'drift'].includes(r.path)));
+  assert.ok(g.refusals.every(r => ['ema', 'hold', 'home', 'relative', 'drift', 'reacquire'].includes(r.path)));
   console.log(`F2 gate on step-120-128: ${JSON.stringify(g)}`);
   // the hand hold and taps never pass the gate: x2 then a tap leave the counters as they were
   const before = { ...o.tr.gate };
