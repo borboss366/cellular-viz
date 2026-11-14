@@ -62,10 +62,16 @@ export function phaseRows(rec, { target, secs }) {
 }
 
 /** run the three phases on a loaded page (Play already pressed); stills into outDir; → { phases: [{ name, rows, still }], alive } */
-export async function runNoBeat(page, { phaseSecs = 30, outDir = null } = {}) {
+export async function runNoBeat(page, { phaseSecs = 30, outDir = null, gotoPhase = null } = {}) {
   await page.evaluate(RECORDER);
   const phases = [];
+  let lost = 0;
   for (const [i, ph] of PHASES.entries()) {
+    // a phase with its own audio (--nobeat-audio): the page is loaded again with that source, then recorded as before
+    if (gotoPhase) {
+      const before = await page.evaluate(() => (window.__nb ? window.__nb.lost : 0)).catch(() => 0);
+      if (await gotoPhase(ph, i)) { lost += before; await page.evaluate(RECORDER); }
+    }
     await page.evaluate(c => { window.__qa.forceConfidence(c); window.__nb.rec = []; window.__nb.last = null; window.__nb.on = true; }, ph.conf);
     await page.waitForTimeout(phaseSecs * 1000);
     const rec = await page.evaluate(() => { window.__nb.on = false; return window.__nb.rec; });
@@ -75,7 +81,29 @@ export async function runNoBeat(page, { phaseSecs = 30, outDir = null } = {}) {
   }
   await page.evaluate(() => window.__qa.forceConfidence(null));
   const alive = await page.evaluate(() => ({ panic: window.__panic ? window.__panic.mode : null, lost: window.__nb.lost }));
+  alive.lost += lost;
   return { phases, alive };
+}
+
+// --nobeat-audio <corpus id>[@start-end s]: what the no-beat phases play instead of the metronome (the locked phase
+// keeps the page's own clock source). Corpus ids only (R9); the default is born-slippy's beatless intro (the tracker
+// locks only at ~116 s).
+export const NOBEAT_AUDIO_DEFAULT = 'born-slippy@0-90';
+export const NOBEAT_AUDIO_ROUTE = '/nobeat-audio/';
+export function parseNobeatAudio(spec = NOBEAT_AUDIO_DEFAULT) {
+  if (spec === 'none' || spec === 'metronome') return null;
+  const m = /^([a-z0-9][a-z0-9-]*)(?:@(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?))?$/.exec(String(spec));
+  if (!m) throw new Error(`--nobeat-audio: a corpus id with an optional @start-end in seconds, like ${NOBEAT_AUDIO_DEFAULT} (got ${spec})`);
+  const from = m[2] === undefined ? 0 : +m[2], to = m[3] === undefined ? null : +m[3];
+  if (to !== null && !(to > from)) throw new Error(`--nobeat-audio: the end (${to}) must come after the start (${from})`);
+  return { id: m[1], from, to };
+}
+/** the page query for a phase: the no-beat phases play the excerpt through audio-in's file source (its analyser hears
+ *  only the excerpt, not the metronome); the locked phase is the base query (the clock's own source) */
+export function phaseQuery(base, ph, audio) {
+  if (!audio || ph.conf !== 0) return base;
+  const extra = `audio=${encodeURIComponent(`file:${NOBEAT_AUDIO_ROUTE}${audio.id}`)}&audioFrom=${audio.from}${audio.to !== null ? `&audioTo=${audio.to}` : ''}`;
+  return [base, extra].filter(Boolean).join('&');
 }
 
 /** the still's file name, as the viewer looks it up (serve.mjs stillOf: NN-<label>.png in stills/) */

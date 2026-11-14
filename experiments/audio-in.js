@@ -21,6 +21,8 @@
 //                      forgets it). ?in=blackhole is the same (the apartment MVP's name for it; ?in= wins over ?device=). No match: a warning banner on the page, __qa.audioIn.warning, the default input. Lanes are band-onset envelopes (sub+kick → kick, mid → snare,
 //                      air → hat) with the clock's TAU decay, so the pages' mappings read the same.
 //   'file:<url>'       a decoded file, looped through the speakers and the analyser; lanes as for 'mic'.
+//                      ?audioFrom=<s>&audioTo=<s> (opts.fileFrom / fileTo) play and loop only that excerpt
+//                      (qa/check-nobeat.mjs plays a beatless intro this way).
 // Anything else falls back to 'clock' and says so in .fallback (as the clock does). Analysis runs once per read();
 // the fixed 57 Hz AudioWorklet cadence comes with the live tracker (clock PR 3).
 //
@@ -206,7 +208,12 @@
           this.status = 'loading';
           Promise.resolve(source.slice(5)).then(fetchFn).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => {
             const s = this.input = ctx.createBufferSource(); s.buffer = buf; s.loop = true;
-            s.connect(this.analyser); s.connect(ctx.destination); s.start(); this.status = 'file'; this.openedAt = nowSec();
+            const q = k => { try { const v = new URLSearchParams(root.location.search).get(k); return v === null ? null : +v; } catch (e) { return null; } };
+            const from = Math.max(0, Math.min(buf.duration || 0, Number.isFinite(opts.fileFrom) ? opts.fileFrom : (q('audioFrom') || 0)));
+            const to = Number.isFinite(opts.fileTo) ? opts.fileTo : q('audioTo');
+            if (from > 0 || (Number.isFinite(to) && to > from)) { s.loopStart = from; if (Number.isFinite(to) && to > from) s.loopEnd = Math.min(to, buf.duration || to); }
+            this.excerpt = { from, to: Number.isFinite(to) && to > from ? to : null };
+            s.connect(this.analyser); s.connect(ctx.destination); s.start(0, from); this.status = 'file'; this.openedAt = nowSec();
           }, e => { this.error = String(e && e.message || e); this.status = 'error'; });
         }
         return true;
