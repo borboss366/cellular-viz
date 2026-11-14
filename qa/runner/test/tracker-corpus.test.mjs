@@ -293,3 +293,93 @@ test('(i) re-lock cost on real crossfades, report-only: the #17 mode B render an
   }
   say(t, mixRow('test-made crossfade one-more-time -> sandstorm (8 s, no resample)', mix, SR, 26, bpmOf('one-more-time'), bpmOf('sandstorm')));
 });
+
+// ---------------------------------------------------------------- F3 harness (the user 14 Nov 02:41: F2 parked, F3 next)
+// Shadow rows on every corpus track with an accepted toolVersion 3 vote (its .vote.json beside the track): main
+// 501cfe1's tracker (vendored) beside the tracker under test on the same audio: the share of time within 2 % of the
+// vote's tempo from the first lock, the longest locked excursion outside 2 % (s), tempoMovesLocked and tempoRefusals
+// from the generic tr.tempoReport (main has none: its tempo landings, relative.tempoMoves, are shown as moves).
+// HARD: the tracker under test never more than 2 points below main per track. Report-only: >= 95 %. Ids only (R9).
+const BASE501 = require('./fixtures/clock-tracker-501cfe1.cjs');
+const SHADOW_SECS = 180;
+const RECOVERY = ['voodoo-people', 'children', 'block-rockin-beats', 'hc-06'];   // the F2 losses; target >= 60 % after F4
+// the user (14 Nov 12:00): where main itself is below this share within 2 % of the ref, the no-regression check is
+// report-only (main barely tracks it; today hc-02, hc-04, hc-09, hc-11); every other track stays hard
+const NOREG_MAIN_MIN_PCT = 25;
+// per-track waivers from the user (corpus ids only, R9): the no-regression check is report-only on these, whatever main reads
+const NOREG_WAIVERS = { 'hc-12': 'user 14 Nov: no kick, jazz' };
+function voteRefs() {
+  const dir = A.audioDir();
+  if (!fs.existsSync(dir)) return { skip: 'no tracks folder here' };
+  const map = C.loadMap(dir);
+  if (map.missing) return { skip: 'no corpus-map.json beside the tracks' };
+  const out = [];
+  for (const [id, stem] of Object.entries(map.tracks).sort((a, b) => a[0].localeCompare(b[0]))) {
+    try {
+      const v = JSON.parse(fs.readFileSync(path.join(dir, `${stem}.vote.json`), 'utf8'));
+      if (v.toolVersion === 3 && v.accepted && v.bpm > 0) out.push({ id, ref: v.bpm });
+    } catch { /* no vote for this track */ }
+  }
+  return { refs: out };
+}
+function shadowRow(mono, ref, lib) {
+  let lockT = null, n = 0, inN = 0, run = 0, longest = 0, firstLockBpm = null;
+  const seen = new Map();   // every tempo decision of the tracker under test, polled every 0.1 s from tempoReport.last
+  const tr = track(mono, (tr, tt) => {
+    const rl = tr.tempoReport && tr.tempoReport.last;
+    if (rl && !seen.has(`${rl.t}|${rl.path}`)) seen.set(`${rl.t}|${rl.path}`, rl);
+    if (lockT === null && tr.state === 'locked') { lockT = tt; firstLockBpm = tr.ownBpm; }
+    if (lockT === null) return;
+    n++;
+    const ok = Math.abs(tr.ownBpm / ref - 1) <= 0.02;
+    if (ok) inN++;
+    if (!ok && tr.state === 'locked') { run += 0.1; longest = Math.max(longest, run); } else run = 0;
+  }, lib);
+  const r = tr.tempoReport || null;
+  // the per-id diagnosis: which paths refused, refusals that kept a wrong tempo against a candidate near the ref,
+  // accepted moves that left the ref
+  const near = b => Math.abs(b / ref - 1) <= 0.02, dec = [...seen.values()];
+  const refused = dec.filter(d => !d.ok), heldWrong = refused.filter(d => near(d.cand) && !near(d.cur));
+  const by = a => Object.entries(a.reduce((o, d) => ({ ...o, [d.path]: (o[d.path] || 0) + 1 }), {})).map(([k, v]) => `${k} ${v}`).join(', ') || 'none';
+  const awayMoves = dec.filter(d => d.ok && d.path !== 'fit' && near(d.cur) && !near(d.cand));
+  const fitOk = dec.filter(d => d.ok && d.path === 'fit' && d.cand > 0), fitNear = fitOk.filter(d => near(d.cand)).length;
+  const diag = r ? `moves by path ${JSON.stringify(r.movesBy || {})}; fit rejects by reason ${JSON.stringify(r.refusedBy || {})}; fit samples near the ref ${fitNear}, away ${fitOk.length - fitNear}; refused by path ${by(refused)}; refused while the candidate was near the ref and the current tempo was not: ${heldWrong.length} (${by(heldWrong)})${heldWrong.length ? ', e.g. ' + JSON.stringify(heldWrong.slice(0, 2)) : ''}; accepted moves away from the ref ${awayMoves.length} (${by(awayMoves)})` : null;
+  // F4: the first-lock scan (best, runner-up, ratio, wait), the second look, the re-acquire scans, blocked relatives,
+  // and F3's short-window steps
+  const a = r && r.acq, c = x => x ? `${x.bpm} (${x.score})` : '-';
+  // one scan decision: best / runner-up / current with their scores, the ratio best / current, moved or kept (why)
+  const look = x => x.skipped ? `@${x.t} skipped ${x.skipped}` : `@${x.t} ${x.to ? `moved ${x.from} -> ${x.to}` : `kept ${x.from}${x.why ? ' (' + x.why + ')' : ''}`}, best ${c(x.scan && x.scan.best)}, second ${c(x.scan && x.scan.second)}, cur ${c(x.cur)}, ratio ${x.ratio}`;
+  const acqText = !a ? null : `F4 first lock ${a.firstLock ? `${a.firstLock.from ?? '-'} -> ${a.firstLock.bpm} after ${a.firstLock.waitedS} s${a.firstLock.forced ? ' (forced at the cap)' : ''}${a.firstLock.kept ? ' (kept: ' + a.firstLock.kept + ')' : ''}, best ${c(a.firstLock.scan && a.firstLock.scan.best)}, second ${c(a.firstLock.scan && a.firstLock.scan.second)}, cur ${c(a.firstLock.cur)}, ratio ${a.firstLock.scan ? a.firstLock.scan.ratio : '-'}` : 'none'}`
+    + `; second look ${a.secondLook ? look(a.secondLook) : 'not reached'}`
+    + `; re-acquire scans ${a.rescans.length}${a.rescans.length ? ': ' + a.rescans.map(look).join(' | ') : ''}; relatives blocked while locked ${a.relBlocked}, while re-acquiring ${a.reacqHeld ?? '-'}; short-window steps ${r.short ? r.short.steps : '-'}`;
+  return { lockT, firstLockBpm, pct: n ? 100 * inN / n : 0, longest, moves: r ? r.tempoMovesLocked : tr.relative.tempoMoves, refusals: r ? r.tempoRefusals : null, diag: diag && acqText ? `${diag}; ${acqText}` : diag };
+}
+test(`F3 shadow rows: main 501cfe1 beside the tracker under test on every accepted toolVersion 3 vote ref; never more than 2 points below main (hard where main >= ${NOREG_MAIN_MIN_PCT} %, report-only below; box only)`, async (t) => {
+  await heavy(t);   // one heavy box test at a time (fixtures/heavy-lock.mjs)
+  const v = voteRefs();
+  if (v.skip) { t.skip(v.skip); return; }
+  if (!v.refs.length) { t.skip('no accepted toolVersion 3 vote refs beside the tracks'); return; }
+  let rows = 0;
+  const worse = [], soft = [];   // hard regressions; regressions on report-only tracks (main < NOREG_MAIN_MIN_PCT)
+  const fmt = (r, label) => `${label} ${r.pct.toFixed(1)} % within 2 %, longest locked excursion ${r.longest.toFixed(1)} s, tempoMovesLocked ${r.moves}, tempoRefusals ${r.refusals === null || r.refusals === undefined ? '-' : r.refusals}, lock ${r.lockT === null ? 'never' : r.lockT.toFixed(1) + ' s'}`;
+  for (const { id, ref } of v.refs) {
+    const f = trackFile(id);
+    const d = f.skip ? f : await decode(f, SHADOW_SECS);   // not cached: up to 33 tracks
+    if (d.skip) { say(t, `F3 ${id}: skipped (${d.skip})`); continue; }
+    const now = shadowRow(d.mono, ref, T), base = shadowRow(d.mono, ref, BASE501);
+    const waiver = NOREG_WAIVERS[id] || null;
+    const regress = now.pct < base.pct - 2, hard = !waiver && base.pct >= NOREG_MAIN_MIN_PCT;
+    if (regress && hard) worse.push(`${id}: now ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %`);
+    if (regress && !hard) soft.push(`${id}: now ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %${waiver ? ' (waiver)' : ''}`);
+    const mark = hard ? '[hard]' : waiver ? `[report-only: waiver (${waiver})]` : `[report-only: main < ${NOREG_MAIN_MIN_PCT} %]`;
+    say(t, `F3 ${id} ref ${ref} (${(d.mono.length / SR).toFixed(0)} s): ${fmt(now, 'now')} | ${fmt(base, 'main 501cfe1')} | delta ${(now.pct - base.pct).toFixed(1)} points | ${regress ? 'REGRESSION (> 2 points below main)' : 'no regression'} ${mark} | ${now.pct >= 95 ? 'would pass' : 'would FAIL'} >= 95 % [report-only]`);
+    if (now.diag) say(t, `F3 ${id} tempo: ${now.diag}`);
+    // report-only: tempoMovesLocked (target <= 2), the first lock's tempo and its ratio to the ref
+    const fl = x => x.firstLockBpm === null ? 'never' : `${x.firstLockBpm.toFixed(2)} (x${(x.firstLockBpm / ref).toFixed(3)})`;
+    say(t, `F3 ${id} first lock: now ${fl(now)}, main ${fl(base)}; tempoMovesLocked now ${now.moves} (target <= 2) [report-only]`);
+    if (RECOVERY.includes(id)) say(t, `F3 recovery ${id}: now ${now.pct.toFixed(1)} % within 2 % (main ${base.pct.toFixed(1)} %), target >= 60 % after F4 ${now.pct >= 60 ? 'met' : 'not met'} [report-only]`);
+    rows++;
+  }
+  say(t, `F3 shadow rows: ${rows} of ${v.refs.length} accepted toolVersion 3 refs; regressions ${worse.length}${worse.length ? ': ' + worse.join('; ') : ''} [hard]; on report-only tracks (main < ${NOREG_MAIN_MIN_PCT} % or a waiver) ${soft.length}${soft.length ? ': ' + soft.join('; ') : ''} [report-only: main < ${NOREG_MAIN_MIN_PCT} %]`);
+  assert.deepEqual(worse, [], 'within 2 points of main on every track');
+});

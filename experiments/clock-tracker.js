@@ -76,6 +76,40 @@
     // relMinGainR (replacing relMinR0 and relMinGain); at most one relative move per relEverySecs, its phase re-acquired
     // at the next bar line (jump kind 'relative')
     trustR: 0.3, trustTol: 0.01, relMinR: 0.25, relMinGainR: 0.15, relEverySecs: 8,
+    // F3 (VIZ research's spec, the user 14 Nov 02:45): while locked the tempo comes from a fit of the in-window
+    // broadband onsets of the last fitBeats beats (Theil-Sen on (beat index, time)), applied as a rate-limited change
+    // (tempoRateMax per second) or, after stepEstimates fits in a row off by > stepPct, at once. The ACF no longer
+    // feeds bpm while locked: it decides octave / relative moves and is the fallback after fallbackAfter s without a
+    // valid fit. In a gap (no fit, no onsets) the tempo freezes. drift() is gone; the fit replaces it.
+    fitBeats: 16, fitMinOnsets: 8, fitMinSpanBeats: 8, fitInlier: 0.15, fitMinPairGap: 2, fitCoverage: 0.5, fitHz: 6,
+    fitAccept: 0.12, tempoRateMax: 0.02, stepPct: 0.03, stepEstimates: 12, fallbackAfter: 2,
+    // F3 step path (box run f165caf: 120 -> 128 re-locked in 28 beats). The long fit only sees in-window onsets, and
+    // after a 6 % step the new beats leave the window (0.06 beat a beat, the PLL corrects 0.03) before they are half
+    // of it. The short check fits the last stepOnsets strong onsets on their own chained grid (not filtered by the
+    // window), max residual stepResid x P (main's drift(): 4 onsets, 0.1 P); a fit more than stepPct off, confirmed
+    // once by a fit on a newer onset within stepAgree, is adopted at once and the long window restarts at the step;
+    // for stepYoungBeats beats after it the short fit sets the period directly (box run 4ac9fd7: adopted at beat 5
+    // with 6 onsets, the 0.22-beat phase error then took 12 beats to slew out; main 4.3)
+    stepOnsets: 4, stepResid: 0.1, stepAgree: 0.025, stepNear: 0.4, stepYoungBeats: 8, fitNewestOff: 0.08,
+    // box run dd840c6: adoption at beat 4 is right, but the 0.17-beat phase error then slews out at 0.03 a beat (9
+    // beats). For stepSlewBeats beats after an adopted step the phase slews at stepSlewRate (6 %), then 3 % again.
+    // At most one step per stepCooldown s (hc-09 churned 30 short-window steps)
+    stepSlewRate: 0.06, stepSlewBeats: 8, stepCooldown: 8,
+    // the long fit's chain (box run dd840c6): onsets >= fitStrongRel of the strongest of the last 2 s, a whole number
+    // of beats apart within fitChainTol per beat
+    fitStrongRel: 0.25, fitChainTol: 0.1,
+    // F4 (VIZ research's spec, the user 14 Nov 02:45): the first lock's tempo from a scan. Candidates: the top acqPeaks
+    // ACF peaks x acqRatios (deduped within acqDedup); each scored over acqBeats beats of strong broadband onsets as
+    // inlierFrac x coverage x R x prior. The first lock waits until the best beats the runner-up (another tempo, more
+    // than acqSame away) by acqMargin, at most acqMaxSecs from the start of the acquisition, then takes the best. The
+    // same scan runs at every re-acquire and once more secondLookAt s after the first lock (moves at the next bar line,
+    // jump kinds 'rescan' / 'secondlook')
+    acqBeats: 24, acqMargin: 1.15, acqMaxSecs: 8, secondLookAt: 8, acqPeaks: 3, acqDedup: 0.015, acqSame: 0.04,
+    acqRatios: [1, 2, 1 / 2, 4 / 3, 3 / 4, 3 / 2, 2 / 3],
+    // box run 4ac9fd7 (Orchestrator's rules a-c and the swing trap): a scan moves the tempo only on best.score >=
+    // acqFloor; a non-octave relative needs >= acqRelScore; the second look and re-acquire scans need the best >=
+    // acqLookRatio x the current tempo's score; a re-acquire never takes a relative of the tempo it lost
+    acqFloor: 0.25, acqRelScore: 0.5, acqLookRatio: 1.5,
     // the octave hold's evidence release (fix c, the user's ruling 10 Nov 14:57): the estimate is >= holdOct octaves from
     // the hold for > holdSecs, and, only when the hold is SLOWER than the estimate, R at the hold < holdFast x R there.
     // A hold faster than the estimate needs the distance alone (holdSlow is logged as support). Then the hold goes and
@@ -239,7 +273,12 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     const ownBeats = t => own.B0 + (t - own.T0) / own.P;
     const tapBeats = t => tapModel.B0 + (t - tapModel.T0) / tapModel.P;
     const outBeats = t => !own.P ? 0 : tapModel ? tapBeats(t) : ownBeats(t) + outOffset;
-    function setState(s, t) { if (s !== state) { state = s; stateLog.push({ t, state: s }); if (s === 'locked') laneHold = false; } }
+    function setState(s, t) {
+      if (s !== state) {
+        state = s; stateLog.push({ t, state: s });
+        if (s === 'locked') { laneHold = false; if (firstLockT !== null) rescanDue = t; }   // F4: every re-acquire scans
+      }
+    }
 
     // ---- timing on broadband, the beat side from the low lane (3c reviewer fix, 2 Nov evening; #173)
     // The low lane hears a kick later than broadband (its flux peaks with the kick's body): steering on it put every
@@ -389,6 +428,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         for (let i = L; i < n; i++) s += x[i] * x[i - L];
         r[L] = s / (n - L) / (r0 / n);
       }
+      acfLast = { r, Lmin, Lmax };   // F4: the scan's candidates come from its peaks
       let best = -1, bestS = -Infinity;
       for (let L = Lmin; L <= Lmax; L++) {
         if (!(r[L] >= r[L - 1] && r[L] >= r[L + 1])) continue;   // local peaks only
@@ -505,25 +545,39 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         bpm = raw; own.P = 60 / raw; own.T0 = o ? o.t : t; own.B0 = 0;
         return;
       }
-      if (t < estHoldUntil) return;   // the drift follower just set the period; the window still holds the old tempo
+      if (t < estHoldUntil) return;   // a hand x2 / /2 just set the period; the window still holds the old tempo
       const dev = Math.abs(raw - bpm) / bpm;
       let moved = false;
-      if (state === 'locked' && dev > C.tempoTol) {
-        if (trustedBpm && Math.abs(raw / trustedBpm - 1) <= C.trustTol) {
-          // ruling (1): back to the home tempo on the first estimate
-          bpm = raw; pend = null; bigCount = 0; tempoMoves++; homeReturns++; moved = true;
-          tempoHold = { t: +t.toFixed(3), cand: +raw.toFixed(2), n: 1, home: +trustedBpm.toFixed(2) };
-        } else {
-          // locked (ruling i): a new tempo replaces bpm only after tempoHoldN estimates agreeing with each other within
-          // tempoTol (~2 s); a scatter (110, 141, 179 on Sandstorm) keeps restarting the count and never lands
+      if (state === 'locked') {
+        // F3: while locked the ACF does not feed bpm. It still decides octave / relative moves (an octave or a
+        // non-octave relative of the current tempo, held tempoHoldN estimates, ruling i), and after fallbackAfter s
+        // without a valid fit it is the fallback (the same hold for a big change, the blend for a small one)
+        const kind = relKind(raw), fallback = t - fit.lastValidT > C.fallbackAfter;
+        // F4 (the swing trap: a 16-bar dotted-eighth break is a perfect 4:3 comb, and the 110 lock followed it to 147
+        // through this hold): while locked, a non-octave relative of the current tempo never lands from the ACF, as a
+        // relative or as the fallback. A wrong first lock by 4:3 or 3:2 is the second look's to fix
+        if (kind === 'relative') { pend = null; acq.relBlocked++; return; }
+        if (dev > C.tempoTol && (kind || fallback)) {
           if (pend && Math.abs(raw / pend.bpm - 1) <= C.tempoTol) { pend.n++; pend.bpm = 0.7 * pend.bpm + 0.3 * raw; }
           else pend = { bpm: raw, n: 1, since: t };
           tempoHold = { t: +t.toFixed(3), bpm: +bpm.toFixed(2), cand: +pend.bpm.toFixed(2), n: pend.n, since: +pend.since.toFixed(3) };
           if (pend.n < C.tempoHoldN) return;
+          const path = relKind(pend.bpm) || 'fallback';
+          tempoDecision(t, path, pend.bpm, true);
           bpm = pend.bpm; pend = null; bigCount = 0; tempoMoves++; moved = true;
-        }
+        } else if (fallback && dev <= C.tempoTol) {
+          bigCount = 0; pend = null; fit.fallbackBlends++;
+          bpm = 0.7 * bpm + 0.3 * raw;
+        } else { pend = null; return; }
       }
-      else if (dev > 0.1) { pend = null; if (++bigCount < 6) return; bpm = raw; moved = true; }   // not locked: a real change holds for ~1 s
+      else if (dev > 0.1) {   // not locked: a real change holds for ~1 s
+        // re-acquiring after a lock loss (box run 4ac9fd7, the swing trap: the lock went in the 4:3 break and the
+        // acquisition took the break's 146.7 from the ACF): a non-octave relative of the last locked tempo never lands
+        // here; the tempo stays the last locked one, as through a kick dropout. (A decisive-scan exception would not
+        // hold: the break is a perfect 146.7 comb, every 24-beat scan inside it scores ~0.9 at ratio >> 1.5.)
+        if (everLocked && lastConfidentBpm && relKind(raw, lastConfidentBpm) === 'relative') { pend = null; bigCount = 0; acq.reacqHeld++; return; }
+        pend = null; if (++bigCount < 6) return; bpm = raw; moved = true;
+      }
       else { bigCount = 0; pend = null; bpm = 0.7 * bpm + 0.3 * raw; }
       setPeriod(own, 60 / bpm, t);
       // ruling (2): a tempo move that lands a fresh relative pick re-acquires the phase at the next bar line
@@ -564,9 +618,10 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
             // the lock waits for the low lane's side (an R), at most laneBeats beats of a known period
             const lowR = laneStat(lanes.low, to, acqSince).R !== null;
             if (!lowR && !tapModel && !(laneReadyAt !== null && to >= laneReadyAt)) return;
+            if (!firstLockGate(to)) return;   // F4: and for a decisive tempo (at most acqMaxSecs)
             sideAtFirstLock(to);
             everLocked = true; barOrigin = Math.round(ownBeats(to));
-            setState('locked', to);
+            setState('locked', to); firstLockT = to;
           }
           return;
         }
@@ -606,14 +661,17 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         if (everLocked && Math.abs(ea) > 1e-6) logJump(to, 'acquire', from, outBeats(to));
         lastInWindow = to;
         if (conf >= C.lockConf) {
-          if (!everLocked) {
+          const first = !everLocked;
+          if (first) {
             // the first lock waits for the low lane's side (an R), at most laneBeats beats of a known period
             const lowR = laneStat(lanes.low, to, acqSince).R !== null;
             if (!lowR && !tapModel && !(laneReadyAt !== null && to >= laneReadyAt)) return;
+            if (!firstLockGate(to)) return;   // F4: and for a decisive tempo (at most acqMaxSecs)
             sideAtFirstLock(to);
             everLocked = true; barOrigin = Math.round(ownBeats(to));
           }
           setState('locked', to);
+          if (first) firstLockT = to;
         }
         return;
       }
@@ -623,43 +681,284 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       own.pending -= C.trackGain * e;
       lastInWindow = to;
       strongRef = strongRef ? 0.9 * strongRef + 0.1 * s : s;   // the drums' level, from in-window locked onsets
-      drift(to, Math.round(target));
       if (tapModel) {   // the output follows the tap; the PLL only nudges its phase
         const te = frac(tapBeats(to) + tapModel.pending);
         if (Math.abs(te) <= C.trackWindow) tapModel.pending -= C.trackGain * te;
       }
     }
 
-    // Tempo-step follower (#178 test-pr 1: the 120 → 128 step took 18 beats to re-lock, because the 4 s
-    // autocorrelation window lags a step by ~4 s while the phase error piles up at 6.7 % a beat). The period seen
-    // by the last driftOnsets in-window onsets (a line through onset time vs beat index; independent of the PLL's
-    // own corrections) replaces the period at once when it differs by more than driftMin, and the estimator's
-    // blend waits one window so the lagging autocorrelation can't pull it back. The phase error already piled up
-    // is then slewed under the 3 % rule like any other correction (no step).
+    // (drift(), the old step follower, is gone with F3: the fit below replaces it. `recent` stays only because the
+    // octave release and scaleTempo still clear it)
     const recent = [];
     let estHoldUntil = -1e9;
-    function drift(to, k) {
-      if (recent.length && k <= recent[recent.length - 1].k) recent.length = 0;   // a relabel or jump: start over
-      recent.push({ t: to, k });
-      while (recent.length > C.driftOnsets) recent.shift();
-      if (recent.length < C.driftOnsets || recent[recent.length - 1].k - recent[0].k < C.driftOnsets - 1) return;
-      const n = recent.length, mk = recent.reduce((a, o) => a + o.k, 0) / n, mt = recent.reduce((a, o) => a + o.t, 0) / n;
+
+    // ---- F3: the locked tempo from a fit
+    const fit = { lastAt: -1e9, lastValidT: -1e9, stepRun: 0, adjusts: 0, steps: 0, fallbackBlends: 0, rejects: {}, last: null,
+      resetT: -1e9, young: false, stepAt: -1e9, stepCand: null, shortSteps: 0, shortRefines: 0, shortLast: null, pendSkips: 0, stepsCapped: 0 };
+    let slewBoostUntil = -1e9;
+    const movesBy = {};
+    let decisionLast = null;
+    const mid = a => { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+    /** 'octave' | 'relative' | null: how a candidate tempo relates to the current one */
+    function relKind(b, ref = bpm) {
+      if (!(b > 0) || !(ref > 0)) return null;
+      const q = b / ref;
+      if (Math.abs(q / 2 - 1) <= C.tempoTol || Math.abs(q * 2 - 1) <= C.tempoTol) return 'octave';
+      return C.relRatios.some(r => Math.abs(q / r - 1) <= C.tempoTol) ? 'relative' : null;
+    }
+    function tempoDecision(t, path, cand, ok, why) {
+      decisionLast = { t: +t.toFixed(3), path, cur: +bpm.toFixed(2), cand: cand > 0 ? +cand.toFixed(2) : null, ok, ...(why ? { why } : {}) };
+      if (ok && path !== 'fit') movesBy[path] = (movesBy[path] || 0) + 1;
+      return decisionLast;
+    }
+    function fitReject(t, why, cand) { fit.rejects[why] = (fit.rejects[why] || 0) + 1; tempoDecision(t, 'fit', cand, false, why); }
+    // one fit: the in-window broadband onsets of the last fitBeats beats, indexed from the newest at the current
+    // period, the inliers' Theil-Sen slope = the period, their median intercept = where the beat is
+    // the step path's short check: the last stepOnsets strong broadband onsets, chained newest to oldest on gaps of a
+    // whole number of beats at the current period (each beat within fitInlier), the newest taken near the model's beat
+    // (stepNear) so the grid is the beat, not the off-beat. A least-squares line through them; its slope is the period
+    function shortFit(t) {
+      const P = own.P, ons = lanes.broad.onsets, horizon = t - (C.stepOnsets + 1.5) * P;
+      let mx = 0;
+      for (let i = ons.length - 1; i >= 0 && ons[i].t > t - 2; i--) mx = Math.max(mx, ons[i].s);
+      const strong = [];
+      for (let i = ons.length - 1; i >= 0 && ons[i].t > horizon; i--) if (ons[i].s >= C.strongRel * mx) strong.push(ons[i].t);
+      // the newest beat: of the strong onsets in the newest beat, the one nearest the model's beat (an off-beat hat
+      // 0.35 away loses to the kick 0.15 away), within stepNear
+      let i0 = -1, best = Infinity;
+      for (let i = 0; i < strong.length && strong[i] > strong[0] - 0.9 * P; i++) {
+        const e = Math.abs(frac(ownBeats(strong[i]) + own.pending));
+        if (e < best) { best = e; i0 = i; }
+      }
+      if (i0 < 0 || best > C.stepNear) return { why: 'near' };
+      const pts = [{ k: 0, t: strong[i0] }];
+      let last = strong[i0], k = 0;
+      for (let i = i0 + 1; i < strong.length && pts.length < C.stepOnsets; i++) {
+        const g = last - strong[i], d = Math.round(g / P);
+        if (d < 1 || Math.abs(g / d - P) > C.fitInlier * P) continue;
+        k -= d; last = strong[i]; pts.push({ k, t: strong[i] });
+      }
+      if (pts.length < C.stepOnsets || -k > C.stepOnsets) return { why: 'few' };   // every beat, one gap at most
+      const n = pts.length, mk = pts.reduce((a, p) => a + p.k, 0) / n, mt = pts.reduce((a, p) => a + p.t, 0) / n;
       let sxy = 0, sxx = 0;
-      for (const o of recent) { sxy += (o.k - mk) * (o.t - mt); sxx += (o.k - mk) ** 2; }
-      const P = sxx > 0 ? sxy / sxx : own.P;
+      for (const p of pts) { sxy += (p.k - mk) * (p.t - mt); sxx += (p.k - mk) ** 2; }
+      const Ps = sxx > 0 ? sxy / sxx : P, b = mt - Ps * mk;   // b: the time of beat k = 0 on the line
       let res = 0;
-      for (const o of recent) res = Math.max(res, Math.abs(o.t - (mt + (o.k - mk) * P)));
-      if (!(P > 0) || res > 0.1 * P || Math.abs(P / own.P - 1) <= C.driftMin) return;
-      setPeriod(own, P, to);
-      bpm = 60 / P; estHoldUntil = to + C.acWindow; bigCount = 0; pend = null;
-      const e = frac(ownBeats(to) + own.pending);   // the phase error left at the new period, slewed from here
-      own.pending -= e;
-      // the window is kept: while it still straddles the step each new onset refines the period again
+      for (const p of pts) res = Math.max(res, Math.abs(p.t - (b + Ps * p.k)));
+      if (!(Ps > 0) || res > C.stepResid * Ps) return { why: 'resid' };
+      return { P: Ps, b, n, anchor: strong[i0] };
+    }
+    function stepTick(t, dt) {
+      const s = shortFit(t);
+      fit.shortLast = s.P ? { t: +t.toFixed(3), bpm: +(60 / s.P).toFixed(2) } : { t: +t.toFixed(3), why: s.why };
+      if (!s.P) { fit.stepCand = null; return; }
+      const dev = s.P / own.P - 1;
+      if (Math.abs(dev) <= C.stepPct || Math.abs(dev) > C.fitAccept) {
+        fit.stepCand = null;
+        // right after a step the long window is young (under fitMinSpanBeats): the short fit refines the period,
+        // directly for stepYoungBeats beats after the step, then under the rate limit
+        if (fit.young && Math.abs(dev) > 0.002 && Math.abs(dev) <= C.stepPct) {
+          const lim = t - fit.stepAt < C.stepYoungBeats * own.P ? Infinity : C.tempoRateMax * dt * own.P;
+          const newP = own.P + Math.max(-lim, Math.min(lim, s.P - own.P));
+          setPeriod(own, newP, t); bpm = 60 / newP; fit.shortRefines++;
+        }
+        return;
+      }
+      // a candidate is confirmed once: by a fit on a newer onset (one more beat) within stepAgree; it adopts that
+      // newer fit. Fits on the same onsets (6 a second) only update it
+      const fresh = !fit.stepCand || Math.abs(s.P / fit.stepCand.P - 1) > C.stepAgree;
+      if (fresh) { fit.stepCand = { P: s.P, since: t, n: 1, anchor: s.anchor }; return; }
+      if (s.anchor <= fit.stepCand.anchor + 0.5 * s.P) { fit.stepCand.P = s.P; return; }
+      fit.stepCand.n++;
+      // adopt: the period at once; the beat onto the short line (a pending correction, slewed under the 3 % rule).
+      // A line half a beat off the model is the off-beat stream: not adopted
+      const eAt = frac(ownBeats(t) - (t - s.b) / s.P);   // the model's beat at the line's beat, at the new period
+      if (Math.abs(eAt) > C.stepNear) { fit.stepCand = null; return; }
+      if (t - fit.stepAt < C.stepCooldown) { fit.stepCand = null; fit.stepsCapped++; return; }   // one step per stepCooldown s
+      setPeriod(own, s.P, t); bpm = 60 / s.P;
+      own.pending = -frac(ownBeats(s.b));
+      slewBoostUntil = t + C.stepSlewBeats * s.P;   // the step's phase error slews at stepSlewRate for a while
+      tempoDecision(t, 'step', 60 / s.P, true); tempoMoves++; fit.steps++; fit.shortSteps++;
+      // the long window restarts at the step (its older onsets are the old tempo); the ACF waits one window
+      fit.resetT = t - (C.stepOnsets + 0.5) * s.P; fit.young = true; fit.stepAt = t; fit.lastValidT = t; fit.stepRun = 0; fit.stepCand = null;
+      estHoldUntil = t + C.acWindow; pend = null; bigCount = 0;
+    }
+    // box run dd840c6 (children, hc-04: fit samples near the ref 0): the long fit took only onsets inside the PLL's
+    // +-1/4-beat window and indexed them on the current grid (inlier within fitInlier of tref + k P). Over 16 beats
+    // that sees at most ~1-2 % of tempo error: a lock 6.7 % off (children 146.34 vs 137.1) loses the true beats
+    // after 2-3 beats on both tests, so the fit rejected (span) and never reported the true tempo. Now the onsets
+    // are chained like the short check: from the newest strong onset at the model's beat (inside the window), each
+    // older onset joins when its gap to the last joined one is a whole number of beats within fitChainTol per beat
+    // (10 %: a 6.7 % error passes, the swing trap's 2.25-beat gaps read as 2 beats at 12.5 % do not), not filtered
+    // by the window. The Theil-Sen slope over the chain then reads the true period up to fitAccept
+    function fitTick(t) {
+      const P = own.P, ons = lanes.broad.onsets, from = Math.max(t - C.fitBeats * P, fit.resetT);
+      let mx = 0;
+      for (let i = ons.length - 1; i >= 0 && ons[i].t > t - 2; i--) mx = Math.max(mx, ons[i].s);
+      const cand = [];
+      for (let i = ons.length - 1; i >= 0 && ons[i].t > from; i--) if (ons[i].s >= C.fitStrongRel * mx) cand.push(ons[i].t);
+      if (!cand.length) return fitReject(t, 'few');
+      let i0 = -1, near = Infinity;
+      for (let i = 0; i < cand.length && cand[i] > cand[0] - 0.9 * P; i++) {
+        const e = Math.abs(frac(ownBeats(cand[i]) + own.pending));
+        if (e < near) { near = e; i0 = i; }
+      }
+      if (i0 < 0 || near > C.fitInlier) return fitReject(t, 'window');   // the anchor within fitInlier (0.15) of the model's beat: in the swing trap's break a kick a quarter beat early anchored a chain 1 % slow
+      const pts = [{ k: 0, t: cand[i0] }];
+      let last = cand[i0], kk = 0;
+      for (let i = i0 + 1; i < cand.length; i++) {
+        const g = last - cand[i], d = Math.round(g / P);
+        if (d < 1 || Math.abs(g / d - P) > C.fitChainTol * P) continue;
+        kk -= d; last = cand[i]; pts.push({ k: kk, t: cand[i] });
+      }
+      const inw = pts.map(p => p.t);   // the chain, newest first (inw[0] is the anchor)
+      if (pts.length < C.fitMinOnsets) return fitReject(t, 'few');
+      const ks = pts.map(p => p.k), span = Math.max(...ks) - Math.min(...ks), distinct = new Set(ks).size;
+      if (span < C.fitMinSpanBeats) return fitReject(t, 'span');
+      if (distinct / span < C.fitCoverage) return fitReject(t, 'coverage');
+      const slopes = [];
+      for (let i = 0; i < pts.length; i++) for (let j = 0; j < pts.length; j++) {
+        const dk = pts[j].k - pts[i].k;
+        if (dk >= C.fitMinPairGap) slopes.push((pts[j].t - pts[i].t) / dk);
+      }
+      if (!slopes.length) return fitReject(t, 'pairs');
+      const Pfit = mid(slopes), b = mid(pts.map(p => p.t - Pfit * p.k));
+      if (!(Pfit > 0) || Math.abs(Pfit / P - 1) > C.fitAccept) return fitReject(t, 'accept', 60 / Pfit);
+      fit.lastValidT = t; fit.young = false;
+      const dt = Math.min(2 / C.fitHz, Math.max(0, t - (fit.last ? fit.last.t : t - 1 / C.fitHz)));
+      fit.last = { t, bpm: +(60 / Pfit).toFixed(3), n: pts.length, span, coverage: +(distinct / span).toFixed(3) };
+      let newP;
+      if (Math.abs(Pfit / P - 1) > C.stepPct) {
+        if (++fit.stepRun >= C.stepEstimates && t - fit.stepAt >= C.stepCooldown) {
+          newP = Pfit; fit.stepRun = 0; fit.steps++; fit.stepAt = t; slewBoostUntil = t + C.stepSlewBeats * Pfit;
+          tempoDecision(t, 'step', 60 / Pfit, true); tempoMoves++;
+        }
+      } else fit.stepRun = 0;
+      if (newP === undefined) {
+        const lim = C.tempoRateMax * dt * P;   // the rate limit: at most tempoRateMax of the period per second
+        newP = P + Math.max(-lim, Math.min(lim, Pfit - P));
+        tempoDecision(t, 'fit', 60 / Pfit, true);
+      }
+      if (Math.abs(newP - P) > 1e-12) { setPeriod(own, newP, t); bpm = 60 / newP; fit.adjusts++; }
+      // the phase: the model's beat onto the fitted line (as a pending correction, slewed under the 3 % rule); not
+      // while the short check holds a step candidate, nor while the newest onset already sits off the long line by
+      // more than fitNewestOff beats (a change is starting: the line still leans on the old tempo, and writing it would
+      // undo the PLL's correction 6 times a second)
+      if (fit.stepCand || Math.abs(inw[0] - b) > C.fitNewestOff * Pfit) fit.pendSkips++;
+      else own.pending = -frac(ownBeats(b));
     }
 
-    function slew(m, dt) {   // apply the pending correction as a rate change of at most maxRate
+    // ---- F4: the first lock picks its tempo from a scan; the same scan at every re-acquire and once more after 8 s
+    let acfLast = null, firstLockT = null, secondLookDone = false, rescanDue = null;
+    const acq = { firstLock: null, last: null, secondLook: null, rescans: [], waits: 0, relBlocked: 0, reacqHeld: 0 };
+    function acfPeaks() {   // the top acqPeaks local maxima of the last ACF, as bpm (parabolic lag)
+      if (!acfLast) return [];
+      const { r, Lmin, Lmax } = acfLast, pk = [];
+      for (let L = Lmin; L <= Lmax; L++) if (r[L] > 0 && r[L] >= r[L - 1] && r[L] >= r[L + 1]) pk.push(L);
+      pk.sort((a, b) => r[b] - r[a]);
+      return pk.slice(0, C.acqPeaks).map(L => {
+        const a = r[L - 1], b = r[L], c = r[L + 1], d = a - 2 * b + c;
+        return 60 / ((d < 0 ? L + 0.5 * (a - c) / d : L) * dtHop);
+      });
+    }
+    // one candidate: the strong broadband onsets of the last acqBeats beats at its period; the grid's phase is their
+    // amplitude-weighted circular mean (R its length); inliers within fitInlier of the grid (amplitude-weighted
+    // fraction); coverage = grid beats with an inlier / grid beats spanned
+    function scoreAt(b, t) {
+      const Pc = 60 / b, from = t - C.acqBeats * Pc, ons = lanes.broad.onsets;
+      let mx = 0;
+      for (let i = ons.length - 1; i >= 0 && ons[i].t > from; i--) mx = Math.max(mx, ons[i].s);
+      const pts = [];
+      for (let i = ons.length - 1; i >= 0 && ons[i].t > from; i--) if (ons[i].s >= C.strongRel * mx) pts.push(ons[i]);
+      if (pts.length < 2 * C.laneMinOnsets) return null;
+      let c = 0, s = 0, w = 0;
+      for (const o of pts) { const th = 2 * Math.PI * o.t / Pc; c += o.s * Math.cos(th); s += o.s * Math.sin(th); w += o.s; }
+      if (!(w > 0)) return null;
+      const R = Math.hypot(c, s) / w, phi = Math.atan2(s, c) / (2 * Math.PI);   // the grid: beats at (k + phi) x Pc
+      let win = 0;
+      const ks = new Set();
+      for (const o of pts) { const x = o.t / Pc - phi, k = Math.round(x); if (Math.abs(x - k) <= C.fitInlier) { win += o.s; ks.add(k); } }
+      const span = Math.round((pts[0].t - pts[pts.length - 1].t) / Pc) + 1;
+      const inl = win / w, cov = Math.min(1, ks.size / span), pr = prior(b);
+      return { bpm: b, score: inl * cov * R * pr, inl, cov, R, prior: pr, n: pts.length, span, beatT: (Math.round(pts[0].t / Pc - phi) + phi) * Pc };
+    }
+    const sb = x => x ? { bpm: +x.bpm.toFixed(2), score: r3(x.score), inl: r3(x.inl), cov: r3(x.cov), R: r3(x.R) } : null;
+    const brief = s => ({ t: +s.t.toFixed(3), best: sb(s.best), second: sb(s.second), ratio: s.ratio === Infinity ? null : r3(s.ratio), decisive: s.decisive, n: s.n });
+    function scan(t) {
+      const base = acfPeaks();
+      if (bpm > 0) base.push(bpm);
+      const cands = [];
+      for (const p of base) for (const k of C.acqRatios) {
+        const b = p * k;
+        if (!(b >= C.minBpm && b <= C.maxBpm) || cands.some(x => Math.abs(x / b - 1) <= C.acqDedup)) continue;
+        cands.push(b);
+      }
+      const scored = cands.map(b => scoreAt(b, t)).filter(x => x && x.score > 0).sort((a, b) => b.score - a.score);
+      if (!scored.length) return null;
+      // the runner-up is another tempo: candidates within acqSame of the best are the same one
+      const best = scored[0], second = scored.find(x => Math.abs(x.bpm / best.bpm - 1) > C.acqSame) || null;
+      const ratio = second ? best.score / second.score : Infinity;
+      const res = { t, best, second, ratio, decisive: ratio >= C.acqMargin, n: scored.length };
+      acq.last = brief(res);
+      return res;
+    }
+    // the first lock: only on a decisive scan, or after acqMaxSecs on the best; the period and the beat move to it
+    // box run 4ac9fd7: scans moved good tempos on weak evidence (scary-monsters 139.99 -> 124.5 on a best score of
+    // 0.074, children 146.34 -> 97.14 on 0.161, gasolina 96.05 -> 127.91 at ratio 1.20). A scan may replace the
+    // current tempo only when its best scores >= acqFloor; a non-octave relative of the current tempo (4:3, 3:2 ...)
+    // also needs >= acqRelScore. Good moves for scale: voodoo-people 0.726 at ratio 24.8, block-rockin-beats ratio 4.5
+    function mayMove(b, ref) {
+      if (!(b.score >= C.acqFloor)) return 'floor';
+      if (relKind(b.bpm, ref) === 'relative' && !(b.score >= C.acqRelScore)) return 'relative';
+      return null;
+    }
+    function firstLockGate(to) {
+      const waited = to - (acqSince === null ? to : acqSince), s = scan(to);
+      if (!s) { acq.firstLock = { t: +to.toFixed(3), bpm: +bpm.toFixed(2), scan: null, waitedS: r3(waited) }; return true; }
+      const differs = Math.abs(s.best.bpm / bpm - 1) > C.acqDedup, blocked = differs ? mayMove(s.best, bpm) : null;
+      // a scan too weak to move the tempo does not hold the lock back either
+      if (!blocked && !s.decisive && waited < C.acqMaxSecs) { acq.waits++; return false; }
+      const from = bpm, cur = scoreAt(bpm, to);
+      if (differs && !blocked) {
+        setPeriod(own, 60 / s.best.bpm, to); bpm = s.best.bpm;
+        own.B0 -= frac(ownBeats(s.best.beatT)); own.pending = 0;   // not locked yet: the beat snaps onto the grid
+        estHoldUntil = to + C.acWindow; bigCount = 0; pend = null;
+      }
+      fit.lastValidT = to;
+      acq.firstLock = { t: +to.toFixed(3), from: +from.toFixed(2), bpm: +bpm.toFixed(2), scan: brief(s), cur: sb(cur), waitedS: r3(waited), forced: !s.decisive && !blocked,
+        ...(blocked ? { kept: blocked } : {}) };
+      return true;
+    }
+    function acqNote(rec) { if (rec.kind === 'secondlook') acq.secondLook = rec; else { acq.rescans.push(rec); if (acq.rescans.length > 8) acq.rescans.shift(); } }
+    // a re-acquire ('rescan') or the second look: the best candidate replaces the current tempo only when it beats
+    // the current tempo's own score by acqLookRatio; the beat follows at the next bar line (rephase)
+    function rescan(t, kind) {
+      const rec = { t: +t.toFixed(3), kind, from: +bpm.toFixed(2) };
+      if (tapModel || octaveLock) { rec.skipped = tapModel ? 'tap' : 'hold'; return acqNote(rec); }
+      const s = scan(t), cur = scoreAt(bpm, t);
+      if (!s || !cur || !(cur.score > 0)) { rec.skipped = 'few'; return acqNote(rec); }
+      const b = s.best, ratio = b.score / cur.score;
+      Object.assign(rec, { scan: brief(s), cur: sb(cur), ratio: r3(ratio) });
+      // the second look and the re-acquire scans need the best to beat the current tempo by acqLookRatio (1.5; the
+      // first lock's acqMargin 1.15 let gasolina 1.20, sicko-mode 1.29 and children 1.36 through), the floor, and for
+      // a relative acqRelScore; a re-acquire never moves to a relative of the tempo it lost (the swing trap)
+      if (Math.abs(b.bpm / bpm - 1) <= C.acqSame) { rec.kept = true; return acqNote(rec); }
+      if (ratio < C.acqLookRatio) { rec.kept = true; rec.why = 'ratio'; return acqNote(rec); }
+      const blocked = mayMove(b, bpm);
+      if (blocked) { rec.kept = true; rec.why = blocked; return acqNote(rec); }
+      if (kind === 'rescan' && relKind(b.bpm) === 'relative') { rec.kept = true; rec.why = 'relative-reacquire'; return acqNote(rec); }
+      setPeriod(own, 60 / b.bpm, t); bpm = b.bpm;
+      tempoDecision(t, kind, b.bpm, true); tempoMoves++;
+      estHoldUntil = t + C.acWindow; pend = null; bigCount = 0;
+      fit.resetT = t; fit.lastValidT = t; fit.young = true; fit.stepCand = null; fit.stepRun = 0;
+      rec.to = +b.bpm.toFixed(2);
+      acqNote(rec);
+      rephase(t, kind);
+    }
+
+    function slew(m, dt, rate = C.maxRate) {   // apply the pending correction as a rate change of at most rate (maxRate)
       if (!m.pending) return;
-      const lim = C.maxRate * dt / m.P, step = Math.max(-lim, Math.min(lim, m.pending));
+      const lim = rate * dt / m.P, step = Math.max(-lim, Math.min(lim, m.pending));
       m.B0 += step; m.pending -= step;
       if (Math.abs(m.pending) < 1e-9) m.pending = 0;
     }
@@ -687,7 +986,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       ln.lastOnsetT = tb;
       const o = { t: tb + off * dtHop - delay, s: b };
       ln.onsets.push(o);
-      while (ln.onsets.length && ln.onsets[0].t < o.t - Math.max(C.refineWindow, 10)) ln.onsets.shift();
+      // kept for the refine window, 10 s, and (F3) the fit's fitBeats beats at slow tempos
+      while (ln.onsets.length && ln.onsets[0].t < o.t - Math.max(C.refineWindow, 10, own.P ? C.fitBeats * own.P + 1 : 0)) ln.onsets.shift();
       return o;
     }
 
@@ -697,11 +997,11 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const dt = lastT === null ? dtHop : Math.max(0, t - lastT);
       lastT = t;
       // slews, then a scheduled bar-line jump
-      if (own.P) { slew(own, dt); if (tapModel) slew(tapModel, dt); }
+      if (own.P) { slew(own, dt, t < slewBoostUntil ? C.stepSlewRate : C.maxRate); if (tapModel) slew(tapModel, dt); }
       if (scheduled && own.P && outBeats(t) >= scheduled.atBeat) {
         const from = outBeats(t);
         if (scheduled.kind === 'acquire') { own.B0 += scheduled.delta; own.pending = 0; conf = C.lockConf; lastInWindow = t; setState('locked', t); }
-        else if (scheduled.kind === 'octave' || scheduled.kind === 'relative') { own.B0 += scheduled.delta; own.pending = 0; lastInWindow = t; }   // onto the onsets at the new tempo (fix c, ruling 2)
+        else if (scheduled.kind === 'octave' || scheduled.kind === 'relative' || scheduled.kind === 'secondlook' || scheduled.kind === 'rescan') { own.B0 += scheduled.delta; own.pending = 0; lastInWindow = t; }   // onto the onsets at the new tempo (fix c, ruling 2, F4)
         else if (scheduled.kind === 'side' || scheduled.kind === 'flip') {   // half a beat forward, the other side
           own.B0 += scheduled.delta; own.pending = 0; lastInWindow = t;
           if (tapModel) { tapModel.B0 += scheduled.delta; tapModel.pending = 0; }
@@ -718,9 +1018,21 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (ob) onOnset(ob.t, ob.s);
       // tempo at ~estHz, not in free-run (no drums: keep lastConfidentBpm)
       if (t - lastEst >= 1 / C.estHz && state !== 'free-run' && t - lanes.broad.lastOnsetT < 1.5) { lastEst = t; applyTempo(estimate(t), t); }
+      // F3: the locked tempo from the fit, at fitHz
+      if (state === 'locked' && own.P && t - fit.lastAt >= 1 / C.fitHz) {
+        const fdt = Math.min(2 / C.fitHz, t - fit.lastAt);
+        fit.lastAt = t;
+        stepTick(t, fdt);
+        fitTick(t);
+      }
+      // F4: the second look (once, secondLookAt s after the first lock) and the scan after every re-acquire
+      if (state === 'locked' && own.P && !scheduled) {
+        if (firstLockT !== null && !secondLookDone && t - firstLockT >= C.secondLookAt) { secondLookDone = true; rescanDue = null; rescan(t, 'secondlook'); }
+        else if (rescanDue !== null) { rescanDue = null; rescan(t, 'rescan'); }
+      }
       // confidence decays while no onset lands in the window; locked → free-run below lostConf
       // (not while an octave release waits for its bar line: the onsets are known to sit off the window until then)
-      if (own.P && t - lastInWindow > 2 * own.P && !(scheduled && (scheduled.kind === 'octave' || scheduled.kind === 'relative'))) conf *= Math.exp(-dt / C.confTau);
+      if (own.P && t - lastInWindow > 2 * own.P && !(scheduled && ['octave', 'relative', 'secondlook', 'rescan'].includes(scheduled.kind))) conf *= Math.exp(-dt / C.confTau);
       if (state === 'locked' && conf >= C.acqConf) lastConfidentBpm = bpm;
       if (state === 'locked' && conf < C.lostConf) {
         setState('free-run', t); reacq = [];
@@ -792,6 +1104,16 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         return { state, confidence: +conf.toFixed(3), octaveLock: octaveLock ? +octaveLock.toFixed(2) : null,
           bpm: +(tapModel ? 60 / tapModel.P : bpm).toFixed(2), tapped: !!tapModel, lastJump: jumps[jumps.length - 1] || null,
           lane: laneReport(), relative: relReport(), hold: holdReport() };
+      },
+      // F3 (the harness's generic report): locked tempo moves (step, relative, octave, fallback landings; the fit's
+      // rate-limited adjustments are counted apart), fit rejects by reason, the last decision
+      get tempoReport() {
+        const refused = Object.values(fit.rejects).reduce((a, b) => a + b, 0);
+        return { tempoMovesLocked: Object.values(movesBy).reduce((a, b) => a + b, 0), movesBy: { ...movesBy }, tempoRefusals: refused, refusedBy: { ...fit.rejects },
+          last: decisionLast, fit: fit.last, fitAdjusts: fit.adjusts, steps: fit.steps, fallbackBlends: fit.fallbackBlends,
+          short: { steps: fit.shortSteps, refines: fit.shortRefines, last: fit.shortLast, cand: fit.stepCand ? { bpm: +(60 / fit.stepCand.P).toFixed(2), n: fit.stepCand.n } : null },
+          acq: { firstLock: acq.firstLock, secondLook: acq.secondLook, rescans: acq.rescans.slice(), last: acq.last, waits: acq.waits, relBlocked: acq.relBlocked, reacqHeld: acq.reacqHeld },
+          pendSkips: fit.pendSkips };
       },
       get notes() { return notes; }, get relative() { return relReport(); }, get hold() { return holdReport(); }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
       get jumps() { return jumps; }, get stateLog() { return stateLog; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
