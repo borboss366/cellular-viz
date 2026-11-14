@@ -180,30 +180,47 @@ function showClockOff(ts = clock.trackerState || {}) {
 }
 showClockOff();
 
-async function loadTracks() {
-  tracks = await (await fetch('/api/tracks')).json();
+// the track list; keepStem keeps that track selected when the list is drawn again
+async function loadTracks(keepStem) {
+  const r = await fetch('/api/tracks');
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  tracks = await r.json();
   $('tracks').innerHTML = tracks.map(t => `<option value="${t.idx}">${t.kind === 'mix' ? '◆ ' : ''}${t.label}${t.id ? ' · ' + t.id : ''}${t.grid ? '' : ' (no grid)'}</option>`).join('');
+  const k = keepStem ? tracks.find(x => x.label === keepStem) : null;
+  if (k) $('tracks').value = String(k.idx);
 }
+// load by NAME, never by place (14 Nov: hc-09 was logged and shown while another track played, because the tracks
+// folder changed after the page drew its list and the server counts places afresh): the list is fetched again, the
+// track is found by its stem, the audio and grid come from /audio/s/<stem> and /grid/s/<stem>, and the server's
+// X-Track-Stem must be that stem. Anything else is a loadError ('track list changed'), the list is drawn again and
+// the user picks again; nothing is shown or logged under a name that is not playing
 async function load(i, d = nextDeck()) {
-  const t = tracks[i];
-  if (!t) return;
-  d.el.querySelector('.name').textContent = `loading ${t.label} ...`;
-  const ok = r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r; };
-  let buf, grid;
+  const want = tracks[i];
+  if (!want) return;
+  d.el.querySelector('.name').textContent = `loading ${want.label} ...`;
+  const ok = r => { if (r.status === 409) throw new Error('track list changed'); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r; };
+  const sameStem = (r, stem) => { const s = r.headers.get('x-track-stem'); if (s === null || decodeURIComponent(s) !== stem) throw new Error('track list changed'); return r; };
+  let t = want, buf, grid;
   try {
-    [buf, grid] = await Promise.all([fetch(`/audio/${i}`).then(ok).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)),
-      t.grid ? fetch(`/grid/${i}`).then(ok).then(r => r.json()) : Promise.resolve(null)]);
+    await loadTracks(want.label);
+    t = tracks.find(x => x.label === want.label);
+    if (!t) throw new Error('track list changed: no longer in the folder');
+    const key = encodeURIComponent(t.label);
+    [buf, grid] = await Promise.all([fetch(`/audio/s/${key}`).then(ok).then(r => sameStem(r, t.label)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)),
+      t.grid ? fetch(`/grid/s/${key}`).then(ok).then(r => sameStem(r, t.label)).then(r => r.json()) : Promise.resolve(null)]);
   } catch (e) {   // a failed fetch or decode: say so on the deck and the message line, never "loading" forever
-    const text = C.loadErrorText(t.label, e);
+    const changed = /track list changed/.test(String((e && e.message) || e));
+    const text = C.loadErrorText(want.label, e) + (changed ? ' - pick the track again' : '');
     if (!d.playing) Object.assign(d, { buffer: null, grid: null, beats: [], track: null, offsetS: 0, bar1: null });
     d.el.querySelector('.name').textContent = text; say(text);
-    log.add('track', { idx: i, event: 'loadError', file: t.label, id: t.id || undefined, error: String((e && e.message) || e).slice(0, 200) });
+    log.add('track', { idx: t ? t.idx : i, event: 'loadError', file: want.label, id: want.id || undefined, error: String((e && e.message) || e).slice(0, 200) });
+    if (changed) { try { await loadTracks(); } catch { /* the next load tries again */ } }
     render();
     return;
   }
   Object.assign(d, { buffer: buf, grid, beats: grid ? (grid.beats || []).filter(b => typeof b.ms === 'number').sort((a, b) => a.ms - b.ms) : [], track: t, offsetS: 0, bar1: null });
   d.el.querySelector('.name').textContent = t.label + (t.id ? ` · ${t.id}` : '');
-  log.add('track', { idx: i, event: 'load', file: t.label, id: t.id || undefined, posMs: 0 });
+  log.add('track', { idx: t.idx, event: 'load', file: t.label, id: t.id || undefined, posMs: 0 });
   $('markName').innerHTML = ['bar1', ...(t.marks || []), 'kickIn', 'transition1'].filter((v, k, a) => a.indexOf(v) === k).map(n => `<option>${n}</option>`).join('');
   render();
 }
