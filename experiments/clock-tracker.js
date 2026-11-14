@@ -95,6 +95,9 @@
     // beats). For stepSlewBeats beats after an adopted step the phase slews at stepSlewRate (6 %), then 3 % again.
     // At most one step per stepCooldown s (hc-09 churned 30 short-window steps)
     stepSlewRate: 0.06, stepSlewBeats: 8, stepCooldown: 8,
+    // the long fit's chain (box run dd840c6): onsets >= fitStrongRel of the strongest of the last 2 s, a whole number
+    // of beats apart within fitChainTol per beat
+    fitStrongRel: 0.25, fitChainTol: 0.1,
     // F4 (VIZ research's spec, the user 14 Nov 02:45): the first lock's tempo from a scan. Candidates: the top acqPeaks
     // ACF peaks x acqRatios (deduped within acqDedup); each scored over acqBeats beats of strong broadband onsets as
     // inlierFrac x coverage x R x prior. The first lock waits until the best beats the runner-up (another tempo, more
@@ -780,16 +783,35 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       fit.resetT = t - (C.stepOnsets + 0.5) * s.P; fit.young = true; fit.stepAt = t; fit.lastValidT = t; fit.stepRun = 0; fit.stepCand = null;
       estHoldUntil = t + C.acWindow; pend = null; bigCount = 0;
     }
+    // box run dd840c6 (children, hc-04: fit samples near the ref 0): the long fit took only onsets inside the PLL's
+    // +-1/4-beat window and indexed them on the current grid (inlier within fitInlier of tref + k P). Over 16 beats
+    // that sees at most ~1-2 % of tempo error: a lock 6.7 % off (children 146.34 vs 137.1) loses the true beats
+    // after 2-3 beats on both tests, so the fit rejected (span) and never reported the true tempo. Now the onsets
+    // are chained like the short check: from the newest strong onset at the model's beat (inside the window), each
+    // older onset joins when its gap to the last joined one is a whole number of beats within fitChainTol per beat
+    // (10 %: a 6.7 % error passes, the swing trap's 2.25-beat gaps read as 2 beats at 12.5 % do not), not filtered
+    // by the window. The Theil-Sen slope over the chain then reads the true period up to fitAccept
     function fitTick(t) {
       const P = own.P, ons = lanes.broad.onsets, from = Math.max(t - C.fitBeats * P, fit.resetT);
-      const inw = [];
-      for (let i = ons.length - 1; i >= 0 && ons[i].t > from; i--) if (Math.abs(frac(ownBeats(ons[i].t) + own.pending)) <= C.trackWindow) inw.push(ons[i].t);   // the window the PLL uses (with the pending slew)
-      if (!inw.length) return fitReject(t, 'few');
-      const tref = inw[0], pts = [];
-      for (const ot of inw) {
-        const k = Math.round((ot - tref) / P);
-        if (Math.abs(ot - (tref + k * P)) <= C.fitInlier * P) pts.push({ k, t: ot });
+      let mx = 0;
+      for (let i = ons.length - 1; i >= 0 && ons[i].t > t - 2; i--) mx = Math.max(mx, ons[i].s);
+      const cand = [];
+      for (let i = ons.length - 1; i >= 0 && ons[i].t > from; i--) if (ons[i].s >= C.fitStrongRel * mx) cand.push(ons[i].t);
+      if (!cand.length) return fitReject(t, 'few');
+      let i0 = -1, near = Infinity;
+      for (let i = 0; i < cand.length && cand[i] > cand[0] - 0.9 * P; i++) {
+        const e = Math.abs(frac(ownBeats(cand[i]) + own.pending));
+        if (e < near) { near = e; i0 = i; }
       }
+      if (i0 < 0 || near > C.trackWindow) return fitReject(t, 'window');
+      const pts = [{ k: 0, t: cand[i0] }];
+      let last = cand[i0], kk = 0;
+      for (let i = i0 + 1; i < cand.length; i++) {
+        const g = last - cand[i], d = Math.round(g / P);
+        if (d < 1 || Math.abs(g / d - P) > C.fitChainTol * P) continue;
+        kk -= d; last = cand[i]; pts.push({ k: kk, t: cand[i] });
+      }
+      const inw = pts.map(p => p.t);   // the chain, newest first (inw[0] is the anchor)
       if (pts.length < C.fitMinOnsets) return fitReject(t, 'few');
       const ks = pts.map(p => p.k), span = Math.max(...ks) - Math.min(...ks), distinct = new Set(ks).size;
       if (span < C.fitMinSpanBeats) return fitReject(t, 'span');
