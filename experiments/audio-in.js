@@ -18,7 +18,7 @@
 //   'mic' / 'line'     getUserMedia with deviceId exact and no echo cancellation, noise suppression or gain control,
 //                      not routed to the speakers. The input is picked by label: ?audio=line&device=blackhole
 //                      (case-insensitive substring of the audioinput label, remembered in localStorage; ?device=default
-//                      forgets it). No match: a warning banner on the page, __qa.audioIn.warning, the default input. Lanes are band-onset envelopes (sub+kick → kick, mid → snare,
+//                      forgets it). ?in=blackhole is the same (the apartment MVP's name for it; ?in= wins over ?device=). No match: a warning banner on the page, __qa.audioIn.warning, the default input. Lanes are band-onset envelopes (sub+kick → kick, mid → snare,
 //                      air → hat) with the clock's TAU decay, so the pages' mappings read the same.
 //   'file:<url>'       a decoded file, looped through the speakers and the analyser; lanes as for 'mic'.
 // Anything else falls back to 'clock' and says so in .fallback (as the clock does). Analysis runs once per read();
@@ -88,7 +88,7 @@
     // the input device, by label (#95 comment 6481085928): ?device=blackhole is a case-insensitive substring of an
     // audioinput label, remembered in localStorage; ?device=default forgets it. Without a match: warn, default input.
     const storage = opts.storage !== undefined ? opts.storage : (() => { try { return root.localStorage || null; } catch (e) { return null; } })();
-    const urlDevice = opts.device !== undefined ? opts.device : (() => { try { return new URLSearchParams(root.location.search).get('device'); } catch (e) { return null; } })();
+    const urlDevice = opts.device !== undefined ? opts.device : (() => { try { const q = new URLSearchParams(root.location.search); return q.get('in') !== null ? q.get('in') : q.get('device'); } catch (e) { return null; } })();
     const DEVICE_KEY = 'cellular-viz.audioIn.device';
     let wantDevice = null;
     try {
@@ -260,6 +260,7 @@
     def('beatLanes', () => a.beatLanes);
     def('clockLate', () => (a.clock.lateStats ? a.clock.lateStats : null));   // #95: steps booked late (should be 0), largest frame gap, look-ahead
     def('fixRejected', () => a.clock.fixRejected || []);
+    def('sharedClock', () => (a.clock.sharedState !== undefined ? a.clock.sharedState : null));   // ?clock=shared: state, msgs, lastErrMs, lost (null elsewhere)
     def('tracker', () => (a.clock.trackerState !== undefined ? a.clock.trackerState : null));   // #95 SHOULD 8: line source state (null elsewhere)   // #95 beat authority: fix() calls from non-fix origins (should stay empty)
     def('events', () => (root.Clock && root.Clock.qaEvents ? root.Clock.qaEvents(a.clock) : [...(a.clock.hitLog || a.clock.events || [])]));
     def('audioIn', () => ({ source: a.source, requested: a.requested, fallback: a.fallback, status: a.status, error: a.error,

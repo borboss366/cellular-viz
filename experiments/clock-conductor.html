@@ -17,7 +17,9 @@
         bar while the bar lamp shows (A7b) · Space play/pause · N next (crossfade) · K answer-key lamp (R7: 0 s in the
         gate run) · Alt+, / Alt+. calibrate offset (R10).
   ?clock=line uses the mic / mixer input instead of the page's mix bus; ?click=1 sounds the output beats.
-  __qa.conductor: { log, clock, shadow, decks, tracks, load(i, deck?), play(), next(), mark(name), state() }.
+  __qa.conductor: { log, clock, shadow, publisher, decks, tracks, load(i, deck?), play(), next(), mark(name), state() }.
+  Shared clock: the output clock is published for ?clock=shared scenes (clock.js Clock.publish, BroadcastChannel
+  'cellular-viz-clock'): beats, bpm, bar at most 20 Hz, every jump and hand fix as an event.
 -->
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}
@@ -45,6 +47,7 @@ button{cursor:pointer}.fixes button{min-width:60px}
 .deck{border:2px solid #3a4560;border-radius:10px;padding:8px;margin:6px 0}.deck.live{border-color:#d6455d}.deck.next{border-color:#2b5cff}
 .tag{font-weight:700;margin-right:8px}.live .tag{color:#d6455d}.next .tag{color:#2b5cff}
 #flash{height:40px;border-radius:8px;background:#222a3a}#flash.on{background:#fff}
+#panicBox{gap:6px;margin-top:6px}#panicBox button.on{background:#e8e8e8;color:#000}
 button.reject{background:#c0182b !important;color:#fff}
 .stateBox{flex:1 1 12em;min-width:0}#state,#lane{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;min-height:1.3em}
 .msg{color:#ffd23f;min-height:2.8em}small{color:#8a96ad}
@@ -85,6 +88,10 @@ button.reject{background:#c0182b !important;color:#fff}
   <ul><li>Select a name in the Marks list. Push M on that moment. [ and ] move bar1 by one beat.</li>
     <li>Shift+S confirms the bar. Push it on the "1" while the bar 1 lamp is on.</li>
     <li>Marks need the LIVE deck playing a track with a grid.</li></ul>
+  <h2>Scenes (panic)</h2>
+  <ul><li>Scenes opened with ?clock=shared in this browser follow this page's clock.</li>
+    <li>B or "Blackout" makes every scene black. Push it again (or "Clear") to show the scenes.</li>
+    <li>` or "Calm" shows the calm picture in every scene. Push it again (or "Clear") to show the scenes.</li></ul>
   <h2>After the sitting</h2>
   <ul><li>Push "Download log". Then stop the server on the box.</li><li>Do not push K (answer-key lamp) in a scored run.</li>
     <li>Push Help or ? to close this panel.</li></ul>
@@ -110,6 +117,9 @@ button.reject{background:#c0182b !important;color:#fff}
       <button data-fix="flip">flip ⇧F</button><button data-fix="nudge" data-arg="-10">−10 ⇧,</button><button data-fix="nudge" data-arg="10">+10 ⇧.</button>
       <button data-fix="setOne">set 1 ⇧1</button><button data-fix="reset">reset ⇧0</button>
       <button data-fix="restart" title="Start the clock again (Shift+R). The music does not stop.">restart Shift+R</button></div>
+    <div class="row" id="panicBox" title="Panic for every scene in this browser (shared clock channel)"><small>scenes:</small>
+      <button data-panic="blackout">Blackout B</button><button data-panic="calm">Calm `</button><button data-panic="clear">Clear</button>
+      <small id="panicState">scenes: on</small></div>
     <div class="fixline"><small>last fix:</small> <span id="lastFix">–</span> <small>last taps:</small> <span id="lastTap">–</span></div>
   </section>
   <section>
@@ -154,6 +164,9 @@ const settings = { bpm: 120, bpb: 4, muted: false, click: qs.get('click') === '1
 const clock = Clock.create({ source: 'line', settings, audioContext: () => ctx });
 const shadow = ClockTracker.createTracker();
 const shadowBeats = C.beatCounter();
+// the apartment MVP (Task 1): this page's OUTPUT clock goes to every scene opened with ?clock=shared in this browser
+// (BroadcastChannel 'cellular-viz-clock', at most 20 Hz, every jump and hand fix as an event; clock.js Clock.publish)
+const publisher = Clock.publish(clock);
 const mixBus = ctx.createGain(), master = ctx.createGain();
 mixBus.connect(master); master.connect(ctx.destination);
 const id = sessionId();
@@ -501,6 +514,17 @@ $('mark').onclick = () => mark();
 $('stepL').onclick = () => step(-1); $('stepR').onclick = () => step(1);
 $('download').onclick = () => download(`${id}.jsonl`, log.toJsonl());
 const toggleHelp = () => { $('helpPanel').hidden = !$('helpPanel').hidden; };
+// panic for every scene (the apartment MVP, Task 2): on the shared clock's channel; the same button again clears
+let panicSent = 'clear';
+function panic(mode) {
+  const m = publisher.panic(C.panicNext(panicSent, mode));
+  if (!m) return null;
+  panicSent = m.mode;
+  $('panicState').textContent = panicSent === 'clear' ? 'scenes: on' : `scenes: ${panicSent}`;
+  for (const b of document.querySelectorAll('[data-panic]')) b.classList.toggle('on', b.dataset.panic === panicSent && panicSent !== 'clear');
+  return m;
+}
+for (const b of document.querySelectorAll('[data-panic]')) b.onclick = () => panic(b.dataset.panic);
 $('help').onclick = toggleHelp;
 addEventListener('keydown', e => {
   const a = C.pageKey(e);
@@ -510,6 +534,7 @@ addEventListener('keydown', e => {
   else if (a.type === 'mark') mark(); else if (a.type === 'step') step(a.delta); else if (a.type === 'barOk') barOk();
   else if (a.type === 'playPause') { start(); playPause(); } else if (a.type === 'next') { start(); next(); } else if (a.type === 'keyLamp') toggleKey();
   else if (a.type === 'help') toggleHelp();
+  else if (a.type === 'panic') panic(a.mode);
 });
 setInterval(async () => { const n = await log.flush(); $('logState').textContent = $('logState').title = log.pending.length ? `log: ${log.pending.length} waiting` : `log: ok (${log.all.length})`; $('tail').textContent = log.all.slice(-12).map(r => JSON.stringify(r)).join('\n'); }, 1000);
 setInterval(logLatency, 5000);
@@ -518,8 +543,8 @@ requestAnimationFrame(tick);
 await loadTracks();
 
 window.__qa = Object.assign(window.__qa || {}, { conductor: {
-  log, clock, shadow, decks, get tracks() { return tracks; }, start, load, play: playPause, next, mark, step, barOk,
-  setOffset, toggleKey,
+  log, clock, shadow, publisher, decks, get tracks() { return tracks; }, start, load, play: playPause, next, mark, step, barOk,
+  setOffset, toggleKey, panic, get panicSent() { return panicSent; },
   // the phase wheel's numbers (the user 20:46): median ms, the 6 o'clock weight, the drift per bar, the hint
   wheel: () => wheelNow && { medianMs: wheelNow.medianMs, sixShare: wheelNow.sixShare, six: wheelNow.six, twelve: wheelNow.twelve,
     driftDegPerBar: wheelNow.driftDegPerBar, hint: wheelNow.hint, kind: wheelNow.kind, grey: wheelNow.grey, kicks: wheelNow.kicks },
