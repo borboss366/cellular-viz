@@ -232,3 +232,38 @@ test('the 14 Nov ear checks: hc-03/04/09/10/11 bpm by ear with a narrow range (a
   assert.deepEqual(o['hc-06'], [[60, 260], 'wide', [2, 3, 4, 5, 6, 7], null], 'hc-06: untouched');
   assert.deepEqual(o.noRef, [false, false, true], 'noRef rows never write a .ref.beats; an ear row does when accepted');
 });
+
+test('tracker C range (14 Nov: hc-03 153.6-166.4 crashed essentia, maxTempo must be > minTempo + 20): widened to 24 bpm for C only, A/B keep the narrow range; one failing track never stops the run', (t) => {
+  const py = fs.readFileSync(path.join(QA, 'ref_beats_vote.py'), 'utf8');
+  // C gets its own range; A and B (the DBNs) still get lo / hi
+  assert.match(py, /mn, mx = essentia_tempos\(\*range_c\(lo, hi\)\)/, 'C decodes on range_c');
+  assert.match(py, /minTempo=mn, maxTempo=mx/, 'essentia gets the widened ints');
+  assert.match(py, /self\.DBN\(min_bpm=lo, max_bpm=hi, fps=FPS_BT\)/, 'A keeps the narrow range');
+  assert.match(py, /self\.DBN\(min_bpm=lo, max_bpm=hi, fps=FPS_MM\)/, 'B keeps the narrow range');
+  assert.match(py, /'rangeC': /, 'the vote json records the C range next to range');
+  // a per-track failure is caught, printed by id and the loop goes on
+  assert.match(py, /except Exception as err:\n\s+failed\.append\(tid\)/, 'the per-track except');
+  assert.match(py, /print\(f'vote: \{tid\} failed \(\{type\(err\)\.__name__\}: \{msg\}\), skipped'\)/, '"vote: <id> failed (<error>), skipped"');
+  assert.match(py, /msg = str\(err\)\.replace\(a\.dir, '<tracks>'\)\.replace\(stem, tid\)/, 'R9: no folder or file name in the message');
+  const py3 = spawnSync('python3', ['-c', 'import sys'], { encoding: 'utf8' });
+  if (py3.error) { t.diagnostic('no python3 here: range_c / essentia_tempos not run'); return; }
+  const probe = [
+    'import json, sys',
+    `sys.path.insert(0, ${JSON.stringify(QA)})`,
+    'from ref_beats_vote import range_c, essentia_tempos, row_plan, WIDE',
+    `rows = {r['id']: r for r in json.load(open(${JSON.stringify(path.join(QA, 'corpus.json'))}))}`,
+    "rng, name, meters, plan = row_plan(rows['hc-03'])",
+    "out = {'ab': list(rng), 'name': name, 'c': list(range_c(*rng)), 'e': list(essentia_tempos(*range_c(*rng))), 'wide': list(essentia_tempos(*range_c(*WIDE)))}",
+    "out['all'] = {i: list(essentia_tempos(*range_c(*row_plan(r)[0]))) for i, r in rows.items() if i.startswith('hc-')}",
+    'print(json.dumps(out))',
+  ].join('\n');
+  const r = spawnSync('python3', ['-c', probe], { encoding: 'utf8' });
+  assert.equal(r.status, 0, `probe: ${r.stderr}`);
+  const o = JSON.parse(r.stdout.trim());
+  assert.deepEqual([o.ab, o.name], [[153.6, 166.4], 'ear'], 'hc-03: A and B decode on the narrow 12.8-bpm range');
+  assert.deepEqual(o.c, [148, 172], 'C: 24 bpm around the centre 160');
+  assert.deepEqual(o.e, [148, 172], 'a valid essentia config');
+  assert.ok(o.e[1] - o.e[0] > 20, `max - min ${o.e[1] - o.e[0]} > 20`);
+  assert.deepEqual(o.wide, [60, 250], 'the wide range is unchanged');
+  for (const [id, [mn, mx]] of Object.entries(o.all)) assert.ok(mx - mn > 20, `${id}: essentia ${mn}-${mx}`);
+});
