@@ -108,11 +108,8 @@
     acqRatios: [1, 2, 1 / 2, 4 / 3, 3 / 4, 3 / 2, 2 / 3],
     // box run 4ac9fd7 (Orchestrator's rules a-c and the swing trap): a scan moves the tempo only on best.score >=
     // acqFloor; a non-octave relative needs >= acqRelScore; the second look and re-acquire scans need the best >=
-    // acqLookRatio x the current tempo's score; a re-acquire never takes a relative of the tempo it lost.
-    // Box run dd840c6: the floor and acqRelScore now hold at the first lock only; the second look and the re-acquire
-    // scans move on best >= acqLookRatio (3) x current and best >= acqLookMin (0.06). Scan candidates reach
-    // acqMaxBpm (220) so the x2 of a peak above maxBpm is scored (hc-09: 188.69 read at half, 95.21)
-    acqFloor: 0.25, acqRelScore: 0.5, acqLookRatio: 3, acqLookMin: 0.06, acqMaxBpm: 220,
+    // acqLookRatio x the current tempo's score; a re-acquire never takes a relative of the tempo it lost
+    acqFloor: 0.25, acqRelScore: 0.5, acqLookRatio: 1.5,
     // the octave hold's evidence release (fix c, the user's ruling 10 Nov 14:57): the estimate is >= holdOct octaves from
     // the hold for > holdSecs, and, only when the hold is SLOWER than the estimate, R at the hold < holdFast x R there.
     // A hold faster than the estimate needs the distance alone (holdSlow is logged as support). Then the hold goes and
@@ -893,7 +890,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const cands = [];
       for (const p of base) for (const k of C.acqRatios) {
         const b = p * k;
-        if (!(b >= C.minBpm && b <= C.acqMaxBpm) || cands.some(x => Math.abs(x / b - 1) <= C.acqDedup)) continue;
+        if (!(b >= C.minBpm && b <= C.maxBpm) || cands.some(x => Math.abs(x / b - 1) <= C.acqDedup)) continue;
         cands.push(b);
       }
       const scored = cands.map(b => scoreAt(b, t)).filter(x => x && x.score > 0).sort((a, b) => b.score - a.score);
@@ -934,7 +931,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     }
     function acqNote(rec) { if (rec.kind === 'secondlook') acq.secondLook = rec; else { acq.rescans.push(rec); if (acq.rescans.length > 8) acq.rescans.shift(); } }
     // a re-acquire ('rescan') or the second look: the best candidate replaces the current tempo only when it beats
-    // the current tempo's own score by acqLookRatio (and scores >= acqLookMin); the beat follows at the next bar line
+    // the current tempo's own score by acqLookRatio; the beat follows at the next bar line (rephase)
     function rescan(t, kind) {
       const rec = { t: +t.toFixed(3), kind, from: +bpm.toFixed(2) };
       if (tapModel || octaveLock) { rec.skipped = tapModel ? 'tap' : 'hold'; return acqNote(rec); }
@@ -942,14 +939,13 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (!s || !cur || !(cur.score > 0)) { rec.skipped = 'few'; return acqNote(rec); }
       const b = s.best, ratio = b.score / cur.score;
       Object.assign(rec, { scan: brief(s), cur: sb(cur), ratio: r3(ratio) });
-      // the second look and the re-acquire scans: relative evidence (box run dd840c6). The absolute floor kept a
-      // current tempo scoring near zero (block-rockin-beats 145.84 at 0.02 against 109.35 at 0.073). Now the best
-      // moves when it scores >= acqLookRatio (3) x the current tempo and >= acqLookMin (0.06), relatives included:
-      // block-rockin-beats 3.65 moves; gasolina 1.20, sicko-mode 1.29, children 1.36, archangel 2.65 and hc-04 1.73
-      // stay. A re-acquire still never moves to a relative of the tempo it lost (the swing trap)
+      // the second look and the re-acquire scans need the best to beat the current tempo by acqLookRatio (1.5; the
+      // first lock's acqMargin 1.15 let gasolina 1.20, sicko-mode 1.29 and children 1.36 through), the floor, and for
+      // a relative acqRelScore; a re-acquire never moves to a relative of the tempo it lost (the swing trap)
       if (Math.abs(b.bpm / bpm - 1) <= C.acqSame) { rec.kept = true; return acqNote(rec); }
       if (ratio < C.acqLookRatio) { rec.kept = true; rec.why = 'ratio'; return acqNote(rec); }
-      if (!(b.score >= C.acqLookMin)) { rec.kept = true; rec.why = 'min'; return acqNote(rec); }
+      const blocked = mayMove(b, bpm);
+      if (blocked) { rec.kept = true; rec.why = blocked; return acqNote(rec); }
       if (kind === 'rescan' && relKind(b.bpm) === 'relative') { rec.kept = true; rec.why = 'relative-reacquire'; return acqNote(rec); }
       setPeriod(own, 60 / b.bpm, t); bpm = b.bpm;
       tempoDecision(t, kind, b.bpm, true); tempoMoves++;
@@ -1115,7 +1111,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         const refused = Object.values(fit.rejects).reduce((a, b) => a + b, 0);
         return { tempoMovesLocked: Object.values(movesBy).reduce((a, b) => a + b, 0), movesBy: { ...movesBy }, tempoRefusals: refused, refusedBy: { ...fit.rejects },
           last: decisionLast, fit: fit.last, fitAdjusts: fit.adjusts, steps: fit.steps, fallbackBlends: fit.fallbackBlends,
-          short: { steps: fit.shortSteps, refines: fit.shortRefines, capped: fit.stepsCapped, last: fit.shortLast, cand: fit.stepCand ? { bpm: +(60 / fit.stepCand.P).toFixed(2), n: fit.stepCand.n } : null },
+          short: { steps: fit.shortSteps, refines: fit.shortRefines, last: fit.shortLast, cand: fit.stepCand ? { bpm: +(60 / fit.stepCand.P).toFixed(2), n: fit.stepCand.n } : null },
           acq: { firstLock: acq.firstLock, secondLook: acq.secondLook, rescans: acq.rescans.slice(), last: acq.last, waits: acq.waits, relBlocked: acq.relBlocked, reacqHeld: acq.reacqHeld },
           pendSkips: fit.pendSkips };
       },
