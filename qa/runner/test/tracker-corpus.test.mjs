@@ -306,6 +306,8 @@ const RECOVERY = ['voodoo-people', 'children', 'block-rockin-beats', 'hc-06'];  
 // the user (14 Nov 12:00): where main itself is below this share within 2 % of the ref, the no-regression check is
 // report-only (main barely tracks it; today hc-02, hc-04, hc-09, hc-11); every other track stays hard
 const NOREG_MAIN_MIN_PCT = 25;
+// per-track waivers from the user (corpus ids only, R9): the no-regression check is report-only on these, whatever main reads
+const NOREG_WAIVERS = { 'hc-12': 'user 14 Nov: no kick, jazz' };
 function voteRefs() {
   const dir = A.audioDir();
   if (!fs.existsSync(dir)) return { skip: 'no tracks folder here' };
@@ -365,10 +367,11 @@ test(`F3 shadow rows: main 501cfe1 beside the tracker under test on every accept
     const d = f.skip ? f : await decode(f, SHADOW_SECS);   // not cached: up to 33 tracks
     if (d.skip) { say(t, `F3 ${id}: skipped (${d.skip})`); continue; }
     const now = shadowRow(d.mono, ref, T), base = shadowRow(d.mono, ref, BASE501);
-    const regress = now.pct < base.pct - 2, hard = base.pct >= NOREG_MAIN_MIN_PCT;
+    const waiver = NOREG_WAIVERS[id] || null;
+    const regress = now.pct < base.pct - 2, hard = !waiver && base.pct >= NOREG_MAIN_MIN_PCT;
     if (regress && hard) worse.push(`${id}: now ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %`);
-    if (regress && !hard) soft.push(`${id}: now ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %`);
-    const mark = hard ? '[hard]' : `[report-only: main < ${NOREG_MAIN_MIN_PCT} %]`;
+    if (regress && !hard) soft.push(`${id}: now ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %${waiver ? ' (waiver)' : ''}`);
+    const mark = hard ? '[hard]' : waiver ? `[report-only: waiver (${waiver})]` : `[report-only: main < ${NOREG_MAIN_MIN_PCT} %]`;
     say(t, `F3 ${id} ref ${ref} (${(d.mono.length / SR).toFixed(0)} s): ${fmt(now, 'now')} | ${fmt(base, 'main 501cfe1')} | delta ${(now.pct - base.pct).toFixed(1)} points | ${regress ? 'REGRESSION (> 2 points below main)' : 'no regression'} ${mark} | ${now.pct >= 95 ? 'would pass' : 'would FAIL'} >= 95 % [report-only]`);
     if (now.diag) say(t, `F3 ${id} tempo: ${now.diag}`);
     // report-only: tempoMovesLocked (target <= 2), the first lock's tempo and its ratio to the ref
@@ -377,6 +380,6 @@ test(`F3 shadow rows: main 501cfe1 beside the tracker under test on every accept
     if (RECOVERY.includes(id)) say(t, `F3 recovery ${id}: now ${now.pct.toFixed(1)} % within 2 % (main ${base.pct.toFixed(1)} %), target >= 60 % after F4 ${now.pct >= 60 ? 'met' : 'not met'} [report-only]`);
     rows++;
   }
-  say(t, `F3 shadow rows: ${rows} of ${v.refs.length} accepted toolVersion 3 refs; regressions ${worse.length}${worse.length ? ': ' + worse.join('; ') : ''} [hard]; on tracks where main < ${NOREG_MAIN_MIN_PCT} % ${soft.length}${soft.length ? ': ' + soft.join('; ') : ''} [report-only: main < ${NOREG_MAIN_MIN_PCT} %]`);
+  say(t, `F3 shadow rows: ${rows} of ${v.refs.length} accepted toolVersion 3 refs; regressions ${worse.length}${worse.length ? ': ' + worse.join('; ') : ''} [hard]; on report-only tracks (main < ${NOREG_MAIN_MIN_PCT} % or a waiver) ${soft.length}${soft.length ? ': ' + soft.join('; ') : ''} [report-only: main < ${NOREG_MAIN_MIN_PCT} %]`);
   assert.deepEqual(worse, [], 'within 2 points of main on every track');
 });
