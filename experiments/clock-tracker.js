@@ -91,6 +91,10 @@
     // for stepYoungBeats beats after it the short fit sets the period directly (box run 4ac9fd7: adopted at beat 5
     // with 6 onsets, the 0.22-beat phase error then took 12 beats to slew out; main 4.3)
     stepOnsets: 4, stepResid: 0.1, stepAgree: 0.025, stepNear: 0.4, stepYoungBeats: 8, fitNewestOff: 0.08,
+    // box run dd840c6: adoption at beat 4 is right, but the 0.17-beat phase error then slews out at 0.03 a beat (9
+    // beats). For stepSlewBeats beats after an adopted step the phase slews at stepSlewRate (6 %), then 3 % again.
+    // At most one step per stepCooldown s (hc-09 churned 30 short-window steps)
+    stepSlewRate: 0.06, stepSlewBeats: 8, stepCooldown: 8,
     // F4 (VIZ research's spec, the user 14 Nov 02:45): the first lock's tempo from a scan. Candidates: the top acqPeaks
     // ACF peaks x acqRatios (deduped within acqDedup); each scored over acqBeats beats of strong broadband onsets as
     // inlierFrac x coverage x R x prior. The first lock waits until the best beats the runner-up (another tempo, more
@@ -687,7 +691,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
 
     // ---- F3: the locked tempo from a fit
     const fit = { lastAt: -1e9, lastValidT: -1e9, stepRun: 0, adjusts: 0, steps: 0, fallbackBlends: 0, rejects: {}, last: null,
-      resetT: -1e9, young: false, stepAt: -1e9, stepCand: null, shortSteps: 0, shortRefines: 0, shortLast: null, pendSkips: 0 };
+      resetT: -1e9, young: false, stepAt: -1e9, stepCand: null, shortSteps: 0, shortRefines: 0, shortLast: null, pendSkips: 0, stepsCapped: 0 };
+    let slewBoostUntil = -1e9;
     const movesBy = {};
     let decisionLast = null;
     const mid = a => { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
@@ -766,8 +771,10 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // A line half a beat off the model is the off-beat stream: not adopted
       const eAt = frac(ownBeats(t) - (t - s.b) / s.P);   // the model's beat at the line's beat, at the new period
       if (Math.abs(eAt) > C.stepNear) { fit.stepCand = null; return; }
+      if (t - fit.stepAt < C.stepCooldown) { fit.stepCand = null; fit.stepsCapped++; return; }   // one step per stepCooldown s
       setPeriod(own, s.P, t); bpm = 60 / s.P;
       own.pending = -frac(ownBeats(s.b));
+      slewBoostUntil = t + C.stepSlewBeats * s.P;   // the step's phase error slews at stepSlewRate for a while
       tempoDecision(t, 'step', 60 / s.P, true); tempoMoves++; fit.steps++; fit.shortSteps++;
       // the long window restarts at the step (its older onsets are the old tempo); the ACF waits one window
       fit.resetT = t - (C.stepOnsets + 0.5) * s.P; fit.young = true; fit.stepAt = t; fit.lastValidT = t; fit.stepRun = 0; fit.stepCand = null;
@@ -800,7 +807,10 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       fit.last = { t, bpm: +(60 / Pfit).toFixed(3), n: pts.length, span, coverage: +(distinct / span).toFixed(3) };
       let newP;
       if (Math.abs(Pfit / P - 1) > C.stepPct) {
-        if (++fit.stepRun >= C.stepEstimates) { newP = Pfit; fit.stepRun = 0; fit.steps++; tempoDecision(t, 'step', 60 / Pfit, true); tempoMoves++; }
+        if (++fit.stepRun >= C.stepEstimates && t - fit.stepAt >= C.stepCooldown) {
+          newP = Pfit; fit.stepRun = 0; fit.steps++; fit.stepAt = t; slewBoostUntil = t + C.stepSlewBeats * Pfit;
+          tempoDecision(t, 'step', 60 / Pfit, true); tempoMoves++;
+        }
       } else fit.stepRun = 0;
       if (newP === undefined) {
         const lim = C.tempoRateMax * dt * P;   // the rate limit: at most tempoRateMax of the period per second
@@ -924,9 +934,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       rephase(t, kind);
     }
 
-    function slew(m, dt) {   // apply the pending correction as a rate change of at most maxRate
+    function slew(m, dt, rate = C.maxRate) {   // apply the pending correction as a rate change of at most rate (maxRate)
       if (!m.pending) return;
-      const lim = C.maxRate * dt / m.P, step = Math.max(-lim, Math.min(lim, m.pending));
+      const lim = rate * dt / m.P, step = Math.max(-lim, Math.min(lim, m.pending));
       m.B0 += step; m.pending -= step;
       if (Math.abs(m.pending) < 1e-9) m.pending = 0;
     }
@@ -965,7 +975,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const dt = lastT === null ? dtHop : Math.max(0, t - lastT);
       lastT = t;
       // slews, then a scheduled bar-line jump
-      if (own.P) { slew(own, dt); if (tapModel) slew(tapModel, dt); }
+      if (own.P) { slew(own, dt, t < slewBoostUntil ? C.stepSlewRate : C.maxRate); if (tapModel) slew(tapModel, dt); }
       if (scheduled && own.P && outBeats(t) >= scheduled.atBeat) {
         const from = outBeats(t);
         if (scheduled.kind === 'acquire') { own.B0 += scheduled.delta; own.pending = 0; conf = C.lockConf; lastInWindow = t; setState('locked', t); }
