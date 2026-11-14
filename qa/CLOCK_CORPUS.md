@@ -4,7 +4,7 @@ What the conducted clock is judged on for the step-1 gate (#188: rulings R1–R1
 
 **House rule (R9).** No audio file names and no folder paths in this file, ever: artist, title, BPM, character, role and expectation only. The box keeps file names in its own untracked manifest. Audio never leaves the machine it sits on; only beat-grid sidecars do.
 
-**Constants are frozen while the corpus grows.** A new track adds a row, never a knob. A failing track gets a numbered finding that names a rule, not a number. The frozen set is the F3/F4 tracker as merged (main 44308b4): every named constant of the tracker is listed under "Frozen tracker constants" below, with the source file's sha256, and `qa/runner/test/tracker-frozen.test.mjs` fails when the code and that list differ.
+**Constants are frozen while the corpus grows.** A new track adds a row, never a knob. A failing track gets a numbered finding that names a rule, not a number. The frozen set is the F3/F4 tracker as merged (main 44308b4), plus the side decision at the first lock (fix A of the half-beat ruling, 14 Nov): every named constant of the tracker is listed under "Frozen tracker constants" below, with the source file's sha256, and `qa/runner/test/tracker-frozen.test.mjs` fails when the code and that list differ.
 
 ## Status and flags
 
@@ -119,11 +119,11 @@ Every BPM used by a rule comes from a least-squares fit over the window, never f
 
 Constants are frozen while the corpus grows (the list is under "Frozen tracker constants"): a new track adds a row, never a knob. A failing track gets a numbered finding that names a rule, not a number.
 
-## Frozen tracker constants (F3/F4, main 44308b4)
+## Frozen tracker constants (F3/F4, main 44308b4; side fix A)
 
-The live tracker as merged on 14 Nov: F3 (the locked tempo from a fit of the onsets, with the short-window step path) and F4 (the first-lock candidate scan, the second look and the re-acquire scans). These are its values. Changing any of them, or any line of the tracker, needs a decision first, and this list and the sha256 change in the same PR: `qa/runner/test/tracker-frozen.test.mjs` compares both with the code.
+The live tracker as merged on 14 Nov: F3 (the locked tempo from a fit of the onsets, with the short-window step path) and F4 (the first-lock candidate scan, the second look and the re-acquire scans), plus fix A of the half-beat ruling (the side at the first lock from two hypotheses, phase 0 or 1/2, by the low lane's onset weight, ties broken by the attack's brightness). These are its values. Changing any of them, or any line of the tracker, needs a decision first, and this list and the sha256 change in the same PR: `qa/runner/test/tracker-frozen.test.mjs` compares both with the code.
 
-- tracker source sha256: `484a90b5cfa9f8817e146b6d6b0cfa9911ddf6da2a7e62bf3943c01255b107d7`
+- tracker source sha256: `233ee1d530fbac95820221b228af5b796e0808cad6869736200d637fbd7a541b`
 
 Module constants:
 
@@ -134,7 +134,7 @@ Module constants:
 | `EDGES` | `[20, 60, 120, 250, 500, 2000, 4000, 8000, 16000]` |
 | `BANDS` | `[sub, kick, low, lowMid, mid, upperMid, presence, air]` |
 
-The tracker's defaults (`DEFAULTS`, in the code's order; F3's are `fitBeats` to `fitChainTol`, F4's are `acqBeats` to `acqLookRatio`):
+The tracker's defaults (`DEFAULTS`, in the code's order; F3's are `fitBeats` to `fitChainTol`, F4's are `acqBeats` to `acqLookRatio`, side fix A's are `sideBeats` to `sideBrightLag`):
 
 | Constant | Value |
 |---|---|
@@ -224,6 +224,11 @@ The tracker's defaults (`DEFAULTS`, in the code's order; F3's are `fitBeats` to 
 | `holdFast` | `0.6` |
 | `holdSecs` | `2` |
 | `holdProtectBars` | `16` |
+| `sideBeats` | `16` |
+| `sideBin` | `0.125` |
+| `sideTie` | `0.2` |
+| `sideBrightLead` | `0.1` |
+| `sideBrightLag` | `0.03` |
 
 ## Still owed
 

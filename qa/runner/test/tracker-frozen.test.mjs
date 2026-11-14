@@ -50,6 +50,8 @@ test('frozen tracker: CLOCK_CORPUS.md lists every DEFAULTS constant of the track
   // the F3 and F4 values the doc names (a spot check that the table is the merged F3/F4 tracker, not an older one)
   assert.equal(code.fitInlier, 0.15); assert.equal(code.stepOnsets, 4); assert.equal(code.stepResid, 0.1); assert.equal(code.stepCooldown, 8);
   assert.equal(code.fitChainTol, 0.1); assert.equal(code.acqFloor, 0.25); assert.equal(code.acqRelScore, 0.5); assert.equal(code.acqLookRatio, 1.5);
+  // the half-beat fix A (the side at the first lock by two hypotheses, ties by brightness)
+  assert.deepEqual([code.sideBeats, code.sideBin, code.sideTie, code.sideBrightLead, code.sideBrightLag], [16, 0.125, 0.2, 0.1, 0.03]);
 });
 
 test('frozen tracker: the module constants and the source sha256 match the doc; the frozen sentence points at the list', () => {
