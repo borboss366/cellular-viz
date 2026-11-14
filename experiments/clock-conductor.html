@@ -17,7 +17,9 @@
         bar while the bar lamp shows (A7b) · Space play/pause · N next (crossfade) · K answer-key lamp (R7: 0 s in the
         gate run) · Alt+, / Alt+. calibrate offset (R10).
   ?clock=line uses the mic / mixer input instead of the page's mix bus; ?click=1 sounds the output beats.
-  __qa.conductor: { log, clock, shadow, decks, tracks, load(i, deck?), play(), next(), mark(name), state() }.
+  __qa.conductor: { log, clock, shadow, publisher, decks, tracks, load(i, deck?), play(), next(), mark(name), state() }.
+  Shared clock: the output clock is published for ?clock=shared scenes (clock.js Clock.publish, BroadcastChannel
+  'cellular-viz-clock'): beats, bpm, bar at most 20 Hz, every jump and hand fix as an event.
 -->
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}
@@ -154,6 +156,9 @@ const settings = { bpm: 120, bpb: 4, muted: false, click: qs.get('click') === '1
 const clock = Clock.create({ source: 'line', settings, audioContext: () => ctx });
 const shadow = ClockTracker.createTracker();
 const shadowBeats = C.beatCounter();
+// the apartment MVP (Task 1): this page's OUTPUT clock goes to every scene opened with ?clock=shared in this browser
+// (BroadcastChannel 'cellular-viz-clock', at most 20 Hz, every jump and hand fix as an event; clock.js Clock.publish)
+const publisher = Clock.publish(clock);
 const mixBus = ctx.createGain(), master = ctx.createGain();
 mixBus.connect(master); master.connect(ctx.destination);
 const id = sessionId();
@@ -518,7 +523,7 @@ requestAnimationFrame(tick);
 await loadTracks();
 
 window.__qa = Object.assign(window.__qa || {}, { conductor: {
-  log, clock, shadow, decks, get tracks() { return tracks; }, start, load, play: playPause, next, mark, step, barOk,
+  log, clock, shadow, publisher, decks, get tracks() { return tracks; }, start, load, play: playPause, next, mark, step, barOk,
   setOffset, toggleKey,
   // the phase wheel's numbers (the user 20:46): median ms, the 6 o'clock weight, the drift per bar, the hint
   wheel: () => wheelNow && { medianMs: wheelNow.medianMs, sixShare: wheelNow.sixShare, six: wheelNow.six, twelve: wheelNow.twelve,

@@ -71,6 +71,23 @@
 //   metronome.onTrackerFrame(fn) → line only: fn(frame) for every analysis frame the tracker gets (a read-only tee, #188 R3:
 //                                  the conductor page's shadow tracker); returns an unsubscribe function, null off line
 //
+// ?clock=shared (the apartment MVP, Task 1; the user 14 Nov 14:55): one clock for every scene. The conductor page
+// (clock-conductor.html) publishes its OUTPUT clock with Clock.publish(clock) on the BroadcastChannel
+// 'cellular-viz-clock', at most 20 Hz: { type: 'clock', v: 1, t, beats, bpm, phase, bar, beatInBar, bpb, confidence,
+// state, offsetMs }, t in page-independent ms (performance.timeOrigin + performance.now()) at which the conductor's
+// listener hears beat `beats` (the raw read, no visual offset); every jump and hand fix also goes out as
+// { type: 'jump', v: 1, t, kind, origin, fromBeats, toBeats }. A scene on ?clock=shared has no audio input for the
+// clock (audio-in can still listen to the cable for its band envelopes, ?audio=line): the receiver here steers a
+// flywheel (beats = B0 + (t − T0) × bpm / 60 on this page's audio clock) from those messages. Authority: the
+// conductor's output is authoritative. The tempo locks to the message at once; a phase error ≤ ¼ beat slews (at most
+// SHARED_SLEW of the tempo), more is a jump (jump { kind: 'shared', origin: 'shared' }, rebooked like a file seek); a
+// jump event lands as a jump of its own kind at the publisher's time (a flip lands on the same bar line). Bar and
+// beat-in-bar follow the publisher's. No message for SHARED_LOST_MS (2 s): free-run at the last tempo, the badge
+// says "shared clock lost"; the next message re-locks silently (a slew, unless the publisher jumped meanwhile).
+// Hand fixes do nothing on a scene (the conductor owns them). The page shows a small "shared" badge (opts.badge false:
+// none). clock.sharedState = { state: waiting|locked|free-run, msgs, jumpsIn, lastErrMs, lost, skipped }.
+//   Clock.publish(clock, { timers, post, epochNow }) → { tick(), stop(), sent }: the conductor side
+//
 // Booking under long frames (#95, 31 Oct): read() and hitsDue() call schedule() first, at most once per frame, so a
 // frame longer than the 25 ms timer can't push the booking past its look-ahead; the look-ahead is
 // clamp(2 × p95 of the last 120 frame gaps, 0.1, 0.25) s (0.25 until 10 frames are seen). A step booked after its own
@@ -96,6 +113,10 @@
   // Shift + key (KeyboardEvent.code) → hand fix; clear of the pages' own keys (z x c v t b [ ] `)
   const FIX_KEYS = { KeyA: ['tap'], KeyH: ['half'], KeyD: ['x2'], Digit1: ['setOne'], Comma: ['nudge', -10], Period: ['nudge', 10], Digit0: ['reset'], KeyF: ['flip'], KeyR: ['restart'] };
   const FILE_GAIN = 1, CLICK_GAIN = 0.35, FILE_LEAD = 0.05, LINE_OWN_INPUT_MS = 1500;
+  // ?clock=shared: the channel, the publisher's interval (20 Hz at most), the receiver's slew rate, the gap that
+  // counts as lost, and the largest error that slews instead of jumping
+  const SHARED_CHANNEL = 'cellular-viz-clock', SHARED_PUBLISH_MS = 50, SHARED_SLEW = 0.05, SHARED_LOST_MS = 2000, SHARED_SLEW_MAX = 0.25;
+  const epochNowDefault = () => (root.performance ? (root.performance.timeOrigin || 0) + root.performance.now() : Date.now());
 
   // the tracker library (clock-tracker.js): already on the page, required in node, or loaded next to this file
   const SELF_SRC = (() => { try { return root.document && root.document.currentScript ? root.document.currentScript.src : null; } catch (e) { return null; } })();
@@ -207,7 +228,7 @@
     const requested = opts.source || 'metronome';
     let source = requested, fallback = null;
     const fileM = /^file:(.+)$/.exec(requested);
-    if (requested !== 'metronome' && requested !== 'line' && !fileM) {
+    if (requested !== 'metronome' && requested !== 'line' && requested !== 'shared' && !fileM) {
       source = 'metronome';
       fallback = `unknown clock source ${requested}; playing the metronome`;
       if (root.console) root.console.warn('[clock] ' + fallback);
@@ -236,12 +257,16 @@
     // line: the tracker, its input and worklet, the hand fixes' offset (beats) and the booking position
     const line = source === 'line' ? { status: 'idle', error: null, tracker: null, node: null, input: null, offset: 0,
       step: null, lastBooked: -Infinity, seenJumps: 0, stateLog: [], rises: [], taps: [] } : null;
+    // shared: the flywheel from the conductor's messages (see the header)
+    const shared = source === 'shared' ? { state: 'waiting', model: null, pending: 0, slewAt: null, lastMsg: null, msgs: 0, jumpsIn: 0,
+      lastErrMs: null, lost: false, step: null, lastBooked: -Infinity, skipped: 0, channel: null, badge: null, stateLog: [] } : null;
+    const epochNow = opts.epochNow || epochNowDefault;
     const lineDelayMs = () => (opts.trackerOptions && Number.isFinite(opts.trackerOptions.analysisDelayMs) ? opts.trackerOptions.analysisDelayMs
       : root.ClockTracker ? root.ClockTracker.ANALYSIS_DELAY_MS : null);
 
     // ---------- the metronome (as 11/13/19), moved ----------
     const clock = {
-      source, requested, fallback, settings, file, line,
+      source, requested, fallback, settings, file, line, shared,
       ctx: null, master: null, bus: null, clickBus: null, analyser: null, noise: null, timer: 0, playing: false,
       nextTime: 0, step: 0, hits: [], steps: [], wave: withAnalyser ? new Float32Array(2048) : null,
       jumps: [], oneAt: 0, offsetMs: 0, hitLog: [], dueAt: 0, booked: [], taps: [], fixRejected: [],
@@ -257,7 +282,7 @@
           this.master.connect(ctx.destination);
           // file: the track goes through master (and so the analyser audio-in hangs on it); the ear-check clicks don't.
           // line: nothing plays but the ear-check clicks
-          if (file || line) { this.clickBus = ctx.createGain(); this.clickBus.connect(ctx.destination); }
+          if (file || line || shared) { this.clickBus = ctx.createGain(); this.clickBus.connect(ctx.destination); }
           this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
           const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
         }
@@ -268,11 +293,13 @@
         this.playing = true;
         if (file) { this.fileStart(); return; }
         if (line) { this.lineStart(); return; }
+        if (shared) { this.sharedStart(); return; }
         if (useTimers) this.timer = setInterval(() => this.schedule(), 25);
         this.schedule();
       },
       stop() {
         clearInterval(this.timer); this.playing = false;
+        if (shared && shared.channel) { try { shared.channel.close(); } catch (e) {} shared.channel = null; }
         if (file && file.src) { try { file.src.stop(); } catch (e) {} try { file.src.disconnect(); } catch (e) {} file.src = null; }
       },
       setMuted(m) {
@@ -282,6 +309,7 @@
       schedule() {
         if (file) return this.fileSchedule();
         if (line) return this.lineSchedule();
+        if (shared) return this.sharedSchedule();
         const ct = this.ctx.currentTime;
         while (this.nextTime < ct + this.lookAhead) {
           if (this.nextTime < ct) { this.late++; this.lateMaxMs = Math.max(this.lateMaxMs, (ct - this.nextTime) * 1000); }   // booked after its own time
@@ -380,6 +408,7 @@
       baseBeats(t) {
         if (file) return this.fileBeats(t);
         if (line) return this.lineBeats(t);
+        if (shared) return this.sharedBeats(t);
         let last = null; for (const s of this.steps) if (s.time <= t) last = s;
         return last ? last.b + Math.min(last.span, (t - last.time) / last.dur) / 4 : -1;
       },
@@ -423,6 +452,7 @@
           out.bar = Math.floor(k / bpb); out.beatInBar = ((k % bpb) + bpb) % bpb + 1;
         }
         if (line) { out.bpm = settings.bpm; out.confidence = line.tracker ? line.tracker.confidence : 0; }
+        if (shared) { out.bpm = settings.bpm; out.confidence = shared.lastMsg && shared.state === 'locked' ? (shared.lastMsg.confidence ?? 1) : 0; }
         out.level = Math.max(out.kick, out.snare, out.hat);
         if (this.analyser && !lead) this.analyser.getFloatTimeDomainData(this.wave);
         return out;
@@ -450,6 +480,7 @@
         if (from < 0) return null;
         if (file) return this.fileFix(kind, arg, origin, at, from);
         if (line) return this.lineFix(kind, arg, origin, at, from);
+        if (shared) { warnOnce('fix:shared', `fix('${kind}') does nothing on ?clock=shared: the conductor owns the hand fixes`); return null; }
         let to = from;
         if (kind === 'nudge') {
           to = from + (Number(arg) || 0) / 1000 * settings.bpm / 60;
@@ -621,6 +652,141 @@
         if (this.jumps.length > JUMPS_KEPT) this.jumps.shift();
         return jump;
       },
+      // ---------- the shared source (the apartment MVP, Task 1) ----------
+      sharedStart() {
+        shared.step = null; shared.lastBooked = -Infinity; shared.slewAt = null;
+        if (!opts.sharedFeed && !shared.channel) {   // tests feed messages with sharedMessage()
+          const ch = opts.channel || (typeof root.BroadcastChannel === 'function' ? new root.BroadcastChannel(SHARED_CHANNEL) : null);
+          if (ch) { ch.onmessage = e => this.sharedMessage(e && e.data); shared.channel = ch; }
+          else warnOnce('channel', 'shared source: BroadcastChannel is not available');
+        }
+        if (opts.badge !== false && root.document && root.document.body && !shared.badge) {
+          const b = root.document.createElement('div');
+          b.id = 'clockSharedBadge';
+          b.style.cssText = 'position:fixed;left:8px;bottom:6px;z-index:2147483000;font:11px ui-monospace,Menlo,monospace;color:rgba(255,255,255,0.45);pointer-events:none';
+          root.document.body.appendChild(b); shared.badge = b;
+        }
+        this.sharedBadge();
+        if (useTimers) this.timer = setInterval(() => this.schedule(), 25);
+        this.schedule();
+      },
+      sharedBadge() {
+        if (!shared.badge) return;
+        const s = shared.state === 'locked' ? 'shared' : shared.state === 'free-run' ? 'shared clock lost' : 'shared: waiting';
+        if (shared.badge.textContent !== s) shared.badge.textContent = s;
+      },
+      sharedSetState(s, t) {
+        if (shared.state === s) return;
+        shared.state = s; shared.lost = s === 'free-run';
+        shared.stateLog.push({ t, state: s }); if (shared.stateLog.length > 256) shared.stateLog.shift();
+        this.sharedBadge();
+      },
+      sharedBeats(t) {
+        const m = shared.model;
+        if (!m) return -1;
+        const b = m.B0 + (t - m.T0) * m.bpm / 60;
+        return b >= 0 ? b : -1;
+      },
+      sharedTime(b) { const m = shared.model; return m.T0 + (b - m.B0) * 60 / m.bpm; },
+      // a publisher time (page-independent ms) → this page's heard audio time (raw: no visual offset)
+      sharedHeard(te) { return this.now({ raw: true }) - (epochNow() - te) / 1000; },
+      // one message from the conductor (BroadcastChannel, or a test)
+      sharedMessage(msg) {
+        if (!shared || !msg || typeof msg !== 'object' || !this.ctx) return;
+        if (msg.type === 'jump') return this.sharedJump(msg);
+        if (msg.type !== 'clock' || !(msg.bpm > 0) || !Number.isFinite(msg.beats) || !Number.isFinite(msg.t)) return;
+        const hNow = this.now({ raw: true }), target = msg.beats + (hNow - this.sharedHeard(msg.t)) * msg.bpm / 60;
+        shared.msgs++; shared.lastMsg = { t: msg.t, at: epochNow(), confidence: msg.confidence, state: msg.state };
+        const bpb = msg.bpb > 0 ? msg.bpb : settings.bpb;
+        if (bpb !== settings.bpb) settings.bpb = bpb;
+        // the bar: this page's oneAt so that bar and beat-in-bar read as the publisher's
+        if (Number.isInteger(msg.bar) && Number.isInteger(msg.beatInBar)) this.oneAt = Math.floor(msg.beats) - msg.bar * bpb - (msg.beatInBar - 1);
+        if (!shared.model) {   // the first message: the flywheel starts on it
+          shared.model = { T0: hNow, B0: target, bpm: msg.bpm }; shared.pending = 0; shared.slewAt = hNow; shared.lastErrMs = 0;
+          settings.bpm = Math.round(msg.bpm * 100) / 100;
+          this.sharedSetState('locked', hNow);
+          return;
+        }
+        // the tempo locks at once (beats continuous now); the phase error slews, or jumps when over ¼ beat
+        const m = shared.model, now = m.B0 + (hNow - m.T0) * m.bpm / 60;
+        shared.model = { T0: hNow, B0: now, bpm: msg.bpm };
+        settings.bpm = Math.round(msg.bpm * 100) / 100;
+        const err = target - now;
+        shared.lastErrMs = err * 60 / msg.bpm * 1000;
+        this.sharedSetState('locked', hNow);
+        if (Math.abs(err) <= SHARED_SLEW_MAX) { shared.pending = err; return; }
+        shared.model.B0 = target; shared.pending = 0;
+        this.sharedLogJump(hNow, 'shared', 'shared', now, target);
+      },
+      // a jump or hand fix on the conductor: the same jump here, at the publisher's time (so a flip lands on the same bar line)
+      sharedJump(msg) {
+        if (!shared.model || !Number.isFinite(msg.toBeats) || !Number.isFinite(msg.t)) return;
+        const th = this.sharedHeard(msg.t), m = shared.model, from = m.B0 + (th - m.T0) * m.bpm / 60;
+        shared.model = { T0: th, B0: msg.toBeats, bpm: m.bpm }; shared.pending = 0; shared.jumpsIn++;
+        this.sharedLogJump(th, msg.kind || 'shared', msg.origin ? 'shared:' + msg.origin : 'shared', from, msg.toBeats);
+      },
+      sharedLogJump(at, kind, origin, from, to) {
+        const jump = { type: 'jump', at, kind, fromBeats: from, toBeats: to, origin };
+        this.jumps.push(jump);
+        if (this.jumps.length > JUMPS_KEPT) this.jumps.shift();
+        if (this.playing) this.sharedRebook();
+        return jump;
+      },
+      // once per schedule(): lost after SHARED_LOST_MS without a message; the pending phase error slews
+      sharedTick() {
+        const m = shared.model;
+        if (!m) return;
+        const hNow = this.now({ raw: true });
+        if (shared.lastMsg && epochNow() - shared.lastMsg.at > SHARED_LOST_MS) this.sharedSetState('free-run', hNow);
+        if (shared.slewAt === null) shared.slewAt = hNow;
+        const dt = Math.max(0, hNow - shared.slewAt); shared.slewAt = hNow;
+        if (shared.pending) {
+          const lim = SHARED_SLEW * dt * m.bpm / 60, step = Math.max(-lim, Math.min(lim, shared.pending));
+          m.B0 += step; shared.pending -= step;
+          if (Math.abs(shared.pending) < 1e-9) shared.pending = 0;
+        }
+      },
+      // the page's patterns on the shared sixteenths, as on line; a step the slew moved into the past is skipped (never late)
+      sharedSchedule() {
+        this.sharedTick();
+        if (!shared.model || !this.ctx) return;
+        const ct = this.ctx.currentTime;
+        if (shared.step === null) {
+          const b = this.sharedBeats(ct + QUANTUM);
+          if (b < 0) return;
+          shared.step = Math.floor(b * 4) + 1;
+        }
+        for (let guard = 0; guard < 512; guard++) {
+          const t = this.sharedTime(shared.step / 4);
+          if (!Number.isFinite(t)) break;
+          if (t <= shared.lastBooked + NO_DOUBLE || t < ct) { if (t < ct) shared.skipped++; shared.step++; continue; }
+          if (t >= ct + this.lookAhead) break;
+          this.queueLineStep(shared.step, t); shared.lastBooked = t; shared.step++;
+        }
+        const old = ct - 1;
+        this.hits = this.hits.filter(h => h.time > old);
+        if (this.booked.length && this.booked[0].time < old) this.booked = this.booked.filter(c => c.time > old);
+      },
+      sharedRebook() {
+        const ct = this.ctx.currentTime, lastKept = this.dropFuture(ct);
+        shared.lastBooked = lastKept;
+        const b = this.sharedBeats(ct + QUANTUM);
+        if (b < 0) { shared.step = null; return; }
+        let s = Math.floor(b * 4) + 1;
+        for (let guard = 0; guard < 64; guard++) {
+          const t = this.sharedTime(s / 4);
+          if (t > ct + QUANTUM && t - lastKept >= NO_DOUBLE) break;
+          s++;
+        }
+        shared.step = s;
+        this.schedule();
+      },
+      get sharedState() {
+        if (!shared) return null;
+        return { state: shared.state, msgs: shared.msgs, jumpsIn: shared.jumpsIn, lost: shared.lost, skipped: shared.skipped,
+          lastErrMs: shared.lastErrMs === null ? null : +shared.lastErrMs.toFixed(3), bpm: shared.model ? shared.model.bpm : null, states: shared.stateLog.slice(-16) };
+      },
+
       // ---------- the line source (#173, PR 3b) ----------
       lineStart() {
         line.step = null; line.lastBooked = -Infinity;
@@ -889,7 +1055,39 @@
     return [...(clock.hitLog || clock.events), ...clock.jumps].sort((a, b) => (a.type === 'jump' ? a.at : a.time) - (b.type === 'jump' ? b.at : b.time));
   }
 
-  const api = { create, qaEvents, parseGrid, makeWarp, TAU, LANES, BANDS, OFFSET_MIN, OFFSET_MAX };
+  // the conductor side of ?clock=shared: publishes clock's output on the BroadcastChannel (at most every
+  // SHARED_PUBLISH_MS) and every new jump as an event. opts.post(msg) and opts.epochNow() replace the channel and the
+  // clock in tests; opts.timers false: the caller calls tick(). Nothing goes out before the clock has beats.
+  function publish(clock, opts = {}) {
+    let ch = null;
+    const post = opts.post || (typeof root.BroadcastChannel === 'function' ? (ch = new root.BroadcastChannel(SHARED_CHANNEL), m => ch.postMessage(m)) : () => {});
+    const now = opts.epochNow || epochNowDefault;
+    const pub = {
+      sent: 0, events: 0, last: -Infinity, timer: 0, seenJumps: clock.jumps ? clock.jumps.length : 0,
+      tick() {
+        if (!clock.ctx || !clock.playing) return null;
+        const e = now(), h = clock.now({ raw: true });
+        for (; this.seenJumps < clock.jumps.length; this.seenJumps++) {   // every jump and hand fix, as it lands
+          const j = clock.jumps[this.seenJumps];
+          post({ type: 'jump', v: 1, t: e - (h - j.at) * 1000, kind: j.kind, origin: j.origin || null, fromBeats: j.fromBeats, toBeats: j.toBeats });
+          this.events++;
+        }
+        if (e - this.last < SHARED_PUBLISH_MS - 1) return null;
+        const r = clock.read({ raw: true });
+        if (!(r.beats >= 0)) return null;
+        const ts = clock.trackerState;
+        const m = { type: 'clock', v: 1, t: e, beats: r.beats, bpm: r.bpm, phase: r.phase, bar: r.bar, beatInBar: r.beatInBar,
+          bpb: clock.settings ? clock.settings.bpb : 4, confidence: r.confidence, state: ts && ts.state ? ts.state : 'locked', offsetMs: clock.visualOffsetMs || 0 };
+        post(m); this.sent++; this.last = e;
+        return m;
+      },
+      stop() { clearInterval(this.timer); this.timer = 0; if (ch) { try { ch.close(); } catch (err) {} ch = null; } },
+    };
+    if (opts.timers !== false) pub.timer = setInterval(() => pub.tick(), SHARED_PUBLISH_MS / 2);
+    return pub;
+  }
+
+  const api = { create, publish, qaEvents, parseGrid, makeWarp, TAU, LANES, BANDS, OFFSET_MIN, OFFSET_MAX, SHARED_CHANNEL, SHARED_LOST_MS };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.Clock = api;
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this));   // node's `this` is module.exports
