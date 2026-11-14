@@ -278,6 +278,11 @@ def selftest():
     cases.append(('user-ear: the narrow range first', p[0] == (153.6, 166.4) and p[1] == 'ear' and p[2] == METERS and p[3] == {'range': [153.6, 166.4], 'meter': None}))
     p = row_plan({'bpmSource': 'user-ear', 'meter': 5})
     cases.append(('meter 5: the downbeat DBN on 5 only', p[0] == WIDE and p[1] == 'wide' and p[2] == [5] and p[3] == {'range': None, 'meter': 5}))
+    # tracker C's range (14 Nov: hc-03's 153.6-166.4 crashed essentia: maxTempo should be larger than minTempo + 20)
+    cases.append(('C range: 12.8 wide -> 24 around the centre', range_c(153.6, 166.4) == (148.0, 172.0)))
+    cases.append(('C range: valid essentia config', essentia_tempos(*range_c(153.6, 166.4)) == (148, 172)))
+    cases.append(('C range: a wide range is untouched', range_c(*WIDE) == WIDE and essentia_tempos(*WIDE) == (60, 250)))
+    cases.append(('C range: every ear range gives max > min + 20', all((lambda m: m[1] - m[0] > 20)(essentia_tempos(*range_c(b * 0.96, b * 1.04))) for b in (60, 90.91, 107.5, 160, 172, 189.1, 240, 255))))
     # degraded (no madmom): A0 sits in A's slot and B is None, so the two left must agree (2 of 2)
     v = vote({'A': 140.0, 'B': None, 'C': 140.6}); cases.append(('degraded: 2 of 2 agree', v['agree'] and v['pick'] == 'A' and v['pairs'][0]['pair'] == 'AC'))
     v = vote({'A': 140.0, 'B': None, 'C': 105.0}); cases.append(('degraded: 2 of 2 disagree flags', not v['agree'] and not verdict(v, 4.0)[0]))
@@ -345,8 +350,8 @@ class Trackers:
         else:
             out.update(self._dbn(acts, lo, hi, t, meters))
         t = time.time()
-        bpm, ticks, conf, _, _ = self.es.RhythmExtractor2013(method='multifeature', minTempo=int(max(40, min(lo, 180))),
-                                                             maxTempo=int(min(ESSENTIA_MAX, max(hi, 60))))(acts['a44'])
+        mn, mx = essentia_tempos(*range_c(lo, hi))   # C on its own range: at least C_MIN_WIDTH wide (TempoTapDegara)
+        bpm, ticks, conf, _, _ = self.es.RhythmExtractor2013(method='multifeature', minTempo=mn, maxTempo=mx)(acts['a44'])
         out['C'] = {'beats': [float(x) for x in ticks], 'essentiaBpm': round(float(bpm), 3), 'confidence': round(float(conf), 3),
                     'seconds': round(time.time() - t, 1)}
         for k in ('A', 'B'):
@@ -369,6 +374,28 @@ class Trackers:
         b = self.DBN(min_bpm=lo, max_bpm=hi, fps=FPS_MM)(acts['act'])
         out['B'] = {'beats': [float(x) for x in b], 'seconds': round(acts['tB'] + time.time() - t, 1)}
         return out
+
+
+C_MIN_WIDTH = 24.0   # essentia's TempoTapDegara needs maxTempo > minTempo + 20 (14 Nov: hc-03's 12.8-bpm range crashed C)
+
+
+def range_c(lo, hi):
+    """tracker C's range: a range narrower than C_MIN_WIDTH is widened for C only, symmetric around its centre, to
+    exactly C_MIN_WIDTH (153.6-166.4 -> 148-172); A and B keep the narrow range"""
+    lo, hi = float(lo), float(hi)
+    if hi - lo < C_MIN_WIDTH:
+        c = (lo + hi) / 2
+        lo, hi = round(c - C_MIN_WIDTH / 2, 3), round(c + C_MIN_WIDTH / 2, 3)
+    return lo, hi
+
+
+def essentia_tempos(lo, hi):
+    """RhythmExtractor2013's (minTempo, maxTempo): ints, 40 <= min <= 180, 60 <= max <= ESSENTIA_MAX, and always
+    max > min + 20 (near the 250 cap the window slides down instead of shrinking)"""
+    mn, mx = int(max(40, min(lo, 180))), int(min(ESSENTIA_MAX, max(hi, 60)))
+    if mx - mn <= 20:
+        mn = max(40, mx - int(C_MIN_WIDTH))
+    return mn, mx
 
 
 def row_plan(row):
@@ -441,7 +468,7 @@ def main():
 
     import numpy as np
     import soundfile as sf
-    trk, summary = None, []
+    trk, summary, failed = None, [], []
     for tid, stem, path in tracks:
         row = rows.get(tid, {})
         base = os.path.join(a.dir, stem)
@@ -465,79 +492,86 @@ def main():
         if trk is None:
             trk = Trackers(a.model, n_trk)
             print(f'vote: models loaded in {trk.loadS} s')
-        acts = trk.activations(mono, sr)
-        rng, rng_name, meters, plan = row_plan(row)
-        res = trk.decode(acts, *rng, meters)
-        bpms = {k: (res[k] or {}).get('bpm') for k in ('A', 'B', 'C')}
-        v = vote(bpms)
-        if not v['agree'] and rng_name == 'wide' and row.get('refMinBpm') and row.get('refMaxBpm'):   # the per-id range, only on disagreement
-            rng, rng_name = (float(row['refMinBpm']), float(row['refMaxBpm'])), 'override'
+        try:   # one track failing (a bad config, a decode error) must not stop the run
+            acts = trk.activations(mono, sr)
+            rng, rng_name, meters, plan = row_plan(row)
             res = trk.decode(acts, *rng, meters)
             bpms = {k: (res[k] or {}).get('bpm') for k in ('A', 'B', 'C')}
             v = vote(bpms)
-        conf = res['C']['confidence']
-        ok, why = verdict(v, conf)
-        pick = v['pick']
-        grid_beats = res[pick]['beats'] if (ok and pick) else []
-        pos = positions(grid_beats, res['A']['downbeats']) if grid_beats else []
-        seconds = round(len(mono) / sr, 2)
-        # the meter the downbeat DBN chose, and the tempo curve over 8-bar windows (of the grid, else of A's beats)
-        meter = res['A'].get('meter')
-        curve = tempo_curve(grid_beats or res['A']['beats'], meter or 4)
-        meta = {
-            'id': tid, 'toolVersion': TOOL_VERSION, 'model': a.model, 'sha256': digest, 'seconds': seconds,
-            'trackerSet': tset, 'degraded': degraded,
-            'range': {'name': rng_name, 'minBpm': rng[0], 'maxBpm': rng[1], 'essentiaMax': ESSENTIA_MAX},
-            'plan': plan, 'meters': meters,
-            'trackers': {
-                'A': {'name': NAMES['A' if n_trk == 3 else 'A0'], 'bpm': bpms['A'], 'beats': len(res['A']['beats']), 'downbeats': len(res['A']['downbeats']), 'seconds': res['A']['seconds']},
-                'B': ({'name': NAMES['B'], 'bpm': bpms['B'], 'beats': len(res['B']['beats']), 'seconds': res['B']['seconds']} if res['B']
-                      else {'name': NAMES['B'], 'off': 'madmom does not import', 'bpm': None, 'seconds': None}),
-                'C': {'name': 'essentia-multifeature', 'bpm': bpms['C'], 'beats': len(res['C']['beats']), 'confidence': conf, 'seconds': res['C']['seconds']},
-            },
-            'meter': meter, 'barLengths': res['A'].get('bars'), 'tempoCurve': curve, 'candidates': v['candidates'],
-            'vote': v, 'accepted': ok, 'accept': accept_reason(v, conf) if ok else None, 'flagged': None if ok else why,
-            'pick': pick if ok else None,
-            'bpm': bpms[pick] if (ok and pick) else None, 'corpusBpm': row.get('bpm'), 'refTool': row.get('refTool'),
-            'versions': {k: version(k) for k in ('beat-this', 'madmom', 'madmom-prebuilt', 'essentia', 'torch', 'numpy')},
-            'created': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-        }
-        if ok:
-            write_beats(base + '.vote.beats', grid_beats, pos)
-            if writes_ref(row, ok, degraded):   # only the batch's rows, accepted, 3 trackers
-                write_beats(base + '.ref.beats', grid_beats, pos)
-                ref = {'track': os.path.basename(path), 'sha256': digest, 'tool': 'vote', 'model': a.model, 'pick': pick,
-                       'beats': len(grid_beats), 'downbeats': sum(1 for p in pos if p == 1), 'medianBpm': bpms[pick],
-                       'bpm': bpms[pick], 'toolVersion': TOOL_VERSION, 'accept': meta['accept'],
-                       'seconds': seconds, 'vote': os.path.basename(base) + '.vote.json', 'created': meta['created']}
-                with open(base + '.ref.json.tmp', 'w') as f:
-                    json.dump(ref, f, indent=1)
-                os.replace(base + '.ref.json.tmp', base + '.ref.json')
-                meta['wroteRef'] = True
-        # the earlier rows: the vote next to their existing grid's fitted tempo (the grid itself is not touched)
-        try:
-            g = json.load(open(base + '.beatgrid.json'))
-            fit = g.get('bpmFitCore') or g.get('bpmFit')
-            meta['gridBpm'] = round(float(fit), 3) if fit else None
-            meta['gridSuspect'] = g.get('gridSuspect')
-            if fit and meta['bpm']:
-                k, err = fold(float(fit), meta['bpm'])
-                meta['vsGrid'] = {'fold': k, 'diffPct': round(100 * err, 3)}
-        except (OSError, ValueError, TypeError):
-            meta['gridBpm'] = None
-        with open(base + '.vote.json.tmp', 'w') as f:
-            json.dump(meta, f, indent=1)
-        os.replace(base + '.vote.json.tmp', base + '.vote.json')
-        summary.append(meta)
-        T = meta['trackers']
-        print(f'vote: {tid} {seconds:.0f} s | {"DEGRADED A0+C | " if degraded else ""}'
-              f'A {T["A"]["bpm"]} ({T["A"]["seconds"]} s) B {T["B"]["bpm"] if res["B"] else "off"} ({T["B"]["seconds"]} s) '
-              f'C {T["C"]["bpm"]} conf {conf} ({T["C"]["seconds"]} s) | agree {"+".join(p["pair"] for p in v["pairs"]) or "none"} '
-              f'{"(octave split: " + " / ".join(str(c) for c in v["candidates"]) + ") " if v["octaveSplit"] else ""}| range {rng_name} | '
-              f'meter {meter} {res["A"].get("bars")} | tempo 8-bar p5/p50/p95 '
-              f'{(str(curve["p5"]) + "/" + str(curve["p50"]) + "/" + str(curve["p95"]) + " spread " + str(curve["spreadPct"]) + " %") if curve else "-"} | '
-              f'{"ACCEPTED " + str(meta["bpm"]) + " [" + meta["accept"] + "]" + (" -> .ref.beats" if meta.get("wroteRef") else " (report)") if ok else "FLAGGED: " + why}'
-              f' | corpus {row.get("bpm")} | grid {meta.get("gridBpm")} (suspect {meta.get("gridSuspect")}) vs vote {meta.get("vsGrid")}')
+            if not v['agree'] and rng_name == 'wide' and row.get('refMinBpm') and row.get('refMaxBpm'):   # the per-id range, only on disagreement
+                rng, rng_name = (float(row['refMinBpm']), float(row['refMaxBpm'])), 'override'
+                res = trk.decode(acts, *rng, meters)
+                bpms = {k: (res[k] or {}).get('bpm') for k in ('A', 'B', 'C')}
+                v = vote(bpms)
+            conf = res['C']['confidence']
+            ok, why = verdict(v, conf)
+            pick = v['pick']
+            grid_beats = res[pick]['beats'] if (ok and pick) else []
+            pos = positions(grid_beats, res['A']['downbeats']) if grid_beats else []
+            seconds = round(len(mono) / sr, 2)
+            # the meter the downbeat DBN chose, and the tempo curve over 8-bar windows (of the grid, else of A's beats)
+            meter = res['A'].get('meter')
+            curve = tempo_curve(grid_beats or res['A']['beats'], meter or 4)
+            meta = {
+                'id': tid, 'toolVersion': TOOL_VERSION, 'model': a.model, 'sha256': digest, 'seconds': seconds,
+                'trackerSet': tset, 'degraded': degraded,
+                'range': {'name': rng_name, 'minBpm': rng[0], 'maxBpm': rng[1], 'essentiaMax': ESSENTIA_MAX},
+                'rangeC': (lambda c, e: {'minBpm': c[0], 'maxBpm': c[1], 'essentiaMin': e[0], 'essentiaMaxTempo': e[1],
+                                         'widened': c != (float(rng[0]), float(rng[1]))})(range_c(*rng), essentia_tempos(*range_c(*rng))),
+                'plan': plan, 'meters': meters,
+                'trackers': {
+                    'A': {'name': NAMES['A' if n_trk == 3 else 'A0'], 'bpm': bpms['A'], 'beats': len(res['A']['beats']), 'downbeats': len(res['A']['downbeats']), 'seconds': res['A']['seconds']},
+                    'B': ({'name': NAMES['B'], 'bpm': bpms['B'], 'beats': len(res['B']['beats']), 'seconds': res['B']['seconds']} if res['B']
+                          else {'name': NAMES['B'], 'off': 'madmom does not import', 'bpm': None, 'seconds': None}),
+                    'C': {'name': 'essentia-multifeature', 'bpm': bpms['C'], 'beats': len(res['C']['beats']), 'confidence': conf, 'seconds': res['C']['seconds']},
+                },
+                'meter': meter, 'barLengths': res['A'].get('bars'), 'tempoCurve': curve, 'candidates': v['candidates'],
+                'vote': v, 'accepted': ok, 'accept': accept_reason(v, conf) if ok else None, 'flagged': None if ok else why,
+                'pick': pick if ok else None,
+                'bpm': bpms[pick] if (ok and pick) else None, 'corpusBpm': row.get('bpm'), 'refTool': row.get('refTool'),
+                'versions': {k: version(k) for k in ('beat-this', 'madmom', 'madmom-prebuilt', 'essentia', 'torch', 'numpy')},
+                'created': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            }
+            if ok:
+                write_beats(base + '.vote.beats', grid_beats, pos)
+                if writes_ref(row, ok, degraded):   # only the batch's rows, accepted, 3 trackers
+                    write_beats(base + '.ref.beats', grid_beats, pos)
+                    ref = {'track': os.path.basename(path), 'sha256': digest, 'tool': 'vote', 'model': a.model, 'pick': pick,
+                           'beats': len(grid_beats), 'downbeats': sum(1 for p in pos if p == 1), 'medianBpm': bpms[pick],
+                           'bpm': bpms[pick], 'toolVersion': TOOL_VERSION, 'accept': meta['accept'],
+                           'seconds': seconds, 'vote': os.path.basename(base) + '.vote.json', 'created': meta['created']}
+                    with open(base + '.ref.json.tmp', 'w') as f:
+                        json.dump(ref, f, indent=1)
+                    os.replace(base + '.ref.json.tmp', base + '.ref.json')
+                    meta['wroteRef'] = True
+            # the earlier rows: the vote next to their existing grid's fitted tempo (the grid itself is not touched)
+            try:
+                g = json.load(open(base + '.beatgrid.json'))
+                fit = g.get('bpmFitCore') or g.get('bpmFit')
+                meta['gridBpm'] = round(float(fit), 3) if fit else None
+                meta['gridSuspect'] = g.get('gridSuspect')
+                if fit and meta['bpm']:
+                    k, err = fold(float(fit), meta['bpm'])
+                    meta['vsGrid'] = {'fold': k, 'diffPct': round(100 * err, 3)}
+            except (OSError, ValueError, TypeError):
+                meta['gridBpm'] = None
+            with open(base + '.vote.json.tmp', 'w') as f:
+                json.dump(meta, f, indent=1)
+            os.replace(base + '.vote.json.tmp', base + '.vote.json')
+            summary.append(meta)
+            T = meta['trackers']
+            print(f'vote: {tid} {seconds:.0f} s | {"DEGRADED A0+C | " if degraded else ""}'
+                  f'A {T["A"]["bpm"]} ({T["A"]["seconds"]} s) B {T["B"]["bpm"] if res["B"] else "off"} ({T["B"]["seconds"]} s) '
+                  f'C {T["C"]["bpm"]} conf {conf} ({T["C"]["seconds"]} s) | agree {"+".join(p["pair"] for p in v["pairs"]) or "none"} '
+                  f'{"(octave split: " + " / ".join(str(c) for c in v["candidates"]) + ") " if v["octaveSplit"] else ""}| range {rng_name} | '
+                  f'meter {meter} {res["A"].get("bars")} | tempo 8-bar p5/p50/p95 '
+                  f'{(str(curve["p5"]) + "/" + str(curve["p50"]) + "/" + str(curve["p95"]) + " spread " + str(curve["spreadPct"]) + " %") if curve else "-"} | '
+                  f'{"ACCEPTED " + str(meta["bpm"]) + " [" + meta["accept"] + "]" + (" -> .ref.beats" if meta.get("wroteRef") else " (report)") if ok else "FLAGGED: " + why}'
+                  f' | corpus {row.get("bpm")} | grid {meta.get("gridBpm")} (suspect {meta.get("gridSuspect")}) vs vote {meta.get("vsGrid")}')
+        except Exception as err:
+            failed.append(tid)
+            msg = str(err).replace(a.dir, '<tracks>').replace(stem, tid)[:200]   # R9: ids only, never a file name
+            print(f'vote: {tid} failed ({type(err).__name__}: {msg}), skipped')
 
     # the runtime of one ~5-minute track, three ways
     timed = [m for m in summary if m.get('trackers') and m.get('seconds')]
@@ -548,7 +582,7 @@ def main():
               f'B madmom {T["B"]["seconds"] if T["B"].get("seconds") is not None else "off"} s, C essentia {T["C"]["seconds"]} s')
     acc = sum(1 for m in summary if m.get('accepted'))
     print(f'vote: {acc} accepted, {len(summary) - acc} flagged of {len(summary)} | trackers {tset}'
-          + (f' | DEGRADED: {degraded}' if degraded else ''))
+          + (f' | DEGRADED: {degraded}' if degraded else '') + (f' | {len(failed)} failed: {", ".join(failed)}' if failed else ''))
     return 0
 
 
