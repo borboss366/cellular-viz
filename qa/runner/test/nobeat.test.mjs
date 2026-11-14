@@ -156,3 +156,33 @@ test('the no-beat stills on the grading page: /grade lists the run, its page has
     assert.match(grade, /Runs to grade \(0\)/); assert.match(grade, /Graded \(1\)/);
   } finally { child.kill(); fs.rmSync(home, { recursive: true, force: true }); }
 });
+
+test('--nobeat-audio: corpus id with an optional excerpt (default born-slippy 0-90 s); the no-beat phases load the file source, the locked phase the clock; audio-in plays the excerpt', async () => {
+  assert.deepEqual(NB.parseNobeatAudio(), { id: 'born-slippy', from: 0, to: 90 });
+  assert.deepEqual(NB.parseNobeatAudio('children@12.5-40'), { id: 'children', from: 12.5, to: 40 });
+  assert.deepEqual(NB.parseNobeatAudio('opus'), { id: 'opus', from: 0, to: null });
+  assert.equal(NB.parseNobeatAudio('none'), null, 'the metronome throughout');
+  for (const bad of ['../x', 'Born Slippy.flac', 'opus@40-10', 'opus@x-y']) assert.throws(() => NB.parseNobeatAudio(bad), /--nobeat-audio/);
+  const a = NB.parseNobeatAudio(), [p1, locked, p3] = NB.PHASES;
+  const q = NB.phaseQuery('capture=1', p1, a), u = new URLSearchParams(q);
+  assert.equal(u.get('capture'), '1'); assert.equal(u.get('audio'), 'file:/nobeat-audio/born-slippy');
+  assert.deepEqual([u.get('audioFrom'), u.get('audioTo')], ['0', '90']);
+  assert.equal(NB.phaseQuery('capture=1', locked, a), 'capture=1', 'locked: the clock\'s own source');
+  assert.equal(NB.phaseQuery('capture=1', p3, a), q);
+  assert.equal(NB.phaseQuery('capture=1', p1, null), 'capture=1');
+  const cli = fs.readFileSync(path.join(QA, 'check-nobeat.mjs'), 'utf8');
+  assert.match(cli, /arg\('nobeat-audio', NOBEAT_AUDIO_DEFAULT\)/);
+  assert.match(cli, /pn !== NOBEAT_AUDIO_ROUTE \+ AUDIO\.id/, 'the excerpt is served by corpus id only');
+  // audio-in's file source starts at the excerpt and loops inside it
+  const started = [], src = { buffer: null, loop: false, loopStart: 0, loopEnd: 0, connect() {}, disconnect() {}, start(w, off) { started.push([w, off]); } };
+  const ctx = { currentTime: 0, sampleRate: 48000, destination: {}, resume() {}, createBufferSource: () => src,
+    createAnalyser: () => ({ fftSize: 2048, frequencyBinCount: 1024, smoothingTimeConstant: 0, connect() {}, getFloatFrequencyData() {}, getFloatTimeDomainData() {} }),
+    decodeAudioData: async () => ({ duration: 200 }) };
+  const clock = { ctx, master: null, settings: { bpb: 4 }, playing: true, read: () => ({ confidence: 1, bpm: 120, beats: 1, kick: 0, snare: 0, hat: 0, level: 0 }) };
+  const ai = AudioIn.create({ clock, source: 'file:/nobeat-audio/born-slippy', storage: null, device: null, fileFrom: 30, fileTo: 60, fetch: async () => ({ arrayBuffer: async () => new ArrayBuffer(8) }) }).start();
+  for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+  assert.equal(ai.status, 'file');
+  assert.deepEqual(started, [[0, 30]]);
+  assert.deepEqual([src.loop, src.loopStart, src.loopEnd], [true, 30, 60]);
+  assert.deepEqual(ai.excerpt, { from: 30, to: 60 });
+});
