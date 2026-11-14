@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>shared clock publisher (QA)</title>
+<!--
+  A silent metronome on the shared clock (?clock=shared, the apartment MVP Task 1): it publishes like the conductor
+  page does (Clock.publish on the BroadcastChannel 'cellular-viz-clock'), so a scene opened with ?clock=shared in the
+  same browser follows it without the conductor and its tracks. QA and rehearsal only; the conductor is the real one.
+    ?bpm=128 (default 128)   ?click=1 sounds the clicks here
+  Keys: Space start / stop. __qa.publisher: { clock, publisher, state() }.
+-->
+<style>
+body{margin:0;font:16px/1.4 system-ui,sans-serif;background:#0b0e14;color:#dde3ee;padding:16px}
+button{font:inherit;padding:6px 14px}.big{font-size:44px;font-weight:700;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<h1>shared clock publisher</h1>
+<p><button id="start">start</button> <span id="state">stopped</span></p>
+<p><span class="big" id="beat">-</span> <span id="bpm"></span></p>
+<p><small>Scenes opened with ?clock=shared in this browser follow this clock.</small></p>
+<script src="clock.js"></script>
+<script>
+const qs = new URLSearchParams(location.search), $ = id => document.getElementById(id);
+const bpm = Number(qs.get('bpm')) > 0 ? Number(qs.get('bpm')) : 128, click = qs.get('click') === '1';
+const settings = { bpm, bpb: 4, muted: !click, kick: 'x---x---x---x---', snare: '----x-------x---', hat: '--x---x---x---x-' };
+const clock = Clock.create({ source: 'metronome', settings, keys: false });
+const publisher = Clock.publish(clock);
+function toggle() {
+  // without autoplay the first start leaves the AudioContext suspended: the first press only resumes it
+  if (clock.playing && clock.ctx && clock.ctx.state === 'suspended') { clock.ctx.resume(); return; }
+  if (clock.playing) clock.stop(); else clock.start();
+  $('start').textContent = clock.playing ? 'stop' : 'start';
+}
+$('start').onclick = toggle;
+addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); toggle(); } });
+function tick() {
+  requestAnimationFrame(tick);
+  const r = clock.read({ raw: true });
+  $('state').textContent = clock.playing ? `publishing (${publisher.sent} sent)` : 'stopped';
+  $('beat').textContent = r.beats >= 0 ? `${r.bar + 1}.${r.beatInBar}` : '-';
+  $('bpm').textContent = `${settings.bpm} BPM`;
+}
+requestAnimationFrame(tick);
+try { toggle(); } catch (e) { /* no autoplay: press start */ }
+window.__qa = Object.assign(window.__qa || {}, { publisher: { clock, publisher, state: () => ({ playing: clock.playing, sent: publisher.sent, events: publisher.events, beats: clock.read({ raw: true }).beats }) } });
+</script>
+</body>
+</html>
