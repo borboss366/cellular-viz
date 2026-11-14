@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Reference beats by a vote of three trackers (#188, the user 10 Nov 17:27, VIZ research's ruling): for tracks that
-are hard FOR THE TRACKER (the batch hc-01..hc-11: odd meters, swing, unusual or slow tempos, maybe polyrhythm; the
+are hard FOR THE TRACKER (the batch hc-01..hc-12: odd meters, swing, unusual or slow tempos, maybe polyrhythm; the
 user's correction 17:39, not the hardcore genre) where Beat This! alone gave 7/11 gridSuspect grids.
 
 Run it through qa/ref-beats-vote.sh (the venv, the GPU lock, the grids). For each corpus track on the box (ids from
@@ -270,6 +270,14 @@ def selftest():
     cases.append(('tool version 3', TOOL_VERSION == 3))
     cases.append(('positions', positions([0, .3, .6, .9, 1.2, 1.5], [0, 1.2]) == [1, 2, 3, 4, 1, 2]))
     cases.append(('wide range', WIDE == (60.0, 260.0) and ESSENTIA_MAX == 250.0 and METERS == [2, 3, 4, 5, 6, 7]))
+    # the per-row plan (14 Nov ear checks): an ear-checked row decodes in its narrow range from the start, a meter row
+    # fixes the downbeat DBN, any other row is as before (wide, meters 2-7, no plan key so its .vote.json stays fresh)
+    cases.append(('plain row: wide, meters 2-7, no key', row_plan({'bpm': 128, 'bpmSource': 'user'}) == (WIDE, 'wide', METERS, None)))
+    cases.append(('a range without user-ear stays an override', row_plan({'bpmSource': 'user', 'refMinBpm': 100, 'refMaxBpm': 110})[1] == 'wide'))
+    p = row_plan({'bpm': 160, 'bpmSource': 'user-ear', 'refMinBpm': 153.6, 'refMaxBpm': 166.4})
+    cases.append(('user-ear: the narrow range first', p[0] == (153.6, 166.4) and p[1] == 'ear' and p[2] == METERS and p[3] == {'range': [153.6, 166.4], 'meter': None}))
+    p = row_plan({'bpmSource': 'user-ear', 'meter': 5})
+    cases.append(('meter 5: the downbeat DBN on 5 only', p[0] == WIDE and p[1] == 'wide' and p[2] == [5] and p[3] == {'range': None, 'meter': 5}))
     # degraded (no madmom): A0 sits in A's slot and B is None, so the two left must agree (2 of 2)
     v = vote({'A': 140.0, 'B': None, 'C': 140.6}); cases.append(('degraded: 2 of 2 agree', v['agree'] and v['pick'] == 'A' and v['pairs'][0]['pair'] == 'AC'))
     v = vote({'A': 140.0, 'B': None, 'C': 105.0}); cases.append(('degraded: 2 of 2 disagree flags', not v['agree'] and not verdict(v, 4.0)[0]))
@@ -324,7 +332,7 @@ class Trackers:
         tB = time.time() - t
         return {'beat': beat, 'down': down, 'bl': bl, 'dl': dl, 'act': act, 'a44': np.ascontiguousarray(a44, dtype=np.float32), 'tA': tA, 'tB': tB}
 
-    def decode(self, acts, lo, hi):
+    def decode(self, acts, lo, hi, meters=METERS):
         out = {}
         t = time.time()
         if self.n != 3:
@@ -335,7 +343,7 @@ class Trackers:
             out['A'] = {'beats': a, 'downbeats': downs, 'meter': meter, 'bars': bars, 'seconds': round(acts['tA'] + time.time() - t, 1)}
             out['B'] = None
         else:
-            out.update(self._dbn(acts, lo, hi, t))
+            out.update(self._dbn(acts, lo, hi, t, meters))
         t = time.time()
         bpm, ticks, conf, _, _ = self.es.RhythmExtractor2013(method='multifeature', minTempo=int(max(40, min(lo, 180))),
                                                              maxTempo=int(min(ESSENTIA_MAX, max(hi, 60))))(acts['a44'])
@@ -347,12 +355,12 @@ class Trackers:
         out['C']['bpm'] = round(out['C']['essentiaBpm'], 2) if out['C']['essentiaBpm'] else bpm_of(out['C']['beats'])
         return out
 
-    def _dbn(self, acts, lo, hi, t):
+    def _dbn(self, acts, lo, hi, t, meters=METERS):
         np = self.np
         out = {}
         a = self.DBN(min_bpm=lo, max_bpm=hi, fps=FPS_BT)(acts['beat'])
         both = np.stack([np.clip(acts['beat'] - acts['down'], 0, 1), acts['down']], axis=1)
-        d = self.DDBN(beats_per_bar=METERS, min_bpm=lo, max_bpm=hi, fps=FPS_BT)(both)
+        d = self.DDBN(beats_per_bar=meters, min_bpm=lo, max_bpm=hi, fps=FPS_BT)(both)   # METERS unless the row has a meter
         downs = [float(r[0]) for r in d if int(r[1]) == 1]
         meter, bars = meter_of([(float(r[0]), int(r[1])) for r in d])
         out['A'] = {'beats': [float(x) for x in a], 'downbeats': downs, 'meter': meter, 'bars': bars,
@@ -363,10 +371,26 @@ class Trackers:
         return out
 
 
+def row_plan(row):
+    """the per-row vote settings -> (range, range name, meters, plan key).
+    A row the user checked by ear (bpmSource 'user-ear') with refMinBpm / refMaxBpm decodes in that narrow range from
+    the start ('ear'), so a wide-range agreement in the wrong octave cannot win; any other row starts wide and uses its
+    range only on disagreement ('override', as before). A row with 'meter' gives the downbeat DBN that meter only
+    (DEGRADED mode has no DBN and ignores it). The plan key is None for a row with neither, so its old .vote.json stays
+    up to date; a changed key votes again."""
+    row = row or NO_ROW
+    lo, hi, m = row.get('refMinBpm'), row.get('refMaxBpm'), row.get('meter')
+    ear = row.get('bpmSource') == 'user-ear' and bool(lo and hi)
+    meters = [int(m)] if m else METERS
+    key = {'range': [float(lo), float(hi)] if ear else None, 'meter': int(m) if m else None} if (ear or m) else None
+    return ((float(lo), float(hi)) if ear else WIDE), ('ear' if ear else 'wide'), meters, key
+
+
 def writes_ref(row, accepted, degraded):
     """a new <stem>.ref.beats only for a refTool 'vote' row (the hc batch), only when accepted, never from a DEGRADED
     (2-tracker) vote; every other row keeps its old reference (the vote is a report next to it)"""
-    return bool(accepted) and not degraded and (row or {}).get('refTool') == 'vote'
+    return bool(accepted) and not degraded and (row or {}).get('refTool') == 'vote' and not (row or {}).get('noRef')
+    # noRef: a row the user heard has no single tempo (14 Nov: hc-05 drifts, hc-08 floats); the vote stays a report
 
 
 def write_beats(path, beats, pos):
@@ -426,7 +450,7 @@ def main():
             try:
                 old = json.load(open(base + '.vote.json'))
                 if (old.get('sha256') == digest and old.get('toolVersion') == TOOL_VERSION and old.get('model') == a.model
-                        and old.get('trackerSet', SETS[3]) == tset):
+                        and old.get('trackerSet', SETS[3]) == tset and old.get('plan') == row_plan(row)[3]):
                     print(f'vote: {tid} up to date ({"accepted" if old.get("accepted") else "flagged"}), skipped')
                     summary.append(old)
                     continue
@@ -442,13 +466,13 @@ def main():
             trk = Trackers(a.model, n_trk)
             print(f'vote: models loaded in {trk.loadS} s')
         acts = trk.activations(mono, sr)
-        rng, rng_name = WIDE, 'wide'
-        res = trk.decode(acts, *rng)
+        rng, rng_name, meters, plan = row_plan(row)
+        res = trk.decode(acts, *rng, meters)
         bpms = {k: (res[k] or {}).get('bpm') for k in ('A', 'B', 'C')}
         v = vote(bpms)
-        if not v['agree'] and row.get('refMinBpm') and row.get('refMaxBpm'):   # the per-id range, only on disagreement
+        if not v['agree'] and rng_name == 'wide' and row.get('refMinBpm') and row.get('refMaxBpm'):   # the per-id range, only on disagreement
             rng, rng_name = (float(row['refMinBpm']), float(row['refMaxBpm'])), 'override'
-            res = trk.decode(acts, *rng)
+            res = trk.decode(acts, *rng, meters)
             bpms = {k: (res[k] or {}).get('bpm') for k in ('A', 'B', 'C')}
             v = vote(bpms)
         conf = res['C']['confidence']
@@ -464,6 +488,7 @@ def main():
             'id': tid, 'toolVersion': TOOL_VERSION, 'model': a.model, 'sha256': digest, 'seconds': seconds,
             'trackerSet': tset, 'degraded': degraded,
             'range': {'name': rng_name, 'minBpm': rng[0], 'maxBpm': rng[1], 'essentiaMax': ESSENTIA_MAX},
+            'plan': plan, 'meters': meters,
             'trackers': {
                 'A': {'name': NAMES['A' if n_trk == 3 else 'A0'], 'bpm': bpms['A'], 'beats': len(res['A']['beats']), 'downbeats': len(res['A']['downbeats']), 'seconds': res['A']['seconds']},
                 'B': ({'name': NAMES['B'], 'bpm': bpms['B'], 'beats': len(res['B']['beats']), 'seconds': res['B']['seconds']} if res['B']
