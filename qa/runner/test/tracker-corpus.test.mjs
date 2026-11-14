@@ -405,7 +405,10 @@ function gateRun(mono, lib) {
   }, lib);
   // the side at the first lock (half-beat fix A: the two bin weights, the brightness, the choice) and the side moves
   const side = tr.snapshot ? tr.snapshot().lane.side : null;
-  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null };
+  // every jump (side, flip, acquire, rescan, ...) and state change, with times: the moves while locked (diagnostic rows)
+  const jumps = (tr.jumps || []).map(j => ({ at: j.at, kind: j.kind, d: j.toBeats - j.fromBeats }));
+  const states = (tr.stateLog || []).map(s => ({ t: s.t, state: s.state }));
+  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states };
 }
 /** the side decision at the first lock, as text (main 501cfe1 has no two-hypothesis decision: its circular mean) */
 function sideText(r) {
@@ -427,7 +430,28 @@ function gateScore(run, id, row, grid, secs) {
   const B = (res._beats[tr.label] || []).filter(b => !b.excl);
   let run8 = null;
   for (let i = 0, n = 0; i < B.length; i++) { n = B[i].cls === 'in' ? n + 1 : 0; if (n === 8) { run8 = B[i - 7].t; break; } }
-  return { tr, run8 };
+  return { tr, run8, beats: B };
+}
+// the half-beat diagnosis (Orchestrator 19:06, after #232's box run): on these tracks the side at the first lock is
+// clear, yet p90 sits near half a beat. Per 15 s window: the median SIGNED error of the nearest output beat to each
+// reference beat (ms and in beats; +-0.5 = the other side), the inside-gate share; then every move while locked
+const SIDE_DIAG = ['cafe-del-mar', 'sincere', 'dj-set-brejcha', 'sandstorm', 're-rewind', 'billie-jean'];
+const SIDE_WIN_S = 15;
+function windowDiag(B, secs) {
+  const med = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
+  const out = [];
+  for (let w0 = 0; w0 < secs; w0 += SIDE_WIN_S) {
+    const W = B.filter(b => b.t >= w0 && b.t < w0 + SIDE_WIN_S), E = W.filter(b => Number.isFinite(b.e));
+    const tot = W.reduce((x, b) => x + b.P, 0), inS = W.filter(b => b.cls === 'in').reduce((x, b) => x + b.P, 0);
+    const me = med(E.map(b => b.e)), mp = med(E.map(b => b.phi));
+    out.push(`${w0}-${w0 + SIDE_WIN_S}s: ${me === null ? '-' : (me >= 0 ? '+' : '') + me.toFixed(0)} ms (${mp === null ? '-' : (mp >= 0 ? '+' : '') + mp.toFixed(2)} beat), in ${tot > 0 ? (100 * inS / tot).toFixed(0) : '-'} %${W.length ? '' : ' (no ref beats)'}`);
+  }
+  return out.join(' | ');
+}
+function movesText(run) {
+  const lockT = run.lockT, j = run.jumps.filter(x => lockT !== null && x.at >= lockT - 1e-6);
+  const st = run.states.filter(s => lockT !== null && s.t > lockT + 1e-6);
+  return `jumps after the first lock ${j.length ? j.map(x => `${x.kind}@${x.at.toFixed(1)}s(${x.d >= 0 ? '+' : ''}${x.d.toFixed(2)})`).join(' ') : 'none'}; state changes ${st.length ? st.map(s => `${s.state}@${s.t.toFixed(1)}s`).join(' ') : 'none'}`;
 }
 test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time to lock, main 501cfe1 beside the tracker under test (report-only; box only)`, async (t) => {
   await heavy(t);   // one heavy box test at a time (fixtures/heavy-lock.mjs)
@@ -467,6 +491,11 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
       + ` | octave factor before ${b.tr.alone.octave ? b.tr.alone.octave.factor : 1}, after ${a.tr.alone.octave ? a.tr.alone.octave.factor : 1} | ${secs} s, grid ${gridFlag}`
       + ` | ref tool ${ref && ref.toolVersion !== undefined ? 'v' + ref.toolVersion : '-'}, vote ${vote ? (vote.accepted ? `accepted v${vote.toolVersion}` : 'flagged') : 'none'}`
       + ` | side at lock: after ${sideText(after)}; before ${sideText(before)} [report-only]`);
+    if (SIDE_DIAG.includes(row.id)) {
+      say(t, `side-diag ${row.id} after: signed error vs the ref grid per ${SIDE_WIN_S} s: ${windowDiag(a.beats, secs)} [report-only]`);
+      say(t, `side-diag ${row.id} after: ${movesText(after)} [report-only]`);
+      say(t, `side-diag ${row.id} before (main 501cfe1): ${windowDiag(b.beats, secs)}; ${movesText(before)} [report-only]`);
+    }
   }
   const pct = s => (s.playedS > 0 ? 100 * s.inS / s.playedS : null);
   say(t, `gate-table summary: ${n} of ${rows.length} non-hc rows scored (first ${GATE_SECS} s) | inside-gate, time-weighted: before ${fmt(pct(sum.before))} %, after ${fmt(pct(sum.after))} %`
