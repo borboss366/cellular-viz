@@ -125,7 +125,7 @@ The user's five house tracks of 15 Nov: steady 4/4 club music, to check the trac
 
 **Known limitation (user, 15 Nov):**
 
-- On house with a loud off-beat bass the tracker can slide to the off-beat after the first lock. Routes found: a tempo excursion while locked (house-01, house-02), and the persistent-dissent jump after a breakdown (house-03). Accepted for the MVP. Remedy: a hand flip (Shift+F on the conductor page, or the flip button on the controller).
+- On house with a loud off-beat bass the tracker can slide to the off-beat after the first lock. Routes found: a tempo excursion while locked (house-01, house-02), and the persistent-dissent jump after a breakdown (house-03). Accepted for the MVP. Remedy: a hand flip (Shift+F on the conductor page, or the flip button on the controller). If a flip does not hold, the tempo is wrong (seen on house-01 after a breakdown): tap 4 or more even beats (Shift+A or the tap button), or restart (Shift+R / hold button 8).
 - The house rows stay report-only. The fix is parked; candidates: a side gate on side-crossing moves, a tempo gate while locked (see #221, F2), holding the phase through breakdowns.
 
 ## Reading the corpus
