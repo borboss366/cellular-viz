@@ -16,8 +16,9 @@ const MAP = JSON.parse(fs.readFileSync(path.join(REPO, 'experiments/lcxl3.map.js
 function port(name, type) {
   return { name, type, state: 'connected', onmidimessage: null, sent: [], at: [], send(b, at) { this.sent.push([...b]); this.at.push(at); } };
 }
-function fakeAccess({ sysex = true, withDevice = true } = {}) {
+function fakeAccess({ sysex = true, withDevice = true, iac = false } = {}) {
   const a = { sysexEnabled: sysex, inputs: new Map(), outputs: new Map(), onstatechange: null };
+  if (iac) a.outputs.set('out-iac', port('IAC Driver Bus 1', 'output'));
   if (withDevice) plug(a);
   return a;
 }
@@ -27,7 +28,7 @@ function plug(a) {
   if (a.onstatechange) a.onstatechange({});
 }
 function unplug(a) {
-  for (const m of [a.inputs, a.outputs]) for (const p of m.values()) p.state = 'disconnected';
+  for (const m of [a.inputs, a.outputs]) for (const p of m.values()) if (/LCXL3/.test(p.name)) p.state = 'disconnected';
   if (a.onstatechange) a.onstatechange({});
 }
 function fakeClock() {
@@ -39,7 +40,8 @@ async function rig(o = {}) {
   const access = o.access || fakeAccess(o), clock = fakeClock(), timers = [], statuses = [];
   let now = 1000;
   const nav = o.noMidi ? {} : { requestMIDIAccess: async q => { if (o.deny) throw new Error('denied'); if (o.denySysex && q && q.sysex) throw new Error('no sysex'); return access; } };
-  const ctl = M.create({ clock, navigator: nav, perfNow: () => now, lastFix: () => o.lastFix || '',
+  const bridges = [];
+  const ctl = M.create({ clock, navigator: nav, perfNow: () => now, lastFix: () => o.lastFix || '', storage: o.storage, onBridge: (b, n) => bridges.push([b, n]),
     setInterval: () => 1, clearInterval: () => {}, setTimeout: (f, ms) => { timers.push({ f, at: now + ms }); return timers.length; },
     clearTimeout: h => { timers[h - 1] = null; }, onStatus: s => statuses.push(s) });
   clock.nowRef = () => now;
@@ -47,7 +49,7 @@ async function rig(o = {}) {
   const out = () => access.outputs.get('out-daw'), inp = () => access.inputs.get('in-daw');
   const press = (cc, v = 127, ts = 5) => inp().onmidimessage({ data: [0xB0, cc, v], timeStamp: ts });
   const advance = ms => { now += ms; for (const t of timers) if (t && t.at <= now) { t.f(); timers[timers.indexOf(t)] = null; } };
-  return { access, clock, ctl, out, inp, press, advance, statuses, now: () => now, clear: () => { out().sent.length = 0; out().at.length = 0; } };
+  return { access, clock, ctl, out, inp, press, advance, statuses, bridges, now: () => now, clear: () => { out().sent.length = 0; out().at.length = 0; } };
 }
 const hex = b => b.map(x => x.toString(16).padStart(2, '0')).join(' ');
 
@@ -253,4 +255,84 @@ test('stop: display cancelled, LEDs dark, DAW mode off last; twice is harmless',
   for (let cc = 45; cc <= 52; cc++) assert.ok(s.includes(`b0 ${cc.toString(16)} 00`), `LED ${cc} dark`);
   assert.equal(inp().onmidimessage, null);
   assert.equal(ctl.status, 'off');
+});
+
+// ---------- the bridge (the orchestrator's decision, 15 Nov): faders and pot rows 2–3 → the IAC bus for Resolume ----------
+const memStore = (init = {}) => { const m = { ...init }; return { m, getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } }; };
+
+test('bridge: every fader and every pot in rows 2 and 3 → the same bytes on the IAC bus', async () => {
+  const { ctl, inp, access, out, clear } = await rig({ iac: true });
+  assert.equal(ctl.bridge, 'on');
+  assert.equal(ctl.bridgePort, 'IAC Driver Bus 1');
+  const iac = access.outputs.get('out-iac');
+  clear();
+  const sent = [];
+  for (let cc = 5; cc <= 12; cc++) sent.push([0xBF, cc, cc * 3]);
+  for (let cc = 21; cc <= 36; cc++) sent.push([0xBF, cc, 127 - cc]);
+  for (const d of sent) inp().onmidimessage({ data: Uint8Array.from(d), timeStamp: 1 });
+  assert.deepEqual(iac.sent, sent);
+  assert.equal(ctl.forwarded, sent.length);
+  assert.deepEqual(out().sent, [], 'nothing goes back to the device');
+});
+
+test('bridge: the page\'s own controls never reach the bus (button rows, pot row 1 absolute and relative, Shift, mode, SysEx)', async () => {
+  const { inp, access, clock } = await rig({ iac: true });
+  const iac = access.outputs.get('out-iac');
+  const own = [];
+  for (let cc = 37; cc <= 52; cc++) own.push([0xB0, cc, 127], [0xB0, cc, 0]);
+  for (let cc = 13; cc <= 20; cc++) own.push([0xBF, cc, 64]);
+  for (let cc = 77; cc <= 84; cc++) own.push([0xBF, cc, 65]);
+  own.push([0xB6, 63, 127], [0xB6, 30, 1], [0xB0, 5, 64], [0xF0, 0x00, 0x20, 0x29, 0xF7], [0xBF, 4, 1], [0xBF, 37, 1]);
+  for (const d of own) inp().onmidimessage({ data: d, timeStamp: 1 });
+  assert.deepEqual(iac.sent, []);
+  assert.equal(clock.fixes.length, 8 - 1, 'the lower row still drives the clock (restart waits for its hold)');
+  for (const d of own) assert.equal(M.forwarded(d), false, hex(d));
+});
+
+test('bridge: no IAC port → lamp off, faders dropped, no crash; the bus appearing later turns it on', async () => {
+  const { ctl, inp, access } = await rig();
+  assert.equal(ctl.bridge, 'off');
+  assert.equal(ctl.bridgePort, null);
+  inp().onmidimessage({ data: [0xBF, 5, 64], timeStamp: 1 });
+  assert.equal(ctl.forwarded, 0);
+  access.outputs.set('out-iac', port('IAC Driver Bus 1', 'output'));
+  access.onstatechange({});
+  assert.equal(ctl.bridge, 'on');
+  inp().onmidimessage({ data: [0xBF, 5, 64], timeStamp: 1 });
+  assert.deepEqual(access.outputs.get('out-iac').sent, [[0xBF, 5, 64]]);
+});
+
+test('bridge: the chosen bus is kept by name in storage; the device\'s own ports are never offered or used', async () => {
+  const access = fakeAccess({ iac: true });
+  access.outputs.set('out-other', port('loopMIDI Port', 'output'));
+  const storage = memStore({ [M.MAP.BRIDGE_KEY]: 'loopMIDI Port' });
+  const { ctl } = await rig({ access, storage });
+  assert.equal(ctl.bridgePort, 'loopMIDI Port');
+  assert.deepEqual(ctl.bridgePorts().sort(), ['IAC Driver Bus 1', 'loopMIDI Port']);
+  ctl.setBridgePort('IAC Driver Bus 1');
+  assert.equal(storage.m[M.MAP.BRIDGE_KEY], 'IAC Driver Bus 1');
+  assert.equal(ctl.bridgePort, 'IAC Driver Bus 1');
+  ctl.setBridgePort('LCXL3 1 DAW In');
+  assert.equal(ctl.bridgePort, 'IAC Driver Bus 1', 'a device port is refused: back to the default bus');
+  const blocked = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }, removeItem() {} };
+  assert.equal((await rig({ iac: true, storage: blocked })).ctl.bridge, 'on', 'blocked storage: the default bus');
+});
+
+test('bridge: degraded while the device is missing or on the Mode Select page; mode report 6 → re-select DAW Mixer', async () => {
+  const access = fakeAccess({ iac: true });
+  const { ctl, inp, out, clear, advance, bridges } = await rig({ access });
+  assert.equal(ctl.bridge, 'on');
+  clear();
+  inp().onmidimessage({ data: [0xB6, 30, 6] });
+  assert.equal(ctl.status, 'mode-select');
+  assert.equal(ctl.bridge, 'degraded');
+  assert.deepEqual(out().sent.map(hex), ['b6 1e 01']);
+  advance(3000); ctl.tick();
+  assert.equal(ctl.bridge, 'on');
+  unplug(access);
+  assert.equal(ctl.status, 'no-device');
+  assert.equal(ctl.bridge, 'degraded');
+  assert.deepEqual(bridges.map(b => b[0]), ['on', 'degraded', 'on', 'degraded']);
+  ctl.stop();
+  assert.equal(ctl.bridge, 'off');
 });

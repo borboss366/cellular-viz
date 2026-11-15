@@ -4,13 +4,18 @@
 // constants below equal to the map.
 //
 // Ports: the input and output whose name contains "DAW" (CoreMIDI: "LCXL3 1 DAW Out" / "LCXL3 1 DAW In"). In DAW mode
-// the device's standalone MIDI port is silent (hardware check), so Resolume cannot share the controls while this
-// holds DAW mode.
+// the device's standalone MIDI port is silent (hardware check), so Resolume can't read the device while this holds
+// DAW mode. The bridge (the orchestrator's decision, 15 Nov): the 8 faders (ch16 CC 5–12) and pot rows 2 and 3 (ch16 CC
+// 21–36) go out unchanged on a virtual output, by default the macOS IAC Driver bus (the first output named "IAC"), and
+// Resolume listens to that bus only. The page's own controls (both button rows, pot row 1, Shift) never go out. The
+// choice of bus is kept by name in storage (localStorage on the page). ctl.bridge: 'off' (no such port), 'on', or
+// 'degraded' (the bus is there but the device isn't connected in DAW Mixer / Control, so nothing reaches it).
 // Lower button row (D2), ch1 CC 45–52, 7F press / 00 release:
 //   tap · flip · ÷2 · ×2 · nudge −10 · nudge +10 · set 1 · restart (fires after a 1 s hold; its LED flashes red while
 //   held, a release before 1 s does nothing). ÷2 / ×2 pressed again release the hold (clock.js D4, not here).
 // Every press is clock.fix(kind, arg, { origin: 'fix:controller', eventTs }) with the MIDI event's timeStamp (the
-// performance.now() clock, as a key's). The upper row, the pots and the faders are not read (D2: Resolume's, later).
+// performance.now() clock, as a key's). The upper row, pot row 1 and Shift are not used yet; the faders and pot rows
+// 2–3 go to the bridge.
 // LEDs (D3), from the page's own read() and trackerState, diffed, at most 20 Hz: the tap button lights in the first
 // quarter of each beat, green locked / amber acquiring / red free-run (steady before the first lock: no beats to
 // flash on), dark with no tracker. The beat flashes are booked ahead with MIDIOutput.send(bytes, timestamp): Chrome
@@ -19,8 +24,8 @@
 // red for 0.6 s. Display (SysEx only; without SysEx the LEDs still work): line 1 BPM + state, line 2 confidence +
 // the last fix, on the stationary target 35h.
 // The Mode button opens the device's Mode Select page: the buttons then pick Custom Modes (ch7 CC30 ≠ 1, 2) and send
-// no CCs, and only Mode closes it. On such a report this sets DAW Mixer back (ch7 CC30 1) and the lamp says "press
-// MODE". Hot-plug: every statechange re-resolves the ports by name; a new output gets DAW mode, the mode query and
+// no CCs, and only Mode closes it. On such a report this sets DAW Mixer back (ch7 CC30 1), the lamp says degraded and
+// the display "PRESS MODE". Hot-plug: every statechange re-resolves the ports by name; a new output gets DAW mode, the mode query and
 // every LED and display line again (the device powers up in standalone mode). stop() (the page's pagehide) cancels the
 // display, darkens the LEDs and sends DAW mode off.
 //
@@ -28,6 +33,8 @@
 //   ctl.start()  → Promise; asks requestMIDIAccess({ sysex: true }), else without SysEx, else status 'no-midi'
 //   ctl.stop()   → leaves DAW mode (safe to call twice)
 //   ctl.status   → 'off' | 'no-midi' | 'no-device' | 'connected' | 'mode-select'; ctl.sysex → boolean
+//   ctl.bridge   → 'off' | 'on' | 'degraded' (opts.onBridge(state, portName)); ctl.bridgePort → its name or null
+//   ctl.bridgePorts() → the outputs the bridge may use (every output but the device's); ctl.setBridgePort(name)
 // Include with <script src="midi-controller.js"></script>; node's tests load it with require.
 (function (root) {
   'use strict';
@@ -35,6 +42,8 @@
   const BUTTON_CH = 0xB0, FLASH_CH = 0xB1, FEATURE_CH = 0xB6, QUERY_CH = 0xB7;
   const LOWER = [45, 46, 47, 48, 49, 50, 51, 52];
   const COLOUR = { off: 0, red: 5, amber: 9, green: 21 };
+  const POT_CH = 0xBF, BRIDGE_CCS = [[5, 12], [21, 36]], BRIDGE_DEFAULT = /IAC/, DEVICE_PORT = /LCXL3/;
+  const BRIDGE_KEY = 'cellular-viz.lcxl3.bridgePort';
   const DAW_ON = [0x9F, 0x0C, 0x7F], DAW_OFF = [0x9F, 0x0C, 0x00];
   const MODE_CC = 30, MODE_MIXER = 1, MODE_CONTROL = 2;
   const SYSEX = [0xF0, 0x00, 0x20, 0x29, 0x02, 0x15], DISPLAY_TARGET = 0x35, DISPLAY_CHARS = 16;
@@ -52,6 +61,9 @@
   const ascii = s => [...String(s)].map(c => c.charCodeAt(0)).filter(b => b >= 0x20 && b <= 0x7E).slice(0, DISPLAY_CHARS);
   const displayConfig = cfg => [...SYSEX, 0x04, DISPLAY_TARGET, cfg, 0xF7];
   const displayText = (field, s) => [...SYSEX, 0x06, DISPLAY_TARGET, field, ...ascii(s), 0xF7];
+
+  /** the faders and pot rows 2–3, the controls the bridge passes to Resolume */
+  const forwarded = data => !!data && data.length === 3 && data[0] === POT_CH && BRIDGE_CCS.some(([a, b]) => data[1] >= a && data[1] <= b);
 
   /** one inbound message → { type: 'button', index (0–7 lower row), down } | { type: 'mode', value } | null */
   function decode(data) {
@@ -92,14 +104,39 @@
     const setI = o.setInterval || ((f, ms) => root.setInterval(f, ms)), clearI = o.clearInterval || (h => root.clearInterval(h));
     const setT = o.setTimeout || ((f, ms) => root.setTimeout(f, ms)), clearT = o.clearTimeout || (h => root.clearTimeout(h));
     const lastFix = o.lastFix || (() => '');
+    const storage = o.storage || null;
+    let bridgeOut = null, bridgeWant = null;
+    try { bridgeWant = storage ? storage.getItem(BRIDGE_KEY) : null; } catch (e) { /* storage blocked: the default bus */ }
     let access = null, input = null, output = null, timer = null, holdTimer = null, stopped = false;
     let ledSent = {}, linesSent = [], bookedBeat = null, lastTickAt = null, gaps = [], lastDisplayAt = -1e9, rejectUntil = -1e9, modeSelectUntil = -1e9, restartHeld = false;
-    const ctl = { status: 'off', sysex: false, sent: 0, start, stop, tick };
+    const ctl = { status: 'off', sysex: false, sent: 0, bridge: 'off', bridgePort: null, forwarded: 0, start, stop, tick, bridgePorts, setBridgePort };
 
     function setStatus(s) {
       if (ctl.status === s) return;
       ctl.status = s;
       if (o.onStatus) o.onStatus(s);
+      bridgeState();
+    }
+    function bridgeState() {
+      const b = !bridgeOut ? 'off' : ctl.status === 'connected' ? 'on' : 'degraded', name = bridgeOut ? bridgeOut.name : null;
+      if (ctl.bridge === b && ctl.bridgePort === name) return;
+      ctl.bridge = b; ctl.bridgePort = name;
+      if (o.onBridge) o.onBridge(b, name);
+    }
+    function bridgePorts() {
+      if (!access) return [];
+      return [...access.outputs.values()].filter(p => !DEVICE_PORT.test(p.name || '') && p.state !== 'disconnected').map(p => p.name);
+    }
+    function setBridgePort(name) {
+      bridgeWant = name || null;
+      try { if (storage) { if (bridgeWant) storage.setItem(BRIDGE_KEY, bridgeWant); else storage.removeItem(BRIDGE_KEY); } } catch (e) { /* not kept */ }
+      resolve();
+    }
+    // the chosen bus by name, else the first IAC bus; never one of the device's own ports
+    function resolveBridge() {
+      const ok = [...access.outputs.values()].filter(p => !DEVICE_PORT.test(p.name || '') && p.state !== 'disconnected');
+      bridgeOut = (bridgeWant && ok.find(p => p.name === bridgeWant)) || ok.find(p => BRIDGE_DEFAULT.test(p.name || '')) || null;
+      bridgeState();
     }
     function send(bytes, at) {
       if (!output) return;
@@ -130,6 +167,10 @@
       }
     }
     function onMessage(e) {
+      if (bridgeOut && forwarded(e && e.data)) {
+        try { bridgeOut.send([...e.data]); ctl.forwarded++; } catch (err) { bridgeOut = null; bridgeState(); }
+        return;
+      }
       const m = decode(e && e.data);
       if (!m) return;
       if (m.type === 'button') return onButton(m.index, m.down, e.timeStamp);
@@ -148,9 +189,10 @@
       if (input && input !== i) input.onmidimessage = null;
       if (i && i !== input) i.onmidimessage = onMessage;
       input = i;
-      if (!out) { output = null; ledSent = {}; linesSent = []; return setStatus('no-device'); }
+      if (!out) { output = null; ledSent = {}; linesSent = []; setStatus('no-device'); return resolveBridge(); }
       if (out !== output) { output = out; enter(); }
       if (ctl.status !== 'mode-select') setStatus('connected');
+      resolveBridge();
     }
 
     function view() {
@@ -229,12 +271,13 @@
         send(DAW_OFF);
       }
       setStatus('off');
+      bridgeOut = null; bridgeState();
     }
     return ctl;
   }
 
-  const api = { create, decode, leds, displayLines,
-    MAP: { LOWER, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS } };
+  const api = { create, decode, forwarded, leds, displayLines,
+    MAP: { LOWER, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS, POT_CH, BRIDGE_CCS, BRIDGE_KEY } };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MidiController = api;
 })(typeof window !== 'undefined' ? window : globalThis);
