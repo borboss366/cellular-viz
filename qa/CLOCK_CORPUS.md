@@ -123,6 +123,11 @@ The user's five house tracks of 15 Nov: steady 4/4 club music, to check the trac
 | house-04 | 123.0 (the accepted vote) | report-only | vote |
 | house-05 | 124.21 (the accepted vote) | report-only | vote |
 
+**Known limitation (user, 15 Nov):**
+
+- On house with a loud off-beat bass the tracker can slide to the off-beat after the first lock. Routes found: a tempo excursion while locked (house-01, house-02), and the persistent-dissent jump after a breakdown (house-03). Accepted for the MVP. Remedy: a hand flip (Shift+F on the conductor page, or the flip button on the controller).
+- The house rows stay report-only. The fix is parked; candidates: a side gate on side-crossing moves, a tempo gate while locked (see #221, F2), holding the phase through breakdowns.
+
 ## Reading the corpus
 
 Per track: the share of played time inside the gate (±35 ms), for the tracker alone (the shadow) and for the conducted clock, plus p50, p90 and p95 of the error as reported numbers. The corpus number: how many tracks need no hand fix, and how many fixes the rest needed.
