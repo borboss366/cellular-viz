@@ -123,7 +123,8 @@ Constants are frozen while the corpus grows (the list is under "Frozen tracker c
 
 The live tracker as merged on 14 Nov: F3 (the locked tempo from a fit of the onsets, with the short-window step path) and F4 (the first-lock candidate scan, the second look and the re-acquire scans), plus fix A of the half-beat ruling (the side at the first lock from two hypotheses, phase 0 or 1/2, by the low lane's onset weight, ties broken by the attack's brightness). These are its values. Changing any of them, or any line of the tracker, needs a decision first, and this list and the sha256 change in the same PR: `qa/runner/test/tracker-frozen.test.mjs` compares both with the code.
 
-- tracker source sha256: `233ee1d530fbac95820221b228af5b796e0808cad6869736200d637fbd7a541b`
+- tracker source sha256: `c10b33cfe34b8f734afba800220673029d9c7407a2fb10f02fac7f81a3fc5ffe`
+- 15 Nov, logging only (no behaviour change): the tracker records each silent free-run -> locked re-lock with its size (`relocks`) and the PLL's applied phase correction while locked (`phaseApplied`), for the side-diag and phase-diag rows.
 
 Module constants:
 

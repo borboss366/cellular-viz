@@ -262,6 +262,10 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // the output: own (plus an integer relabel) or, after a tap, the tap model until the tracker overrides it
     let tapModel = null, outOffset = 0, disagreeSince = null;
     const jumps = [], stateLog = [];
+    // logging only (the half-beat diagnosis, 15 Nov): silent free-run -> locked re-locks (not jumps: tr.jumps rebook
+    // the clock) and the phase correction the PLL slew applied while locked (beats, cumulative)
+    const relockLog = [];
+    let phaseApplied = 0;
     let octaveLock = null, lockOutSince = null, holdOutSince = null;
     let holdResets = 0, holdLastReset = null, holdFirstWrong = null;   // fix (c) accumulator diagnostics (logging only)
     let protect = null, protectSkips = 0;   // the hand hold's protection: { t, beat, bar } of its end; checks skipped in it
@@ -672,7 +676,11 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         if (reacq.length < C.reacqOnsets) return;
         const em = median(reacq);
         reacq = [];
-        if (Math.abs(em) <= C.reacqJump) { own.pending -= em; conf = C.lockConf; lastInWindow = to; setState('locked', to); }
+        if (Math.abs(em) <= C.reacqJump) {
+          relockLog.push({ at: to, kind: 'relock', d: -em });   // logging only: the silent re-lock and its size (beats)
+          if (relockLog.length > 64) relockLog.shift();
+          own.pending -= em; conf = C.lockConf; lastInWindow = to; setState('locked', to);
+        }
         else { scheduled = { kind: 'acquire', delta: -em, atBeat: nextBarLine(outBeats(to)) }; setState('acquire', to); }
         return;
       }
@@ -1024,7 +1032,11 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const dt = lastT === null ? dtHop : Math.max(0, t - lastT);
       lastT = t;
       // slews, then a scheduled bar-line jump
-      if (own.P) { slew(own, dt, t < slewBoostUntil ? C.stepSlewRate : C.maxRate); if (tapModel) slew(tapModel, dt); }
+      if (own.P) {
+        const b0 = own.B0;
+        slew(own, dt, t < slewBoostUntil ? C.stepSlewRate : C.maxRate); if (tapModel) slew(tapModel, dt);
+        if (state === 'locked') phaseApplied += own.B0 - b0;
+      }
       if (scheduled && own.P && outBeats(t) >= scheduled.atBeat) {
         const from = outBeats(t);
         if (scheduled.kind === 'acquire') { own.B0 += scheduled.delta; own.pending = 0; conf = C.lockConf; lastInWindow = t; setState('locked', t); }
@@ -1143,7 +1155,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
           pendSkips: fit.pendSkips };
       },
       get notes() { return notes; }, get relative() { return relReport(); }, get hold() { return holdReport(); }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
-      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
+      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get relocks() { return relockLog; }, get phaseApplied() { return phaseApplied; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
       get state() { return state; }, get confidence() { return conf; }, get bpm() { return tapModel ? 60 / tapModel.P : bpm; },
       get ownBpm() { return bpm; }, get lastConfidentBpm() { return lastConfidentBpm; }, get tapped() { return !!tapModel; },
       get barOrigin() { return barOrigin; },

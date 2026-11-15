@@ -396,10 +396,15 @@ const CD = await import('../../../experiments/conductor.mjs');
 const GATE_SECS = 180;
 /** one tracker over the audio: its output beats (as the conductor logs the shadow's), 0.1 s samples, first lock */
 function gateRun(mono, lib) {
-  const beats = [], samples = [], counter = CD.beatCounter();
-  let lockT = null;
+  const beats = [], samples = [], counter = CD.beatCounter(), applied = [];
+  let lockT = null, lastBlock = null;
   const tr = track(mono, (tr, tt) => {
     if (lockT === null && tr.state === 'locked') lockT = tt;
+    // the PLL's applied phase correction (beats, cumulative while locked), once per 8 output beats (tracker under test only)
+    if (lockT !== null && typeof tr.phaseApplied === 'number' && tr.bpm) {
+      const blk = Math.floor(tr.beatsAt(tt) / 8);
+      if (blk !== lastBlock) { lastBlock = blk; applied.push({ t: tt, cum: tr.phaseApplied, state: tr.state }); }
+    }
     for (const at of counter(t => tr.beatsAt(t), b => tr.timeOf(b), tt)) beats.push(at);
     samples.push({ t: tt, bpm: tr.bpm || null, conf: tr.confidence, state: tr.state });
   }, lib);
@@ -407,8 +412,11 @@ function gateRun(mono, lib) {
   const side = tr.snapshot ? tr.snapshot().lane.side : null;
   // every jump (side, flip, acquire, rescan, ...) and state change, with times: the moves while locked (diagnostic rows)
   const jumps = (tr.jumps || []).map(j => ({ at: j.at, kind: j.kind, d: j.toBeats - j.fromBeats }));
+  // the silent free-run -> locked re-locks (a slew, not a clock jump; logged apart by the tracker) join the list as kind 'relock'
+  for (const r of tr.relocks || []) jumps.push({ at: r.at, kind: 'relock', d: r.d });
+  jumps.sort((x, y) => x.at - y.at);
   const states = (tr.stateLog || []).map(s => ({ t: s.t, state: s.state }));
-  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states };
+  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states, applied };
 }
 /** the side decision at the first lock, as text (main 501cfe1 has no two-hypothesis decision: its circular mean) */
 function sideText(r) {
@@ -437,6 +445,15 @@ function gateScore(run, id, row, grid, secs) {
 // reference beat (ms and in beats; +-0.5 = the other side), the inside-gate share; then every move while locked
 const SIDE_DIAG = ['cafe-del-mar', 'sincere', 'dj-set-brejcha', 'sandstorm', 're-rewind', 'billie-jean'];
 const SIDE_WIN_S = 15;
+// the slow walk while locked (sincere; billie-jean as the control): the PLL's cumulative applied phase correction
+const PHASE_DIAG = ['sincere', 'billie-jean'];
+function appliedText(run) {
+  const A = run.applied || [];
+  if (!A.length) return 'applied phase correction: none logged';
+  let prev = 0;
+  const parts = A.map(a => { const d = a.cum - prev; prev = a.cum; return `${a.t.toFixed(1)}s ${a.cum >= 0 ? '+' : ''}${a.cum.toFixed(3)} (${d >= 0 ? '+' : ''}${d.toFixed(3)})${a.state === 'locked' ? '' : ' ' + a.state}`; });
+  return `applied phase correction while locked, cumulative beats per 8 beats (step in brackets): ${parts.join(' | ')}`;
+}
 function windowDiag(B, secs) {
   const med = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
   const out = [];
@@ -494,6 +511,7 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
     if (SIDE_DIAG.includes(row.id)) {
       say(t, `side-diag ${row.id} after: signed error vs the ref grid per ${SIDE_WIN_S} s: ${windowDiag(a.beats, secs)} [report-only]`);
       say(t, `side-diag ${row.id} after: ${movesText(after)} [report-only]`);
+      if (PHASE_DIAG.includes(row.id)) say(t, `phase-diag ${row.id} after: ${appliedText(after)} [report-only]`);
       say(t, `side-diag ${row.id} before (main 501cfe1): ${windowDiag(b.beats, secs)}; ${movesText(before)} [report-only]`);
     }
   }

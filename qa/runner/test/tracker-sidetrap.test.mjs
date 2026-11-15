@@ -2,11 +2,13 @@
 // the off-beat bass sits in the low lane and is often louder than the kick, so the low lane's phases are bimodal and
 // the side chosen at the first lock can land on the bass, half a beat off. Synthetic tracks (no real audio), one
 // tracker run each, the phase measured at every true beat after the lock:
-//   a. 128, kick on every beat (60 Hz burst + a 2 ms broadband click), off-beat bass +6 dB (55 Hz, low-passed at
-//      150 Hz, a 25 ms attack: no transient), closed hats on the eighths at -12 dB       REPORT-ONLY (for now)
+//   a. 128, kick on every beat (60 Hz burst + a 2 ms broadband click + a bright beater click), off-beat bass +6 dB
+//      (55 Hz, low-passed at 150 Hz, a 25 ms attack: no transient), closed hats on the eighths (-6 dB on the beat,
+//      -12 dB on the off-beat)                                                              REPORT-ONLY (for now)
 //   b. the same with the bass at +12 dB                                                    REPORT-ONLY (for now)
 //   c. backbeat guard: kick on 1 and 3, a bright snare on 2 and 4, no off-beat bass        HARD
 // Rows: |phase - truth| <= 35 ms for >= 95 % of the beats after the lock; side moves (a: <= 1, c: 0).
+// Then the breakdown (report-only, at the end): the side through a free-run and the re-lock.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -29,12 +31,20 @@ function biquad(x, sr, type, f0, q) {   // RBJ, in place
   return x;
 }
 const add = (out, t0, seg) => { const i0 = Math.round(t0 * SR); for (let i = 0; i < seg.length && i0 + i < out.length; i++) if (i0 + i >= 0) out[i0 + i] += seg[i]; };
-function kick(rnd, g = 1) {   // a 60 Hz burst (120 ms decay) with a 2 ms broadband click on top
+function kick(rnd, g = 1, click = 0) {   // a 60 Hz burst (120 ms decay) with a 2 ms broadband click on top
   const n = Math.round(0.35 * SR), x = new Float64Array(n);
   for (let i = 0; i < n; i++) { const t = i / SR; x[i] = g * Math.min(1, t / 0.001) * Math.exp(-t / 0.12) * Math.sin(2 * Math.PI * 60 * t); }
   for (let i = 0; i < Math.round(0.002 * SR); i++) x[i] += g * 0.6 * (rnd() * 2 - 1);
+  if (click > 0) {   // a + b (15 Nov): a bright beater click on top, 6 ms, high-passed at 2 kHz, so the broadband lane leads on the kick
+    const c = noiseHit(rnd, g * click, 'hp', 2000, 0.7, 0.004, 0.03, 2);
+    for (let i = 0; i < c.length; i++) x[i] += c[i];
+  }
   return x;
 }
+// traps a and b never reached the lock confidence on box run 353c37d ("lock never": they tested nothing). Since 15 Nov
+// the kick carries a bright beater click and the hat on the beat is louder than the one on the off-beat (a closed hat
+// on the eighths with the downbeat accented), so the drums can lock; the off-beat bass, the trap, is unchanged.
+const TRAP_CLICK = 1.0, TRAP_BEAT_HAT_DB = -6;
 function bass(g) {   // 55 Hz + its octave, a 25 ms raised-cosine attack (no transient), 180 ms long, low-passed at 150 Hz
   const n = Math.round(0.2 * SR), x = new Float64Array(n);
   for (let i = 0; i < n; i++) {
@@ -62,9 +72,11 @@ export function sideTrap({ bpm = 128, secs = 30, bassDb = 6, variant = 'offbass'
       if (k % 2 === 0) add(out, t, kick(rnd));
       else add(out, t, noiseHit(rnd, 0.6, 'bp', 2500, 1.0, 0.1, 0.4, 4));   // a bright snare on 2 and 4
     } else {
-      add(out, t, kick(rnd));
+      add(out, t, kick(rnd, 1, TRAP_CLICK));
       add(out, t + P / 2, bass(db(bassDb)));
-      for (const h of [0, 0.5]) add(out, t + h * P, noiseHit(rnd, db(-12), 'hp', 8000, 0.7, 0.03, 0.12, 1.5));   // closed hats on the eighths
+      // closed hats on the eighths, the one on the beat accented
+      add(out, t, noiseHit(rnd, db(TRAP_BEAT_HAT_DB), 'hp', 8000, 0.7, 0.03, 0.12, 1.5));
+      add(out, t + P / 2, noiseHit(rnd, db(-12), 'hp', 8000, 0.7, 0.03, 0.12, 1.5));
     }
   }
   let m = 0; for (const v of out) m = Math.max(m, Math.abs(v));
@@ -127,4 +139,82 @@ test('side trap c: backbeat guard (kick 1 and 3, bright snare 2 and 4, no off-be
   assert.ok(r.lockT !== null, 'locks');
   assert.equal(r.sideMoves, 0, 'no side move');
   assert.ok(r.inPct >= 95, `${r.inPct.toFixed(1)} % within ${GATE_MS} ms`);
+});
+
+// ---------------------------------------------------------------- the side through a breakdown (Orchestrator 15 Nov,
+// after #232's box run @9d7d000: the half-beat comes at the RE-LOCK after a free-run, not at the first lock). 128 BPM,
+// 60 s, 32 bars: bars 1-8 kick on every beat + off-beat bass + hats; bars 9-16 the kick and hats out, the off-beat bass
+// and a pad stay (the reference grid goes on); bars 17-32 the kick and hats back. REPORT-ONLY. Targets: the side kept
+// (|signed error change| < 0.25 beat), >= 95 % of the last 8 bars within 35 ms, no acquire jump > 0.25 beat, locked
+// again within 2 bars of the kick's return.
+function pad(out, t0, t1, g) {   // a soft chord (A minor, slightly detuned), 1 s raised-cosine fades: no transient
+  const i0 = Math.round(t0 * SR), i1 = Math.min(out.length, Math.round(t1 * SR)), fade = SR;
+  const f = [220, 220.7, 261.6, 329.6];
+  for (let i = i0; i < i1; i++) {
+    const t = (i - i0) / SR, k = Math.min(1, (i - i0) / fade, (i1 - i) / fade), env = 0.5 - 0.5 * Math.cos(Math.PI * k);
+    let v = 0; for (const fr of f) v += Math.sin(2 * Math.PI * fr * t);
+    out[i] += g * env * v / f.length;
+  }
+}
+export function sideBreakdown({ bpm = 128, bassDb = 6 } = {}) {
+  const P = 60 / bpm, bars = 32, n = bars * 4, out = new Float64Array(Math.round((LEAD + n * P + 1) * SR));
+  const rnd = mulberry32(4242), beats = [];
+  for (let k = 0; k < n; k++) {
+    const t = LEAD + k * P, bar = Math.floor(k / 4) + 1, drums = bar <= 8 || bar >= 17;
+    beats.push(t);
+    add(out, t + P / 2, bass(db(bassDb)));
+    if (drums) {
+      add(out, t, kick(rnd, 1, TRAP_CLICK));
+      add(out, t, noiseHit(rnd, db(TRAP_BEAT_HAT_DB), 'hp', 8000, 0.7, 0.03, 0.12, 1.5));
+      add(out, t + P / 2, noiseHit(rnd, db(-12), 'hp', 8000, 0.7, 0.03, 0.12, 1.5));
+    }
+  }
+  pad(out, LEAD + 30 * P, LEAD + 66 * P, db(-6));   // from the end of bar 8 to the start of bar 17, fading in and out
+  let m = 0; for (const v of out) m = Math.max(m, Math.abs(v));
+  const samples = new Float32Array(out.length); for (let i = 0; i < out.length; i++) samples[i] = out[i] * 0.8 / m;
+  return { samples, beats, bpm, name: `breakdown-offbass+${bassDb}dB-${bpm}`, kickOut: LEAD + 32 * P, kickBack: LEAD + 64 * P, P };
+}
+/** the tracker over the breakdown track: the signed error (beats) and the state at every true beat */
+export function runBreakdown(s) {
+  const tr = T.createTracker(), frames = [];
+  const an = T.createAnalyzer({ sampleRate: SR, onFrame: f => frames.push(f) });
+  for (let i = 0; i < s.samples.length; i += 128) an.process(s.samples.subarray(i, Math.min(s.samples.length, i + 128)), i / SR);
+  const per = [], states = [];
+  let lockT = null, bi = 0, lastState = null, lockedFrom = null;
+  for (const f of frames) {
+    tr.push(f);
+    if (tr.state !== lastState) { lastState = tr.state; states.push({ t: f.t, state: tr.state }); }
+    if (lockT === null && tr.state === 'locked') lockT = f.t;
+    if (tr.state === 'locked') { if (lockedFrom === null) lockedFrom = f.t; } else lockedFrom = null;
+    while (bi < s.beats.length && s.beats[bi] <= f.t) {
+      per.push({ k: bi, e: lockT === null ? null : frac(tr.beatsAt(s.beats[bi])), state: tr.state });
+      bi++;
+    }
+  }
+  const med = a => { if (!a.length) return null; const x = [...a].sort((p, q) => p - q); return x[x.length >> 1]; };
+  const errs = (k0, k1) => per.filter(p => p.k >= k0 && p.k < k1 && p.e !== null).map(p => p.e);
+  const before = med(errs(16, 32)), after = med(errs(96, 128));   // bars 5-8 and bars 25-32
+  const change = before === null || after === null ? null : frac(after - before);
+  const last = errs(96, 128), inPct = 100 * last.filter(e => Math.abs(e) * s.P * 1000 <= GATE_MS).length / 32;
+  const moves = (tr.jumps || []).filter(j => lockT !== null && j.at >= lockT).map(j => ({ at: j.at, kind: j.kind, d: frac(j.toBeats - j.fromBeats) }));
+  for (const r of tr.relocks || []) moves.push({ at: r.at, kind: 'relock', d: r.d });
+  moves.sort((x, y) => x.at - y.at);
+  const acqMax = moves.filter(j => j.kind === 'acquire').reduce((m, j) => Math.max(m, Math.abs(j.d)), 0);
+  // locked again: the start of the final locked run, measured from the kick's return (0 if it never left)
+  const relockBars = lockedFrom === null ? null : Math.max(0, lockedFrom - s.kickBack) / (4 * s.P);
+  const midStates = states.filter(x => x.t > s.kickOut - 1e-6);
+  return { tr, lockT, before, after, change, inPct, moves, acqMax, relockBars, midStates };
+}
+const sgn = x => (x === null ? '-' : (x >= 0 ? '+' : '') + x.toFixed(3));
+
+test('side breakdown: 8 bars kick + off-beat bass, 8 bars bass + pad only, 16 bars kick back: the side kept through the re-lock (report-only)', (t) => {
+  const s = sideBreakdown(), r = runBreakdown(s);
+  const ok = r.change !== null && Math.abs(r.change) < 0.25 && r.inPct >= 95 && r.acqMax <= 0.25 && r.relockBars !== null && r.relockBars <= 2;
+  report(t, `side breakdown ${s.name}: first lock ${r.lockT === null ? 'never' : r.lockT.toFixed(2) + ' s'}; median signed error bars 5-8 ${sgn(r.before)} beat, bars 25-32 ${sgn(r.after)} beat, change ${sgn(r.change)} (target |change| < 0.25)`
+    + `; last 8 bars ${r.inPct.toFixed(1)} % within ${GATE_MS} ms (target >= 95)`
+    + `; largest acquire jump ${r.acqMax.toFixed(3)} beat (target <= 0.25)`
+    + `; locked again ${r.relockBars === null ? 'no (not locked at the end)' : r.relockBars.toFixed(2) + ' bars after the kick returns'} (target <= 2)`
+    + ` | ${ok ? 'would pass' : 'would FAIL'} [report-only]`);
+  report(t, `side breakdown ${s.name} moves: kick out ${s.kickOut.toFixed(2)} s, back ${s.kickBack.toFixed(2)} s; jumps after the first lock ${r.moves.length ? r.moves.map(j => `${j.kind}@${j.at.toFixed(1)}s(${sgn(j.d)})`).join(' ') : 'none'}; states from the kick out ${r.midStates.length ? r.midStates.map(x => `${x.state}@${x.t.toFixed(1)}s`).join(' ') : 'no change'}`);
+  assert.equal(s.beats.length, 128, 'the fixture rendered 32 bars');
 });
