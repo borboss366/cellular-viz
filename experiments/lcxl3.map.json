@@ -1,0 +1,107 @@
+{
+  "device": "lcxl3",
+  "made": "2026-11-15",
+  "source": "Job 1 hardware check on the Mac, node + @julusian/midi (CoreMIDI), scratch script outside the repo",
+  "ports": {
+    "inputs": ["LCXL3 1 MIDI Out", "LCXL3 1 DAW Out"],
+    "outputs": ["LCXL3 1 MIDI In", "LCXL3 1 DAW In"],
+    "portNameHint": "DAW",
+    "verified": "hardware 15 Nov"
+  },
+  "keyTest": {
+    "what": "messages per input port while fader 1 moves bottom-top-bottom",
+    "counts": {
+      "beforeDaw": { "LCXL3 1 MIDI Out": 273, "LCXL3 1 DAW Out": 0 },
+      "dawOn": { "LCXL3 1 MIDI Out": 0, "LCXL3 1 DAW Out": 250 },
+      "dawOff": { "LCXL3 1 MIDI Out": 275, "LCXL3 1 DAW Out": 0 }
+    },
+    "midiPortDataWhileDawOn": false,
+    "verified": "hardware 15 Nov"
+  },
+  "dawMode": {
+    "on": [159, 12, 127],
+    "off": [159, 12, 0],
+    "onSysex": [240, 0, 32, 41, 2, 21, 2, 127, 247],
+    "offSysex": [240, 0, 32, 41, 2, 21, 2, 0, 247],
+    "echo": "the device echoes on/off in the form it was sent; no echo when already in that state",
+    "offReply": "before the off echo it reports surface mode: ch7 CC30 and CC31 = 6 (Custom Mode 1), twice",
+    "verified": "hardware 15 Nov"
+  },
+  "channels": { "pots": 16, "buttons": 1, "feature": 7, "query": 8, "verified": "hardware 15 Nov" },
+  "faders": { "channel": 16, "ccs": [5, 6, 7, 8, 9, 10, 11, 12], "verified": "hardware 15 Nov" },
+  "encoders": {
+    "channel": 16,
+    "absolute": { "row1": [13, 20], "row2": [21, 28], "row3": [29, 36] },
+    "verified": "hardware 15 Nov"
+  },
+  "buttons": {
+    "channel": 1,
+    "press": 127,
+    "release": 0,
+    "upperRow": { "ccs": [37, 38, 39, 40, 41, 42, 43, 44], "verified": "hardware 15 Nov" },
+    "lowerRow": { "ccs": [45, 46, 47, 48, 49, 50, 51, 52], "verified": "hardware 15 Nov" },
+    "pageUp": { "cc": 106, "verified": "hardware 15 Nov" },
+    "pageDown": { "cc": 107, "verified": "hardware 15 Nov" },
+    "trackLeft": { "cc": 103, "verified": "unverified", "note": "103/102 seen in the order the user pressed left, right; direction not isolated" },
+    "trackRight": { "cc": 102, "verified": "unverified", "note": "see trackLeft" },
+    "record": { "cc": 118, "verified": "hardware 15 Nov" },
+    "play": { "cc": 116, "verified": "hardware 15 Nov" },
+    "smallButtonNearSoloArm": { "cc": 104, "verified": "hardware 15 Nov" },
+    "sameInDawMixerAndDawControl": { "value": true, "verified": "hardware 15 Nov" }
+  },
+  "deviceOnlyButtons": {
+    "shift": { "channel": 7, "cc": 63, "press": 127, "release": 0, "verified": "hardware 15 Nov" },
+    "mode": { "sends": "nothing", "effect": "opens/closes the device's Mode Select page", "verified": "hardware 15 Nov" },
+    "soloArm": { "sends": "ch7 CC30 = 2, CC31 = 2", "effect": "surface to DAW Control", "verified": "hardware 15 Nov" },
+    "muteSelect": { "sends": "ch7 CC30 = 1, CC31 = 1", "effect": "surface to DAW Mixer", "verified": "hardware 15 Nov" }
+  },
+  "surfaceMode": {
+    "report": { "channel": 7, "cc": 30, "alsoCc31": "sent alongside CC30; equals CC30 in DAW sub-modes, CC30 - 5 for Custom Modes 9-16 (meaning not documented)" },
+    "values": { "dawMixer": 1, "dawControl": 2, "customModes1to4": [6, 9], "customModes5to16": [18, 29] },
+    "set": "host sends ch7 CC30 <value> on the DAW port; the device applies it and echoes the report",
+    "query": "host sends ch8 CC30 0 (B7 1E 00); reply is ch7 CC30 <value>",
+    "modeSelectPage": "while the Mode Select page is open, the 16 buttons send no button CCs: they pick Custom Modes (seen: upper button 1 = 6, lower row = 22-29 left to right; upper buttons 2-8 not pressed on this page) and the surface leaves DAW Mixer. DAW mode itself stays on. Only the Mode button closes the page; DAW off/on does not",
+    "verified": "hardware 15 Nov"
+  },
+  "palette": {
+    "set": "B0 <button cc> <index> (ch1 static), B1 = flash, B2 = pulse",
+    "off": { "index": 0, "verified": "hardware 15 Nov" },
+    "red": { "index": 5, "alt": [72], "verified": "hardware 15 Nov" },
+    "amber": { "index": 9, "alt": [96], "note": "9 and 96 look the same to the user; seen as orange", "verified": "hardware 15 Nov" },
+    "yellow": { "index": 13, "verified": "hardware 15 Nov" },
+    "green": { "index": 21, "alt": [17], "verified": "hardware 15 Nov" },
+    "seen": { "0": "off", "5": "red", "9": "orange", "13": "yellow", "21": "green", "37": "light blue", "45": "blue", "53": "purple", "72": "red", "96": "orange", "126": "yellowish", "3": "white", "1": "grey", "17": "green", "60": "red", "84": "orange" },
+    "flash": { "channel": 2, "status": 177, "verified": "hardware 15 Nov" },
+    "pulse": { "channel": 3, "status": 178, "verified": "hardware 15 Nov" },
+    "clear": "send index 0 on ch1, ch2 and ch3 to stop a flash or pulse",
+    "rgbSysex": { "bytes": "F0 00 20 29 02 15 01 53 <cc> <R> <G> <B> F7", "verified": "unverified" }
+  },
+  "localLedsInDawMode": { "value": false, "note": "no button LED lit on press in DAW mode; the host owns every LED", "verified": "hardware 15 Nov" },
+  "relative": {
+    "row1On": [182, 69, 127],
+    "row1Off": [182, 69, 0],
+    "needsFeatureControlsEnable": false,
+    "row1Ccs": [77, 84],
+    "seenCc": 77,
+    "pivot": 64,
+    "oneStep": { "cw": 65, "ccw": 63 },
+    "fastTurn": { "cwMax": 68, "ccwMin": 60, "note": "accelerates up to +-4 per message; decode as value - 64" },
+    "rows2and3": { "on": "B6 48 7F / B6 49 7F", "verified": "unverified" },
+    "verified": "hardware 15 Nov"
+  },
+  "display": {
+    "configure": "F0 00 20 29 02 15 04 35 01 F7",
+    "text": "F0 00 20 29 02 15 06 35 <field 0|1> <ascii> F7",
+    "show": "F0 00 20 29 02 15 04 35 7F F7",
+    "cancel": "F0 00 20 29 02 15 04 35 00 F7",
+    "textTarget": 53,
+    "seen": "CONDUCTOR on line 1, READY on line 2",
+    "bitmap": "not tested (text only)",
+    "verified": "hardware 15 Nov"
+  },
+  "exit": {
+    "sequence": ["display cancel (04 35 00)", "B6 45 00 row 1 absolute", "9F 0C 00 DAW off"],
+    "result": "LEDs back to normal, display clear, fader 1 back on the MIDI port (128 msgs, 0 on DAW)",
+    "verified": "hardware 15 Nov"
+  }
+}
