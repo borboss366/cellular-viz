@@ -126,9 +126,13 @@
       // no-beat mode: the weight's state (r: the linear ramp, w = smoothstep(r)), the forced confidence (QA), energy
       bw: { r: null, w: 0, target: 0, conf: 0, lost: false, forced: null, barS: 2, at: null },
       energyState: { env: ZERO(), kick: 0, level: 0, at: null }, eKick: onsetLane('kick'),
+      // the time a step uses: an explicit one (tests), else the frame's own time from frameStart (so beatWeight() and
+      // read() later in the same frame do not move the weight again: VIZ pages, #231), else the clock now (a page that
+      // never calls frameStart)
+      stepTime(now) { return Number.isFinite(now) ? now : this.t !== null ? this.t : (opts.nowSec ? opts.nowSec() : nowSec()); },
       // now: real seconds (tests pass their own); c: this frame's clock.read() when the caller has it
       stepWeight(c, now) {
-        const b = this.bw, t = Number.isFinite(now) ? now : (opts.nowSec ? opts.nowSec() : nowSec());
+        const b = this.bw, t = this.stepTime(now);
         const r0 = c || clock.read();
         const bpm = r0.bpm > 0 ? r0.bpm : 120, bpb = clock.settings && clock.settings.bpb > 0 ? clock.settings.bpb : 4;
         b.barS = bpb * 60 / bpm;
@@ -151,7 +155,7 @@
       forceConfidence(c) { this.bw.forced = c === null || c === undefined || !Number.isFinite(+c) ? null : Math.max(0, Math.min(1, +c)); return this.bw.forced; },
       // the energy envelopes from this frame's band levels (and the low-band onsets for kick)
       stepEnergy(bands, now, audioT) {
-        const e = this.energyState, t = Number.isFinite(now) ? now : (opts.nowSec ? opts.nowSec() : nowSec());
+        const e = this.energyState, t = this.stepTime(now);
         const first = e.at === null, dt = first ? 0 : Math.max(0, Math.min(0.25, t - e.at)); e.at = t;
         let sum = 0;
         for (const k of BANDS) {

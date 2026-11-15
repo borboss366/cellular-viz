@@ -119,6 +119,23 @@ test('the no-beat QA row (qa/nobeat.mjs): at target one bar in, no pop, no NaN, 
   assert.match(cli, /arg\('secs', 30\)/, '30 s phases by default');
 });
 
+test('no-beat pop row: steps are judged on the weight\'s own clock (__qa.beatWeight.at), not the recorder\'s rAF stamps (#231 e9d7bbd: 0.061 > 0.060)', () => {
+  // slow software frames, 62 ms apart; the recorder runs once before the page's frame and once after it, so one sample
+  // reads the weight two of its steps on (124 ms of ramp) and the next one none: no pop, only the sampling
+  const barS = 1.875, sm = r => r * r * (3 - 2 * r), rec = [];
+  for (let i = 0; i <= 120; i++) {
+    const at = (i === 15 ? i + 1 : i) * 0.062, r = Math.min(1, at / barS);
+    rec.push({ ts: i * 62, dt: i ? 62 : null, barS, target: 0, at, w: 1 - sm(r), e: [0, 0] });
+  }
+  const own = NB.phaseRows(rec, { target: 0, secs: 6 });
+  assert.ok(own.maxStep <= own.maxStepAllowed, `own clock: ${own.maxStep} <= ${own.maxStepAllowed}`);
+  const stamps = NB.phaseRows(rec.map(({ at, ...x }) => x), { target: 0, secs: 6 });
+  assert.ok(stamps.maxStep > stamps.maxStepAllowed, 'the rAF stamps alone read the same samples as a pop');
+  const jump = NB.phaseRows(rec.map((x, i) => (i >= 20 ? { ...x, w: 0 } : x)), { target: 0, secs: 6 });
+  assert.ok(jump.maxStep > jump.maxStepAllowed, 'a real jump is still a pop on the weight\'s own clock');
+  assert.match(NB.RECORDER, /at: b \? b\.at : null/, 'the recorder keeps the weight\'s own time');
+});
+
 test('the no-beat stills on the grading page: /grade lists the run, its page has one card per phase, verdicts grade it', async () => {
   const os = await import('node:os'), { spawn } = await import('node:child_process');
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nobeat-grade-')), stamp = '2026-11-14-1700';
@@ -185,4 +202,21 @@ test('--nobeat-audio: corpus id with an optional excerpt (default born-slippy 0-
   assert.deepEqual(started, [[0, 30]]);
   assert.deepEqual([src.loop, src.loopStart, src.loopEnd], [true, 30, 60]);
   assert.deepEqual(ai.excerpt, { from: 30, to: 60 });
+});
+
+test('beat weight: steps once per frame, at frameStart\'s time; beatWeight() and read() later in the same frame do not move it again (VIZ pages, #231)', () => {
+  const { clock, a } = mk();
+  a.frameStart(1000);   // ms, rAF's argument
+  assert.equal(a.bw.w, 1);
+  clock.c.conf = 0;     // the fade starts: one bar = 2 s at 120
+  a.frameStart(1000 + 1000 / 60);
+  const w1 = a.bw.w;
+  assert.ok(w1 < 1 && w1 > 0.99, `one frame of the fade: ${w1}`);
+  for (let i = 0; i < 5; i++) { assert.equal(a.beatWeight(), w1, 'beatWeight() in the same frame'); assert.equal(a.read().beatWeight, w1, 'read() in the same frame'); }
+  a.frameStart(1000 + 2000 / 60);
+  assert.ok(a.bw.w < w1, 'the next frame moves it');
+  const e1 = a.stepEnergy(Object.fromEntries(AudioIn.BANDS.map(b => [b, 0.5]))), e2 = a.stepEnergy(Object.fromEntries(AudioIn.BANDS.map(b => [b, 0.9])));
+  assert.equal(e2.level, e1.level, 'the energy steps on the frame time too: a second step in the same frame does not move it');
+  const before = a.bw.w;
+  assert.ok(a.beatWeight(99) < before, 'an explicit time still steps (tests)');
 });
