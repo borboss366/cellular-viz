@@ -20,6 +20,7 @@
   __qa.conductor: { log, clock, shadow, publisher, decks, tracks, load(i, deck?), play(), next(), mark(name), state() }.
   Controller (experiments/midi-controller.js): a Launch Control XL 3 on its DAW port; the lower button row = tap, flip,
   ÷2, ×2, nudge −10 / +10, set 1, restart (hold 1 s), as origin 'fix:controller'; its LEDs and display follow read().
+  Bridge: the faders and pot rows 2-3 go out unchanged on the IAC bus (the "bridge" lamp) for Resolume.
   Shared clock: the output clock is published for ?clock=shared scenes (clock.js Clock.publish, BroadcastChannel
   'cellular-viz-clock'): beats, bpm, bar at most 20 Hz, every jump and hand fix as an event.
 -->
@@ -67,6 +68,7 @@ button.reject{background:#c0182b !important;color:#fff}
   <h1>clock conductor</h1><span class="banner" id="input">line:page</span><span class="badge" id="scored">no track</span>
   <span class="badge" id="session">–</span><span class="badge" id="logState">log: –</span>
   <span class="badge" id="ctl" title="Launch Control XL 3 (midi-controller.js)">controller: –</span>
+  <span class="badge" id="bridge" title="faders and pot rows 2-3 to Resolume over this bus">bridge: –</span><select id="bridgePort" title="the bus Resolume listens to" hidden></select>
   <span class="actions"><button id="start">Start audio</button><button id="download">Download log</button><button id="help" title="Help (?)">Help</button></span>
 </header>
 <!-- the user guide in short (qa/CONDUCTOR_GUIDE.md has all of it); plain ASCII only: the box's Chromium aborts on font fallback (#205) -->
@@ -320,10 +322,22 @@ function flashReject() {
 }
 const FIX_ORIGINS = new Set(['fix:key', 'fix:controller', 'qa']);
 // the controller (D1): the same wrapped clock.fix, so its presses are logged and scored like keys, by origin
-const CTL_TEXT = { off: 'controller: off', 'no-midi': 'controller: no MIDI', 'no-device': 'controller: not connected', connected: 'controller: on', 'mode-select': 'controller: press MODE' };
-const controller = MidiController.create({ clock, lastFix: () => lastFixShort,
+const CTL_TEXT = { off: 'controller: off', 'no-midi': 'controller: no MIDI', 'no-device': 'controller: not connected', connected: 'controller: on', 'mode-select': 'controller: degraded (press MODE)' };
+const BRIDGE_TEXT = { on: 'bridge: on', off: 'bridge: off (no IAC bus)', degraded: 'bridge: degraded' };
+// the bus list: every output but the controller's own; the choice is kept by name (localStorage)
+function showBridgePorts() {
+  const names = controller.bridgePorts(), sel = $('bridgePort');
+  sel.hidden = !names.length;
+  sel.replaceChildren(...names.map(n => new Option(n, n)));
+  if (controller.bridgePort) sel.value = controller.bridgePort;
+}
+let pageStorage = null;
+try { pageStorage = window.localStorage; } catch (e) { /* storage blocked: the default bus each time */ }
+const controller = MidiController.create({ clock, lastFix: () => lastFixShort, storage: pageStorage,
+  onBridge: (b, name) => { $('bridge').textContent = BRIDGE_TEXT[b] || `bridge: ${b}`; $('bridge').title = name || 'no IAC bus: turn on the IAC Driver (Help)'; $('bridge').classList.toggle('unscored', b !== 'on'); showBridgePorts(); },
   onStatus: s => { $('ctl').textContent = CTL_TEXT[s] || `controller: ${s}`; $('ctl').classList.toggle('unscored', s !== 'connected'); } });
 controller.start().then(() => { if (controller.status === 'connected' && !controller.sysex) $('ctl').title = 'no SysEx permission: LEDs only, no display'; });
+$('bridgePort').onchange = e => controller.setBridgePort(e.target.value);
 addEventListener('pagehide', () => controller.stop());
 for (const b of document.querySelectorAll('[data-fix]')) b.onclick = e => clock.fix(b.dataset.fix, b.dataset.arg !== undefined ? Number(b.dataset.arg) : undefined, { origin: 'fix:key', eventTs: e.timeStamp });
 
