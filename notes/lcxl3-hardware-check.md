@@ -79,3 +79,17 @@ What the module should do:
 - Relative mode on rows 2 and 3.
 - The bitmap display.
 - Fader pickup and touch events.
+
+## Job 2 on the hardware (15 Nov, the conductor page on the Mac, Chrome, http://localhost:8790)
+
+- Status lamp "controller: on". SysEx was granted, and the display showed `120.0 BPM ACQ` / `C0%` until the first lock.
+- All lower-row buttons 1–7 were logged as `fix:controller` (tap, flip, half, x2, nudge −10, nudge +10, set1).
+- Button 8 (restart): a 1.5 s hold restarts the clock, and the LED flashes red while held. A 0.15 s press does nothing.
+- The tap LED is steady amber before the first lock, then flashes green on every beat once locked (at 138 bpm).
+- **Chrome throttles the page's timer to ~1 Hz when its window is covered.** Sampled LEDs then flashed on every
+  second beat or so. The module now books each flash ahead with `MIDIOutput.send(bytes, timestamp)`, and it stays on
+  every beat with the window covered.
+- Mode Select trap: two presses on the page arrived as CC 30 = 0x18 / 0x19. The module set CC 30 = 1 back each time.
+  After Mode closed the page, tap worked again.
+- Closing the tab (`pagehide`) put the device back in standalone mode at once.
+- A listen-only node client on the DAW port ran beside Chrome without trouble (CoreMIDI multi-client).
