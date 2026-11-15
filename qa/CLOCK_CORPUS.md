@@ -111,6 +111,18 @@ The user's batch of 10 Nov: tracks that are **hard for the tracker**, not a genr
 | hc-11 | 172 (user by ear and the log check, 14 Nov; range 165.1-178.9) | report-only | vote, ear range first |
 | hc-12 | 140.16 (the accepted vote, 14 Nov; added later, the box map only) | report-only | vote |
 
+## House set, 15 Nov (house-01 … house-05, report-only, slot T15)
+
+The user's five house tracks of 15 Nov: steady 4/4 club music, to check the tracker on the music it will mostly play. Their ids map to files in the box's own corpus-map.json only. The three-tracker vote accepted all five with 3 of 3 trackers agreeing, meter 4 and no gridSuspect (248-519 s long). They take their reference from the vote (`refTool: "vote"`); the range is about ±4 % around the accepted tempo and is used only if a later vote disagrees. They were voted before these rows existed, so the vote wrote no reference then; an accepted vote row with no reference yet is voted again once and gets it. **Report-only: they never fail a run.** They print a gate-table row, a side-diag row and an F3 shadow row (the tracker under test beside main 501cfe1), kept out of the gate-table sums and the F3 no-regression check.
+
+| Id | BPM | Status | Reference |
+|---|---|---|---|
+| house-01 | 128.0 (the accepted vote) | report-only | vote |
+| house-02 | 124.99 (the accepted vote) | report-only | vote |
+| house-03 | 124.0 (the accepted vote) | report-only | vote |
+| house-04 | 123.0 (the accepted vote) | report-only | vote |
+| house-05 | 124.21 (the accepted vote) | report-only | vote |
+
 ## Reading the corpus
 
 Per track: the share of played time inside the gate (±35 ms), for the tracker alone (the shadow) and for the conducted clock, plus p50, p90 and p95 of the error as reported numbers. The corpus number: how many tracks need no hand fix, and how many fixes the rest needed.
