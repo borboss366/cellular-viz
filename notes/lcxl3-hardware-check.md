@@ -93,3 +93,12 @@ What the module should do:
   After Mode closed the page, tap worked again.
 - Closing the tab (`pagehide`) put the device back in standalone mode at once.
 - A listen-only node client on the DAW port ran beside Chrome without trouble (CoreMIDI multi-client).
+
+## The bridge on the hardware (15 Nov)
+
+- IAC Driver turned on in Audio MIDI Setup: `IAC Driver Bus 1` appears as an input and an output. The page showed
+  "controller: on" and "bridge: on".
+- A listen-only client on the IAC bus got fader 1 (48 × `BF 05`), a row 2 pot (`BF 16`) and a row 3 pot (`BF 1E`). Row 1
+  pots and upper-row buttons sent nothing to the bus.
+- Trap: an ssh tunnel to the box on `[::1]:8790` takes `localhost:8790` in Chrome. To test a local server while a tunnel
+  is up, use `http://127.0.0.1:8790/`.
