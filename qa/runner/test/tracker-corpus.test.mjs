@@ -322,8 +322,13 @@ function voteRefs() {
   }
   return { refs: out };
 }
+// the F3 row's own measure (time within 2 % of the vote tempo, from the first lock) per 60 s of track time, with the
+// share of that time in free-run: where a row's points go (Orchestrator 15 Nov: sandstorm 92.5 vs main 94.6 on 81fe31a)
+const F3_WIN_DIAG = ['sandstorm'];
+const F3_WIN_S = 60;
 function shadowRow(mono, ref, lib) {
   let lockT = null, n = 0, inN = 0, run = 0, longest = 0, firstLockBpm = null;
+  const win = [];   // per F3_WIN_S: { n, in, free }
   const seen = new Map();   // every tempo decision of the tracker under test, polled every 0.1 s from tempoReport.last
   const tr = track(mono, (tr, tt) => {
     const rl = tr.tempoReport && tr.tempoReport.last;
@@ -333,6 +338,8 @@ function shadowRow(mono, ref, lib) {
     n++;
     const ok = Math.abs(tr.ownBpm / ref - 1) <= 0.02;
     if (ok) inN++;
+    const w = Math.floor(tt / F3_WIN_S), W = win[w] || (win[w] = { n: 0, in: 0, free: 0 });
+    W.n++; if (ok) W.in++; if (tr.state === 'free-run') W.free++;
     if (!ok && tr.state === 'locked') { run += 0.1; longest = Math.max(longest, run); } else run = 0;
   }, lib);
   const r = tr.tempoReport || null;
@@ -352,7 +359,8 @@ function shadowRow(mono, ref, lib) {
   const acqText = !a ? null : `F4 first lock ${a.firstLock ? `${a.firstLock.from ?? '-'} -> ${a.firstLock.bpm} after ${a.firstLock.waitedS} s${a.firstLock.forced ? ' (forced at the cap)' : ''}${a.firstLock.kept ? ' (kept: ' + a.firstLock.kept + ')' : ''}, best ${c(a.firstLock.scan && a.firstLock.scan.best)}, second ${c(a.firstLock.scan && a.firstLock.scan.second)}, cur ${c(a.firstLock.cur)}, ratio ${a.firstLock.scan ? a.firstLock.scan.ratio : '-'}` : 'none'}`
     + `; second look ${a.secondLook ? look(a.secondLook) : 'not reached'}`
     + `; re-acquire scans ${a.rescans.length}${a.rescans.length ? ': ' + a.rescans.map(look).join(' | ') : ''}; relatives blocked while locked ${a.relBlocked}, while re-acquiring ${a.reacqHeld ?? '-'}; short-window steps ${r.short ? r.short.steps : '-'}`;
-  return { lockT, firstLockBpm, pct: n ? 100 * inN / n : 0, longest, moves: r ? r.tempoMovesLocked : tr.relative.tempoMoves, refusals: r ? r.tempoRefusals : null, diag: diag && acqText ? `${diag}; ${acqText}` : diag };
+  const winText = Array.from(win, (W, i) => `${i * F3_WIN_S}-${(i + 1) * F3_WIN_S}s ${W && W.n ? `${(100 * W.in / W.n).toFixed(1)} % within 2 % (free-run ${(100 * W.free / W.n).toFixed(0)} %, ${(W.n / 10).toFixed(0)} s)` : 'before the lock'}`).join(' | ');
+  return { lockT, firstLockBpm, winText, pct: n ? 100 * inN / n : 0, longest, moves: r ? r.tempoMovesLocked : tr.relative.tempoMoves, refusals: r ? r.tempoRefusals : null, diag: diag && acqText ? `${diag}; ${acqText}` : diag };
 }
 test(`F3 shadow rows: main 501cfe1 beside the tracker under test on every accepted toolVersion 3 vote ref; never more than 2 points below main (hard where main >= ${NOREG_MAIN_MIN_PCT} %, report-only below; box only)`, async (t) => {
   await heavy(t);   // one heavy box test at a time (fixtures/heavy-lock.mjs)
@@ -374,6 +382,7 @@ test(`F3 shadow rows: main 501cfe1 beside the tracker under test on every accept
     const mark = hard ? '[hard]' : waiver ? `[report-only: waiver (${waiver})]` : `[report-only: main < ${NOREG_MAIN_MIN_PCT} %]`;
     say(t, `F3 ${id} ref ${ref} (${(d.mono.length / SR).toFixed(0)} s): ${fmt(now, 'now')} | ${fmt(base, 'main 501cfe1')} | delta ${(now.pct - base.pct).toFixed(1)} points | ${regress ? 'REGRESSION (> 2 points below main)' : 'no regression'} ${mark} | ${now.pct >= 95 ? 'would pass' : 'would FAIL'} >= 95 % [report-only]`);
     if (now.diag) say(t, `F3 ${id} tempo: ${now.diag}`);
+    if (F3_WIN_DIAG.includes(id)) say(t, `F3 ${id} per ${F3_WIN_S} s: now ${now.winText} || main 501cfe1 ${base.winText} [report-only]`);
     // report-only: tempoMovesLocked (target <= 2), the first lock's tempo and its ratio to the ref
     const fl = x => x.firstLockBpm === null ? 'never' : `${x.firstLockBpm.toFixed(2)} (x${(x.firstLockBpm / ref).toFixed(3)})`;
     say(t, `F3 ${id} first lock: now ${fl(now)}, main ${fl(base)}; tempoMovesLocked now ${now.moves} (target <= 2) [report-only]`);
@@ -396,10 +405,16 @@ const CD = await import('../../../experiments/conductor.mjs');
 const GATE_SECS = 180;
 /** one tracker over the audio: its output beats (as the conductor logs the shadow's), 0.1 s samples, first lock */
 function gateRun(mono, lib) {
-  const beats = [], samples = [], counter = CD.beatCounter(), applied = [];
-  let lockT = null, lastBlock = null;
+  const beats = [], samples = [], counter = CD.beatCounter(), applied = [], decided = [];
+  let lockT = null, lastBlock = null, nRel = 0, nRef = 0;
   const tr = track(mono, (tr, tt) => {
     if (lockT === null && tr.state === 'locked') lockT = tt;
+    // each re-lock and refused jump (fix A3) with the broadband onsets that can have decided it: the last 6 onsets up to
+    // the decision within 4 beats, their strength and phase against the model (read at most 0.1 s later; a re-lock's
+    // slew has hardly moved by then). The decision took the last reacqOnsets (3) of them that passed the strength rules.
+    const RL = tr.relocks || [], RF = tr.refused || [];
+    for (; nRel < RL.length; nRel++) decided.push(decisionCtx(tr, RL[nRel], 'relock'));
+    for (; nRef < RF.length; nRef++) decided.push(decisionCtx(tr, RF[nRef], 'refused'));
     // the PLL's applied phase correction (beats, cumulative while locked), once per 8 output beats (tracker under test only)
     if (lockT !== null && typeof tr.phaseApplied === 'number' && tr.bpm) {
       const blk = Math.floor(tr.beatsAt(tt) / 8);
@@ -418,7 +433,22 @@ function gateRun(mono, lib) {
   for (const r of tr.refused || []) jumps.push({ at: r.at, kind: `refused-${r.path}`, d: r.d });
   jumps.sort((x, y) => x.at - y.at);
   const states = (tr.stateLog || []).map(s => ({ t: s.t, state: s.state }));
-  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states, applied };
+  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states, applied, decided };
+}
+const fracB = x => x - Math.round(x);
+function decisionCtx(tr, r, kind) {
+  const P = tr.bpm ? 60 / tr.bpm : 0.5;
+  const ons = (tr.onsets || []).filter(o => o.t <= r.at + 1e-6 && o.t > r.at - 4 * P).slice(-6);
+  const e = ons.map(o => fracB(tr.beatsAt(o.t))), last3 = e.slice(-3).sort((a, b) => a - b);
+  return { at: r.at, kind: r.path ? `${kind}-${r.path}` : kind, size: r.d, med3: last3.length === 3 ? last3[1] : null,
+    onsets: ons.map((o, i) => `${o.t.toFixed(2)}s s${o.s.toFixed(2)} e${e[i] >= 0 ? '+' : ''}${e[i].toFixed(3)}`) };
+}
+// re-rewind (Orchestrator 15 Nov, 81fe31a: refused-free-run@110.6 -0.42, relock@111.5 +0.09, then -0.48 to the end)
+const DECIDE_DIAG = ['re-rewind'];
+function decidedText(run) {
+  const D = run.decided || [];
+  if (!D.length) return 'no re-lock or refused jump';
+  return D.map(d => `${d.kind}@${d.at.toFixed(2)}s |e| ${Math.abs(d.size).toFixed(3)} (size ${d.size >= 0 ? '+' : ''}${d.size.toFixed(3)}); onsets ${d.onsets.join(', ') || 'none'}; median of the last 3 listed ${d.med3 === null ? '-' : d.med3.toFixed(3)}`).join(' || ');
 }
 /** the side decision at the first lock, as text (main 501cfe1 has no two-hypothesis decision: its circular mean) */
 function sideText(r) {
@@ -445,7 +475,7 @@ function gateScore(run, id, row, grid, secs) {
 // the half-beat diagnosis (Orchestrator 19:06, after #232's box run): on these tracks the side at the first lock is
 // clear, yet p90 sits near half a beat. Per 15 s window: the median SIGNED error of the nearest output beat to each
 // reference beat (ms and in beats; +-0.5 = the other side), the inside-gate share; then every move while locked
-const SIDE_DIAG = ['cafe-del-mar', 'sincere', 'dj-set-brejcha', 'sandstorm', 're-rewind', 'billie-jean'];
+const SIDE_DIAG = ['cafe-del-mar', 'sincere', 'dj-set-brejcha', 'sandstorm', 're-rewind', 'billie-jean', 'voodoo-people', 'sicko-mode'];
 const SIDE_WIN_S = 15;
 // the slow walk while locked (sincere; billie-jean as the control): the PLL's cumulative applied phase correction
 const PHASE_DIAG = ['sincere', 'billie-jean'];
@@ -514,6 +544,7 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
       say(t, `side-diag ${row.id} after: signed error vs the ref grid per ${SIDE_WIN_S} s: ${windowDiag(a.beats, secs)} [report-only]`);
       say(t, `side-diag ${row.id} after: ${movesText(after)} [report-only]`);
       if (PHASE_DIAG.includes(row.id)) say(t, `phase-diag ${row.id} after: ${appliedText(after)} [report-only]`);
+      if (DECIDE_DIAG.includes(row.id)) say(t, `side-diag ${row.id} after: re-lock decisions: ${decidedText(after)} [report-only]`);
       say(t, `side-diag ${row.id} before (main 501cfe1): ${windowDiag(b.beats, secs)}; ${movesText(before)} [report-only]`);
     }
   }
