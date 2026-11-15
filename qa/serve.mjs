@@ -96,7 +96,9 @@ function runState(r) {
   const software = /SwiftShader|none/i.test(d.meta?.gpu || '');
   const target = Math.max(1, n - 1) * 2;            // two rounds of picks
   const graded = picks >= target || (verdicts >= n && n > 0);
-  return { n, picks, verdicts, software, graded, target, tag: r.stamp.slice(16) || '' };
+  // stills only (no videos to compare, e.g. qa/check-nobeat.mjs's one still per phase): graded by verdicts on the run page
+  const stillsOnly = n > 0 && d.results.every(x => !x.video);
+  return { n, picks, verdicts, software, graded: stillsOnly ? verdicts >= n : graded, target: stillsOnly ? n : target, tag: r.stamp.slice(16) || '', stillsOnly };
 }
 
 function indexPage() {
@@ -107,8 +109,9 @@ function indexPage() {
     <span class="m">from ${esc(t.from || 'QA box')}</span></div></div>`).join('');
   const all = runs().map(r => ({ ...r, s: runState(r) }));
   const row = r => `<li><b>${esc(r.exp)}</b> · ${esc(r.stamp.slice(0, 15))}${r.s.tag ? ` <span class="m">${esc(r.s.tag)}</span>` : ''}<br>
-    <a href="/run/${r.exp}/${r.stamp}/compare"><b>⇄ compare</b></a> · <a href="/run/${r.exp}/${r.stamp}">▶ watch all</a>
-    <span class="m">· ${r.s.n} variants · ${r.s.picks}/${r.s.target} picks · ${r.s.verdicts} verdicts</span></li>`;
+    ${r.s.stillsOnly ? `<a href="/run/${r.exp}/${r.stamp}"><b>▶ grade the stills</b></a>
+    <span class="m">· ${r.s.n} stills · ${r.s.verdicts}/${r.s.n} verdicts</span></li>` : `<a href="/run/${r.exp}/${r.stamp}/compare"><b>⇄ compare</b></a> · <a href="/run/${r.exp}/${r.stamp}">▶ watch all</a>
+    <span class="m">· ${r.s.n} variants · ${r.s.picks}/${r.s.target} picks · ${r.s.verdicts} verdicts</span></li>`}`;
   const diag = r => !!r.s.tag;                       // tagged runs (branch checks, cover tests) are measurements, not swipe rounds
   const open = all.filter(r => !r.s.graded && !r.s.software && r.s.n > 1 && !diag(r));
   const done = all.filter(r => r.s.graded);
@@ -142,7 +145,7 @@ function runPage(exp, stamp, dir) {
     const q = (r.url || '').split('?')[1] || '';
     return `<div class="card" data-label="${esc(r.label)}">${media}
       <div class="row"><span class="score">${r.score ? r.score.total : '—'}</span><b>${esc(r.label)}</b></div>
-      <div class="m">${r.error ? '⚠ ' + esc(r.error) : `cover ${(a.coverage * 100).toFixed(0)}% · motion ${a.motion?.toFixed(4)} ±${a.motionStd?.toFixed(4)} · colour ${a.colour?.toFixed(3)} · ${a.fps} fps`}</div>
+      <div class="m">${r.error ? '⚠ ' + esc(r.error) : r.agg ? `cover ${(a.coverage * 100).toFixed(0)}% · motion ${a.motion?.toFixed(4)} ±${a.motionStd?.toFixed(4)} · colour ${a.colour?.toFixed(3)} · ${a.fps} fps` : esc(r.detail || '')}</div>
       <div class="m">${esc(q)} · <a href="/experiments/${esc(m.exp || '')}?${esc(q)}" target="_blank">open live</a></div>
       <div class="row">${VERDICTS.map(x => `<button data-v="${x}" class="${cur.verdict === x ? 'on' : ''}">${x}</button>`).join('')}
         <input placeholder="note (optional)" value="${esc(cur.note)}"></div></div>`;

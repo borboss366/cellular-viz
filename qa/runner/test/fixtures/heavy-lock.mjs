@@ -6,17 +6,24 @@
 //   const release = await heavyLock('name'); t.after(release);
 // A directory lock in the OS temp folder (mkdir is atomic); a lock whose owner process is gone, or older than 15 min,
 // is broken. After waitMs the caller goes on without it (and says so) rather than time out.
+// #231 (e9d7bbd): the smokes waited here (tracker-corpus held the lock for minutes) past their own 180 s timeout; the
+// test was marked timed out, but its body went on, launched Chromium after the test had ended, and the cleanup it then
+// registered never ran, so the file never exited (15+ min at 0 % CPU). Now: pass { signal: t.signal } and check
+// t.signal.aborted right after; give every caller a timeout of SMOKE_TIMEOUT_MS (the wait plus the run), and close
+// browsers and servers from a file-level after() as well (see the smokes).
+export const LOCK_WAIT_MS = 200e3, SMOKE_TIMEOUT_MS = LOCK_WAIT_MS + 220e3;
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const DIR = path.join(os.tmpdir(), 'cellular-viz-heavy.lock');
+const DIR = process.env.HEAVY_LOCK_DIR || path.join(os.tmpdir(), 'cellular-viz-heavy.lock');   // HEAVY_LOCK_DIR: heavy-lock.test.mjs only
 const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-export async function heavyLock(name, { waitMs = 200e3 } = {}) {
+export async function heavyLock(name, { waitMs = LOCK_WAIT_MS, signal = null } = {}) {
   const t0 = Date.now();
   for (;;) {
+    if (signal && signal.aborted) { console.log(`# heavy lock: ${name} gave up waiting: its test ended (timeout)`); return () => {}; }
     try {
       fs.mkdirSync(DIR);
       fs.writeFileSync(path.join(DIR, 'owner'), JSON.stringify({ pid: process.pid, name, at: Date.now() }));

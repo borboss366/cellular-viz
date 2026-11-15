@@ -200,6 +200,58 @@ const heardAnalyser = () => {   // the shared analyser once the clock has its Au
   if (audio.analyser.smoothingTimeConstant !== 0) audio.analyser.smoothingTimeConstant = 0;   // as this page's own was
   return audio.analyser;
 };
+// ---------- no-beat mode (apartment MVP Task 3; audio-in's beat weight and energy, #230) ----------
+// Every beat-locked effect here is mix = w·beat + (1 − w)·energy, w = the beat weight frameStart stepped (0 = no confident beat; it
+// ramps over one bar, never jumps). This page never calls audio.read(): audio.readEnergy() once per frame instead.
+// The energy stand-ins come from the music itself (audio-in's band envelopes):
+//   kick   E.kick, the audio's own low-band onsets (never the clock's hits); kickOnset: a fresh one this frame
+//   snare  an onset envelope of mid + upperMid over their 0.4 s mean (τ 120 ms, the clock's snare tail)
+//   hat    the same on presence + air (τ 40 ms)
+//   low    sub + kick over their 1 s mean, −1..1: a bass pulse
+//   swell  0..1: the loudness of the last 1.5 s against the last 12 s (0.5 = as loud as usual)
+// NoBeat.phase(align): a counter that takes the beat value's steps at w = 1 and the energy rate at w = 0, so it never
+// jumps when w moves; with align it slides back onto that grid while w rises to 1 (whole at w = 1).
+const NoBeat = {
+  mix: (w, beat, energy) => w * beat + (1 - w) * energy,
+  lanes() {
+    const clamp = (x, l, h) => Math.max(l, Math.min(h, x));
+    const s = { w: 1, kick: 0, snare: 0, hat: 0, low: 0, swell: 0.5, level: 0, kickOnset: false, snareOnset: false,
+      t: null, pk: 0, ps: 0, mS: 0, mH: 0, mL: 0, sh: 0, lg: 0 };
+    s.step = (E, w, tSec) => {
+      const b = E.bands, first = s.t === null, dt = first ? 0 : Math.max(0, Math.min(0.25, tSec - s.t));
+      const v = x => (Number.isFinite(x) ? x : 0), mid = (v(b.mid) + v(b.upperMid)) / 2, hi = (v(b.presence) + v(b.air)) / 2, lo = (v(b.sub) + v(b.kick)) / 2;
+      const lvl = v(E.level), a = tau => 1 - Math.exp(-dt / tau);
+      s.t = tSec; s.w = Number.isFinite(w) ? Math.max(0, Math.min(1, w)) : 1; s.level = lvl;
+      if (first) { s.mS = mid; s.mH = hi; s.mL = lo; s.sh = s.lg = lvl; }
+      s.snare = Math.max(s.snare * Math.exp(-dt / 0.12), clamp(6 * (mid - s.mS - 0.02), 0, 1));
+      s.hat = Math.max(s.hat * Math.exp(-dt / 0.04), clamp(6 * (hi - s.mH - 0.02), 0, 1));
+      s.low = clamp(4 * (lo - s.mL), -1, 1);
+      s.mS += (mid - s.mS) * a(0.4); s.mH += (hi - s.mH) * a(0.4); s.mL += (lo - s.mL) * a(1);
+      s.sh += (lvl - s.sh) * a(1.5); s.lg += (lvl - s.lg) * a(12);
+      s.swell = clamp(0.5 + 2.5 * (s.sh - s.lg), 0, 1);
+      const k = v(E.kick); s.kickOnset = k > 0.35 && k > s.pk + 0.15; s.kick = k; s.pk = k;
+      s.snareOnset = s.snare >= 0.5 && s.ps < 0.5; s.ps = s.snare;
+      return s;
+    };
+    return s;
+  },
+  phase(align) {
+    const p = { v: null, b: 0, w: 1 };
+    p.step = (beatVal, eDelta, w) => {
+      if (p.v === null || !Number.isFinite(p.v)) p.v = beatVal;
+      else {
+        p.v += w * (beatVal - p.b) + (1 - w) * eDelta;
+        if (align && w > p.w && p.w < 1) { const off = p.v - beatVal, fr = off - Math.round(off / align) * align; p.v -= fr * Math.min(1, (w - p.w) / (1 - p.w)); }
+      }
+      p.b = beatVal; p.w = w; return p.v;
+    };
+    p.sync = () => { p.v = null; return p; };   // the next step starts on the beat value (▶ Play restarts the clock)
+    return p;
+  },
+};
+const nb = NoBeat.lanes();
+const spinPhase = NoBeat.phase(null);   // the tiling's turn, radians
+
 // 7 log bands, 40 Hz – 16 kHz; level from dB, attack 30 ms, release 180 ms (no strobe: tails ≥ 120 ms)
 const BAND_EDGES = Array.from({ length: 8 }, (_, i) => 40 * Math.pow(16000 / 40, i / 7));
 const bandLevel = new Float32Array(7);
@@ -383,8 +435,12 @@ function cellArrays(d, scale, levels, flat) {   // R and W, indexed p·4+q
   for (let i = 0; i < 16; i++) W[i] *= norm * scale;
   return { R, W };
 }
-const st = { cur: null, prev: null, morphStart: -1e9, morphBeats: 4, morph: 1, lastStep: -1, kickEnv: 0, snareEnv: 0,
-  popEnv: 0, idx: 0, kicks: 0, rec: null };
+const st = { cur: null, prev: null, morphStart: -1e9, morphPerf: -1e9, morphBeats: 4, morph: 1, lastStep: -1, kickEnv: 0, snareEnv: 0,
+  popEnv: 0, idx: 0, kicks: 0, rec: null, path: null };
+// no-beat mode's shape clock (w < 0.5): a change on the music's own kick once the hold has passed (hold in seconds at
+// the clock's tempo), or at twice the hold without a kick; trigger() lands on the next kick or within 0.5 s.
+// last: performance.now() of the last change from either path; pending: when trigger() was pressed, or false
+const esched = { last: null, pending: false };
 function presetFor(k) {
   if (params.preset !== 'auto') return [params.preset, params.preset === 'curve' ? params.genus : 0];
   return AUTO[((k % AUTO.length) + AUTO.length) % AUTO.length];
@@ -460,9 +516,10 @@ function setPreset([name, g], ev, now) {
   const d = hodge(name, g); d.name = name; d.genus = g;
   if (!st.cur) { st.cur = d; settledSeen.add(`${name}:${g}`); return; }
   if (st.cur.name === name && st.cur.genus === g) return;
-  st.prev = st.cur; st.cur = d; st.morphStart = ev.beat; st.morphBeats = ev.morphBeats; st.popEnv = 1;
-  st.rec = { beat: ev.beat, at: ev.at, cause: ev.cause, hold: ev.hold, morphBeats: ev.morphBeats, to: name, genus: g, from: st.prev.name, end: null, perf: now, epoch: liveClock.epoch };
+  st.prev = st.cur; st.cur = d; st.morphStart = ev.beat; st.morphPerf = now; st.morphBeats = ev.morphBeats; st.popEnv = 1;
+  st.rec = { beat: ev.beat, at: ev.at, cause: ev.cause, hold: ev.hold, morphBeats: ev.morphBeats, to: name, genus: g, from: st.prev.name, end: null, perf: now, epoch: liveClock.epoch, path: ev.path || 'beat' };
   morphs.push(st.rec); if (morphs.length > 128) morphs.shift();
+  if (ev.path === 'energy') return;   // no-beat mode: not on a beat, so not in the sync log (truth 7)
   logAt('morph', ev.beat / params.bpb, { to: name, genus: g, from: st.prev.name, cause: ev.cause, hold: ev.hold, morphBeats: ev.morphBeats, epoch: liveClock.epoch, settled: now - liveClock.since >= SETTLE_MS }, now);
 }
 // A clock epoch starts on the first frame and whenever the clock jumps back (▶ Play restarts the beats at 0).
@@ -475,15 +532,16 @@ function morphSync() {   // truth 7: |drawn − heard| of each morph event, ms (
   return { n: ms.length, maxMs: ms.length ? Math.max(...ms) : null, nAll: msAll.length, maxMsAll: msAll.length ? Math.max(...msAll) : null };
 }
 function liveTruths() {   // the same truths on the real clock: holds between auto changes, lateness and morph length in frames
-  const bpf = params.bpm / 60 / Math.max(30, fps || 60), auto = morphs.filter(r => r.cause === 'auto');
+  // the beat path's changes only (no-beat mode's energy changes are not on the beat grid; a hand-over starts a new epoch)
+  const bpf = params.bpm / 60 / Math.max(30, fps || 60), onBeat = morphs.filter(r => r.path !== 'energy'), auto = onBeat.filter(r => r.cause === 'auto');
   const gaps = [];
   for (let i = 1; i < auto.length; i++) {
     const a = auto[i - 1], b = auto[i];
-    if (a.hold === b.hold && a.epoch === b.epoch && !morphs.some(x => x.cause === 'trigger' && x.beat > a.beat && x.beat <= b.beat)) gaps.push(b.beat - a.beat - b.hold);
+    if (a.hold === b.hold && a.epoch === b.epoch && !morphs.some(x => (x.cause === 'trigger' || x.path === 'energy') && x.beat > a.beat && x.beat <= b.beat)) gaps.push(b.beat - a.beat - b.hold);
   }
-  const late = morphs.reduce((m, r) => Math.max(m, (r.at - r.beat) / bpf), 0);
-  const lens = morphs.filter(r => r.end !== null).map(r => Math.abs(r.end - r.beat - r.morphBeats) / bpf);
-  return { changes: morphs.length, holdErrBeats: gaps.length ? Math.max(...gaps.map(Math.abs)) : null, lateFrames: late, morphErrFrames: lens.length ? Math.max(...lens) : null };
+  const late = onBeat.reduce((m, r) => Math.max(m, (r.at - r.beat) / bpf), 0);
+  const lens = onBeat.filter(r => r.end !== null).map(r => Math.abs(r.end - r.beat - r.morphBeats) / bpf);
+  return { changes: morphs.length, energyChanges: morphs.length - onBeat.length, holdErrBeats: gaps.length ? Math.max(...gaps.map(Math.abs)) : null, lateFrames: late, morphErrFrames: lens.length ? Math.max(...lens) : null };
 }
 const ease = x => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
 
@@ -526,7 +584,7 @@ function measureRowGlow(name, genus) {
 // ================================================================================================
 for (const name of ['auto', ...PRESET_NAMES]) {
   const b = document.createElement('button'); b.textContent = name;
-  b.onclick = () => { params.preset = name; sched.pending = true; sync(); };   // lands on the next beat
+  b.onclick = () => { params.preset = name; requestChange(); sync(); };   // lands on the next beat (no-beat mode: the next kick)
   $('presets').appendChild(b);
 }
 for (let k = 0; k < 7; k++) {
@@ -539,12 +597,13 @@ const SLIDERS = { genus: 0, tileRadius: 2, spin: 2, goldBoost: 2, trail: 2, floo
 const fmt = (name, dec) => name === 'shapeRate' ? `${holdOf(params.shapeRate)} bar${holdOf(params.shapeRate) === 1 ? '' : 's'}` : Number(params[name]).toFixed(dec);
 for (const [name, dec] of Object.entries(SLIDERS)) $(name).addEventListener('input', e => {
   params[name] = parseFloat(e.target.value); $(name + 'Out').textContent = fmt(name, dec);
-  if (name === 'genus' && params.preset === 'curve') sched.pending = true;
+  if (name === 'genus' && params.preset === 'curve') requestChange();
 });
 // shape rate one step slower / faster, and trigger: the keyboard stand-in for macro1 and the trigger pad
 function stepRate(d) { params.shapeRate = Math.max(0, Math.min(4, Math.round(params.shapeRate * 4) + d)) / 4; sync(); }
 const triggerLog = [];
-function trigger() { sched.pending = true; triggerLog.push({ slot: 1, perf: performance.now() }); if (triggerLog.length > 128) triggerLog.shift(); }
+function requestChange() { sched.pending = true; if (esched.pending === false) esched.pending = performance.now(); }   // both shape clocks
+function trigger() { requestChange(); triggerLog.push({ slot: 1, perf: performance.now() }); if (triggerLog.length > 128) triggerLog.shift(); }
 $('trigger').onclick = trigger;
 window.addEventListener('keydown', e => {
   if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -567,7 +626,7 @@ function sync() {
   $('mute').classList.toggle('on', params.muted); $('labels').classList.toggle('on', params.labels); $('flat').classList.toggle('on', params.bands === 'flat');
   for (const b of $('presets').children) b.classList.toggle('on', b.textContent === params.preset);
 }
-$('play').onclick = () => { if (metronome.playing) { metronome.stop(); $('play').textContent = '▶ Play'; } else { metronome.start(); clockStart = performance.now(); $('play').textContent = '■ Stop'; } };
+$('play').onclick = () => { if (metronome.playing) { metronome.stop(); $('play').textContent = '▶ Play'; } else { metronome.start(); clockStart = performance.now(); spinPhase.sync(); $('play').textContent = '■ Stop'; } };
 $('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
 // 🎤: the shared audio input reads the mic (?audio=mic, or ?audio=line&device=… for line-in); the page reloads with it
 $('mic').onclick = () => { const p = new URLSearchParams(location.search); p.set('audio', AUDIO_SRC === 'mic' ? 'clock' : 'mic'); location.search = p.toString(); };
@@ -636,6 +695,15 @@ function draw(now) {
   const beats = Math.max(0, metronome.playing && L.beats >= 0 ? L.beats : (now - clockStart) / 1000 * params.bpm / 60);
   const bars = beats / params.bpb;
   readBands(dt);
+  // no-beat mode: the weight and the music's own energy, once per frame (16b reads no audio.read())
+  // the weight audio.frameStart() stepped at the top of this frame. Not audio.beatWeight(): that steps the fade a second
+  // time on performance.now() mid-frame, so the step between two frames follows the draw's timing jitter, not the rAF
+  // interval (the no-beat smoke saw 0.061 against the ramp's 0.060 on software WebGL, #231 @e9d7bbd)
+  const w = audio.bw && Number.isFinite(audio.bw.w) ? audio.bw.w : audio.beatWeight(), E = audio.readEnergy();
+  nb.step(E, w, now / 1000);
+  const barS = audio.bw && audio.bw.barS > 0 ? audio.bw.barS : params.bpb * 60 / params.bpm;
+  const path = w >= 0.5 ? 'beat' : 'energy';   // who changes shapes (a change is a morph, so the hand-over never pops)
+  if (path !== st.path) { st.path = path; liveClock.epoch++; liveClock.since = now; }
 
   // drum hits of the heard step: events and soft envelopes (≥ 120 ms tails)
   const step = Math.floor(beats * 4);
@@ -648,7 +716,10 @@ function draw(now) {
       if (lane === 'snare') st.snareEnv = 1;
     }
   }
+  if (nb.kickOnset && path === 'energy') { st.kicks++; if (params.autoTrigger > 0 && st.kicks % params.autoTrigger === 0) trigger(); }
   st.kickEnv *= Math.exp(-dt / 0.15); st.snareEnv *= Math.exp(-dt / 0.14); st.popEnv *= Math.exp(-dt / 0.14);
+  // the blend: the clock's drum envelopes at w = 1, the music's kick and snare stand-in at w = 0
+  const kick = NoBeat.mix(w, st.kickEnv, nb.kick), snare = NoBeat.mix(w, st.snareEnv, nb.snare);
 
   // shapes: held shapeRate's hold on the beat grid, morph min(1 bar, hold/2) from the beat, +6 % pop
   if (!st.cur) setPreset(presetFor(st.idx), null, now);
@@ -656,10 +727,22 @@ function draw(now) {
   // late (a 4K frame is ~17–20 ms; QA box measured 41 ms against the 40 ms limit)
   const ahead = beats + 0.5 * Math.min(dt || 1 / 60, 1 / 30) * params.bpm / 60;
   if (sched.next === null || ahead < sched.last - 1e-6) { liveClock.epoch++; liveClock.since = now; }   // the same test schedStep resets on
+  // the beat path's shape clock steps every frame, so it is on its grid when the weight comes back
   const ev = schedStep(sched, ahead, holdOf(params.shapeRate) * params.bpb, params.bpb);
-  if (ev) { if (params.preset === 'auto') st.idx++; setPreset(presetFor(st.idx), ev, now); }
-  if (st.prev && beats < st.morphStart - 0.5 && !ev) st.prev = null;   // the clock jumped back mid-morph: finish it (not the ½-frame look-ahead)
-  const m = st.prev ? ease((beats - st.morphStart) / st.morphBeats) : 1;
+  if (esched.last === null) esched.last = now;
+  let evE = null;
+  if (path === 'energy') {   // no-beat mode: on the music's kick once the hold (s) has passed, or at twice the hold
+    const hb = holdOf(params.shapeRate) * params.bpb, holdS = hb * barS / params.bpb, since = (now - esched.last) / 1000;
+    const cause = esched.pending !== false && (nb.kickOnset || now - esched.pending >= 500) ? 'trigger'
+      : (since >= holdS && nb.kickOnset) || since >= 2 * holdS ? 'energy' : null;
+    if (cause) evE = { beat: beats, at: beats, cause, hold: hb, morphBeats: morphLen(hb, params.bpb, cause), path: 'energy' };
+  }
+  const take = path === 'beat' ? ev : evE;
+  if (take) { if (params.preset === 'auto') st.idx++; setPreset(presetFor(st.idx), take, now); esched.last = now; esched.pending = false; }
+  if (st.prev && path === 'beat' && beats < st.morphStart - 0.5 && !take) st.prev = null;   // the clock jumped back mid-morph: finish it (not the ½-frame look-ahead)
+  // morph progress: in beats at w = 1, in seconds at the clock's tempo at w = 0 (a lost clock never stalls a morph)
+  const clamp01 = x => Math.max(0, Math.min(1, x));
+  const m = st.prev ? ease(NoBeat.mix(w, clamp01((beats - st.morphStart) / st.morphBeats), clamp01((now - st.morphPerf) / 1000 / (st.morphBeats * barS / params.bpb)))) : 1;
   if (st.prev && m >= 1) {
     if (st.rec) st.rec.end = beats;
     settledSeen.add(`${st.cur.name}:${st.cur.genus}`); st.prev = null;
@@ -668,9 +751,12 @@ function draw(now) {
   const pop = 1 + 0.06 * st.popEnv;
   const flat = params.bands === 'flat';
   const levels = Array.from(bandLevel);
-  const A = cellArrays(st.cur, m * (1 + 0.03 * st.kickEnv) * pop, levels, flat);
-  const B = cellArrays(st.prev, (1 - m) * (1 + 0.03 * st.kickEnv) * pop, levels, flat);
-  const ang = params.spin * 2 * Math.PI * bars / 32, breath = 1 + 0.02 * Math.sin(2 * Math.PI * bars);
+  const A = cellArrays(st.cur, m * (1 + 0.03 * kick) * pop, levels, flat);
+  const B = cellArrays(st.prev, (1 - m) * (1 + 0.03 * kick) * pop, levels, flat);
+  // the turn: once per 32 bars on the clock; at w = 0 the same speed at the clock's tempo, × (0.5 + loudness)
+  const ang = spinPhase.step(params.spin * 2 * Math.PI * bars / 32, params.spin * 2 * Math.PI / 32 * (dt / barS) * (0.5 + nb.level), w);
+  // the breath: 1 ± 0.02 per bar on the clock; at w = 0 it follows the bass (sub + kick over their 1 s mean)
+  const breath = NoBeat.mix(w, 1 + 0.02 * Math.sin(2 * Math.PI * bars), 1 + 0.02 * nb.low);
   const zoom = params.tileRadius;
 
   const W = canvas.width, H = canvas.height;
@@ -681,7 +767,7 @@ function draw(now) {
   gl.useProgram(sceneProg.p); const u = sceneProg.u;
   gl.uniform2f(u.uRes, W, H); gl.uniform1f(u.uZoom, zoom); gl.uniform1f(u.uAng, ang); gl.uniform1f(u.uBreath, breath);
   gl.uniform1f(u.uTime, now / 1000); gl.uniform1f(u.uMode, 0); gl.uniform1f(u.uGold, params.goldBoost);
-  gl.uniform1f(u.uKick, st.kickEnv); gl.uniform1f(u.uSnare, st.snareEnv); gl.uniform1f(u.uLabels, params.labels ? 1 : 0);
+  gl.uniform1f(u.uKick, kick); gl.uniform1f(u.uSnare, snare); gl.uniform1f(u.uLabels, params.labels ? 1 : 0);
   gl.uniform1f(u.uNA, st.cur.n); gl.uniform1f(u.uNB, st.prev ? st.prev.n : 0); gl.uniform1f(u.uAA, m); gl.uniform1f(u.uAB, 1 - m);
   gl.uniform1fv(u.uRA, A.R); gl.uniform1fv(u.uWA, A.W); gl.uniform1fv(u.uRB, B.R); gl.uniform1fv(u.uWB, B.W);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -703,7 +789,8 @@ function draw(now) {
   const rowGlow = rowSums(st.cur).map((b, kk) => b * (flat ? 1 : params.bandGains[kk] * (params.floor + (1 - params.floor) * levels[kk])));
   Object.assign(window.__qa, { preset: st.cur.name, genus: st.cur.genus, n: st.cur.n, morph: m, from: st.prev ? st.prev.name : null,
     bands: levels, flat, rowGlow, betti: rowSums(st.cur), bars, beats, floatOk, hold: holdOf(params.shapeRate), shapeRate: params.shapeRate,
-    morphBeats: st.morphBeats, pop: st.popEnv, idx: st.idx });
+    morphBeats: st.morphBeats, pop: st.popEnv, idx: st.idx,
+    nobeat: { w, path, kick, snare, low: nb.low, swell: nb.swell, kickOnset: nb.kickOnset, ang, breath } });
   // #141 audio checks (#159 ruling): each row's glow per unit Betti number and gain, which should follow its band lane
   // (floor + (1 − floor)·L_k); 7 entries, null where the row has no cells (b_k = 0), its gain is 0, or a morph is running
   const betti = rowSums(st.cur);
@@ -717,7 +804,7 @@ function draw(now) {
   if (now - lastHud > 200) {
     lastHud = now;
     const s = metronome.playing ? '▶' : (metronome.ctx ? '■' : 'tap ▶ Play');
-    hud.textContent = `Hodge Kaleidoscope · ${TITLE[st.cur.name](st.cur.genus)} · ${params.bpm} bpm · hold ${holdOf(params.shapeRate)} bar · ${s}\n${W}×${H} · ${fps} fps${floatOk ? '' : ' · no float buffers'}`;
+    hud.textContent = `Hodge Kaleidoscope · ${TITLE[st.cur.name](st.cur.genus)} · ${params.bpm} bpm · hold ${holdOf(params.shapeRate)} bar · ${s}\nbeat weight ${w.toFixed(2)} (${path}) · ${W}×${H} · ${fps} fps${floatOk ? '' : ' · no float buffers'}`;
   }
 }
 // numbers engraved on the fundamental cell, the corner label and the mirror labels
