@@ -307,7 +307,10 @@ const RECOVERY = ['voodoo-people', 'children', 'block-rockin-beats', 'hc-06'];  
 // report-only (main barely tracks it; today hc-02, hc-04, hc-09, hc-11); every other track stays hard
 const NOREG_MAIN_MIN_PCT = 25;
 // per-track waivers from the user (corpus ids only, R9): the no-regression check is report-only on these, whatever main reads
-const NOREG_WAIVERS = { 'hc-12': 'user 14 Nov: no kick, jazz' };
+const NOREG_WAIVERS = {
+  'hc-12': 'user 14 Nov: no kick, jazz',
+  'sandstorm': 'user 15 Nov: F3 tempo row -2.1 after fix A3 re-lock guard; phase inside-gate 39.7 -> 55.1',
+};
 function voteRefs() {
   const dir = A.audioDir();
   if (!fs.existsSync(dir)) return { skip: 'no tracks folder here' };
