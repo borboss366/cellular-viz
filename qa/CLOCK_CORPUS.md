@@ -123,6 +123,11 @@ The user's five house tracks of 15 Nov: steady 4/4 club music, to check the trac
 | house-04 | 123.0 (the accepted vote) | report-only | vote |
 | house-05 | 124.21 (the accepted vote) | report-only | vote |
 
+**Known limitation (user, 15 Nov):**
+
+- On house with a loud off-beat bass the tracker can slide to the off-beat after the first lock. Routes found: a tempo excursion while locked (house-01, house-02), and the persistent-dissent jump after a breakdown (house-03). Accepted for the MVP. Remedy: a hand flip (Shift+F on the conductor page, or the flip button on the controller). If a flip does not hold, the tempo is wrong (seen on house-01 after a breakdown): tap 4 or more even beats (Shift+A or the tap button), or restart (Shift+R / hold button 8).
+- The house rows stay report-only. The fix is parked; candidates: a side gate on side-crossing moves, a tempo gate while locked (see #221, F2), holding the phase through breakdowns.
+
 ## Reading the corpus
 
 Per track: the share of played time inside the gate (±35 ms), for the tracker alone (the shadow) and for the conducted clock, plus p50, p90 and p95 of the error as reported numbers. The corpus number: how many tracks need no hand fix, and how many fixes the rest needed.
@@ -135,8 +140,9 @@ Constants are frozen while the corpus grows (the list is under "Frozen tracker c
 
 The live tracker as merged on 14 Nov: F3 (the locked tempo from a fit of the onsets, with the short-window step path) and F4 (the first-lock candidate scan, the second look and the re-acquire scans), plus fix A of the half-beat ruling (the side at the first lock from two hypotheses, phase 0 or 1/2, by the low lane's onset weight, ties broken by the attack's brightness), plus fix A3 (15 Nov: after a lock, every re-lock measures the error against the model's own beat, the side kept before the free-run; up to `reacqSlew` it slews, up to `sideGuard` it jumps once on the next bar line, beyond `sideGuard` the jump is refused and logged), plus the net-displacement budget (15 Nov: the signed sum of the re-lock corrections since the last confirmed lock never passes `sideGuard`; a step is clipped to the remainder or refused, and `netConfirmBeats` consecutive in-window beats at the lock confidence confirm the lock and reset the sum), plus persistent dissent (15 Nov: `dissentCount` sideGuard refusals in a row, the same sign, |e| >= `dissentMinE`, spread <= `dissentSpread`, over >= `dissentBeats` beats with no gap > `dissentGapS` s and the drums present, authorise one bar-line jump of their median). These are its values. Changing any of them, or any line of the tracker, needs a decision first, and this list and the sha256 change in the same PR: `qa/runner/test/tracker-frozen.test.mjs` compares both with the code.
 
-- tracker source sha256: `d3254c1cb8561996db542457948896f48eaab68227bd65b1f90a2bbd0306187f`
+- tracker source sha256: `8f1b5d201c82525782f44b1fea342eb0685be4222c9271091ad83554da4d2ec1`
 - 15 Nov, logging only (no behaviour change): the tracker records each silent free-run -> locked re-lock with its size (`relocks`) and the PLL's applied phase correction while locked (`phaseApplied`), for the side-diag and phase-diag rows.
+- 15 Nov (house off-beat diagnosis), logging only: the side track (`sideTrack`): every phase move after the first lock summed since the last confirmed lock (`sideNet`) and since the first lock, its largest size, the number of side changes, and `sideBlocked` (0 until a side gate exists). Same day, still logging only: every source of the output beat's phase (the slew attributed to whoever wrote the pending correction, jumps by kind, and the period against a reference period), a second running sum `sideNetQ` that resets only after a quiet confirmation (8 in-window beats at the lock confidence with median |e| < 0.1), and side changes counted on arrival at another half beat. Then (still logging only) every write to the period with its writer and the old and new bpm (`periodLog`).
 
 Module constants:
 

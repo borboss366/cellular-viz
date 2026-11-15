@@ -313,6 +313,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const m = median(dissent.map(x => x.e)), d = dissent.map(x => x.e);
       dissentNote({ at: t, kind: 'authorised', path, n: dissent.length, median: r3(m), spread: r3(Math.max(...d) - Math.min(...d)), spanBeats: r3(span) });
       scheduled = { kind: 'acquire', delta: -m, atBeat: nextBarLine(outBeats(t)) };
+      dissentJump = true;   // logging only: the move's source
       if (state !== 'acquire') setState('acquire', t);
       reacqNet = -m;   // the budget starts from the authorised move
       dissent = [];
@@ -321,6 +322,41 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // reacqNet and returns { applied, refused }: applied is d clipped so that |reacqNet| <= sideGuard; refused when
     // nothing of d is left. Every clip and refusal is logged (time, wanted, applied, reacqNet after).
     let reacqNet = 0, netRun = 0, netLastBeat = null;
+    // logging only (the house off-beat diagnosis, 15 Nov; c1b): every change of the output beat's phase after the first
+    // lock, by source. The output is own.B0 + (t - own.T0) / own.P (+ an integer outOffset), so its phase moves by
+    //   - B0 moves: the slew of own.pending, attributed to whoever wrote pending (pll, relock, acquire, rephase, step,
+    //     fit: the F3 fit OVERWRITES pending with the line's phase), and bar-line jumps by kind (dissent apart);
+    //   - the period: between moves the beat runs at 1/P; against a reference period Pref (own.P at the first lock,
+    //     then at each quiet confirmation below) that is a move of dt x (1/P - 1/Pref), source 'tempo'.
+    // c1 logged only the slew and the jumps, not the period term: on house-02 the phase went about half a beat with
+    // only -0.25 logged. sideNet (reset as reacqNet: 8 consecutive in-window beats at lockConf) and sideNetQ (reset
+    // only when those 8 beats' onsets also sit near phase 0: median |e| < 0.1) both take every source; sideNetTotal
+    // runs since the first lock (sideNetB0: the B0 moves alone). sideChanges counts arrivals on another half beat:
+    // sideNetTotal within 1/8 beat of a new multiple of 1/2 (c1 counted every crossing of +-0.25, so a phase sitting
+    // at the boundary counted 53 times on house-02). beatsRun = sum of dt / P (for the completeness check in the tests).
+    let sideNet = 0, sideNetMax = 0, sideNetQ = 0, sideNetQMax = 0, sideNetTotal = 0, sideNetB0 = 0, sideIdx = 0, sideChanges = 0;
+    let beatsRun = 0, Pref = 0, pendBy = {}, quietE = [], dissentJump = false;
+    const sideBlocked = 0, moveBy = {}, QUIET_E = 0.1;
+    function sideMove(d, src) {
+      if (!everLocked || !d) return;
+      moveBy[src] = (moveBy[src] || 0) + d;
+      if (src !== 'tempo') sideNetB0 += d;
+      sideNet += d; sideNetQ += d; sideNetTotal += d;
+      sideNetMax = Math.max(sideNetMax, Math.abs(sideNet)); sideNetQMax = Math.max(sideNetQMax, Math.abs(sideNetQ));
+      const idx = Math.round(2 * sideNetTotal);
+      if (idx !== sideIdx && Math.abs(sideNetTotal - idx / 2) <= 0.125) { sideChanges += Math.abs(idx - sideIdx); sideIdx = idx; }
+    }
+    // own.pending through these two (same arithmetic as before: a - b and a + (-b) are the same IEEE result), so the
+    // slew can be attributed to its writers
+    function pendSet(src, v) { own.pending = v; pendBy = v ? { [src]: v } : {}; }
+    function pendAdd(src, d) { own.pending += d; pendBy[src] = (pendBy[src] || 0) + d; }
+    function slewMoved(step, pend0) {
+      if (!step) return;
+      const keys = Object.keys(pendBy);
+      if (!keys.length || Math.abs(pend0) < 1e-12) sideMove(step, 'slew:other');
+      else for (const k of keys) { const part = step * pendBy[k] / pend0; pendBy[k] -= part; sideMove(part, `slew:${k}`); }
+      if (!own.pending) pendBy = {};
+    }
     const netLog = [];
     function netStep(t, d, path) {
       const next = Math.max(-C.sideGuard, Math.min(C.sideGuard, reacqNet + d)), applied = next - reacqNet;
@@ -438,7 +474,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     function sideAtFirstLock(t) {
       const l = laneStat(lanes.low, t, acqSince), d = sideDecide(t);
       sideAtLock = { ...(l.R === null ? { R: null } : { phase: r3(l.phase), R: r3(l.R), on: r3(l.on), off: r3(l.off), n: l.n }), decide: d };
-      if (d.side === 0.5 && !tapModel) { sideAt(t, l, `first lock (${d.by})`); own.B0 += 0.5; own.pending = 0; sideOffset = sideOffset ? 0 : 0.5; }
+      if (d.side === 0.5 && !tapModel) { sideAt(t, l, `first lock (${d.by})`); own.B0 += 0.5; pendSet('firstlock', 0); sideOffset = sideOffset ? 0 : 0.5; }
     }
     function laneReport() {
       const j0 = jumps.length ? jumps[0].at : null, st = x => ({ R: r3(x.R), R2: r3(x.R2), n: x.n, phase: r3(x.phase), on: r3(x.on), off: r3(x.off) });
@@ -452,7 +488,19 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         afterJump: j0 === null ? [] : stateLog.filter(s => s.t >= j0).slice(0, 16).map(s => `${s.state}@${s.t.toFixed(2)}`) };
     }
     function logJump(t, kind, from, to, origin) { const j = { type: 'jump', at: t, kind, fromBeats: from, toBeats: to }; if (origin) j.origin = origin; jumps.push(j); return j; }
-    function setPeriod(m, P, t) { if (m.P) { m.B0 = m.B0 + (t - m.T0) / m.P; m.T0 = t; } m.P = P; }
+    function setPeriod(m, P, t) {
+      if (m === own && P !== m.P) periodNote(t, m.P, P);   // logging only
+      if (m.P) { m.B0 = m.B0 + (t - m.T0) / m.P; m.T0 = t; } m.P = P;
+    }
+    // logging only (c1c, the house off-beat diagnosis: the moves were the period, not phase pulls): every write to
+    // own.P with its writer (ownPeriod sets it) and the old and new bpm
+    let perSrc = null;
+    const periodLog = [];
+    function periodNote(t, P0, P1) {
+      periodLog.push({ t: +t.toFixed(3), src: perSrc || 'other', from: P0 ? +(60 / P0).toFixed(4) : null, to: +(60 / P1).toFixed(4) });
+      if (periodLog.length > 20000) periodLog.shift();
+    }
+    function ownPeriod(src, P, t) { perSrc = src; setPeriod(own, P, t); perSrc = null; }
     const nextBarLine = b => barOrigin + C.bpb * (Math.floor((b - barOrigin) / C.bpb + 1e-9) + 1);
 
     // ---- tempo
@@ -589,7 +637,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       notes.push({ t, kind: 'octave-release', why: 'evidence', lock: octaveLock, raw: est });
       octaveLock = null; lockOutSince = null; holdOutSince = null;
       if (f === 1 || !own.P) return;
-      setPeriod(own, own.P / f, t);
+      ownPeriod('hold-release', own.P / f, t);
       bpm = 60 / own.P; bigCount = 0; pend = null; recent.length = 0;
       if (tapModel) { setPeriod(tapModel, tapModel.P / f, t); return; }   // a tap owns the output's phase
       rephase(t, 'octave');
@@ -604,7 +652,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // the re-acquire rule (R1): |e| <= 1/4 beat slews under the 3 % rule; more is booked at the next bar line as
       // jump { kind }, forward only (beats never run back): -e when that is forward, else 1 - e
       const e = frac(st.phase + own.pending);
-      if (Math.abs(e) <= C.trackWindow) { own.pending -= e; return; }
+      if (Math.abs(e) <= C.trackWindow) { pendAdd('rephase', -e); return; }
       if (scheduled) return;   // a bar-line jump is already due; the PLL and the next acquisition handle the rest
       scheduled = { kind, delta: e > 0 ? 1 - e : -e, atBeat: nextBarLine(outBeats(t)) };
       lastInWindow = t;
@@ -641,12 +689,12 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       }
       if (!own.P) {   // first estimate: anchor beat 0 on the newest strong onset
         const s = recentStrong(t, 2), o = s[s.length - 1];
-        bpm = raw; own.P = 60 / raw; own.T0 = o ? o.t : t; own.B0 = 0;
+        bpm = raw; perSrc = 'first-estimate'; periodNote(t, 0, 60 / raw); perSrc = null; own.P = 60 / raw; own.T0 = o ? o.t : t; own.B0 = 0;
         return;
       }
       if (t < estHoldUntil) return;   // a hand x2 / /2 just set the period; the window still holds the old tempo
       const dev = Math.abs(raw - bpm) / bpm;
-      let moved = false;
+      let moved = false, psrc = 'acf-ema';   // psrc: logging only, the writer of the period below
       if (state === 'locked') {
         // F3: while locked the ACF does not feed bpm. It still decides octave / relative moves (an octave or a
         // non-octave relative of the current tempo, held tempoHoldN estimates, ruling i), and after fallbackAfter s
@@ -663,9 +711,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
           if (pend.n < C.tempoHoldN) return;
           const path = relKind(pend.bpm) || 'fallback';
           tempoDecision(t, path, pend.bpm, true);
-          bpm = pend.bpm; pend = null; bigCount = 0; tempoMoves++; moved = true;
+          bpm = pend.bpm; pend = null; bigCount = 0; tempoMoves++; moved = true; psrc = `acf-hold-${path}`;
         } else if (fallback && dev <= C.tempoTol) {
-          bigCount = 0; pend = null; fit.fallbackBlends++;
+          bigCount = 0; pend = null; fit.fallbackBlends++; psrc = 'acf-fallback-blend';
           bpm = 0.7 * bpm + 0.3 * raw;
         } else { pend = null; return; }
       }
@@ -675,10 +723,10 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         // here; the tempo stays the last locked one, as through a kick dropout. (A decisive-scan exception would not
         // hold: the break is a perfect 146.7 comb, every 24-beat scan inside it scores ~0.9 at ratio >> 1.5.)
         if (everLocked && lastConfidentBpm && relKind(raw, lastConfidentBpm) === 'relative') { pend = null; bigCount = 0; acq.reacqHeld++; return; }
-        pend = null; if (++bigCount < 6) return; bpm = raw; moved = true;
+        pend = null; if (++bigCount < 6) return; bpm = raw; moved = true; psrc = 'acf-unlocked-change';
       }
       else { bigCount = 0; pend = null; bpm = 0.7 * bpm + 0.3 * raw; }
-      setPeriod(own, 60 / bpm, t);
+      ownPeriod(psrc, 60 / bpm, t);
       // ruling (2): a tempo move that lands a fresh relative pick re-acquires the phase at the next bar line
       if (moved && state === 'locked' && relPick && t - relPick.t <= 3 && Math.abs(bpm / relPick.to - 1) <= C.tempoTol) { relLandT = t; relMoves++; relPick = null; rephase(t, 'relative'); }
       // ruling (1): the home tempo, while the lock is good and the onsets sit on it
@@ -705,7 +753,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         if (st.R === null) st = laneStat(lanes.broad, to);
         if (st.R !== null) {
           const ea = frac(st.phase + own.pending);
-          own.B0 -= ea; own.pending = 0;
+          own.B0 -= ea; pendSet('acquire', 0);
           const ce = frac(e - ea);   // this onset against the snapped phase
           if (Math.abs(ce) > C.trackWindow) return;
           let mxIn = 0;
@@ -753,7 +801,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         if (Math.abs(em) <= C.reacqSlew) {
           relockLog.push({ at: to, kind: 'relock', d: nb.applied });   // logging only: the silent re-lock and its size (beats)
           if (relockLog.length > 64) relockLog.shift();
-          own.pending += nb.applied; conf = C.lockConf; lastInWindow = to; setState('locked', to);
+          pendAdd('relock', nb.applied); conf = C.lockConf; lastInWindow = to; setState('locked', to);
         }
         else { scheduled = { kind: 'acquire', delta: nb.applied, atBeat: nextBarLine(outBeats(to)) }; setState('acquire', to); }
         return;
@@ -769,7 +817,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
           if (nb.refused) return;
           if (Math.abs(ec) > C.reacqSlew) { scheduled = { kind: 'acquire', delta: nb.applied, atBeat: nextBarLine(outBeats(to)) }; return; }
           conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(ec));
-          own.pending += nb.applied; lastInWindow = to;
+          pendAdd('acquire', nb.applied); lastInWindow = to;
           if (conf >= C.lockConf) setState('locked', to);
           return;
         }
@@ -778,7 +826,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         if (Math.abs(ea) > C.acqWindow) return;
         conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(ea));
         const from = outBeats(to);
-        own.B0 -= ea; own.pending = 0;   // gain 1: snap
+        own.B0 -= ea; pendSet('acquire', 0);   // gain 1: snap
         if (everLocked && Math.abs(ea) > 1e-6) logJump(to, 'acquire', from, outBeats(to));
         lastInWindow = to;
         if (conf >= C.lockConf) {
@@ -799,16 +847,22 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // locked: steer and update the confidence on broadband in-window onsets only
       if (Math.abs(e) > C.trackWindow) return;
       conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(e));
-      own.pending -= C.trackGain * e;
+      pendAdd('pll', -(C.trackGain * e));
       lastInWindow = to;
       strongRef = strongRef ? 0.9 * strongRef + 0.1 * s : s;   // the drums' level, from in-window locked onsets
       // fix A3b: netConfirmBeats consecutive beats with an in-window onset at conf >= lockConf confirm the lock
       if (conf >= C.lockConf) {
         const b = Math.round(ownBeats(to));
         if (netLastBeat === null || b - netLastBeat > 1 || b < netLastBeat) netRun = 1; else if (b - netLastBeat === 1) netRun++;
+        // logging only: the |e| of the run's beats (the last onset of each beat), for the quiet reset of sideNetQ
+        if (netRun === 1) quietE = [Math.abs(e)]; else if (b === netLastBeat && quietE.length) quietE[quietE.length - 1] = Math.abs(e); else quietE.push(Math.abs(e));
+        if (quietE.length > C.netConfirmBeats) quietE.shift();
         netLastBeat = b;
-        if (netRun >= C.netConfirmBeats) reacqNet = 0;
-      } else { netRun = 0; netLastBeat = null; }
+        if (netRun >= C.netConfirmBeats) {
+          reacqNet = 0; sideNet = 0;   // sideNet: logging only
+          if (median(quietE) < QUIET_E) { sideNetQ = 0; Pref = own.P; }   // logging only
+        }
+      } else { netRun = 0; netLastBeat = null; quietE = []; }
       if (tapModel) {   // the output follows the tap; the PLL only nudges its phase
         const te = frac(tapBeats(to) + tapModel.pending);
         if (Math.abs(te) <= C.trackWindow) tapModel.pending -= C.trackGain * te;
@@ -888,7 +942,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         if (fit.young && Math.abs(dev) > 0.002 && Math.abs(dev) <= C.stepPct) {
           const lim = t - fit.stepAt < C.stepYoungBeats * own.P ? Infinity : C.tempoRateMax * dt * own.P;
           const newP = own.P + Math.max(-lim, Math.min(lim, s.P - own.P));
-          setPeriod(own, newP, t); bpm = 60 / newP; fit.shortRefines++;
+          ownPeriod('fit-short-refine', newP, t); bpm = 60 / newP; fit.shortRefines++;
         }
         return;
       }
@@ -903,8 +957,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const eAt = frac(ownBeats(t) - (t - s.b) / s.P);   // the model's beat at the line's beat, at the new period
       if (Math.abs(eAt) > C.stepNear) { fit.stepCand = null; return; }
       if (t - fit.stepAt < C.stepCooldown) { fit.stepCand = null; fit.stepsCapped++; return; }   // one step per stepCooldown s
-      setPeriod(own, s.P, t); bpm = 60 / s.P;
-      own.pending = -frac(ownBeats(s.b));
+      ownPeriod('fit-step', s.P, t); bpm = 60 / s.P;
+      pendSet('step', -frac(ownBeats(s.b)));
       slewBoostUntil = t + C.stepSlewBeats * s.P;   // the step's phase error slews at stepSlewRate for a while
       tempoDecision(t, 'step', 60 / s.P, true); tempoMoves++; fit.steps++; fit.shortSteps++;
       // the long window restarts at the step (its older onsets are the old tempo); the ACF waits one window
@@ -967,13 +1021,13 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         newP = P + Math.max(-lim, Math.min(lim, Pfit - P));
         tempoDecision(t, 'fit', 60 / Pfit, true);
       }
-      if (Math.abs(newP - P) > 1e-12) { setPeriod(own, newP, t); bpm = 60 / newP; fit.adjusts++; }
+      if (Math.abs(newP - P) > 1e-12) { ownPeriod('fit-long', newP, t); bpm = 60 / newP; fit.adjusts++; }
       // the phase: the model's beat onto the fitted line (as a pending correction, slewed under the 3 % rule); not
       // while the short check holds a step candidate, nor while the newest onset already sits off the long line by
       // more than fitNewestOff beats (a change is starting: the line still leans on the old tempo, and writing it would
       // undo the PLL's correction 6 times a second)
       if (fit.stepCand || Math.abs(inw[0] - b) > C.fitNewestOff * Pfit) fit.pendSkips++;
-      else own.pending = -frac(ownBeats(b));
+      else pendSet('fit', -frac(ownBeats(b)));
     }
 
     // ---- F4: the first lock picks its tempo from a scan; the same scan at every re-acquire and once more after 8 s
@@ -1048,8 +1102,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (!blocked && !s.decisive && waited < C.acqMaxSecs) { acq.waits++; return false; }
       const from = bpm, cur = scoreAt(bpm, to);
       if (differs && !blocked) {
-        setPeriod(own, 60 / s.best.bpm, to); bpm = s.best.bpm;
-        own.B0 -= frac(ownBeats(s.best.beatT)); own.pending = 0;   // not locked yet: the beat snaps onto the grid
+        ownPeriod('scan-firstlock', 60 / s.best.bpm, to); bpm = s.best.bpm;
+        own.B0 -= frac(ownBeats(s.best.beatT)); pendSet('scan', 0);   // not locked yet: the beat snaps onto the grid
         estHoldUntil = to + C.acWindow; bigCount = 0; pend = null;
       }
       fit.lastValidT = to;
@@ -1075,7 +1129,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const blocked = mayMove(b, bpm);
       if (blocked) { rec.kept = true; rec.why = blocked; return acqNote(rec); }
       if (kind === 'rescan' && relKind(b.bpm) === 'relative') { rec.kept = true; rec.why = 'relative-reacquire'; return acqNote(rec); }
-      setPeriod(own, 60 / b.bpm, t); bpm = b.bpm;
+      ownPeriod(`scan-${kind}`, 60 / b.bpm, t); bpm = b.bpm;
       tempoDecision(t, kind, b.bpm, true); tempoMoves++;
       estHoldUntil = t + C.acWindow; pend = null; bigCount = 0;
       fit.resetT = t; fit.lastValidT = t; fit.young = true; fit.stepCand = null; fit.stepRun = 0;
@@ -1126,21 +1180,28 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       lastT = t;
       // slews, then a scheduled bar-line jump
       if (own.P) {
-        const b0 = own.B0;
+        // logging only: the beat ran dt / P since the last frame (P before this frame's changes); against Pref that is
+        // the period's phase move
+        beatsRun += dt / own.P;
+        if (everLocked) { if (!Pref) Pref = own.P; sideMove(dt / own.P - dt / Pref, 'tempo'); }
+        const b0 = own.B0, pend0 = own.pending;
         slew(own, dt, t < slewBoostUntil ? C.stepSlewRate : C.maxRate); if (tapModel) slew(tapModel, dt);
         if (state === 'locked') phaseApplied += own.B0 - b0;
+        slewMoved(own.B0 - b0, pend0);   // logging only
       }
       if (scheduled && own.P && outBeats(t) >= scheduled.atBeat) {
-        const from = outBeats(t);
-        if (scheduled.kind === 'acquire') { own.B0 += scheduled.delta; own.pending = 0; conf = C.lockConf; lastInWindow = t; setState('locked', t); }
-        else if (scheduled.kind === 'octave' || scheduled.kind === 'relative' || scheduled.kind === 'secondlook' || scheduled.kind === 'rescan') { own.B0 += scheduled.delta; own.pending = 0; lastInWindow = t; }   // onto the onsets at the new tempo (fix c, ruling 2, F4)
+        const from = outBeats(t), b0j = own.B0, jumpSrc = scheduled.kind === 'acquire' && dissentJump ? 'dissent' : scheduled.kind;
+        if (scheduled.kind === 'acquire') { own.B0 += scheduled.delta; pendSet('jump', 0); conf = C.lockConf; lastInWindow = t; setState('locked', t); }
+        else if (scheduled.kind === 'octave' || scheduled.kind === 'relative' || scheduled.kind === 'secondlook' || scheduled.kind === 'rescan') { own.B0 += scheduled.delta; pendSet('jump', 0); lastInWindow = t; }   // onto the onsets at the new tempo (fix c, ruling 2, F4)
         else if (scheduled.kind === 'side' || scheduled.kind === 'flip') {   // half a beat forward, the other side
-          own.B0 += scheduled.delta; own.pending = 0; lastInWindow = t;
+          own.B0 += scheduled.delta; pendSet('jump', 0); lastInWindow = t;
           if (tapModel) { tapModel.B0 += scheduled.delta; tapModel.pending = 0; }
           sideOffset = sideOffset ? 0 : 0.5; strongRef = 0; sideSince = null;
         }
         else { outOffset = Math.round(tapBeats(t) - ownBeats(t)); tapModel = null; disagreeSince = null; }
         logJump(t, scheduled.kind, from, outBeats(t), scheduled.origin);
+        sideMove(own.B0 - b0j, `jump:${jumpSrc}`);   // logging only
+        dissentJump = false;
         scheduled = null;
       }
       // onsets in both lanes; the low lane's only feed the side, broadband's steer
@@ -1168,7 +1229,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (state === 'locked' && conf >= C.acqConf) lastConfidentBpm = bpm;
       if (state === 'locked' && conf < C.lostConf) {
         setState('free-run', t); reacq = [];
-        if (lastConfidentBpm) { bpm = lastConfidentBpm; setPeriod(own, 60 / bpm, t); }
+        if (lastConfidentBpm) { bpm = lastConfidentBpm; ownPeriod('lock-lost-restore', 60 / bpm, t); }
       }
       // tap escape: the tracker's own model disagrees with the tap for > escapeSecs at high confidence → override
       if (tapModel && !scheduled) {
@@ -1225,7 +1286,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // ×2 / ÷2 by hand: the period changes at t with the beats continuous there, and the octave is locked (D2)
       scaleTempo(f, t) {
         if (!own.P || !(f > 0)) return;
-        setPeriod(own, own.P / f, t);
+        ownPeriod('hand-scale', own.P / f, t);
         if (tapModel) setPeriod(tapModel, tapModel.P / f, t);
         bpm = 60 / own.P; octaveLock = bpm; lockOutSince = null; holdOutSince = null; holdResets = 0; holdLastReset = null; holdFirstWrong = null;
         protectHold(t);   // the user's option 2: HOLD_PROTECT_BARS bars of the held tempo
@@ -1248,7 +1309,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
           pendSkips: fit.pendSkips };
       },
       get notes() { return notes; }, get relative() { return relReport(); }, get hold() { return holdReport(); }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
-      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get relocks() { return relockLog; }, get refused() { return refusedLog; }, get netLog() { return netLog; }, get dissentLog() { return dissentLog; }, get reacqNet() { return reacqNet; }, get phaseApplied() { return phaseApplied; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
+      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get relocks() { return relockLog; }, get refused() { return refusedLog; }, get netLog() { return netLog; }, get dissentLog() { return dissentLog; }, get periodLog() { return periodLog; }, get reacqNet() { return reacqNet; }, get sideTrack() { return { net: sideNet, netMax: sideNetMax, netQ: sideNetQ, netQMax: sideNetQMax, netTotal: sideNetTotal, netB0: sideNetB0, changes: sideChanges, blocked: sideBlocked, moveBy: { ...moveBy }, beatsRun }; }, get phaseApplied() { return phaseApplied; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
       get state() { return state; }, get confidence() { return conf; }, get bpm() { return tapModel ? 60 / tapModel.P : bpm; },
       get ownBpm() { return bpm; }, get lastConfidentBpm() { return lastConfidentBpm; }, get tapped() { return !!tapModel; },
       get barOrigin() { return barOrigin; },
