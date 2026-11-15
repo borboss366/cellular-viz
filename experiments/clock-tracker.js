@@ -129,6 +129,12 @@
     // the free-run): |e| <= reacqSlew slews (own.pending, no snap, no jump), reacqSlew < |e| <= sideGuard jumps once on
     // the next bar line, |e| > sideGuard is refused (logged; the side and phase stay)
     sideGuard: 0.42,
+    // fix A3b, the net-displacement budget (VIZ research's ruling, Orchestrator 15 Nov; voodoo-people: -0.24 then -0.26
+    // crossed half a beat in two allowed steps). reacqNet = the signed sum of every re-lock correction (slew or jump)
+    // since the last confirmed lock; a step that would take |reacqNet| past sideGuard is clipped to the remainder (or
+    // refused when none is left). A lock is confirmed, and reacqNet back to 0, after netConfirmBeats consecutive beats
+    // with an in-window onset at confidence >= lockConf
+    netConfirmBeats: 8,
   };
 
   // ---------------------------------------------------------------- analysis (worklet and node)
@@ -275,6 +281,21 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // fix A3: each refused re-lock jump (|e| > sideGuard against the model's own beat): time, size, the path
     const refusedLog = [];
     function refuse(t, e, path) { refusedLog.push({ at: t, kind: 'refused', d: -e, path }); if (refusedLog.length > 64) refusedLog.shift(); }
+    // fix A3b: the net-displacement budget (see DEFAULTS.netConfirmBeats). netStep(t, d, path) books the step d against
+    // reacqNet and returns { applied, refused }: applied is d clipped so that |reacqNet| <= sideGuard; refused when
+    // nothing of d is left. Every clip and refusal is logged (time, wanted, applied, reacqNet after).
+    let reacqNet = 0, netRun = 0, netLastBeat = null;
+    const netLog = [];
+    function netStep(t, d, path) {
+      const next = Math.max(-C.sideGuard, Math.min(C.sideGuard, reacqNet + d)), applied = next - reacqNet;
+      const refused = Math.abs(d) > 1e-9 && Math.abs(applied) < 1e-9;
+      if (Math.abs(applied - d) > 1e-9) {
+        netLog.push({ at: t, kind: refused ? 'net-refused' : 'net-clip', path, wanted: d, applied, net: next });
+        if (netLog.length > 64) netLog.shift();
+      }
+      reacqNet = next;
+      return { applied, refused };
+    }
     let octaveLock = null, lockOutSince = null, holdOutSince = null;
     let holdResets = 0, holdLastReset = null, holdFirstWrong = null;   // fix (c) accumulator diagnostics (logging only)
     let protect = null, protectSkips = 0;   // the hand hold's protection: { t, beat, bar } of its end; checks skipped in it
@@ -297,6 +318,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     function setState(s, t) {
       if (s !== state) {
         state = s; stateLog.push({ t, state: s });
+        if (s !== 'locked') { netRun = 0; netLastBeat = null; }   // fix A3b: the confirming run needs a lock
         if (s === 'locked') { laneHold = false; if (firstLockT !== null) rescanDue = t; }   // F4: every re-acquire scans
       }
     }
@@ -688,12 +710,15 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         const em = median(reacq);
         reacq = [];
         if (Math.abs(em) > C.sideGuard) { refuse(to, em, 'free-run'); return; }   // the other side: stay in free-run
+        // fix A3b: the step is booked against the net budget; a refused step (no budget left) stays in free-run
+        const nb = netStep(to, -em, Math.abs(em) <= C.reacqSlew ? 'free-run slew' : 'free-run jump');
+        if (nb.refused) return;
         if (Math.abs(em) <= C.reacqSlew) {
-          relockLog.push({ at: to, kind: 'relock', d: -em });   // logging only: the silent re-lock and its size (beats)
+          relockLog.push({ at: to, kind: 'relock', d: nb.applied });   // logging only: the silent re-lock and its size (beats)
           if (relockLog.length > 64) relockLog.shift();
-          own.pending -= em; conf = C.lockConf; lastInWindow = to; setState('locked', to);
+          own.pending += nb.applied; conf = C.lockConf; lastInWindow = to; setState('locked', to);
         }
-        else { scheduled = { kind: 'acquire', delta: -em, atBeat: nextBarLine(outBeats(to)) }; setState('acquire', to); }
+        else { scheduled = { kind: 'acquire', delta: nb.applied, atBeat: nextBarLine(outBeats(to)) }; setState('acquire', to); }
         return;
       }
       if (state === 'acquire') {
@@ -703,9 +728,11 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         if (everLocked) {
           const ec = frac(e);
           if (Math.abs(ec) > C.sideGuard) { refuse(to, ec, 'acquire'); return; }
-          if (Math.abs(ec) > C.reacqSlew) { scheduled = { kind: 'acquire', delta: -ec, atBeat: nextBarLine(outBeats(to)) }; return; }
+          const nb = netStep(to, -ec, Math.abs(ec) > C.reacqSlew ? 'acquire jump' : 'acquire slew');   // fix A3b
+          if (nb.refused) return;
+          if (Math.abs(ec) > C.reacqSlew) { scheduled = { kind: 'acquire', delta: nb.applied, atBeat: nextBarLine(outBeats(to)) }; return; }
           conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(ec));
-          own.pending -= ec; lastInWindow = to;
+          own.pending += nb.applied; lastInWindow = to;
           if (conf >= C.lockConf) setState('locked', to);
           return;
         }
@@ -738,6 +765,13 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       own.pending -= C.trackGain * e;
       lastInWindow = to;
       strongRef = strongRef ? 0.9 * strongRef + 0.1 * s : s;   // the drums' level, from in-window locked onsets
+      // fix A3b: netConfirmBeats consecutive beats with an in-window onset at conf >= lockConf confirm the lock
+      if (conf >= C.lockConf) {
+        const b = Math.round(ownBeats(to));
+        if (netLastBeat === null || b - netLastBeat > 1 || b < netLastBeat) netRun = 1; else if (b - netLastBeat === 1) netRun++;
+        netLastBeat = b;
+        if (netRun >= C.netConfirmBeats) reacqNet = 0;
+      } else { netRun = 0; netLastBeat = null; }
       if (tapModel) {   // the output follows the tap; the PLL only nudges its phase
         const te = frac(tapBeats(to) + tapModel.pending);
         if (Math.abs(te) <= C.trackWindow) tapModel.pending -= C.trackGain * te;
@@ -1177,7 +1211,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
           pendSkips: fit.pendSkips };
       },
       get notes() { return notes; }, get relative() { return relReport(); }, get hold() { return holdReport(); }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
-      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get relocks() { return relockLog; }, get refused() { return refusedLog; }, get phaseApplied() { return phaseApplied; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
+      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get relocks() { return relockLog; }, get refused() { return refusedLog; }, get netLog() { return netLog; }, get reacqNet() { return reacqNet; }, get phaseApplied() { return phaseApplied; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
       get state() { return state; }, get confidence() { return conf; }, get bpm() { return tapModel ? 60 / tapModel.P : bpm; },
       get ownBpm() { return bpm; }, get lastConfidentBpm() { return lastConfidentBpm; }, get tapped() { return !!tapModel; },
       get barOrigin() { return barOrigin; },

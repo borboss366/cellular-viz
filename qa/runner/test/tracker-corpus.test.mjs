@@ -431,9 +431,18 @@ function gateRun(mono, lib) {
   for (const r of tr.relocks || []) jumps.push({ at: r.at, kind: 'relock', d: r.d });
   // fix A3: each refused re-lock jump (|e| > sideGuard), its size and path (free-run / acquire), as kind 'refused-<path>'
   for (const r of tr.refused || []) jumps.push({ at: r.at, kind: `refused-${r.path}`, d: r.d });
+  // fix A3b: each clipped or refused step of the net budget (d = what was applied)
+  const net = (tr.netLog || []).map(n => ({ ...n }));
+  for (const n of net) jumps.push({ at: n.at, kind: `${n.kind}-${n.path.replace(' ', '-')}`, d: n.applied });
   jumps.sort((x, y) => x.at - y.at);
   const states = (tr.stateLog || []).map(s => ({ t: s.t, state: s.state }));
-  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states, applied, decided };
+  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states, applied, decided, net };
+}
+function netText(run) {
+  const N = run.net || [];
+  if (!N.length) return 'net budget: no clip or refusal';
+  const s = x => `${x >= 0 ? '+' : ''}${x.toFixed(3)}`;
+  return `net budget (sideGuard): ${N.map(n => `${n.kind}@${n.at.toFixed(2)}s ${n.path} wanted ${s(n.wanted)} applied ${s(n.applied)} reacqNet ${s(n.net)}`).join(' | ')}`;
 }
 const fracB = x => x - Math.round(x);
 function decisionCtx(tr, r, kind) {
@@ -543,6 +552,7 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
     if (SIDE_DIAG.includes(row.id)) {
       say(t, `side-diag ${row.id} after: signed error vs the ref grid per ${SIDE_WIN_S} s: ${windowDiag(a.beats, secs)} [report-only]`);
       say(t, `side-diag ${row.id} after: ${movesText(after)} [report-only]`);
+      say(t, `side-diag ${row.id} after: ${netText(after)} [report-only]`);
       if (PHASE_DIAG.includes(row.id)) say(t, `phase-diag ${row.id} after: ${appliedText(after)} [report-only]`);
       if (DECIDE_DIAG.includes(row.id)) say(t, `side-diag ${row.id} after: re-lock decisions: ${decidedText(after)} [report-only]`);
       say(t, `side-diag ${row.id} before (main 501cfe1): ${windowDiag(b.beats, secs)}; ${movesText(before)} [report-only]`);

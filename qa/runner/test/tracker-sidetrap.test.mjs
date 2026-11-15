@@ -199,6 +199,7 @@ export function runBreakdown(s) {
   const moves = (tr.jumps || []).filter(j => lockT !== null && j.at >= lockT).map(j => ({ at: j.at, kind: j.kind, d: frac(j.toBeats - j.fromBeats) }));
   for (const r of tr.relocks || []) moves.push({ at: r.at, kind: 'relock', d: r.d });
   for (const r of tr.refused || []) moves.push({ at: r.at, kind: `refused-${r.path}`, d: r.d });   // fix A3
+  for (const n of tr.netLog || []) moves.push({ at: n.at, kind: `${n.kind}-${n.path.replace(' ', '-')}(wanted ${n.wanted.toFixed(3)}, net ${n.net.toFixed(3)})`, d: n.applied });   // fix A3b
   moves.sort((x, y) => x.at - y.at);
   const acqMax = moves.filter(j => j.kind === 'acquire').reduce((m, j) => Math.max(m, Math.abs(j.d)), 0);
   // locked again: the start of the final locked run, measured from the kick's return (0 if it never left)
