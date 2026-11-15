@@ -411,10 +411,11 @@ const CD = await import('../../../experiments/conductor.mjs');
 const GATE_SECS = 180;
 /** one tracker over the audio: its output beats (as the conductor logs the shadow's), 0.1 s samples, first lock */
 function gateRun(mono, lib) {
-  const beats = [], samples = [], counter = CD.beatCounter(), applied = [], decided = [];
+  const beats = [], samples = [], counter = CD.beatCounter(), applied = [], decided = [], sideS = [];
   let lockT = null, lastBlock = null, nRel = 0, nRef = 0;
   const tr = track(mono, (tr, tt) => {
     if (lockT === null && tr.state === 'locked') lockT = tt;
+    if (lockT !== null && tr.sideTrack) { const st = tr.sideTrack; sideS.push({ t: tt, net: st.net, total: st.netTotal }); }
     // each re-lock and refused jump (fix A3) with the broadband onsets that can have decided it: the last 6 onsets up to
     // the decision within 4 beats, their strength and phase against the model (read at most 0.1 s later; a re-lock's
     // slew has hardly moved by then). The decision took the last reacqOnsets (3) of them that passed the strength rules.
@@ -442,7 +443,21 @@ function gateRun(mono, lib) {
   for (const n of net) jumps.push({ at: n.at, kind: `${n.kind}-${n.path.replace(' ', '-')}`, d: n.applied });
   jumps.sort((x, y) => x.at - y.at);
   const states = (tr.stateLog || []).map(s => ({ t: s.t, state: s.state }));
-  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states, applied, decided, net, dissent };
+  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states, applied, decided, net, dissent, sideS, sideEnd: tr.sideTrack || null };
+}
+// the side track (house off-beat diagnosis, 15 Nov; logging only on this commit): per 15 s window the largest |sideNet|
+// (phase moved since the last confirmed lock) and the phase moved since the first lock at the window's end; then the
+// end values, sideChanges and sideBlocked
+function sideTrackText(run) {
+  const S = run.sideS || [], E = run.sideEnd;
+  if (!E) return 'side track: not available (main 501cfe1)';
+  const s = x => `${x >= 0 ? '+' : ''}${x.toFixed(3)}`, win = [];
+  for (let w0 = 0; S.length && w0 <= S[S.length - 1].t; w0 += SIDE_WIN_S) {
+    const W = S.filter(x => x.t >= w0 && x.t < w0 + SIDE_WIN_S);
+    if (!W.length) continue;
+    win.push(`${w0}-${w0 + SIDE_WIN_S}s max|sideNet| ${Math.max(...W.map(x => Math.abs(x.net))).toFixed(3)} total ${s(W[W.length - 1].total)}`);
+  }
+  return `side track: ${win.join(' | ') || 'no samples'}; end sideNet ${s(E.net)}, max |sideNet| ${E.netMax.toFixed(3)}, moved since the first lock ${s(E.netTotal)}, sideChanges ${E.changes}, sideBlocked ${E.blocked}`;
 }
 // fix A3c: each authorised half-beat move (n, median, spread, span) and each refusal not counted (why)
 function dissentText(run) {
@@ -573,6 +588,7 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
       say(t, `side-diag ${row.id} after: ${movesText(after)} [report-only]`);
       say(t, `side-diag ${row.id} after: ${netText(after)} [report-only]`);
       say(t, `side-diag ${row.id} after: ${dissentText(after)} [report-only]`);
+      say(t, `side-diag ${row.id} after: ${sideTrackText(after)} [report-only]`);
       if (PHASE_DIAG.includes(row.id)) say(t, `phase-diag ${row.id} after: ${appliedText(after)} [report-only]`);
       if (DECIDE_DIAG.includes(row.id)) say(t, `side-diag ${row.id} after: re-lock decisions: ${decidedText(after)} [report-only]`);
       say(t, `side-diag ${row.id} before (main 501cfe1): ${windowDiag(b.beats, secs)}; ${movesText(before)} [report-only]`);

@@ -221,3 +221,73 @@ test('side breakdown: 8 bars kick + off-beat bass, 8 bars bass + pad only, 16 ba
   report(t, `side breakdown ${s.name} moves: kick out ${s.kickOut.toFixed(2)} s, back ${s.kickBack.toFixed(2)} s; jumps after the first lock ${r.moves.length ? r.moves.map(j => `${j.kind}@${j.at.toFixed(1)}s(${sgn(j.d)})`).join(' ') : 'none'}; states from the kick out ${r.midStates.length ? r.midStates.map(x => `${x.state}@${x.t.toFixed(1)}s`).join(' ') : 'no change'}`);
   assert.equal(s.beats.length, 128, 'the fixture rendered 32 bars');
 });
+
+// ---------------------------------------------------------------- the house trap (the user's go 15 Nov 21:14; VIZ
+// research's ruling and QA box's diagnosis of house-01/02/03: the tempo is right and the first lock is on the beat,
+// then the phase goes to the off-beat by the PLL walk, the persistent-dissent jump or a re-lock slew; nothing after the
+// first lock checks the side). 126 BPM, 90 s: a kick on every beat (60 Hz burst + its 2 ms click), an off-beat bass at
+// +6 dB (low-passed at 150 Hz, no transient), closed hats on the eighths; at 40 s the kick drops for 4 bars (bass and
+// hats stay), then comes back. Truth: the generator's beat grid. REPORT-ONLY on this commit (expected to fail on main).
+// Targets (hard after the gate): >= 95 % of the last 16 bars within 35 ms, |sideNet| never > 0.375, 0 side changes,
+// >= 1 sideBlocked in the bass-only bars.
+export function houseTrap({ bpm = 126, secs = 90, bassDb = 6, dropAt = 40, dropBars = 4 } = {}) {
+  const P = 60 / bpm, n = Math.floor(secs / P), out = new Float64Array(Math.round((LEAD + secs + 1) * SR));
+  const rnd = mulberry32(126126), beats = [];
+  const k0 = Math.ceil(dropAt / P), k1 = k0 + 4 * dropBars;   // the kick is out for beats k0 .. k1 - 1
+  for (let k = 0; k < n; k++) {
+    const t = LEAD + k * P;
+    beats.push(t);
+    if (k < k0 || k >= k1) add(out, t, kick(rnd));
+    add(out, t + P / 2, bass(db(bassDb)));
+    for (const h of [0, 0.5]) add(out, t + h * P, noiseHit(rnd, db(-12), 'hp', 8000, 0.7, 0.03, 0.12, 1.5));
+  }
+  let m = 0; for (const v of out) m = Math.max(m, Math.abs(v));
+  const samples = new Float32Array(out.length); for (let i = 0; i < out.length; i++) samples[i] = out[i] * 0.8 / m;
+  return { samples, beats, bpm, P, name: `house-trap-${bpm}`, dropFrom: LEAD + k0 * P, dropTo: LEAD + k1 * P };
+}
+/** the tracker over the house trap: the error at every true beat after the first lock, and the side track */
+export function runHouse(s) {
+  const tr = T.createTracker(), frames = [];
+  const an = T.createAnalyzer({ sampleRate: SR, onFrame: f => frames.push(f) });
+  for (let i = 0; i < s.samples.length; i += 128) an.process(s.samples.subarray(i, Math.min(s.samples.length, i + 128)), i / SR);
+  const per = [];
+  let lockT = null, bi = 0, blockedAtDrop = null, blockedAfterDrop = null;
+  for (const f of frames) {
+    tr.push(f);
+    if (lockT === null && tr.state === 'locked') lockT = f.t;
+    const st = tr.sideTrack || null;
+    if (st && blockedAtDrop === null && f.t >= s.dropFrom) blockedAtDrop = st.blocked;
+    if (st && blockedAfterDrop === null && f.t >= s.dropTo) blockedAfterDrop = st.blocked;
+    while (bi < s.beats.length && s.beats[bi] <= f.t) {
+      per.push({ k: bi, e: lockT === null ? null : frac(tr.beatsAt(s.beats[bi])) });
+      bi++;
+    }
+  }
+  const last = per.slice(-64).filter(p => p.e !== null).map(p => p.e * s.P * 1000);
+  const inPct = 100 * last.filter(e => Math.abs(e) <= GATE_MS).length / 64;
+  const all = per.filter(p => p.e !== null).map(p => p.e * s.P * 1000);
+  const allPct = all.length ? 100 * all.filter(e => Math.abs(e) <= GATE_MS).length / all.length : 0;
+  const side = tr.sideTrack || { net: null, netMax: null, netTotal: null, changes: null, blocked: null };
+  const blockedInDrop = blockedAtDrop === null || blockedAfterDrop === null ? null : blockedAfterDrop - blockedAtDrop;
+  const moves = (tr.jumps || []).filter(j => lockT !== null && j.at >= lockT).map(j => `${j.kind}@${j.at.toFixed(1)}s(${sgn(frac(j.toBeats - j.fromBeats))})`);
+  for (const r of tr.refused || []) moves.push(`refused-${r.path}@${r.at.toFixed(1)}s(${sgn(r.d)})`);
+  for (const r of tr.relocks || []) moves.push(`relock@${r.at.toFixed(1)}s(${sgn(r.d)})`);
+  // the signed error per 10 s (beats; +-0.5 = the off-beat)
+  const win = [];
+  for (let w0 = 0; w0 < s.beats[s.beats.length - 1]; w0 += 10) {
+    const E = per.filter(p => p.e !== null && s.beats[p.k] >= w0 && s.beats[p.k] < w0 + 10).map(p => p.e).sort((a, b) => a - b);
+    win.push(`${w0}-${w0 + 10}s ${E.length ? sgn(E[E.length >> 1]) : '-'}`);
+  }
+  return { lockT, inPct, allPct, side, blockedInDrop, moves, win, states: (tr.stateLog || []).filter(x => lockT !== null && x.t > lockT).map(x => `${x.state}@${x.t.toFixed(1)}s`) };
+}
+
+test('house trap: 126 BPM, kick + off-beat bass + hats, the kick out for 4 bars at 40 s: stays on the beat (report-only until the side gate)', (t) => {
+  const s = houseTrap(), r = runHouse(s);
+  const sd = r.side, num = x => (x === null || x === undefined ? '-' : sgn(x));
+  const ok = r.inPct >= 95 && sd.netMax !== null && sd.netMax <= 0.375 && sd.changes === 0 && r.blockedInDrop >= 1;
+  report(t, `house trap ${s.name}: first lock ${r.lockT === null ? 'never' : r.lockT.toFixed(2) + ' s'}; last 16 bars ${r.inPct.toFixed(1)} % within ${GATE_MS} ms (target >= 95), all beats after the lock ${r.allPct.toFixed(1)} %`
+    + `; sideNet at the end ${num(sd.net)}, max |sideNet| ${num(sd.netMax)} (target <= 0.375), moved since the first lock ${num(sd.netTotal)}, sideChanges ${sd.changes ?? '-'} (target 0), sideBlocked ${sd.blocked ?? '-'}, in the bass-only bars ${r.blockedInDrop ?? '-'} (target >= 1)`
+    + ` | ${ok ? 'would pass' : 'would FAIL'} [report-only]`);
+  report(t, `house trap ${s.name} detail: kick out ${s.dropFrom.toFixed(2)}-${s.dropTo.toFixed(2)} s; signed error per 10 s ${r.win.join(' | ')}; moves ${r.moves.length ? r.moves.join(' ') : 'none'}; states ${r.states.length ? r.states.join(' ') : 'no change'}`);
+  assert.ok(s.beats.length > 180, 'the fixture rendered');
+});

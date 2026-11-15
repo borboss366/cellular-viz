@@ -321,6 +321,19 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // reacqNet and returns { applied, refused }: applied is d clipped so that |reacqNet| <= sideGuard; refused when
     // nothing of d is left. Every clip and refusal is logged (time, wanted, applied, reacqNet after).
     let reacqNet = 0, netRun = 0, netLastBeat = null;
+    // logging only (the house off-beat diagnosis, 15 Nov): every phase move of the model after the first lock (PLL and
+    // re-lock slews, bar-line jumps of any kind, hand flips). sideNet runs since the last confirmed lock (reset with
+    // reacqNet), sideNetTotal since the first lock; sideChanges counts changes of the nearest half beat of
+    // sideNetTotal (a move to the other side and back counts twice). sideBlocked stays 0 here (no gate yet).
+    let sideNet = 0, sideNetMax = 0, sideNetTotal = 0, sideIdx = 0, sideChanges = 0;
+    const sideBlocked = 0;
+    function sideMove(d) {
+      if (!everLocked || !d) return;
+      sideNet += d; sideNetTotal += d;
+      sideNetMax = Math.max(sideNetMax, Math.abs(sideNet));
+      const idx = Math.round(2 * sideNetTotal);
+      if (idx !== sideIdx) { sideChanges += Math.abs(idx - sideIdx); sideIdx = idx; }
+    }
     const netLog = [];
     function netStep(t, d, path) {
       const next = Math.max(-C.sideGuard, Math.min(C.sideGuard, reacqNet + d)), applied = next - reacqNet;
@@ -807,7 +820,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         const b = Math.round(ownBeats(to));
         if (netLastBeat === null || b - netLastBeat > 1 || b < netLastBeat) netRun = 1; else if (b - netLastBeat === 1) netRun++;
         netLastBeat = b;
-        if (netRun >= C.netConfirmBeats) reacqNet = 0;
+        if (netRun >= C.netConfirmBeats) { reacqNet = 0; sideNet = 0; }   // sideNet: logging only
       } else { netRun = 0; netLastBeat = null; }
       if (tapModel) {   // the output follows the tap; the PLL only nudges its phase
         const te = frac(tapBeats(to) + tapModel.pending);
@@ -1129,9 +1142,10 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         const b0 = own.B0;
         slew(own, dt, t < slewBoostUntil ? C.stepSlewRate : C.maxRate); if (tapModel) slew(tapModel, dt);
         if (state === 'locked') phaseApplied += own.B0 - b0;
+        sideMove(own.B0 - b0);   // logging only
       }
       if (scheduled && own.P && outBeats(t) >= scheduled.atBeat) {
-        const from = outBeats(t);
+        const from = outBeats(t), b0j = own.B0;
         if (scheduled.kind === 'acquire') { own.B0 += scheduled.delta; own.pending = 0; conf = C.lockConf; lastInWindow = t; setState('locked', t); }
         else if (scheduled.kind === 'octave' || scheduled.kind === 'relative' || scheduled.kind === 'secondlook' || scheduled.kind === 'rescan') { own.B0 += scheduled.delta; own.pending = 0; lastInWindow = t; }   // onto the onsets at the new tempo (fix c, ruling 2, F4)
         else if (scheduled.kind === 'side' || scheduled.kind === 'flip') {   // half a beat forward, the other side
@@ -1141,6 +1155,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         }
         else { outOffset = Math.round(tapBeats(t) - ownBeats(t)); tapModel = null; disagreeSince = null; }
         logJump(t, scheduled.kind, from, outBeats(t), scheduled.origin);
+        sideMove(own.B0 - b0j);   // logging only
         scheduled = null;
       }
       // onsets in both lanes; the low lane's only feed the side, broadband's steer
@@ -1248,7 +1263,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
           pendSkips: fit.pendSkips };
       },
       get notes() { return notes; }, get relative() { return relReport(); }, get hold() { return holdReport(); }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
-      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get relocks() { return relockLog; }, get refused() { return refusedLog; }, get netLog() { return netLog; }, get dissentLog() { return dissentLog; }, get reacqNet() { return reacqNet; }, get phaseApplied() { return phaseApplied; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
+      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get relocks() { return relockLog; }, get refused() { return refusedLog; }, get netLog() { return netLog; }, get dissentLog() { return dissentLog; }, get reacqNet() { return reacqNet; }, get sideTrack() { return { net: sideNet, netMax: sideNetMax, netTotal: sideNetTotal, changes: sideChanges, blocked: sideBlocked }; }, get phaseApplied() { return phaseApplied; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
       get state() { return state; }, get confidence() { return conf; }, get bpm() { return tapModel ? 60 / tapModel.P : bpm; },
       get ownBpm() { return bpm; }, get lastConfidentBpm() { return lastConfidentBpm; }, get tapped() { return !!tapModel; },
       get barOrigin() { return barOrigin; },
