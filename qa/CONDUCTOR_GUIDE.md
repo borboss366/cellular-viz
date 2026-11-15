@@ -122,6 +122,30 @@ Marks go on the LIVE deck only, while it plays. A track with no grid cannot have
    `podman exec --env-file ~/.config/cellular-viz-runner.env pi-durable-worker sh -c 'sh "$RUNNER_HOME/qa/runner/conductor.sh" stop'`
 3. Tell Orchestrator. VIZ dev then applies the marks.
 
+## The controller (Launch Control XL 3) and the bridge to Resolume
+The page uses the controller's DAW port. While the page is open, the controller sends nothing on its normal MIDI port.
+The page passes the faders and knob rows 2 and 3 on to Resolume over the IAC bus (the "bridge").
+
+Turn on the IAC Driver (one time, on the Mac):
+1. Open Audio MIDI Setup (Cmd+Space, type "Audio MIDI Setup").
+2. Choose Window > Show MIDI Studio.
+3. Double-click "IAC Driver".
+4. Tick "Device is online". Click Apply.
+
+In Resolume (Preferences > MIDI):
+- Turn on input from "IAC Driver Bus 1" only.
+- Turn off input and output for every "LCXL3" port. Resolume must never send to the controller.
+- MIDI-learn the faders and knob rows 2 and 3 over the bus. Knob row 1 and both button rows belong to the page.
+
+The lower button row: tap, flip, ÷2, ×2, −10, +10, set 1, restart (hold it 1 second).
+The tap button flashes on the beat: green locked, amber finding the beat, red free-run.
+The header shows two lamps:
+- "controller: on". "controller: degraded (press MODE)": the Mode button opened the controller's mode menu.
+  Push Mode one time to close it.
+- "bridge: on". "bridge: off (no IAC bus)": turn on the IAC Driver (above). "bridge: degraded": the bus is there
+  but the controller is not connected or is in the mode menu. The list next to the lamp picks another bus.
+If the controller looks dead after the page closed badly, unplug it and plug it in again.
+
 ## If there is a problem
 - The Playlist box is empty: the server cannot find the tracks folder. Check the CONDUCTOR_TRACKS line in
   `~/.config/cellular-viz-runner.env`. Then stop and start the server again.

@@ -29,7 +29,7 @@ test('every qa/runner/test/*.mjs, its fixtures and experiments/clock*.js pass no
   const list = [
     ...fs.readdirSync(testDir).filter(f => f.endsWith('.mjs')).map(f => path.join(testDir, f)),
     ...fs.readdirSync(fixDir).filter(f => /\.(mjs|cjs|js)$/.test(f)).map(f => path.join(fixDir, f)),
-    ...['clock.js', 'clock-tracker.js'].map(f => path.join(exp, f)),
+    ...['clock.js', 'clock-tracker.js', 'midi-controller.js'].map(f => path.join(exp, f)),
   ].sort();
   assert.ok(list.some(f => f.endsWith('conduct-smoke.test.mjs')) && list.some(f => f.endsWith('clock-tracker.js')), 'the smoke test and the tracker are among them');
   const bad = [];
