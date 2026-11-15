@@ -126,3 +126,7 @@ _none yet_
 - Verdict: not given
 - Your words: "All filled up"; after PR #15: "It creates quite cool effect when it clears out. But it takes a lot of time for orbitals to produce new filling again and screen feels empty"; after PR #16: "looks more or less nice, lots of fine tuning though"
 - Shot: ![04 rings](shots/2026-10-22-04-custom-four-rings.jpg)
+
+## 15 Nov 2026: house set gate-table run
+
+- No-op PR for one test-pr run on main f1130d4 after the house-01..05 vote refs are written (gate table, side-diag and F3 rows, report-only). No code change.
