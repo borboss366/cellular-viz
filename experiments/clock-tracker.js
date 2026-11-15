@@ -23,7 +23,8 @@
 //     applied as a bounded RATE change (≤ 3 % of the beat rate, never a step). Confidence = EMA of 1 − 2|err|; it
 //     decays while no onset lands in the window.
 //   - re-acquire after free-run (#95 MUST 1, truth R1): |e| ≤ ¼ beat slews under the 3 % rule; |e| > ¼ beat jumps on
-//     the next bar line, logged as jump { kind: 'acquire' }.
+//     the next bar line, logged as jump { kind: 'acquire' }. Fix A3 (15 Nov): e against the model's own beat, and an
+//     |e| > sideGuard (0.42 beat: the other side, not drift) is refused and logged; the side and phase stay.
 //   - tap escape (#95 SHOULD 7, truth R5): after tap() the output follows the tap (phase nudged by the PLL, tempo
 //     fixed); if the tracker's own model disagrees by > 3 % in tempo or > ¼ beat in phase for > 4 s at confidence
 //     ≥ 0.7, the output switches back at the next bar line: jump { kind: 'override' }.
@@ -59,7 +60,7 @@
     acWindow: 4, refineWindow: 8, estHz: 6,
     onsetK: 2, onsetWin: 1, refractory: 0.15, floorRel: 0.15, peakTau: 10, strongRel: 0.4,
     acqConf: 0.4, lockConf: 0.5, lostConf: 0.3, acqWindow: 0.5, trackWindow: 0.25, trackGain: 0.15, driftOnsets: 4, driftMin: 0.02, confAlpha: 0.15,
-    confTau: 1.0, maxRate: 0.03, refRel: 0.3, reacqJump: 0.25, reacqOnsets: 3, bpb: 4,
+    confTau: 1.0, maxRate: 0.03, refRel: 0.3, reacqSlew: 0.25, reacqOnsets: 3, bpb: 4,
     escapeTempo: 0.03, escapePhase: 0.25, escapeSecs: 4, escapeConf: 0.7,
     laneBeats: 8, laneMinOnsets: 4,
     // non-octave relatives (#188 6766497000 fix a): the chosen lag's 4/3, 3/2, 2/3 and 3/4 tempos are scored with the
@@ -115,6 +116,32 @@
     // A hold faster than the estimate needs the distance alone (holdSlow is logged as support). Then the hold goes and
     // the model moves to the estimate's octave
     holdOct: 0.75, holdSlow: 0.8, holdFast: 0.6, holdSecs: 2, holdProtectBars: HOLD_PROTECT_BARS,
+    // the side at the first lock (the half-beat fix A; VIZ research's ruling, the user's go 14 Nov 17:21). The low
+    // lane's circular mean lands on the louder of two lobes half a beat apart, and on trance / garage / techno that is
+    // the off-beat bass. Now two hypotheses, the beat at the model's phase 0 or at 1/2, are scored by the low lane's
+    // onset weight within +-sideBin beat of each over the last sideBeats beats; the larger wins unless they are within
+    // sideTie of each other, then the brighter attack wins (broadband / low onset strength at each low onset, the
+    // broadband onset taken from sideBrightLead s before it to sideBrightLag s after it: a kick has a click, an off-beat
+    // bass usually not; the low lane hears a kick 45-80 ms after broadband does)
+    sideBeats: 16, sideBin: 0.125, sideTie: 0.2, sideBrightLead: 0.1, sideBrightLag: 0.03,
+    // fix A3 (VIZ research's ruling, Orchestrator 15 Nov; box runs 9d7d000 and 4542e12: the half-beat comes through the
+    // re-lock's bar-line jump). After a lock every re-lock measures e against the model's own beat (the side kept before
+    // the free-run): |e| <= reacqSlew slews (own.pending, no snap, no jump), reacqSlew < |e| <= sideGuard jumps once on
+    // the next bar line, |e| > sideGuard is refused (logged; the side and phase stay)
+    sideGuard: 0.42,
+    // fix A3b, the net-displacement budget (VIZ research's ruling, Orchestrator 15 Nov; voodoo-people: -0.24 then -0.26
+    // crossed half a beat in two allowed steps). reacqNet = the signed sum of every re-lock correction (slew or jump)
+    // since the last confirmed lock; a step that would take |reacqNet| past sideGuard is clipped to the remainder (or
+    // refused when none is left). A lock is confirmed, and reacqNet back to 0, after netConfirmBeats consecutive beats
+    // with an in-window onset at confidence >= lockConf
+    netConfirmBeats: 8,
+    // fix A3c, persistent dissent authorises a half-beat move (VIZ research's ruling, Orchestrator 15 Nov; sicko-mode
+    // stays half a beat off after a refusal). A sideGuard refusal counts when |e| >= dissentMinE and the drums are there
+    // (broadband peakEnv >= dissentDrumRel x strongRef, the drums' level before the free-run, and >= dissentOnsets
+    // broadband onsets in the last 2 beats). dissentCount counted refusals in a row, the same sign, spread <=
+    // dissentSpread, spanning >= dissentBeats beats with no gap > dissentGapS s, authorise one bar-line jump of their
+    // median; reacqNet is set to that jump. The run restarts on a sign change, a gap, |e| < dissentMinE, or any lock or jump
+    dissentCount: 6, dissentMinE: 0.4, dissentSpread: 0.06, dissentBeats: 16, dissentGapS: 4, dissentDrumRel: 0.5, dissentOnsets: 2,
   };
 
   // ---------------------------------------------------------------- analysis (worklet and node)
@@ -254,6 +281,57 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // the output: own (plus an integer relabel) or, after a tap, the tap model until the tracker overrides it
     let tapModel = null, outOffset = 0, disagreeSince = null;
     const jumps = [], stateLog = [];
+    // logging only (the half-beat diagnosis, 15 Nov): silent free-run -> locked re-locks (not jumps: tr.jumps rebook
+    // the clock) and the phase correction the PLL slew applied while locked (beats, cumulative)
+    const relockLog = [];
+    let phaseApplied = 0;
+    // fix A3: each refused re-lock jump (|e| > sideGuard against the model's own beat): time, size, the path
+    const refusedLog = [];
+    function refuse(t, e, path) {
+      refusedLog.push({ at: t, kind: 'refused', d: -e, path }); if (refusedLog.length > 64) refusedLog.shift();
+      dissentTally(t, e, path);   // fix A3c
+    }
+    // fix A3c: the run of counted refusals ({ at, e }), each authorised move and each refusal not counted (logged)
+    let dissent = [];
+    const dissentLog = [];
+    function dissentNote(x) { dissentLog.push(x); if (dissentLog.length > 64) dissentLog.shift(); }
+    function dissentTally(t, e, path) {
+      if (!own.P) return;
+      const last = dissent.length ? dissent[dissent.length - 1] : null;
+      if (last && (t - last.at > C.dissentGapS || Math.sign(e) !== Math.sign(last.e))) dissent = [];
+      if (Math.abs(e) < C.dissentMinE) { dissent = []; return; }
+      const ons = lanes.broad.onsets;
+      let recent = 0;
+      for (let i = ons.length - 1; i >= 0 && ons[i].t > t - 2 * own.P; i--) recent++;
+      const drums = strongRef > 0 && lanes.broad.peakEnv >= C.dissentDrumRel * strongRef && recent >= C.dissentOnsets;
+      if (!drums) { dissentNote({ at: t, kind: 'not counted', path, e: r3(e), why: `drums: peakEnv ${r3(lanes.broad.peakEnv)} vs strongRef ${r3(strongRef)}, ${recent} onsets in 2 beats` }); return; }
+      dissent.push({ at: t, e });
+      const es = dissent.map(x => x.e);
+      if (Math.max(...es) - Math.min(...es) > C.dissentSpread) dissent = [{ at: t, e }];   // too spread: a new run from this one
+      const span = (t - dissent[0].at) / own.P;
+      if (dissent.length < C.dissentCount || span < C.dissentBeats || scheduled) return;
+      const m = median(dissent.map(x => x.e)), d = dissent.map(x => x.e);
+      dissentNote({ at: t, kind: 'authorised', path, n: dissent.length, median: r3(m), spread: r3(Math.max(...d) - Math.min(...d)), spanBeats: r3(span) });
+      scheduled = { kind: 'acquire', delta: -m, atBeat: nextBarLine(outBeats(t)) };
+      if (state !== 'acquire') setState('acquire', t);
+      reacqNet = -m;   // the budget starts from the authorised move
+      dissent = [];
+    }
+    // fix A3b: the net-displacement budget (see DEFAULTS.netConfirmBeats). netStep(t, d, path) books the step d against
+    // reacqNet and returns { applied, refused }: applied is d clipped so that |reacqNet| <= sideGuard; refused when
+    // nothing of d is left. Every clip and refusal is logged (time, wanted, applied, reacqNet after).
+    let reacqNet = 0, netRun = 0, netLastBeat = null;
+    const netLog = [];
+    function netStep(t, d, path) {
+      const next = Math.max(-C.sideGuard, Math.min(C.sideGuard, reacqNet + d)), applied = next - reacqNet;
+      const refused = Math.abs(d) > 1e-9 && Math.abs(applied) < 1e-9;
+      if (Math.abs(applied - d) > 1e-9) {
+        netLog.push({ at: t, kind: refused ? 'net-refused' : 'net-clip', path, wanted: d, applied, net: next });
+        if (netLog.length > 64) netLog.shift();
+      }
+      reacqNet = next;
+      return { applied, refused };
+    }
     let octaveLock = null, lockOutSince = null, holdOutSince = null;
     let holdResets = 0, holdLastReset = null, holdFirstWrong = null;   // fix (c) accumulator diagnostics (logging only)
     let protect = null, protectSkips = 0;   // the hand hold's protection: { t, beat, bar } of its end; checks skipped in it
@@ -276,6 +354,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     function setState(s, t) {
       if (s !== state) {
         state = s; stateLog.push({ t, state: s });
+        if (s !== 'locked') { netRun = 0; netLastBeat = null; }   // fix A3b: the confirming run needs a lock
+        if (s === 'locked') dissent = [];   // fix A3c: any lock (a landed jump too) ends a dissent run
         if (s === 'locked') { laneHold = false; if (firstLockT !== null) rescanDue = t; }   // F4: every re-acquire scans
       }
     }
@@ -325,7 +405,26 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // lane's R small (Sandstorm ≈ 0.1–0.4), its weight near the beat vs near the off-beat says where the kick is.
     let sideOffset = 0, sideSince = null, sideLast = null, sideAtLock = null, sideHand = false;
     const sideLog = [];
-    function sideMoveNeeded(l) { return l && l.R !== null && Math.abs(l.phase) > 0.25 && l.off > l.on; }
+    // fix A: the side by two hypotheses (phase 0 or 1/2 of the model) instead of the circular mean (see DEFAULTS)
+    function sideDecide(t) {
+      const from = Math.max(acqSince === null ? -Infinity : acqSince, t - C.sideBeats * own.P), bo = lanes.broad.onsets;
+      const bins = [{ w: 0, b: 0, n: 0 }, { w: 0, b: 0, n: 0 }];
+      for (const o of lanes.low.onsets) {
+        if (o.t <= from || o.t > t) continue;
+        const ph = Math.abs(frac(ownBeats(o.t))), h = ph <= C.sideBin ? 0 : 0.5 - ph <= C.sideBin ? 1 : -1;
+        if (h < 0) continue;
+        let sb = 0;   // the broadband onset at this low onset (the attack's brightness)
+        for (let i = bo.length - 1; i >= 0 && bo[i].t >= o.t - C.sideBrightLead; i--) if (bo[i].t <= o.t + C.sideBrightLag) sb = Math.max(sb, bo[i].s);
+        bins[h].w += o.s; bins[h].b += sb; bins[h].n++;
+      }
+      const [h0, h1] = bins, mx = Math.max(h0.w, h1.w), bright = B => (B.w > 0 ? B.b / B.w : 0);
+      const d = { w0: r3(h0.w), w1: r3(h1.w), n0: h0.n, n1: h1.n, bright0: r3(bright(h0)), bright1: r3(bright(h1)),
+        brightRatio: bright(h0) > 0 ? r3(bright(h1) / bright(h0)) : null, by: null, side: 0 };
+      if (h0.n + h1.n < C.laneMinOnsets || !(mx > 0)) { d.by = 'too few'; return d; }
+      if (Math.abs(h0.w - h1.w) > C.sideTie * mx) { d.by = 'weight'; d.side = h1.w > h0.w ? 0.5 : 0; }
+      else { d.by = 'brightness'; d.side = bright(h1) > bright(h0) ? 0.5 : 0; }
+      return d;
+    }
     function sideAt(t, l, why) {   // the side moves half a beat (forward: beats never run back)
       sideLog.push({ t: +t.toFixed(3), why, phase: r3(l.phase), R: r3(l.R), on: r3(l.on), off: r3(l.off), n: l.n });
       notes.push({ t, kind: 'side', why, phase: l.phase, R: l.R });
@@ -337,9 +436,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     }
     // the first lock: the low lane's side over everything it heard since acquisition began, silently (nothing booked)
     function sideAtFirstLock(t) {
-      const l = laneStat(lanes.low, t, acqSince);
-      sideAtLock = l.R === null ? 'no R' : { phase: r3(l.phase), R: r3(l.R), on: r3(l.on), off: r3(l.off), n: l.n };
-      if (sideMoveNeeded(l) && !tapModel) { sideAt(t, l, 'first lock'); own.B0 += 0.5; own.pending = 0; sideOffset = sideOffset ? 0 : 0.5; }
+      const l = laneStat(lanes.low, t, acqSince), d = sideDecide(t);
+      sideAtLock = { ...(l.R === null ? { R: null } : { phase: r3(l.phase), R: r3(l.R), on: r3(l.on), off: r3(l.off), n: l.n }), decide: d };
+      if (d.side === 0.5 && !tapModel) { sideAt(t, l, `first lock (${d.by})`); own.B0 += 0.5; own.pending = 0; sideOffset = sideOffset ? 0 : 0.5; }
     }
     function laneReport() {
       const j0 = jumps.length ? jumps[0].at : null, st = x => ({ R: r3(x.R), R2: r3(x.R2), n: x.n, phase: r3(x.phase), on: r3(x.on), off: r3(x.off) });
@@ -641,18 +740,40 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         if (strongRef && s < C.refRel * strongRef) return;
       }
       if (state === 'free-run') {   // collect evidence; decide once reacqOnsets strong onsets agree (R1)
-        reacq.push(frac(e + sideOffset));   // on the side the low lane chose
+        // fix A3: against the model's own beat, the side kept before the free-run. (frac(e + sideOffset) added the side a
+        // second time: own.B0 already moved half a beat when sideOffset was set, at the first lock or by a flip.)
+        reacq.push(frac(e));
         if (reacq.length < C.reacqOnsets) return;
         const em = median(reacq);
         reacq = [];
-        if (Math.abs(em) <= C.reacqJump) { own.pending -= em; conf = C.lockConf; lastInWindow = to; setState('locked', to); }
-        else { scheduled = { kind: 'acquire', delta: -em, atBeat: nextBarLine(outBeats(to)) }; setState('acquire', to); }
+        if (Math.abs(em) > C.sideGuard) { refuse(to, em, 'free-run'); return; }   // the other side: stay in free-run
+        // fix A3b: the step is booked against the net budget; a refused step (no budget left) stays in free-run
+        const nb = netStep(to, -em, Math.abs(em) <= C.reacqSlew ? 'free-run slew' : 'free-run jump');
+        if (nb.refused) return;
+        if (Math.abs(em) <= C.reacqSlew) {
+          relockLog.push({ at: to, kind: 'relock', d: nb.applied });   // logging only: the silent re-lock and its size (beats)
+          if (relockLog.length > 64) relockLog.shift();
+          own.pending += nb.applied; conf = C.lockConf; lastInWindow = to; setState('locked', to);
+        }
+        else { scheduled = { kind: 'acquire', delta: nb.applied, atBeat: nextBarLine(outBeats(to)) }; setState('acquire', to); }
         return;
       }
       if (state === 'acquire') {
         if (scheduled) return;   // a bar-line jump is already decided: wait for it
-        // before any lane mean exists, and on re-acquisitions (after a breakdown both means are noise, R1): this onset,
-        // on the side the low lane chose at the first lock
+        // after a lock (fix A3): the same three bands as the free-run's re-lock, against the model's own beat; the
+        // in-band correction goes through own.pending (a slew, no snap), a jump waits for the next bar line
+        if (everLocked) {
+          const ec = frac(e);
+          if (Math.abs(ec) > C.sideGuard) { refuse(to, ec, 'acquire'); return; }
+          const nb = netStep(to, -ec, Math.abs(ec) > C.reacqSlew ? 'acquire jump' : 'acquire slew');   // fix A3b
+          if (nb.refused) return;
+          if (Math.abs(ec) > C.reacqSlew) { scheduled = { kind: 'acquire', delta: nb.applied, atBeat: nextBarLine(outBeats(to)) }; return; }
+          conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(ec));
+          own.pending += nb.applied; lastInWindow = to;
+          if (conf >= C.lockConf) setState('locked', to);
+          return;
+        }
+        // before any lane mean exists (the first acquisition): this onset
         const ea = frac(e + sideOffset);
         if (Math.abs(ea) > C.acqWindow) return;
         conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(ea));
@@ -681,6 +802,13 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       own.pending -= C.trackGain * e;
       lastInWindow = to;
       strongRef = strongRef ? 0.9 * strongRef + 0.1 * s : s;   // the drums' level, from in-window locked onsets
+      // fix A3b: netConfirmBeats consecutive beats with an in-window onset at conf >= lockConf confirm the lock
+      if (conf >= C.lockConf) {
+        const b = Math.round(ownBeats(to));
+        if (netLastBeat === null || b - netLastBeat > 1 || b < netLastBeat) netRun = 1; else if (b - netLastBeat === 1) netRun++;
+        netLastBeat = b;
+        if (netRun >= C.netConfirmBeats) reacqNet = 0;
+      } else { netRun = 0; netLastBeat = null; }
       if (tapModel) {   // the output follows the tap; the PLL only nudges its phase
         const te = frac(tapBeats(to) + tapModel.pending);
         if (Math.abs(te) <= C.trackWindow) tapModel.pending -= C.trackGain * te;
@@ -997,7 +1125,11 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const dt = lastT === null ? dtHop : Math.max(0, t - lastT);
       lastT = t;
       // slews, then a scheduled bar-line jump
-      if (own.P) { slew(own, dt, t < slewBoostUntil ? C.stepSlewRate : C.maxRate); if (tapModel) slew(tapModel, dt); }
+      if (own.P) {
+        const b0 = own.B0;
+        slew(own, dt, t < slewBoostUntil ? C.stepSlewRate : C.maxRate); if (tapModel) slew(tapModel, dt);
+        if (state === 'locked') phaseApplied += own.B0 - b0;
+      }
       if (scheduled && own.P && outBeats(t) >= scheduled.atBeat) {
         const from = outBeats(t);
         if (scheduled.kind === 'acquire') { own.B0 += scheduled.delta; own.pending = 0; conf = C.lockConf; lastInWindow = t; setState('locked', t); }
@@ -1116,7 +1248,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
           pendSkips: fit.pendSkips };
       },
       get notes() { return notes; }, get relative() { return relReport(); }, get hold() { return holdReport(); }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
-      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
+      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get relocks() { return relockLog; }, get refused() { return refusedLog; }, get netLog() { return netLog; }, get dissentLog() { return dissentLog; }, get reacqNet() { return reacqNet; }, get phaseApplied() { return phaseApplied; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
       get state() { return state; }, get confidence() { return conf; }, get bpm() { return tapModel ? 60 / tapModel.P : bpm; },
       get ownBpm() { return bpm; }, get lastConfidentBpm() { return lastConfidentBpm; }, get tapped() { return !!tapModel; },
       get barOrigin() { return barOrigin; },
