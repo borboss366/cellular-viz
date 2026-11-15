@@ -52,6 +52,8 @@ test('frozen tracker: CLOCK_CORPUS.md lists every DEFAULTS constant of the track
   assert.equal(code.fitChainTol, 0.1); assert.equal(code.acqFloor, 0.25); assert.equal(code.acqRelScore, 0.5); assert.equal(code.acqLookRatio, 1.5);
   // the half-beat fix A (the side at the first lock by two hypotheses, ties by brightness)
   assert.deepEqual([code.sideBeats, code.sideBin, code.sideTie, code.sideBrightLead, code.sideBrightLag], [16, 0.125, 0.2, 0.1, 0.03]);
+  // fix A3 (the re-lock: slew up to reacqSlew, one bar-line jump up to sideGuard, refuse beyond; reacqJump renamed)
+  assert.deepEqual([code.reacqSlew, code.sideGuard, 'reacqJump' in code], [0.25, 0.42, false]);
 });
 
 test('frozen tracker: the module constants and the source sha256 match the doc; the frozen sentence points at the list', () => {

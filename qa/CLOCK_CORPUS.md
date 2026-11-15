@@ -119,11 +119,11 @@ Every BPM used by a rule comes from a least-squares fit over the window, never f
 
 Constants are frozen while the corpus grows (the list is under "Frozen tracker constants"): a new track adds a row, never a knob. A failing track gets a numbered finding that names a rule, not a number.
 
-## Frozen tracker constants (F3/F4, main 44308b4; side fix A)
+## Frozen tracker constants (F3/F4, main 44308b4; side fixes A and A3)
 
-The live tracker as merged on 14 Nov: F3 (the locked tempo from a fit of the onsets, with the short-window step path) and F4 (the first-lock candidate scan, the second look and the re-acquire scans), plus fix A of the half-beat ruling (the side at the first lock from two hypotheses, phase 0 or 1/2, by the low lane's onset weight, ties broken by the attack's brightness). These are its values. Changing any of them, or any line of the tracker, needs a decision first, and this list and the sha256 change in the same PR: `qa/runner/test/tracker-frozen.test.mjs` compares both with the code.
+The live tracker as merged on 14 Nov: F3 (the locked tempo from a fit of the onsets, with the short-window step path) and F4 (the first-lock candidate scan, the second look and the re-acquire scans), plus fix A of the half-beat ruling (the side at the first lock from two hypotheses, phase 0 or 1/2, by the low lane's onset weight, ties broken by the attack's brightness), plus fix A3 (15 Nov: after a lock, every re-lock measures the error against the model's own beat, the side kept before the free-run; up to `reacqSlew` it slews, up to `sideGuard` it jumps once on the next bar line, beyond `sideGuard` the jump is refused and logged). These are its values. Changing any of them, or any line of the tracker, needs a decision first, and this list and the sha256 change in the same PR: `qa/runner/test/tracker-frozen.test.mjs` compares both with the code.
 
-- tracker source sha256: `c10b33cfe34b8f734afba800220673029d9c7407a2fb10f02fac7f81a3fc5ffe`
+- tracker source sha256: `3d4b9bb902a0a3182565203928e05af975c40833e35162c4a467e3870e9f2475`
 - 15 Nov, logging only (no behaviour change): the tracker records each silent free-run -> locked re-lock with its size (`relocks`) and the PLL's applied phase correction while locked (`phaseApplied`), for the side-diag and phase-diag rows.
 
 Module constants:
@@ -135,7 +135,7 @@ Module constants:
 | `EDGES` | `[20, 60, 120, 250, 500, 2000, 4000, 8000, 16000]` |
 | `BANDS` | `[sub, kick, low, lowMid, mid, upperMid, presence, air]` |
 
-The tracker's defaults (`DEFAULTS`, in the code's order; F3's are `fitBeats` to `fitChainTol`, F4's are `acqBeats` to `acqLookRatio`, side fix A's are `sideBeats` to `sideBrightLag`):
+The tracker's defaults (`DEFAULTS`, in the code's order; F3's are `fitBeats` to `fitChainTol`, F4's are `acqBeats` to `acqLookRatio`, side fix A's are `sideBeats` to `sideBrightLag`, fix A3's is `sideGuard`; fix A3 renamed `reacqJump` to `reacqSlew`, same value):
 
 | Constant | Value |
 |---|---|
@@ -165,7 +165,7 @@ The tracker's defaults (`DEFAULTS`, in the code's order; F3's are `fitBeats` to 
 | `confTau` | `1.0` |
 | `maxRate` | `0.03` |
 | `refRel` | `0.3` |
-| `reacqJump` | `0.25` |
+| `reacqSlew` | `0.25` |
 | `reacqOnsets` | `3` |
 | `bpb` | `4` |
 | `escapeTempo` | `0.03` |
@@ -230,6 +230,7 @@ The tracker's defaults (`DEFAULTS`, in the code's order; F3's are `fitBeats` to 
 | `sideTie` | `0.2` |
 | `sideBrightLead` | `0.1` |
 | `sideBrightLag` | `0.03` |
+| `sideGuard` | `0.42` |
 
 ## Still owed
 

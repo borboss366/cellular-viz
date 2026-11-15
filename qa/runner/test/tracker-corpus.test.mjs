@@ -414,6 +414,8 @@ function gateRun(mono, lib) {
   const jumps = (tr.jumps || []).map(j => ({ at: j.at, kind: j.kind, d: j.toBeats - j.fromBeats }));
   // the silent free-run -> locked re-locks (a slew, not a clock jump; logged apart by the tracker) join the list as kind 'relock'
   for (const r of tr.relocks || []) jumps.push({ at: r.at, kind: 'relock', d: r.d });
+  // fix A3: each refused re-lock jump (|e| > sideGuard), its size and path (free-run / acquire), as kind 'refused-<path>'
+  for (const r of tr.refused || []) jumps.push({ at: r.at, kind: `refused-${r.path}`, d: r.d });
   jumps.sort((x, y) => x.at - y.at);
   const states = (tr.stateLog || []).map(s => ({ t: s.t, state: s.state }));
   return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states, applied };

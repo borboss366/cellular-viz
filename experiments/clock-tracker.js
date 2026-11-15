@@ -23,7 +23,8 @@
 //     applied as a bounded RATE change (≤ 3 % of the beat rate, never a step). Confidence = EMA of 1 − 2|err|; it
 //     decays while no onset lands in the window.
 //   - re-acquire after free-run (#95 MUST 1, truth R1): |e| ≤ ¼ beat slews under the 3 % rule; |e| > ¼ beat jumps on
-//     the next bar line, logged as jump { kind: 'acquire' }.
+//     the next bar line, logged as jump { kind: 'acquire' }. Fix A3 (15 Nov): e against the model's own beat, and an
+//     |e| > sideGuard (0.42 beat: the other side, not drift) is refused and logged; the side and phase stay.
 //   - tap escape (#95 SHOULD 7, truth R5): after tap() the output follows the tap (phase nudged by the PLL, tempo
 //     fixed); if the tracker's own model disagrees by > 3 % in tempo or > ¼ beat in phase for > 4 s at confidence
 //     ≥ 0.7, the output switches back at the next bar line: jump { kind: 'override' }.
@@ -59,7 +60,7 @@
     acWindow: 4, refineWindow: 8, estHz: 6,
     onsetK: 2, onsetWin: 1, refractory: 0.15, floorRel: 0.15, peakTau: 10, strongRel: 0.4,
     acqConf: 0.4, lockConf: 0.5, lostConf: 0.3, acqWindow: 0.5, trackWindow: 0.25, trackGain: 0.15, driftOnsets: 4, driftMin: 0.02, confAlpha: 0.15,
-    confTau: 1.0, maxRate: 0.03, refRel: 0.3, reacqJump: 0.25, reacqOnsets: 3, bpb: 4,
+    confTau: 1.0, maxRate: 0.03, refRel: 0.3, reacqSlew: 0.25, reacqOnsets: 3, bpb: 4,
     escapeTempo: 0.03, escapePhase: 0.25, escapeSecs: 4, escapeConf: 0.7,
     laneBeats: 8, laneMinOnsets: 4,
     // non-octave relatives (#188 6766497000 fix a): the chosen lag's 4/3, 3/2, 2/3 and 3/4 tempos are scored with the
@@ -123,6 +124,11 @@
     // broadband onset taken from sideBrightLead s before it to sideBrightLag s after it: a kick has a click, an off-beat
     // bass usually not; the low lane hears a kick 45-80 ms after broadband does)
     sideBeats: 16, sideBin: 0.125, sideTie: 0.2, sideBrightLead: 0.1, sideBrightLag: 0.03,
+    // fix A3 (VIZ research's ruling, Orchestrator 15 Nov; box runs 9d7d000 and 4542e12: the half-beat comes through the
+    // re-lock's bar-line jump). After a lock every re-lock measures e against the model's own beat (the side kept before
+    // the free-run): |e| <= reacqSlew slews (own.pending, no snap, no jump), reacqSlew < |e| <= sideGuard jumps once on
+    // the next bar line, |e| > sideGuard is refused (logged; the side and phase stay)
+    sideGuard: 0.42,
   };
 
   // ---------------------------------------------------------------- analysis (worklet and node)
@@ -266,6 +272,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // the clock) and the phase correction the PLL slew applied while locked (beats, cumulative)
     const relockLog = [];
     let phaseApplied = 0;
+    // fix A3: each refused re-lock jump (|e| > sideGuard against the model's own beat): time, size, the path
+    const refusedLog = [];
+    function refuse(t, e, path) { refusedLog.push({ at: t, kind: 'refused', d: -e, path }); if (refusedLog.length > 64) refusedLog.shift(); }
     let octaveLock = null, lockOutSince = null, holdOutSince = null;
     let holdResets = 0, holdLastReset = null, holdFirstWrong = null;   // fix (c) accumulator diagnostics (logging only)
     let protect = null, protectSkips = 0;   // the hand hold's protection: { t, beat, bar } of its end; checks skipped in it
@@ -672,11 +681,14 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         if (strongRef && s < C.refRel * strongRef) return;
       }
       if (state === 'free-run') {   // collect evidence; decide once reacqOnsets strong onsets agree (R1)
-        reacq.push(frac(e + sideOffset));   // on the side the low lane chose
+        // fix A3: against the model's own beat, the side kept before the free-run. (frac(e + sideOffset) added the side a
+        // second time: own.B0 already moved half a beat when sideOffset was set, at the first lock or by a flip.)
+        reacq.push(frac(e));
         if (reacq.length < C.reacqOnsets) return;
         const em = median(reacq);
         reacq = [];
-        if (Math.abs(em) <= C.reacqJump) {
+        if (Math.abs(em) > C.sideGuard) { refuse(to, em, 'free-run'); return; }   // the other side: stay in free-run
+        if (Math.abs(em) <= C.reacqSlew) {
           relockLog.push({ at: to, kind: 'relock', d: -em });   // logging only: the silent re-lock and its size (beats)
           if (relockLog.length > 64) relockLog.shift();
           own.pending -= em; conf = C.lockConf; lastInWindow = to; setState('locked', to);
@@ -686,8 +698,18 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       }
       if (state === 'acquire') {
         if (scheduled) return;   // a bar-line jump is already decided: wait for it
-        // before any lane mean exists, and on re-acquisitions (after a breakdown both means are noise, R1): this onset,
-        // on the side the low lane chose at the first lock
+        // after a lock (fix A3): the same three bands as the free-run's re-lock, against the model's own beat; the
+        // in-band correction goes through own.pending (a slew, no snap), a jump waits for the next bar line
+        if (everLocked) {
+          const ec = frac(e);
+          if (Math.abs(ec) > C.sideGuard) { refuse(to, ec, 'acquire'); return; }
+          if (Math.abs(ec) > C.reacqSlew) { scheduled = { kind: 'acquire', delta: -ec, atBeat: nextBarLine(outBeats(to)) }; return; }
+          conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(ec));
+          own.pending -= ec; lastInWindow = to;
+          if (conf >= C.lockConf) setState('locked', to);
+          return;
+        }
+        // before any lane mean exists (the first acquisition): this onset
         const ea = frac(e + sideOffset);
         if (Math.abs(ea) > C.acqWindow) return;
         conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(ea));
@@ -1155,7 +1177,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
           pendSkips: fit.pendSkips };
       },
       get notes() { return notes; }, get relative() { return relReport(); }, get hold() { return holdReport(); }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
-      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get relocks() { return relockLog; }, get phaseApplied() { return phaseApplied; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
+      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get relocks() { return relockLog; }, get refused() { return refusedLog; }, get phaseApplied() { return phaseApplied; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
       get state() { return state; }, get confidence() { return conf; }, get bpm() { return tapModel ? 60 / tapModel.P : bpm; },
       get ownBpm() { return bpm; }, get lastConfidentBpm() { return lastConfidentBpm; }, get tapped() { return !!tapModel; },
       get barOrigin() { return barOrigin; },
