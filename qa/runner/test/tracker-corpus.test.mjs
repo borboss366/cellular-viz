@@ -415,7 +415,10 @@ function gateRun(mono, lib) {
   let lockT = null, lastBlock = null, nRel = 0, nRef = 0;
   const tr = track(mono, (tr, tt) => {
     if (lockT === null && tr.state === 'locked') lockT = tt;
-    if (lockT !== null && tr.sideTrack) { const st = tr.sideTrack; sideS.push({ t: tt, net: st.net, total: st.netTotal }); }
+    if (lockT !== null && tr.sideTrack) {
+      const st = tr.sideTrack;
+      sideS.push({ t: tt, net: st.net, netQ: st.netQ, total: st.netTotal, b0: st.netB0, run: st.beatsRun, out: tr.beatsAt(tt), by: st.moveBy });
+    }
     // each re-lock and refused jump (fix A3) with the broadband onsets that can have decided it: the last 6 onsets up to
     // the decision within 4 beats, their strength and phase against the model (read at most 0.1 s later; a re-lock's
     // slew has hardly moved by then). The decision took the last reacqOnsets (3) of them that passed the strength rules.
@@ -455,9 +458,39 @@ function sideTrackText(run) {
   for (let w0 = 0; S.length && w0 <= S[S.length - 1].t; w0 += SIDE_WIN_S) {
     const W = S.filter(x => x.t >= w0 && x.t < w0 + SIDE_WIN_S);
     if (!W.length) continue;
-    win.push(`${w0}-${w0 + SIDE_WIN_S}s max|sideNet| ${Math.max(...W.map(x => Math.abs(x.net))).toFixed(3)} total ${s(W[W.length - 1].total)}`);
+    win.push(`${w0}-${w0 + SIDE_WIN_S}s max|sideNet| ${Math.max(...W.map(x => Math.abs(x.net))).toFixed(3)} max|sideNetQ| ${Math.max(...W.map(x => Math.abs(x.netQ))).toFixed(3)} total ${s(W[W.length - 1].total)}`);
   }
-  return `side track: ${win.join(' | ') || 'no samples'}; end sideNet ${s(E.net)}, max |sideNet| ${E.netMax.toFixed(3)}, moved since the first lock ${s(E.netTotal)}, sideChanges ${E.changes}, sideBlocked ${E.blocked}`;
+  return `side track (every source; sideNet resets after 8 in-window beats at lockConf, sideNetQ only when their median |e| < 0.1): ${win.join(' | ') || 'no samples'}`
+    + `; end sideNet ${s(E.net)} (max ${E.netMax.toFixed(3)}), sideNetQ ${s(E.netQ)} (max ${E.netQMax.toFixed(3)}), moved since the first lock ${s(E.netTotal)} (B0 moves alone ${s(E.netB0)}), sideChanges ${E.changes} (arrivals on another half beat), sideBlocked ${E.blocked}`;
+}
+// the completeness check (c1b): the output beat's phase against the reference grid, from the first lock to the end,
+// against the logged moves. out(t) = B0 moves + beatsRun (+ integers), so out - B0 moves - beatsRun must stay constant
+// (mod 1): its largest wander is the unlogged residual. The error vs the grid then splits into the B0 moves and the
+// period's part against the grid (beatsRun - the grid's beats), and the moves split by source.
+function refPos(G, t) {
+  if (!G.length) return null;
+  let i = 0;
+  if (t <= G[0]) i = 0; else if (t >= G[G.length - 1]) i = G.length - 2; else { let lo = 0, hi = G.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (G[m] <= t) lo = m; else hi = m; } i = lo; }
+  if (i < 0) return null;
+  return i + (t - G[i]) / (G[i + 1] - G[i]);
+}
+function checkText(run, gridBeats) {
+  // grid beats are { ms, pos, conf } (the sidecar v2); seconds, ascending
+  const S = (run.sideS || []).filter(x => Number.isFinite(x.out)), G = (gridBeats || []).map(b => (b && Number.isFinite(b.ms) ? b.ms / 1000 : NaN)).filter(Number.isFinite).sort((p, q) => p - q);
+  if (S.length < 2 || G.length < 2) return 'phase check: not available';
+  const fr = x => x - Math.round(x), s = x => `${x >= 0 ? '+' : ''}${x.toFixed(3)}`;
+  const a = S[0], z = S[S.length - 1];
+  let resid = 0, err = 0, prev = a.out - refPos(G, a.t);
+  for (const x of S) {
+    resid = Math.max(resid, Math.abs(fr((x.out - a.out) - (x.b0 - a.b0) - (x.run - a.run))));
+    const cur = x.out - refPos(G, x.t);
+    err += fr(cur - prev); prev = cur;
+  }
+  const dB0 = z.b0 - a.b0, dTempo = (z.run - a.run) - (refPos(G, z.t) - refPos(G, a.t)), diff = fr(err - dB0 - dTempo);
+  const by = Object.keys(z.by).map(k => [k, z.by[k] - (a.by[k] || 0)]).filter(([, v]) => Math.abs(v) >= 0.0005).sort((p, q) => Math.abs(q[1]) - Math.abs(p[1]));
+  return `phase check ${a.t.toFixed(1)}-${z.t.toFixed(1)} s: error vs the grid moved ${s(err)} = B0 moves ${s(dB0)} + the period vs the grid ${s(dTempo)} (difference ${s(diff)}, ${Math.abs(diff) <= 0.05 ? 'match' : 'MISMATCH'} within 0.05)`
+    + `; unlogged residual (largest wander of out - B0 moves - beats run) ${resid.toFixed(3)} (${resid <= 0.05 ? 'all moves logged' : 'UNLOGGED PATH'})`
+    + `; moves by source ${by.length ? by.map(([k, v]) => `${k} ${s(v)}`).join(', ') : 'none'}`;
 }
 // fix A3c: each authorised half-beat move (n, median, spread, span) and each refusal not counted (why)
 function dissentText(run) {
@@ -589,6 +622,7 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
       say(t, `side-diag ${row.id} after: ${netText(after)} [report-only]`);
       say(t, `side-diag ${row.id} after: ${dissentText(after)} [report-only]`);
       say(t, `side-diag ${row.id} after: ${sideTrackText(after)} [report-only]`);
+      say(t, `side-diag ${row.id} after: ${checkText(after, grid.beats)} [report-only]`);
       if (PHASE_DIAG.includes(row.id)) say(t, `phase-diag ${row.id} after: ${appliedText(after)} [report-only]`);
       if (DECIDE_DIAG.includes(row.id)) say(t, `side-diag ${row.id} after: re-lock decisions: ${decidedText(after)} [report-only]`);
       say(t, `side-diag ${row.id} before (main 501cfe1): ${windowDiag(b.beats, secs)}; ${movesText(before)} [report-only]`);

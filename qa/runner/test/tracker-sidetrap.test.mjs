@@ -45,10 +45,10 @@ function kick(rnd, g = 1, click = 0) {   // a 60 Hz burst (120 ms decay) with a 
 // the kick carries a bright beater click and the hat on the beat is louder than the one on the off-beat (a closed hat
 // on the eighths with the downbeat accented), so the drums can lock; the off-beat bass, the trap, is unchanged.
 const TRAP_CLICK = 1.0, TRAP_BEAT_HAT_DB = -6;
-function bass(g) {   // 55 Hz + its octave, a 25 ms raised-cosine attack (no transient), 180 ms long, low-passed at 150 Hz
+function bass(g, att = 0.025) {   // 55 Hz + its octave, a raised-cosine attack (25 ms: no transient), 180 ms long, low-passed at 150 Hz
   const n = Math.round(0.2 * SR), x = new Float64Array(n);
   for (let i = 0; i < n; i++) {
-    const t = i / SR, a = t < 0.025 ? 0.5 - 0.5 * Math.cos(Math.PI * t / 0.025) : Math.exp(-(t - 0.025) / 0.15);
+    const t = i / SR, a = t < att ? 0.5 - 0.5 * Math.cos(Math.PI * t / att) : Math.exp(-(t - att) / 0.15);
     x[i] = g * a * (Math.sin(2 * Math.PI * 55 * t) + 0.4 * Math.sin(2 * Math.PI * 110 * t));
   }
   biquad(x, SR, 'lp', 150, 0.707); biquad(x, SR, 'lp', 150, 0.707);
@@ -225,39 +225,43 @@ test('side breakdown: 8 bars kick + off-beat bass, 8 bars bass + pad only, 16 ba
 // ---------------------------------------------------------------- the house trap (the user's go 15 Nov 21:14; VIZ
 // research's ruling and QA box's diagnosis of house-01/02/03: the tempo is right and the first lock is on the beat,
 // then the phase goes to the off-beat by the PLL walk, the persistent-dissent jump or a re-lock slew; nothing after the
-// first lock checks the side). 126 BPM, 90 s: a kick on every beat (60 Hz burst + its 2 ms click), an off-beat bass at
-// +6 dB (low-passed at 150 Hz, no transient), closed hats on the eighths; at 40 s the kick drops for 4 bars (bass and
-// hats stay), then comes back. Truth: the generator's beat grid. REPORT-ONLY on this commit (expected to fail on main).
-// Targets (hard after the gate): >= 95 % of the last 16 bars within 35 ms, |sideNet| never > 0.375, 0 side changes,
-// >= 1 sideBlocked in the bass-only bars.
-export function houseTrap({ bpm = 126, secs = 90, bassDb = 6, dropAt = 40, dropBars = 4 } = {}) {
+// first lock checks the side). c1b (Orchestrator, after box run ef6dbea: c1's trap did not reproduce a side change on
+// main): 126 BPM, 120 s; a kick on every beat (60 Hz burst + its 2 ms click), an off-beat bass at +8 dB with a soft
+// 7 ms attack (low-passed at 150 Hz), closed hats on the eighths; the kick drops for 8 bars at 30 s and again at 75 s
+// (bass and hats stay), then comes back. Truth: the generator's beat grid. REPORT-ONLY on this commit; it must fail
+// on main by a side change (|moved since the first lock| > 0.375). Targets (hard after the gate): >= 95 % of the last
+// 16 bars within 35 ms, |sideNet| never > 0.375, 0 side changes, >= 1 sideBlocked in the bass-only bars.
+export function houseTrap({ bpm = 126, secs = 120, bassDb = 8, bassAttack = 0.007, drops = [30, 75], dropBars = 8 } = {}) {
   const P = 60 / bpm, n = Math.floor(secs / P), out = new Float64Array(Math.round((LEAD + secs + 1) * SR));
   const rnd = mulberry32(126126), beats = [];
-  const k0 = Math.ceil(dropAt / P), k1 = k0 + 4 * dropBars;   // the kick is out for beats k0 .. k1 - 1
+  const spans = drops.map(at => { const k0 = Math.ceil(at / P); return [k0, k0 + 4 * dropBars]; });   // kick out for k0 .. k1 - 1
+  const kickOut = k => spans.some(([k0, k1]) => k >= k0 && k < k1);
   for (let k = 0; k < n; k++) {
     const t = LEAD + k * P;
     beats.push(t);
-    if (k < k0 || k >= k1) add(out, t, kick(rnd));
-    add(out, t + P / 2, bass(db(bassDb)));
+    if (!kickOut(k)) add(out, t, kick(rnd));
+    add(out, t + P / 2, bass(db(bassDb), bassAttack));
     for (const h of [0, 0.5]) add(out, t + h * P, noiseHit(rnd, db(-12), 'hp', 8000, 0.7, 0.03, 0.12, 1.5));
   }
   let m = 0; for (const v of out) m = Math.max(m, Math.abs(v));
   const samples = new Float32Array(out.length); for (let i = 0; i < out.length; i++) samples[i] = out[i] * 0.8 / m;
-  return { samples, beats, bpm, P, name: `house-trap-${bpm}`, dropFrom: LEAD + k0 * P, dropTo: LEAD + k1 * P };
+  return { samples, beats, bpm, P, name: `house-trap-${bpm}`, drops: spans.map(([k0, k1]) => [LEAD + k0 * P, LEAD + k1 * P]) };
 }
-/** the tracker over the house trap: the error at every true beat after the first lock, and the side track */
+/** the true beat position at time t (the generator's grid, extrapolated at its ends) */
+const truePos = (s, t) => (t - s.beats[0]) / s.P;
+/** the tracker over the house trap: the error at every true beat after the first lock, the side track and its check */
 export function runHouse(s) {
   const tr = T.createTracker(), frames = [];
   const an = T.createAnalyzer({ sampleRate: SR, onFrame: f => frames.push(f) });
   for (let i = 0; i < s.samples.length; i += 128) an.process(s.samples.subarray(i, Math.min(s.samples.length, i + 128)), i / SR);
-  const per = [];
-  let lockT = null, bi = 0, blockedAtDrop = null, blockedAfterDrop = null;
+  const per = [], blocked = s.drops.map(() => [null, null]), samp = [];
+  let lockT = null, bi = 0, nextS = 0;
   for (const f of frames) {
     tr.push(f);
     if (lockT === null && tr.state === 'locked') lockT = f.t;
     const st = tr.sideTrack || null;
-    if (st && blockedAtDrop === null && f.t >= s.dropFrom) blockedAtDrop = st.blocked;
-    if (st && blockedAfterDrop === null && f.t >= s.dropTo) blockedAfterDrop = st.blocked;
+    if (st) s.drops.forEach(([a, b], i) => { if (blocked[i][0] === null && f.t >= a) blocked[i][0] = st.blocked; if (blocked[i][1] === null && f.t >= b) blocked[i][1] = st.blocked; });
+    if (st && lockT !== null && f.t >= nextS) { nextS = f.t + 0.1; samp.push({ t: f.t, out: tr.beatsAt(f.t), b0: st.netB0, run: st.beatsRun, by: st.moveBy }); }
     while (bi < s.beats.length && s.beats[bi] <= f.t) {
       per.push({ k: bi, e: lockT === null ? null : frac(tr.beatsAt(s.beats[bi])) });
       bi++;
@@ -267,27 +271,44 @@ export function runHouse(s) {
   const inPct = 100 * last.filter(e => Math.abs(e) <= GATE_MS).length / 64;
   const all = per.filter(p => p.e !== null).map(p => p.e * s.P * 1000);
   const allPct = all.length ? 100 * all.filter(e => Math.abs(e) <= GATE_MS).length / all.length : 0;
-  const side = tr.sideTrack || { net: null, netMax: null, netTotal: null, changes: null, blocked: null };
-  const blockedInDrop = blockedAtDrop === null || blockedAfterDrop === null ? null : blockedAfterDrop - blockedAtDrop;
+  const side = tr.sideTrack || { net: null, netMax: null, netQ: null, netQMax: null, netTotal: null, netB0: null, changes: null, blocked: null, moveBy: {} };
+  const blockedInDrops = blocked.map(([a, b]) => (a === null || b === null ? null : b - a));
   const moves = (tr.jumps || []).filter(j => lockT !== null && j.at >= lockT).map(j => `${j.kind}@${j.at.toFixed(1)}s(${sgn(frac(j.toBeats - j.fromBeats))})`);
   for (const r of tr.refused || []) moves.push(`refused-${r.path}@${r.at.toFixed(1)}s(${sgn(r.d)})`);
   for (const r of tr.relocks || []) moves.push(`relock@${r.at.toFixed(1)}s(${sgn(r.d)})`);
+  for (const d of tr.dissentLog || []) if (d.kind === 'authorised') moves.push(`dissent-authorised@${d.at.toFixed(1)}s(median ${d.median})`);
   // the signed error per 10 s (beats; +-0.5 = the off-beat)
   const win = [];
   for (let w0 = 0; w0 < s.beats[s.beats.length - 1]; w0 += 10) {
     const E = per.filter(p => p.e !== null && s.beats[p.k] >= w0 && s.beats[p.k] < w0 + 10).map(p => p.e).sort((a, b) => a - b);
     win.push(`${w0}-${w0 + 10}s ${E.length ? sgn(E[E.length >> 1]) : '-'}`);
   }
-  return { lockT, inPct, allPct, side, blockedInDrop, moves, win, states: (tr.stateLog || []).filter(x => lockT !== null && x.t > lockT).map(x => `${x.state}@${x.t.toFixed(1)}s`) };
+  // the completeness check against the truth (as the gate table's): out = B0 moves + beats run (+ integers)
+  let check = 'phase check: no samples';
+  if (samp.length > 1) {
+    const a = samp[0], z = samp[samp.length - 1];
+    let resid = 0, err = 0, prev = a.out - truePos(s, a.t);
+    for (const x of samp) {
+      resid = Math.max(resid, Math.abs(frac((x.out - a.out) - (x.b0 - a.b0) - (x.run - a.run))));
+      const cur = x.out - truePos(s, x.t); err += frac(cur - prev); prev = cur;
+    }
+    const dB0 = z.b0 - a.b0, dTempo = (z.run - a.run) - (truePos(s, z.t) - truePos(s, a.t)), diff = frac(err - dB0 - dTempo);
+    const by = Object.keys(z.by).map(k => [k, z.by[k] - (a.by[k] || 0)]).filter(([, v]) => Math.abs(v) >= 0.0005).sort((p, q) => Math.abs(q[1]) - Math.abs(p[1]));
+    check = `phase check: error vs the truth moved ${sgn(err)} = B0 moves ${sgn(dB0)} + the period vs the truth ${sgn(dTempo)} (difference ${sgn(diff)}); unlogged residual ${resid.toFixed(3)}; moves by source ${by.length ? by.map(([k, v]) => `${k} ${sgn(v)}`).join(', ') : 'none'}`;
+  }
+  return { lockT, inPct, allPct, side, blockedInDrops, moves, win, check, states: (tr.stateLog || []).filter(x => lockT !== null && x.t > lockT).map(x => `${x.state}@${x.t.toFixed(1)}s`) };
 }
 
-test('house trap: 126 BPM, kick + off-beat bass + hats, the kick out for 4 bars at 40 s: stays on the beat (report-only until the side gate)', (t) => {
+test('house trap: 126 BPM, kick + off-beat bass (+8 dB, 7 ms attack) + hats, the kick out for 8 bars at 30 s and 75 s: stays on the beat (report-only until the side gate)', (t) => {
   const s = houseTrap(), r = runHouse(s);
   const sd = r.side, num = x => (x === null || x === undefined ? '-' : sgn(x));
-  const ok = r.inPct >= 95 && sd.netMax !== null && sd.netMax <= 0.375 && sd.changes === 0 && r.blockedInDrop >= 1;
+  const sideChanged = sd.netTotal !== null && Math.abs(sd.netTotal) > 0.375;
+  const ok = r.inPct >= 95 && sd.netMax !== null && sd.netMax <= 0.375 && sd.changes === 0 && r.blockedInDrops.every(b => b >= 1);
   report(t, `house trap ${s.name}: first lock ${r.lockT === null ? 'never' : r.lockT.toFixed(2) + ' s'}; last 16 bars ${r.inPct.toFixed(1)} % within ${GATE_MS} ms (target >= 95), all beats after the lock ${r.allPct.toFixed(1)} %`
-    + `; sideNet at the end ${num(sd.net)}, max |sideNet| ${num(sd.netMax)} (target <= 0.375), moved since the first lock ${num(sd.netTotal)}, sideChanges ${sd.changes ?? '-'} (target 0), sideBlocked ${sd.blocked ?? '-'}, in the bass-only bars ${r.blockedInDrop ?? '-'} (target >= 1)`
+    + `; sideNet end ${num(sd.net)} max ${num(sd.netMax)} (target <= 0.375), sideNetQ end ${num(sd.netQ)} max ${num(sd.netQMax)}, moved since the first lock ${num(sd.netTotal)} (B0 alone ${num(sd.netB0)}; side change on main expected: ${sideChanged ? 'yes' : 'NO, the trap does not reproduce'})`
+    + `, sideChanges ${sd.changes ?? '-'} (target 0), sideBlocked ${sd.blocked ?? '-'}, in the bass-only bars ${r.blockedInDrops.map(b => b ?? '-').join(' / ')} (target >= 1 each)`
     + ` | ${ok ? 'would pass' : 'would FAIL'} [report-only]`);
-  report(t, `house trap ${s.name} detail: kick out ${s.dropFrom.toFixed(2)}-${s.dropTo.toFixed(2)} s; signed error per 10 s ${r.win.join(' | ')}; moves ${r.moves.length ? r.moves.join(' ') : 'none'}; states ${r.states.length ? r.states.join(' ') : 'no change'}`);
-  assert.ok(s.beats.length > 180, 'the fixture rendered');
+  report(t, `house trap ${s.name} detail: kick out ${s.drops.map(([a, b]) => `${a.toFixed(1)}-${b.toFixed(1)} s`).join(' and ')}; signed error per 10 s ${r.win.join(' | ')}; moves ${r.moves.length ? r.moves.join(' ') : 'none'}; states ${r.states.length ? r.states.join(' ') : 'no change'}`);
+  report(t, `house trap ${s.name} ${r.check}`);
+  assert.ok(s.beats.length > 240, 'the fixture rendered');
 });
