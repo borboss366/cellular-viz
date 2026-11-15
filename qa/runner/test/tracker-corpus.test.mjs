@@ -446,7 +446,32 @@ function gateRun(mono, lib) {
   for (const n of net) jumps.push({ at: n.at, kind: `${n.kind}-${n.path.replace(' ', '-')}`, d: n.applied });
   jumps.sort((x, y) => x.at - y.at);
   const states = (tr.stateLog || []).map(s => ({ t: s.t, state: s.state }));
-  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states, applied, decided, net, dissent, sideS, sideEnd: tr.sideTrack || null };
+  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states, applied, decided, net, dissent, sideS, sideEnd: tr.sideTrack || null, periodLog: (tr.periodLog || []).slice() };
+}
+// c1c (the moves were the period, not phase pulls): the tracker's bpm against the reference grid's local bpm, per
+// step s, with every writer of the period in the window (count, net bpm change, largest single change)
+const TEMPO_DIAG = { 'house-01': [40, 95, 1], 'house-02': [55, 80, 1], 'sicko-mode': [0, GATE_SECS, 15] };
+function gridSecs(gridBeats) { return (gridBeats || []).map(b => (b && Number.isFinite(b.ms) ? b.ms / 1000 : NaN)).filter(Number.isFinite).sort((p, q) => p - q); }
+function refBpm(G, t0, t1) {   // beats of the grid in [t0, t1) over their span; null with fewer than 2
+  const B = G.filter(x => x >= t0 && x < t1);
+  return B.length >= 2 ? 60 * (B.length - 1) / (B[B.length - 1] - B[0]) : null;
+}
+function tempoText(run, gridBeats, [from, to, step]) {
+  const G = gridSecs(gridBeats), S = run.samples || [], f = x => (x === null || x === undefined ? '-' : x.toFixed(2));
+  const rows = [];
+  for (let w0 = from; w0 < to; w0 += step) {
+    const W = S.filter(x => x.t >= w0 && x.t < w0 + step && x.bpm).map(x => x.bpm).sort((p, q) => p - q);
+    const tb = W.length ? W[W.length >> 1] : null, rb = refBpm(G, w0 - (step < 4 ? 1.5 : 0), w0 + step + (step < 4 ? 1.5 : 0));
+    rows.push(`${w0}s ${f(tb)}/${f(rb)}${tb && rb ? ` (${((tb / rb - 1) * 100).toFixed(1)} %)` : ''}`);
+  }
+  const P = (run.periodLog || []).filter(p => p.t >= from && p.t < to), by = {};
+  for (const p of P) {
+    const b = by[p.src] || (by[p.src] = { n: 0, net: 0, big: 0, bigAt: null });
+    const d = p.from === null ? 0 : p.to - p.from;
+    b.n++; b.net += d; if (Math.abs(d) > Math.abs(b.big)) { b.big = d; b.bigAt = p.t; }
+  }
+  const writers = Object.entries(by).sort((a, b) => Math.abs(b[1].net) - Math.abs(a[1].net)).map(([k, v]) => `${k} x${v.n} net ${v.net >= 0 ? '+' : ''}${v.net.toFixed(2)} bpm (largest ${v.big >= 0 ? '+' : ''}${v.big.toFixed(2)} at ${v.bigAt === null ? '-' : v.bigAt.toFixed(1) + ' s'})`);
+  return `tempo ${from}-${to} s per ${step} s (tracker bpm / ref grid bpm, the ref over the window${step < 4 ? ' +-1.5 s' : ''}): ${rows.join(' | ')}; writers of the period in the window: ${writers.join('; ') || 'none'}`;
 }
 // the side track (house off-beat diagnosis, 15 Nov; logging only on this commit): per 15 s window the largest |sideNet|
 // (phase moved since the last confirmed lock) and the phase moved since the first lock at the window's end; then the
@@ -623,6 +648,7 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
       say(t, `side-diag ${row.id} after: ${dissentText(after)} [report-only]`);
       say(t, `side-diag ${row.id} after: ${sideTrackText(after)} [report-only]`);
       say(t, `side-diag ${row.id} after: ${checkText(after, grid.beats)} [report-only]`);
+      if (TEMPO_DIAG[row.id]) say(t, `tempo-diag ${row.id} after: ${tempoText(after, grid.beats, TEMPO_DIAG[row.id])} [report-only]`);
       if (PHASE_DIAG.includes(row.id)) say(t, `phase-diag ${row.id} after: ${appliedText(after)} [report-only]`);
       if (DECIDE_DIAG.includes(row.id)) say(t, `side-diag ${row.id} after: re-lock decisions: ${decidedText(after)} [report-only]`);
       say(t, `side-diag ${row.id} before (main 501cfe1): ${windowDiag(b.beats, secs)}; ${movesText(before)} [report-only]`);

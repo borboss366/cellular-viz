@@ -231,7 +231,12 @@ test('side breakdown: 8 bars kick + off-beat bass, 8 bars bass + pad only, 16 ba
 // (bass and hats stay), then comes back. Truth: the generator's beat grid. REPORT-ONLY on this commit; it must fail
 // on main by a side change (|moved since the first lock| > 0.375). Targets (hard after the gate): >= 95 % of the last
 // 16 bars within 35 ms, |sideNet| never > 0.375, 0 side changes, >= 1 sideBlocked in the bass-only bars.
-export function houseTrap({ bpm = 126, secs = 120, bassDb = 8, bassAttack = 0.007, drops = [30, 75], dropBars = 8 } = {}) {
+// c1c (box run 75ea060: the c1b trap still did not change side): in a real house breakdown the on-beat hat goes with
+// the kick, so the drops now take the kick AND the on-beat hat out (only the off-beat bass and the off-beat hat stay:
+// nothing in-window, the lock is lost, the re-lock sees the off-beat; the house-03 route). The second drop also
+// carries a snare build (eighths, then sixteenths for its last 4 bars, rising): the busy, uneven onsets a real build
+// puts in front of the tempo estimate, which is where a tempo excursion (the house-01/02 route) can start.
+export function houseTrap({ bpm = 126, secs = 120, bassDb = 8, bassAttack = 0.007, drops = [30, 75], dropBars = 8, build = true } = {}) {
   const P = 60 / bpm, n = Math.floor(secs / P), out = new Float64Array(Math.round((LEAD + secs + 1) * SR));
   const rnd = mulberry32(126126), beats = [];
   const spans = drops.map(at => { const k0 = Math.ceil(at / P); return [k0, k0 + 4 * dropBars]; });   // kick out for k0 .. k1 - 1
@@ -239,9 +244,15 @@ export function houseTrap({ bpm = 126, secs = 120, bassDb = 8, bassAttack = 0.00
   for (let k = 0; k < n; k++) {
     const t = LEAD + k * P;
     beats.push(t);
-    if (!kickOut(k)) add(out, t, kick(rnd));
+    const out_ = kickOut(k);
+    if (!out_) add(out, t, kick(rnd));
     add(out, t + P / 2, bass(db(bassDb), bassAttack));
-    for (const h of [0, 0.5]) add(out, t + h * P, noiseHit(rnd, db(-12), 'hp', 8000, 0.7, 0.03, 0.12, 1.5));
+    for (const h of out_ ? [0.5] : [0, 0.5]) add(out, t + h * P, noiseHit(rnd, db(-12), 'hp', 8000, 0.7, 0.03, 0.12, 1.5));
+    const [b0, b1] = spans[spans.length - 1];
+    if (build && spans.length > 1 && k >= b0 && k < b1) {   // the build in the last drop: a bright snare, rising
+      const x = (k - b0) / (b1 - b0), sub = k >= b1 - 16 ? 4 : 2;
+      for (let j = 0; j < sub; j++) add(out, t + j * P / sub, noiseHit(rnd, db(-18 + 12 * x), 'bp', 2000, 1.0, 0.06, 0.2, 4));
+    }
   }
   let m = 0; for (const v of out) m = Math.max(m, Math.abs(v));
   const samples = new Float32Array(out.length); for (let i = 0; i < out.length; i++) samples[i] = out[i] * 0.8 / m;
@@ -261,7 +272,7 @@ export function runHouse(s) {
     if (lockT === null && tr.state === 'locked') lockT = f.t;
     const st = tr.sideTrack || null;
     if (st) s.drops.forEach(([a, b], i) => { if (blocked[i][0] === null && f.t >= a) blocked[i][0] = st.blocked; if (blocked[i][1] === null && f.t >= b) blocked[i][1] = st.blocked; });
-    if (st && lockT !== null && f.t >= nextS) { nextS = f.t + 0.1; samp.push({ t: f.t, out: tr.beatsAt(f.t), b0: st.netB0, run: st.beatsRun, by: st.moveBy }); }
+    if (st && lockT !== null && f.t >= nextS) { nextS = f.t + 0.1; samp.push({ t: f.t, out: tr.beatsAt(f.t), b0: st.netB0, run: st.beatsRun, by: st.moveBy, bpm: tr.bpm, state: tr.state }); }
     while (bi < s.beats.length && s.beats[bi] <= f.t) {
       per.push({ k: bi, e: lockT === null ? null : frac(tr.beatsAt(s.beats[bi])) });
       bi++;
@@ -296,10 +307,21 @@ export function runHouse(s) {
     const by = Object.keys(z.by).map(k => [k, z.by[k] - (a.by[k] || 0)]).filter(([, v]) => Math.abs(v) >= 0.0005).sort((p, q) => Math.abs(q[1]) - Math.abs(p[1]));
     check = `phase check: error vs the truth moved ${sgn(err)} = B0 moves ${sgn(dB0)} + the period vs the truth ${sgn(dTempo)} (difference ${sgn(diff)}); unlogged residual ${resid.toFixed(3)}; moves by source ${by.length ? by.map(([k, v]) => `${k} ${sgn(v)}`).join(', ') : 'none'}`;
   }
-  return { lockT, inPct, allPct, side, blockedInDrops, moves, win, check, states: (tr.stateLog || []).filter(x => lockT !== null && x.t > lockT).map(x => `${x.state}@${x.t.toFixed(1)}s`) };
+  // c1c: the tracker's bpm per 4 s against the truth (exactly s.bpm), the writers of the period, and the last 16 bars'
+  // error per beat in ms (is the c1/c1b +0.087 / -0.003 alternation per 10 s the tracker or the scoring?)
+  const bpmRows = [];
+  for (let w0 = 0; w0 < s.beats[s.beats.length - 1]; w0 += 4) {
+    const W = samp.filter(x => x.t >= w0 && x.t < w0 + 4 && x.bpm).map(x => x.bpm).sort((a, b) => a - b);
+    if (W.length) bpmRows.push(`${w0}s ${W[W.length >> 1].toFixed(2)}${W[W.length - 1] - W[0] > 0.05 ? ` (${W[0].toFixed(2)}-${W[W.length - 1].toFixed(2)})` : ''}`);
+  }
+  const by = {};
+  for (const p of tr.periodLog || []) { if (lockT === null || p.t < lockT) continue; const b = by[p.src] || (by[p.src] = { n: 0, net: 0 }); b.n++; b.net += p.from === null ? 0 : p.to - p.from; }
+  const writers = Object.entries(by).map(([k, v]) => `${k} x${v.n} net ${v.net >= 0 ? '+' : ''}${v.net.toFixed(3)} bpm`).join('; ') || 'none';
+  const lastMs = per.slice(-64).map(p => (p.e === null ? '-' : (p.e * s.P * 1000).toFixed(0)));
+  return { lockT, inPct, allPct, side, blockedInDrops, moves, win, check, bpmRows, writers, lastMs, states: (tr.stateLog || []).filter(x => lockT !== null && x.t > lockT).map(x => `${x.state}@${x.t.toFixed(1)}s`) };
 }
 
-test('house trap: 126 BPM, kick + off-beat bass (+8 dB, 7 ms attack) + hats, the kick out for 8 bars at 30 s and 75 s: stays on the beat (report-only until the side gate)', (t) => {
+test('house trap: 126 BPM, kick + off-beat bass (+8 dB, 7 ms attack) + hats, kick and on-beat hat out for 8 bars at 30 s and 75 s (a snare build in the second): stays on the beat (report-only until the gate)', (t) => {
   const s = houseTrap(), r = runHouse(s);
   const sd = r.side, num = x => (x === null || x === undefined ? '-' : sgn(x));
   const sideChanged = sd.netTotal !== null && Math.abs(sd.netTotal) > 0.375;
@@ -310,5 +332,6 @@ test('house trap: 126 BPM, kick + off-beat bass (+8 dB, 7 ms attack) + hats, the
     + ` | ${ok ? 'would pass' : 'would FAIL'} [report-only]`);
   report(t, `house trap ${s.name} detail: kick out ${s.drops.map(([a, b]) => `${a.toFixed(1)}-${b.toFixed(1)} s`).join(' and ')}; signed error per 10 s ${r.win.join(' | ')}; moves ${r.moves.length ? r.moves.join(' ') : 'none'}; states ${r.states.length ? r.states.join(' ') : 'no change'}`);
   report(t, `house trap ${s.name} ${r.check}`);
+  report(t, `house trap ${s.name} tempo (truth ${s.bpm}): bpm per 4 s ${r.bpmRows.join(' | ')}; writers of the period after the first lock: ${r.writers}; last 16 bars error per beat (ms) ${r.lastMs.join(' ')}`);
   assert.ok(s.beats.length > 240, 'the fixture rendered');
 });

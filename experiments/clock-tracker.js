@@ -488,7 +488,19 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         afterJump: j0 === null ? [] : stateLog.filter(s => s.t >= j0).slice(0, 16).map(s => `${s.state}@${s.t.toFixed(2)}`) };
     }
     function logJump(t, kind, from, to, origin) { const j = { type: 'jump', at: t, kind, fromBeats: from, toBeats: to }; if (origin) j.origin = origin; jumps.push(j); return j; }
-    function setPeriod(m, P, t) { if (m.P) { m.B0 = m.B0 + (t - m.T0) / m.P; m.T0 = t; } m.P = P; }
+    function setPeriod(m, P, t) {
+      if (m === own && P !== m.P) periodNote(t, m.P, P);   // logging only
+      if (m.P) { m.B0 = m.B0 + (t - m.T0) / m.P; m.T0 = t; } m.P = P;
+    }
+    // logging only (c1c, the house off-beat diagnosis: the moves were the period, not phase pulls): every write to
+    // own.P with its writer (ownPeriod sets it) and the old and new bpm
+    let perSrc = null;
+    const periodLog = [];
+    function periodNote(t, P0, P1) {
+      periodLog.push({ t: +t.toFixed(3), src: perSrc || 'other', from: P0 ? +(60 / P0).toFixed(4) : null, to: +(60 / P1).toFixed(4) });
+      if (periodLog.length > 20000) periodLog.shift();
+    }
+    function ownPeriod(src, P, t) { perSrc = src; setPeriod(own, P, t); perSrc = null; }
     const nextBarLine = b => barOrigin + C.bpb * (Math.floor((b - barOrigin) / C.bpb + 1e-9) + 1);
 
     // ---- tempo
@@ -625,7 +637,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       notes.push({ t, kind: 'octave-release', why: 'evidence', lock: octaveLock, raw: est });
       octaveLock = null; lockOutSince = null; holdOutSince = null;
       if (f === 1 || !own.P) return;
-      setPeriod(own, own.P / f, t);
+      ownPeriod('hold-release', own.P / f, t);
       bpm = 60 / own.P; bigCount = 0; pend = null; recent.length = 0;
       if (tapModel) { setPeriod(tapModel, tapModel.P / f, t); return; }   // a tap owns the output's phase
       rephase(t, 'octave');
@@ -677,12 +689,12 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       }
       if (!own.P) {   // first estimate: anchor beat 0 on the newest strong onset
         const s = recentStrong(t, 2), o = s[s.length - 1];
-        bpm = raw; own.P = 60 / raw; own.T0 = o ? o.t : t; own.B0 = 0;
+        bpm = raw; perSrc = 'first-estimate'; periodNote(t, 0, 60 / raw); perSrc = null; own.P = 60 / raw; own.T0 = o ? o.t : t; own.B0 = 0;
         return;
       }
       if (t < estHoldUntil) return;   // a hand x2 / /2 just set the period; the window still holds the old tempo
       const dev = Math.abs(raw - bpm) / bpm;
-      let moved = false;
+      let moved = false, psrc = 'acf-ema';   // psrc: logging only, the writer of the period below
       if (state === 'locked') {
         // F3: while locked the ACF does not feed bpm. It still decides octave / relative moves (an octave or a
         // non-octave relative of the current tempo, held tempoHoldN estimates, ruling i), and after fallbackAfter s
@@ -699,9 +711,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
           if (pend.n < C.tempoHoldN) return;
           const path = relKind(pend.bpm) || 'fallback';
           tempoDecision(t, path, pend.bpm, true);
-          bpm = pend.bpm; pend = null; bigCount = 0; tempoMoves++; moved = true;
+          bpm = pend.bpm; pend = null; bigCount = 0; tempoMoves++; moved = true; psrc = `acf-hold-${path}`;
         } else if (fallback && dev <= C.tempoTol) {
-          bigCount = 0; pend = null; fit.fallbackBlends++;
+          bigCount = 0; pend = null; fit.fallbackBlends++; psrc = 'acf-fallback-blend';
           bpm = 0.7 * bpm + 0.3 * raw;
         } else { pend = null; return; }
       }
@@ -711,10 +723,10 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         // here; the tempo stays the last locked one, as through a kick dropout. (A decisive-scan exception would not
         // hold: the break is a perfect 146.7 comb, every 24-beat scan inside it scores ~0.9 at ratio >> 1.5.)
         if (everLocked && lastConfidentBpm && relKind(raw, lastConfidentBpm) === 'relative') { pend = null; bigCount = 0; acq.reacqHeld++; return; }
-        pend = null; if (++bigCount < 6) return; bpm = raw; moved = true;
+        pend = null; if (++bigCount < 6) return; bpm = raw; moved = true; psrc = 'acf-unlocked-change';
       }
       else { bigCount = 0; pend = null; bpm = 0.7 * bpm + 0.3 * raw; }
-      setPeriod(own, 60 / bpm, t);
+      ownPeriod(psrc, 60 / bpm, t);
       // ruling (2): a tempo move that lands a fresh relative pick re-acquires the phase at the next bar line
       if (moved && state === 'locked' && relPick && t - relPick.t <= 3 && Math.abs(bpm / relPick.to - 1) <= C.tempoTol) { relLandT = t; relMoves++; relPick = null; rephase(t, 'relative'); }
       // ruling (1): the home tempo, while the lock is good and the onsets sit on it
@@ -930,7 +942,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         if (fit.young && Math.abs(dev) > 0.002 && Math.abs(dev) <= C.stepPct) {
           const lim = t - fit.stepAt < C.stepYoungBeats * own.P ? Infinity : C.tempoRateMax * dt * own.P;
           const newP = own.P + Math.max(-lim, Math.min(lim, s.P - own.P));
-          setPeriod(own, newP, t); bpm = 60 / newP; fit.shortRefines++;
+          ownPeriod('fit-short-refine', newP, t); bpm = 60 / newP; fit.shortRefines++;
         }
         return;
       }
@@ -945,7 +957,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const eAt = frac(ownBeats(t) - (t - s.b) / s.P);   // the model's beat at the line's beat, at the new period
       if (Math.abs(eAt) > C.stepNear) { fit.stepCand = null; return; }
       if (t - fit.stepAt < C.stepCooldown) { fit.stepCand = null; fit.stepsCapped++; return; }   // one step per stepCooldown s
-      setPeriod(own, s.P, t); bpm = 60 / s.P;
+      ownPeriod('fit-step', s.P, t); bpm = 60 / s.P;
       pendSet('step', -frac(ownBeats(s.b)));
       slewBoostUntil = t + C.stepSlewBeats * s.P;   // the step's phase error slews at stepSlewRate for a while
       tempoDecision(t, 'step', 60 / s.P, true); tempoMoves++; fit.steps++; fit.shortSteps++;
@@ -1009,7 +1021,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         newP = P + Math.max(-lim, Math.min(lim, Pfit - P));
         tempoDecision(t, 'fit', 60 / Pfit, true);
       }
-      if (Math.abs(newP - P) > 1e-12) { setPeriod(own, newP, t); bpm = 60 / newP; fit.adjusts++; }
+      if (Math.abs(newP - P) > 1e-12) { ownPeriod('fit-long', newP, t); bpm = 60 / newP; fit.adjusts++; }
       // the phase: the model's beat onto the fitted line (as a pending correction, slewed under the 3 % rule); not
       // while the short check holds a step candidate, nor while the newest onset already sits off the long line by
       // more than fitNewestOff beats (a change is starting: the line still leans on the old tempo, and writing it would
@@ -1090,7 +1102,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (!blocked && !s.decisive && waited < C.acqMaxSecs) { acq.waits++; return false; }
       const from = bpm, cur = scoreAt(bpm, to);
       if (differs && !blocked) {
-        setPeriod(own, 60 / s.best.bpm, to); bpm = s.best.bpm;
+        ownPeriod('scan-firstlock', 60 / s.best.bpm, to); bpm = s.best.bpm;
         own.B0 -= frac(ownBeats(s.best.beatT)); pendSet('scan', 0);   // not locked yet: the beat snaps onto the grid
         estHoldUntil = to + C.acWindow; bigCount = 0; pend = null;
       }
@@ -1117,7 +1129,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const blocked = mayMove(b, bpm);
       if (blocked) { rec.kept = true; rec.why = blocked; return acqNote(rec); }
       if (kind === 'rescan' && relKind(b.bpm) === 'relative') { rec.kept = true; rec.why = 'relative-reacquire'; return acqNote(rec); }
-      setPeriod(own, 60 / b.bpm, t); bpm = b.bpm;
+      ownPeriod(`scan-${kind}`, 60 / b.bpm, t); bpm = b.bpm;
       tempoDecision(t, kind, b.bpm, true); tempoMoves++;
       estHoldUntil = t + C.acWindow; pend = null; bigCount = 0;
       fit.resetT = t; fit.lastValidT = t; fit.young = true; fit.stepCand = null; fit.stepRun = 0;
@@ -1217,7 +1229,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (state === 'locked' && conf >= C.acqConf) lastConfidentBpm = bpm;
       if (state === 'locked' && conf < C.lostConf) {
         setState('free-run', t); reacq = [];
-        if (lastConfidentBpm) { bpm = lastConfidentBpm; setPeriod(own, 60 / bpm, t); }
+        if (lastConfidentBpm) { bpm = lastConfidentBpm; ownPeriod('lock-lost-restore', 60 / bpm, t); }
       }
       // tap escape: the tracker's own model disagrees with the tap for > escapeSecs at high confidence → override
       if (tapModel && !scheduled) {
@@ -1274,7 +1286,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // ×2 / ÷2 by hand: the period changes at t with the beats continuous there, and the octave is locked (D2)
       scaleTempo(f, t) {
         if (!own.P || !(f > 0)) return;
-        setPeriod(own, own.P / f, t);
+        ownPeriod('hand-scale', own.P / f, t);
         if (tapModel) setPeriod(tapModel, tapModel.P / f, t);
         bpm = 60 / own.P; octaveLock = bpm; lockOutSince = null; holdOutSince = null; holdResets = 0; holdLastReset = null; holdFirstWrong = null;
         protectHold(t);   // the user's option 2: HOLD_PROTECT_BARS bars of the held tempo
@@ -1297,7 +1309,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
           pendSkips: fit.pendSkips };
       },
       get notes() { return notes; }, get relative() { return relReport(); }, get hold() { return holdReport(); }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
-      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get relocks() { return relockLog; }, get refused() { return refusedLog; }, get netLog() { return netLog; }, get dissentLog() { return dissentLog; }, get reacqNet() { return reacqNet; }, get sideTrack() { return { net: sideNet, netMax: sideNetMax, netQ: sideNetQ, netQMax: sideNetQMax, netTotal: sideNetTotal, netB0: sideNetB0, changes: sideChanges, blocked: sideBlocked, moveBy: { ...moveBy }, beatsRun }; }, get phaseApplied() { return phaseApplied; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
+      get jumps() { return jumps; }, get stateLog() { return stateLog; }, get relocks() { return relockLog; }, get refused() { return refusedLog; }, get netLog() { return netLog; }, get dissentLog() { return dissentLog; }, get periodLog() { return periodLog; }, get reacqNet() { return reacqNet; }, get sideTrack() { return { net: sideNet, netMax: sideNetMax, netQ: sideNetQ, netQMax: sideNetQMax, netTotal: sideNetTotal, netB0: sideNetB0, changes: sideChanges, blocked: sideBlocked, moveBy: { ...moveBy }, beatsRun }; }, get phaseApplied() { return phaseApplied; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
       get state() { return state; }, get confidence() { return conf; }, get bpm() { return tapModel ? 60 / tapModel.P : bpm; },
       get ownBpm() { return bpm; }, get lastConfidentBpm() { return lastConfidentBpm; }, get tapped() { return !!tapModel; },
       get barOrigin() { return barOrigin; },
