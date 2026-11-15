@@ -307,6 +307,8 @@ const RECOVERY = ['voodoo-people', 'children', 'block-rockin-beats', 'hc-06'];  
 // report-only (main barely tracks it; today hc-02, hc-04, hc-09, hc-11); every other track stays hard
 const NOREG_MAIN_MIN_PCT = 25;
 // per-track waivers from the user (corpus ids only, R9): the no-regression check is report-only on these, whatever main reads
+// the house set (the user 15 Nov 20:22): report-only everywhere; ids house-01..05 (corpus.json slot T15)
+const isHouse = id => /^house-\d+$/.test(id);
 const NOREG_WAIVERS = {
   'hc-12': 'user 14 Nov: no kick, jazz',
   'sandstorm': 'user 15 Nov: F3 tempo row -2.1 after fix A3 re-lock guard; phase inside-gate 39.7 -> 55.1',
@@ -379,10 +381,11 @@ test(`F3 shadow rows: main 501cfe1 beside the tracker under test on every accept
     if (d.skip) { say(t, `F3 ${id}: skipped (${d.skip})`); continue; }
     const now = shadowRow(d.mono, ref, T), base = shadowRow(d.mono, ref, BASE501);
     const waiver = NOREG_WAIVERS[id] || null;
-    const regress = now.pct < base.pct - 2, hard = !waiver && base.pct >= NOREG_MAIN_MIN_PCT;
+    const house = isHouse(id);   // the house set (15 Nov) is report-only: never a hard no-regression row
+    const regress = now.pct < base.pct - 2, hard = !waiver && !house && base.pct >= NOREG_MAIN_MIN_PCT;
     if (regress && hard) worse.push(`${id}: now ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %`);
-    if (regress && !hard) soft.push(`${id}: now ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %${waiver ? ' (waiver)' : ''}`);
-    const mark = hard ? '[hard]' : waiver ? `[report-only: waiver (${waiver})]` : `[report-only: main < ${NOREG_MAIN_MIN_PCT} %]`;
+    if (regress && !hard) soft.push(`${id}: now ${now.pct.toFixed(1)} % vs main ${base.pct.toFixed(1)} %${waiver ? ' (waiver)' : house ? ' (house set)' : ''}`);
+    const mark = hard ? '[hard]' : house ? '[report-only: house set]' : waiver ? `[report-only: waiver (${waiver})]` : `[report-only: main < ${NOREG_MAIN_MIN_PCT} %]`;
     say(t, `F3 ${id} ref ${ref} (${(d.mono.length / SR).toFixed(0)} s): ${fmt(now, 'now')} | ${fmt(base, 'main 501cfe1')} | delta ${(now.pct - base.pct).toFixed(1)} points | ${regress ? 'REGRESSION (> 2 points below main)' : 'no regression'} ${mark} | ${now.pct >= 95 ? 'would pass' : 'would FAIL'} >= 95 % [report-only]`);
     if (now.diag) say(t, `F3 ${id} tempo: ${now.diag}`);
     if (F3_WIN_DIAG.includes(id)) say(t, `F3 ${id} per ${F3_WIN_S} s: now ${now.winText} || main 501cfe1 ${base.winText} [report-only]`);
@@ -529,7 +532,9 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
   const rows = C.loadCorpus().filter(r => !/^hc-/.test(r.id));
   const json = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
   const sum = { before: { inS: 0, playedS: 0 }, after: { inS: 0, playedS: 0 } }, gateSum = { before: { inS: 0, playedS: 0 }, after: { inS: 0, playedS: 0 } };
-  let n = 0, better = 0, worse = 0, same = 0;
+  // the house set (15 Nov): its own rows and sum, kept out of the summary above so the earlier numbers stay comparable
+  const houseSum = { before: { inS: 0, playedS: 0 }, after: { inS: 0, playedS: 0 } };
+  let n = 0, better = 0, worse = 0, same = 0, nHouse = 0;
   const worseIds = [], fmt = x => (x === null || x === undefined ? '-' : Number(x).toFixed(1));
   for (const row of rows) {
     const stem = map.tracks[row.id];
@@ -543,12 +548,17 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
     const before = gateRun(d.mono, BASE501), after = gateRun(d.mono, T);
     const b = gateScore(before, row.id, row, grid, secs), a = gateScore(after, row.id, row, grid, secs);
     if (!b.tr.scored || !a.tr.scored) { say(t, `gate-table ${row.id}: not scored (${b.tr.reason || a.tr.reason})`); continue; }
-    const bi = b.tr.alone.inPct, ai = a.tr.alone.inPct, delta = ai - bi;
-    n++;
-    if (delta > 2) better++; else if (delta < -2) { worse++; worseIds.push(`${row.id} ${fmt(delta)}`); } else same++;
-    for (const [k, x] of [['before', b.tr], ['after', a.tr]]) {
-      sum[k].inS += x.alone.inPct / 100 * x.playedS; sum[k].playedS += x.playedS;
-      if (row.status === 'gate') { gateSum[k].inS += x.alone.inPct / 100 * x.playedS; gateSum[k].playedS += x.playedS; }
+    const bi = b.tr.alone.inPct, ai = a.tr.alone.inPct, delta = ai - bi, house = isHouse(row.id);
+    if (house) {
+      nHouse++;
+      for (const [k, x] of [['before', b.tr], ['after', a.tr]]) { houseSum[k].inS += x.alone.inPct / 100 * x.playedS; houseSum[k].playedS += x.playedS; }
+    } else {
+      n++;
+      if (delta > 2) better++; else if (delta < -2) { worse++; worseIds.push(`${row.id} ${fmt(delta)}`); } else same++;
+      for (const [k, x] of [['before', b.tr], ['after', a.tr]]) {
+        sum[k].inS += x.alone.inPct / 100 * x.playedS; sum[k].playedS += x.playedS;
+        if (row.status === 'gate') { gateSum[k].inS += x.alone.inPct / 100 * x.playedS; gateSum[k].playedS += x.playedS; }
+      }
     }
     const vote = json(path.join(dir, `${stem}.vote.json`)), ref = json(path.join(dir, `${stem}.ref.json`));
     const flags = [row.octaveFree ? 'octaveFree' : null, row.backbeatOk ? 'backbeatOk' : null, row.lockFrom === 'mark' ? 'lockFrom mark' : null].filter(Boolean).join(', ');
@@ -557,8 +567,8 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
       + ` | delta ${fmt(delta)} points | first 8 in-gate beats before ${fmt(b.run8)} s, after ${fmt(a.run8)} s | p90 |e| before ${fmt(b.tr.alone.absE.p90)} ms, after ${fmt(a.tr.alone.absE.p90)} ms`
       + ` | octave factor before ${b.tr.alone.octave ? b.tr.alone.octave.factor : 1}, after ${a.tr.alone.octave ? a.tr.alone.octave.factor : 1} | ${secs} s, grid ${gridFlag}`
       + ` | ref tool ${ref && ref.toolVersion !== undefined ? 'v' + ref.toolVersion : '-'}, vote ${vote ? (vote.accepted ? `accepted v${vote.toolVersion}` : 'flagged') : 'none'}`
-      + ` | side at lock: after ${sideText(after)}; before ${sideText(before)} [report-only]`);
-    if (SIDE_DIAG.includes(row.id)) {
+      + ` | side at lock: after ${sideText(after)}; before ${sideText(before)}${house ? ' | house set, not in the summary' : ''} [report-only]`);
+    if (SIDE_DIAG.includes(row.id) || house) {
       say(t, `side-diag ${row.id} after: signed error vs the ref grid per ${SIDE_WIN_S} s: ${windowDiag(a.beats, secs)} [report-only]`);
       say(t, `side-diag ${row.id} after: ${movesText(after)} [report-only]`);
       say(t, `side-diag ${row.id} after: ${netText(after)} [report-only]`);
@@ -569,6 +579,7 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
     }
   }
   const pct = s => (s.playedS > 0 ? 100 * s.inS / s.playedS : null);
-  say(t, `gate-table summary: ${n} of ${rows.length} non-hc rows scored (first ${GATE_SECS} s) | inside-gate, time-weighted: before ${fmt(pct(sum.before))} %, after ${fmt(pct(sum.after))} %`
+  say(t, `gate-table summary: ${n} of ${rows.filter(r => !isHouse(r.id)).length} non-hc rows scored (house set apart) (first ${GATE_SECS} s) | inside-gate, time-weighted: before ${fmt(pct(sum.before))} %, after ${fmt(pct(sum.after))} %`
     + ` | status gate rows only: before ${fmt(pct(gateSum.before))} %, after ${fmt(pct(gateSum.after))} % | rows better > 2 points ${better}, worse > 2 points ${worse}${worseIds.length ? ' (' + worseIds.join('; ') + ')' : ''}, within 2 points ${same} [report-only]`);
+  say(t, `gate-table house set (15 Nov): ${nHouse} of ${rows.filter(r => isHouse(r.id)).length} rows scored | inside-gate, time-weighted: before ${fmt(pct(houseSum.before))} %, after ${fmt(pct(houseSum.after))} % (not in the summary above) [report-only]`);
 });

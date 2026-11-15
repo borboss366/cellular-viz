@@ -15,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 const QA = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const rows = JSON.parse(fs.readFileSync(path.join(QA, 'corpus.json'), 'utf8'));
 const HC = Array.from({ length: 12 }, (_, i) => `hc-${String(i + 1).padStart(2, '0')}`);
+// the house set (15 Nov): five 4/4 tracks, voted on the box before their rows existed; vote rows too, report-only
+const HOUSE = { 'house-01': 128.0, 'house-02': 124.99, 'house-03': 124.0, 'house-04': 123.0, 'house-05': 124.21 };
 
 test('ref_beats_vote.py --selftest: 2-of-3 within 1 % after octave folding, 4:3 never folds, confidence 1.5 gates (3.5 after an octave fold), wide 60-260, meters 2-7, tempo curve', (t) => {
   const py = spawnSync('python3', ['-c', 'import sys; print(sys.version_info >= (3, 9))'], { encoding: 'utf8' });
@@ -163,7 +165,7 @@ test('the old ref_beats.py path: unchanged for the 22 earlier rows, and it leave
     assert.deepEqual(JSON.parse(r.stdout.trim()), [true, false, false, false, false, false],
       'vote row + accepted + 3 trackers writes; not accepted, DEGRADED, an earlier row or no row never write');
   }
-  const others = rows.filter(r => !HC.includes(r.id));
+  const others = rows.filter(r => !HC.includes(r.id) && !(r.id in HOUSE));
   assert.ok(others.length >= 22, `${others.length} earlier rows`);
   assert.deepEqual(others.filter(r => r.refTool !== undefined).map(r => r.id), [], 'no earlier row moves to the vote');
 });
@@ -189,6 +191,25 @@ test('corpus.json: hc-01..hc-12 by id, report-only, refTool vote; optional refMi
   assert.match(py, /beats_per_bar=meters/, "the downbeat DBN gets the row's meters");
   assert.match(py, /meters = \[int\(m\)\] if m else METERS/, "2..7 beats a bar unless the row sets a meter");
   assert.match(py, /^WIDE = \(60\.0, 260\.0\)/m);
+});
+
+test('the house set (15 Nov): house-01..05 by id, report-only, slot T15, refTool vote, the accepted vote bpm with a +-4 % range; an accepted track whose row became a vote row votes again once for its .ref.beats (ids only, R9)', () => {
+  const by = Object.fromEntries(rows.map(r => [r.id, r]));
+  for (const [id, bpm] of Object.entries(HOUSE)) {
+    const r = by[id];
+    assert.ok(r, `${id} is a row`);
+    assert.deepEqual([r.status, r.slot, r.refTool, r.bpmSource, r.bpm], ['report', 'T15', 'vote', 'vote', bpm], `${id}: report-only vote row at ${bpm}`);
+    assert.ok(r.refMinBpm < bpm && bpm < r.refMaxBpm, `${id}: ${r.refMinBpm} < ${bpm} < ${r.refMaxBpm}`);
+    for (const [edge, want] of [[r.refMinBpm, 0.96], [r.refMaxBpm, 1.04]]) assert.ok(Math.abs(edge / bpm - want) <= 0.002, `${id}: ${edge} is about ${want} x ${bpm}`);
+    assert.equal(r.noRef, undefined, `${id}: gets a reference`);
+  }
+  const md = fs.readFileSync(path.join(QA, 'CLOCK_CORPUS.md'), 'utf8');
+  assert.match(md, /## House set, 15 Nov \(house-01 … house-05, report-only, slot T15\)/);
+  for (const id of Object.keys(HOUSE)) assert.ok(md.includes(`| ${id} |`), `${id} in CLOCK_CORPUS.md`);
+  // the five were voted before their rows existed (no refTool then, so no .ref.beats): an up-to-date accepted vote is
+  // not skipped while its row now writes a reference and the .ref.beats is missing
+  const py = fs.readFileSync(path.join(QA, 'ref_beats_vote.py'), 'utf8');
+  assert.match(py, /and not \(writes_ref\(row, old\.get\('accepted'\), old\.get\('degraded'\)\) and not os\.path\.isfile\(base \+ '\.ref\.beats'\)\)\):/, 'the skip rule re-votes a vote row with no .ref.beats');
 });
 
 test('the 14 Nov ear checks: hc-03/04/09/10/11 bpm by ear with a narrow range (about +-4 %) decoded first, hc-02 173.05 and meter 5, hc-12 140.16 from the vote, hc-05/08 no tempo and no ref (ids only, R9)', (t) => {

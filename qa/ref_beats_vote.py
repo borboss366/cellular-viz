@@ -504,7 +504,10 @@ def main():
                 if (old.get('sha256') == digest and old.get('toolVersion') == TOOL_VERSION and old.get('model') == a.model
                         and old.get('trackerSet', SETS[3]) == tset and old.get('plan') == row_plan(row)[3]
                         # a flagged user-ear row voted before the user-ear A+B rule votes again once; accepted rows stay
-                        and (old.get('accepted') or (row or NO_ROW).get('bpmSource') != 'user-ear' or old.get('earRule') == EAR_RULE)):
+                        and (old.get('accepted') or (row or NO_ROW).get('bpmSource') != 'user-ear' or old.get('earRule') == EAR_RULE)
+                        # an accepted track whose row became a refTool 'vote' row after it was voted (the house set, 15 Nov:
+                        # mapped and voted before its corpus row existed) votes again once, so its .ref.beats gets written
+                        and not (writes_ref(row, old.get('accepted'), old.get('degraded')) and not os.path.isfile(base + '.ref.beats'))):
                     print(f'vote: {tid} up to date ({"accepted" if old.get("accepted") else "flagged"}), skipped')
                     summary.append(old)
                     continue
