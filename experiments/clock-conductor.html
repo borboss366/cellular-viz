@@ -18,6 +18,8 @@
         gate run) · Alt+, / Alt+. calibrate offset (R10).
   ?clock=line uses the mic / mixer input instead of the page's mix bus; ?click=1 sounds the output beats.
   __qa.conductor: { log, clock, shadow, publisher, decks, tracks, load(i, deck?), play(), next(), mark(name), state() }.
+  Controller (experiments/midi-controller.js): a Launch Control XL 3 on its DAW port; the lower button row = tap, flip,
+  ÷2, ×2, nudge −10 / +10, set 1, restart (hold 1 s), as origin 'fix:controller'; its LEDs and display follow read().
   Shared clock: the output clock is published for ?clock=shared scenes (clock.js Clock.publish, BroadcastChannel
   'cellular-viz-clock'): beats, bpm, bar at most 20 Hz, every jump and hand fix as an event.
 -->
@@ -56,6 +58,7 @@ button.reject{background:#c0182b !important;color:#fff}
 </style>
 <script src="clock.js"></script>
 <script src="clock-tracker.js"></script>
+<script src="midi-controller.js"></script>
 </head>
 <body>
 <!-- shown when the clock cannot listen (not a secure context, or the tracker failed): C.clockWarning, plain ASCII -->
@@ -63,6 +66,7 @@ button.reject{background:#c0182b !important;color:#fff}
 <header>
   <h1>clock conductor</h1><span class="banner" id="input">line:page</span><span class="badge" id="scored">no track</span>
   <span class="badge" id="session">–</span><span class="badge" id="logState">log: –</span>
+  <span class="badge" id="ctl" title="Launch Control XL 3 (midi-controller.js)">controller: –</span>
   <span class="actions"><button id="start">Start audio</button><button id="download">Download log</button><button id="help" title="Help (?)">Help</button></span>
 </header>
 <!-- the user guide in short (qa/CONDUCTOR_GUIDE.md has all of it); plain ASCII only: the box's Chromium aborts on font fallback (#205) -->
@@ -178,7 +182,7 @@ $('session').textContent = $('session').title = id;
 let tracks = [];
 const decks = [0, 1].map(n => ({ n, el: $('deck' + n), gain: null, src: null, buffer: null, grid: null, beats: [], track: null, at: 0, offsetS: 0, playing: false, lastPair: -1e9, bar1: null }));
 for (const d of decks) { d.gain = ctx.createGain(); d.gain.gain.value = 0; d.gain.connect(mixBus); }
-let live = 0, fade = null, fixId = 0, keyShownS = 0, keyOn = false, keyOnAt = 0;
+let live = 0, fade = null, fixId = 0, lastFixShort = '', keyShownS = 0, keyOn = false, keyOnAt = 0;
 const nextDeck = () => decks[1 - live];
 const posMs = (d, t = ctx.currentTime) => C.deckPosMs(d, t);
 function say(t) { $('msg').textContent = t; }
@@ -287,6 +291,7 @@ clock.fix = (kind, arg, o) => {
     if (j && j.tapError) rec.tapError = j.tapError;
     if (j && j.tapBpm) { rec.tapBpm = j.tapBpm; rec.taps = j.taps; }
     log.add('fix', rec);
+    lastFixShort = `${kind}${arg !== undefined ? ' ' + arg : ''}${j && j.rejected ? ' X' : ''}`;
     $('lastFix').textContent = `${kind}${arg !== undefined ? ' ' + arg : ''} at ${ctx.currentTime.toFixed(2)} s${fixNote(j)}`;
     // the last tap set (4 to 8 taps): its tempo and count, or why it was rejected
     if (kind === 'tap' && j && (j.tapBpm || j.rejected)) $('lastTap').textContent = tapNote(j);
@@ -314,6 +319,12 @@ function flashReject() {
   setTimeout(() => b.classList.remove('reject'), 600);
 }
 const FIX_ORIGINS = new Set(['fix:key', 'fix:controller', 'qa']);
+// the controller (D1): the same wrapped clock.fix, so its presses are logged and scored like keys, by origin
+const CTL_TEXT = { off: 'controller: off', 'no-midi': 'controller: no MIDI', 'no-device': 'controller: not connected', connected: 'controller: on', 'mode-select': 'controller: press MODE' };
+const controller = MidiController.create({ clock, lastFix: () => lastFixShort,
+  onStatus: s => { $('ctl').textContent = CTL_TEXT[s] || `controller: ${s}`; $('ctl').classList.toggle('unscored', s !== 'connected'); } });
+controller.start().then(() => { if (controller.status === 'connected' && !controller.sysex) $('ctl').title = 'no SysEx permission: LEDs only, no display'; });
+addEventListener('pagehide', () => controller.stop());
 for (const b of document.querySelectorAll('[data-fix]')) b.onclick = e => clock.fix(b.dataset.fix, b.dataset.arg !== undefined ? Number(b.dataset.arg) : undefined, { origin: 'fix:key', eventTs: e.timeStamp });
 
 let seenJumps = 0, lastState = null, lastShadowState = null, kickPrev = -200, kickAt = -1, lastSample = 0, beatFlashAt = -1;
@@ -543,7 +554,7 @@ requestAnimationFrame(tick);
 await loadTracks();
 
 window.__qa = Object.assign(window.__qa || {}, { conductor: {
-  log, clock, shadow, publisher, decks, get tracks() { return tracks; }, start, load, play: playPause, next, mark, step, barOk,
+  log, clock, shadow, publisher, controller, decks, get tracks() { return tracks; }, start, load, play: playPause, next, mark, step, barOk,
   setOffset, toggleKey, panic, get panicSent() { return panicSent; },
   // the phase wheel's numbers (the user 20:46): median ms, the 6 o'clock weight, the drift per bar, the hint
   wheel: () => wheelNow && { medianMs: wheelNow.medianMs, sixShare: wheelNow.sixShare, six: wheelNow.six, twelve: wheelNow.twelve,
