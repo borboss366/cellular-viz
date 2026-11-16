@@ -5,6 +5,7 @@
 //
 //   node qa/conduct-serve.mjs [--dir <tracks dir>] [--sessions <dir>] [--port 8790] [--host 127.0.0.1] [--socket <path>]
 //     (R9: the folders also come from CONDUCTOR_TRACKS / CONDUCTOR_SESSIONS, env only, never committed)
+//     [--qa-home <dir>]: where the box's check results are, for the audition page (default QA_HOME, else this clone)
 //     → http://127.0.0.1:8790/  (opens experiments/clock-conductor.html)
 //   --socket: listen on a Unix socket instead of TCP (a stale socket file is removed first; mode 0600). On the box the
 //     container publishes no ports, so qa/runner/conductor.sh puts it in the bind-mounted data folder and the host's
@@ -26,6 +27,11 @@
 //   POST /log/<session>          JSONL lines appended to <sessions>/<session>.jsonl; every line must fit schema v1
 //                                (qa/conduct-score.mjs checkRecord) and stay ≤ 64 KB (R9), else 400 and nothing is written
 //   GET  /log/<session>          the session so far (the page's download)
+//   GET  /api/audition           the audition page's rows (docs/CELLULAR_VIZ_BRIEF_SET_RELEASE.md Task 1): every scene page
+//                                in experiments/ (qa/audition.mjs isScenePage) with the facts its source and the box's
+//                                newest check results hold (qa/<id>/checks/ under QA_HOME, or --qa-home), else 'unknown'
+//   POST /api/audition/<stamp>   the user's verdicts ({ version: 1, stamp, verdicts }) to <sessions>/<stamp>.json
+//   GET  /api/audition/<stamp>   that file (the page's download); stamp = audition-YYYYMMDD-HHMMSS, never committed
 // The tracks are read, never copied or listed outside this server; the session logs stay in the sessions folder
 // (default: beside the tracks folder), outside git (R9).
 import http from 'node:http';
@@ -35,9 +41,10 @@ import { fileURLToPath } from 'node:url';
 import { sourceTracks, audioDir } from './runner/audio.mjs';
 import { loadMap } from './corpus.mjs';
 import { checkRecord } from './conduct-score.mjs';
+import * as AU from './audition.mjs';
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const BROWSER_MODULES = ['marks.mjs', 'conduct-log.mjs'];
+export const BROWSER_MODULES = ['marks.mjs', 'conduct-log.mjs', 'audition.mjs'];
 export const SESSION_RE = /^conductor-\d{8}-\d{6}(-[a-z0-9]{1,8})?$/;
 export const MAX_POST = 4 << 20, MAX_LINE = 64 << 10;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
@@ -87,8 +94,42 @@ export function checkLines(text) {
   return errs;
 }
 
+/** the newest check folders of a page (qa/<id>/checks/<stamp>[-shared]/check.md under qaHome), newest first */
+function checkFolders(qaHome, id) {
+  const dir = path.join(qaHome, 'qa', id, 'checks');
+  let names = [];
+  try { names = fs.readdirSync(dir).filter(n => fs.existsSync(path.join(dir, n, 'check.md'))).sort().reverse(); } catch { /* no checks for this page */ }
+  return names.map(n => ({ name: n, rel: `qa/${id}/checks/${n}/check.md`, rows: () => AU.checkRows(fs.readFileSync(path.join(dir, n, 'check.md'), 'utf8')) }));
+}
+/** the audition rows: every scene page with the facts the repo and the box's check results hold ('unknown' otherwise) */
+export function auditionScenes(repo = REPO, qaHome = repo) {
+  const exp = path.join(repo, 'experiments'), unknown = { value: 'unknown' };
+  let files = [];
+  try { files = fs.readdirSync(exp).filter(f => AU.SCENE_FILE.test(f)).sort(); } catch { /* no pages */ }
+  const out = [];
+  for (const page of files) {
+    const src = fs.readFileSync(path.join(exp, page), 'utf8');
+    if (!AU.isScenePage(page, src)) continue;
+    const id = page.replace(/\.html$/, ''), folders = checkFolders(qaHome, id);
+    let beatMatch = unknown, gpu1440 = unknown, frame1080 = unknown;
+    const shared = folders.find(f => f.name.endsWith('-shared'));
+    if (shared) {
+      const rows = shared.rows(), b = AU.beatMatchOf(rows), g = rows.find(r => /^GPU p95/.test(r.gate));
+      if (b) beatMatch = { ...b, source: shared.rel };
+      if (g) gpu1440 = { value: g.result, gate: g.gate, detail: g.detail, source: shared.rel };
+    }
+    for (const f of folders) {
+      const r = AU.frameOf(f.rows(), '1080p');
+      if (r) { frame1080 = { ...r, source: f.rel }; break; }
+    }
+    const controls = AU.parseControls(src);
+    out.push({ page, title: AU.titleOf(src), noBeat: AU.hasNoBeat(src), controls, controlsText: AU.controlsText(controls), beatMatch, frame1080, gpu1440 });
+  }
+  return out;
+}
+
 /** the request handler for a tracks folder and a sessions folder (node-tested without a socket of its own) */
-export function createHandler({ tracksDir, sessionsDir, repo = REPO }) {
+export function createHandler({ tracksDir, sessionsDir, repo = REPO, qaHome = process.env.QA_HOME || repo }) {
   return (req, res) => {
     const url = new URL(req.url, 'http://local');
     const parts = url.pathname.split('/').filter(Boolean).map(p => { try { return decodeURIComponent(p); } catch { return '\u0000'; } });
@@ -120,6 +161,30 @@ export function createHandler({ tracksDir, sessionsDir, repo = REPO }) {
           const want = url.searchParams.get('stem');
           if (want !== null && want !== t.stem) return json(res, 409, { error: 'track list changed', idx: +parts[1] });
           return serve(t);
+        }
+      }
+      if (req.method === 'GET' && parts[0] === 'api' && parts[1] === 'audition' && parts.length === 2) {
+        return json(res, 200, { version: 1, target: AU.AUDITION_TARGET, defaults: AU.SET_DEFAULTS, scenes: auditionScenes(repo, qaHome) });
+      }
+      if (parts[0] === 'api' && parts[1] === 'audition' && parts.length === 3 && AU.AUDITION_RE.test(parts[2])) {
+        const file = path.join(sessionsDir, `${parts[2]}.json`);
+        if (req.method === 'GET') return sendFile(req, res, file, 'application/json');
+        if (req.method === 'POST') {
+          const chunks = [];
+          let size = 0;
+          req.on('data', c => { size += c.length; if (size <= MAX_LINE) chunks.push(c); });
+          req.on('end', () => {
+            if (size > MAX_LINE) return json(res, 413, { error: 'too large' });
+            let obj;
+            try { obj = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { return json(res, 400, { error: 'not JSON' }); }
+            const errs = AU.checkVerdicts(obj);
+            if (!errs.length && obj.stamp !== parts[2]) errs.push('stamp differs from the address');
+            if (errs.length) return json(res, 400, { error: 'verdicts', problems: errs.slice(0, 20) });
+            fs.mkdirSync(sessionsDir, { recursive: true });
+            fs.writeFileSync(file, JSON.stringify(obj, null, 1) + '\n');
+            return json(res, 200, { ok: true, file: `${parts[2]}.json`, keeps: AU.keepCount(obj.verdicts) });
+          });
+          return undefined;
         }
       }
       if (parts[0] === 'log' && parts.length === 2 && SESSION_RE.test(parts[1])) {
@@ -163,8 +228,9 @@ function main(argv) {
   const tracksDir = audioDir(opt('--dir') || process.env.CONDUCTOR_TRACKS || undefined);
   const sessionsDir = path.resolve(opt('--sessions', process.env.CONDUCTOR_SESSIONS || path.join(path.dirname(tracksDir), 'sessions')));
   const port = +opt('--port', 8790), host = opt('--host', '127.0.0.1'), sock = opt('--socket');
+  const qaHome = path.resolve(opt('--qa-home', process.env.QA_HOME || REPO));
   const n = listTracks(tracksDir).length;
-  const server = http.createServer(createHandler({ tracksDir, sessionsDir }));
+  const server = http.createServer(createHandler({ tracksDir, sessionsDir, qaHome }));
   if (sock) {
     listenSocket(server, sock).then(() => console.log(`conductor on ${sock} (${n} track(s); logs → ${sessionsDir})`),
       e => { console.error(`conductor: cannot listen on ${sock}: ${e.message}`); process.exit(1); });

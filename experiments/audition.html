@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>audition</title>
+<!--
+  The audition page (docs/CELLULAR_VIZ_BRIEF_SET_RELEASE.md Task 1): every scene page in experiments/ as a row, so the
+  user can pick seven with the controller in hand. Served by conduct-serve (GET /api/audition gives the rows; the rules
+  are in qa/audition.mjs). No ranking, no scoring: the verdict is the user's.
+  Open: one scene at a time in one window, with the set defaults (clock=shared, audio=line, in=BlackHole). Next and
+  previous: keys N and P (Enter opens the current row), or top buttons 4 and 3 of the controller (CC 40 and 39; top
+  buttons 1 and 2 are hold and auto-hold, #239). Verdict keys on the current row: K keep, M maybe, D drop.
+  Per row, only facts the repo and the box's check results hold, else "unknown": no-beat mode (from the page's code),
+  the beat-match row and the GPU p95 at 1440p (the newest shared check on the box), frame time at 1080p (the newest
+  check that has a 1080p p95 row), the knobs and buttons the page declares.
+  Save: the verdicts go to the server's sessions folder as audition-<stamp>.json (not committed); Download keeps a copy.
+  Plain ASCII only (#205).
+-->
+<style>
+:root{color-scheme:dark}body{margin:0;font:15px/1.4 system-ui,sans-serif;background:#0b0e14;color:#dde3ee}
+header{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:#141a26}
+h1{font-size:18px;margin:0}.badge{padding:3px 10px;border-radius:8px;background:#3a4560}
+button,input{font:inherit;color:inherit;background:#222a3a;border:1px solid #3a4560;border-radius:8px;padding:4px 10px}
+button.on{background:#2b5cff;border-color:#2b5cff}button.keep.on{background:#2b8f5b}button.drop.on{background:#8b1e2d}button.maybe.on{background:#8a6d1a}
+table{border-collapse:collapse;width:100%}th,td{padding:6px 8px;border-bottom:1px solid #222a3a;text-align:left;vertical-align:top}
+th{color:#8a96ad;font-weight:600;font-size:13px}tr.cur{background:#1b2436}tr.cur td:first-child{box-shadow:inset 4px 0 #2b5cff}
+.unknown{color:#8a96ad}.fail{color:#ff5a6e}.pass{color:#2bd16b}small{color:#8a96ad}input.note{width:16em}
+#msg{min-height:1.4em;color:#ffd23f;padding:4px 16px}
+</style>
+</head>
+<body>
+<header>
+  <h1>audition</h1>
+  <span class="badge" id="count">keeps: 0 / 7</span>
+  <label><input type="checkbox" id="keepOnly"> keep only</label>
+  <button id="prev">previous (P)</button><button id="openCur">open (Enter)</button><button id="next">next (N)</button>
+  <button id="save">Save</button><button id="download">Download</button>
+  <span class="badge" id="midi">controller: -</span>
+  <small id="stamp"></small>
+</header>
+<div id="msg"></div>
+<table>
+  <thead><tr><th>#</th><th>scene</th><th>open</th><th>verdict</th><th>note</th><th>no-beat</th><th>beat match</th><th>1080p frame</th><th>GPU 1440p</th><th>controls</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<script type="module">
+import * as A from '../qa/audition.mjs';
+const $ = id => document.getElementById(id);
+const say = t => { $('msg').textContent = t; };
+const STORE = 'audition.verdicts', STAMP_KEY = 'audition.stamp';
+let scenes = [], current = 0, win = null, defaults = A.SET_DEFAULTS, target = A.AUDITION_TARGET;
+let storage = null;
+try { storage = window.localStorage; } catch (e) { /* blocked: verdicts live until the page reloads */ }
+const load = (k, d) => { try { const v = storage && storage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
+let verdicts = load(STORE, {});
+let stamp = load(STAMP_KEY, null) || A.auditionStamp();
+const keep = () => { try { if (storage) { storage.setItem(STORE, JSON.stringify(verdicts)); storage.setItem(STAMP_KEY, JSON.stringify(stamp)); } } catch (e) { /* not kept */ } };
+$('stamp').textContent = stamp;
+
+const visible = () => ($('keepOnly').checked ? A.keepOnly(scenes, verdicts) : scenes);
+const fact = f => {
+  if (!f || f.value === 'unknown') return '<span class="unknown">unknown</span>';
+  const cls = f.value === 'pass' ? 'pass' : (f.value === 'fail' ? 'fail' : 'unknown');
+  const title = [f.gate, f.detail, f.source].filter(Boolean).join(' . ').replace(/"/g, "'");
+  return `<span class="${cls}" title="${title}">${f.value}</span>`;
+};
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function render() {
+  const list = visible();
+  if (current >= list.length) current = Math.max(0, list.length - 1);
+  $('rows').innerHTML = list.map((s, i) => {
+    const v = (verdicts[s.page] || {});
+    const vb = A.VERDICTS.map(x => `<button class="${x}${v.verdict === x ? ' on' : ''}" data-v="${x}" data-page="${s.page}">${x}</button>`).join(' ');
+    return `<tr class="${i === current ? 'cur' : ''}" data-i="${i}"><td>${i + 1}</td><td>${esc(s.page)}<br><small>${esc(s.title || '')}</small></td>` +
+      `<td><button data-open="${i}">open</button></td><td>${vb}</td>` +
+      `<td><input class="note" data-note="${s.page}" maxlength="${A.NOTE_MAX}" value="${esc(v.note || '')}"></td>` +
+      `<td>${s.noBeat}</td><td>${fact(s.beatMatch)}</td><td>${fact(s.frame1080)}</td><td>${fact(s.gpu1440)}</td><td><small>${esc(s.controlsText)}</small></td></tr>`;
+  }).join('');
+  $('count').textContent = `keeps: ${A.keepCount(verdicts)} / ${target}`;
+}
+function setVerdict(page, v) {
+  const cur = verdicts[page] || {};
+  verdicts[page] = { ...cur, verdict: cur.verdict === v ? null : v };
+  keep(); render();
+}
+function open(i) {
+  const list = visible(), s = list[i];
+  if (!s) return;
+  current = i; render();
+  const url = A.sceneUrl(s.page, defaults);
+  if (win && !win.closed) { win.location.href = url; win.focus(); }
+  else {
+    win = window.open(url, 'cellular-viz-audition', 'popup=yes,width=1920,height=1080');
+    if (!win) { say('The browser blocked the window. Allow pop-ups for this site, then push open again.'); return; }
+  }
+  say(`${i + 1} / ${list.length}: ${s.page}`);
+}
+function step(d) {
+  const n = visible().length;
+  if (!n) return;
+  open(A.stepIndex(current, n, d));
+}
+
+$('rows').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.open !== undefined) open(+b.dataset.open);
+  else if (b.dataset.v) setVerdict(b.dataset.page, b.dataset.v);
+});
+$('rows').addEventListener('change', e => {
+  const p = e.target.dataset && e.target.dataset.note;
+  if (!p) return;
+  verdicts[p] = { ...(verdicts[p] || {}), note: e.target.value.slice(0, A.NOTE_MAX) };
+  keep();
+});
+$('keepOnly').onchange = () => { current = 0; render(); };
+$('prev').onclick = () => step(-1);
+$('next').onclick = () => step(1);
+$('openCur').onclick = () => open(current);
+addEventListener('keydown', e => {
+  if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+  const k = e.key.toLowerCase(), s = visible()[current];
+  if (k === 'n') step(1); else if (k === 'p') step(-1); else if (e.key === 'Enter') open(current);
+  else if (s && k === 'k') setVerdict(s.page, 'keep'); else if (s && k === 'm') setVerdict(s.page, 'maybe'); else if (s && k === 'd') setVerdict(s.page, 'drop');
+  else return;
+  e.preventDefault();
+});
+
+const fileBody = () => ({ version: 1, stamp, at: new Date().toISOString(), target, verdicts });
+$('save').onclick = async () => {
+  const body = fileBody(), errs = A.checkVerdicts(body);
+  if (errs.length) return say(`Not saved: ${errs[0]}`);
+  try {
+    const r = await fetch(`/api/audition/${stamp}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    say(r.ok ? `Saved as ${j.file} (${j.keeps} keeps).` : `Not saved: ${(j.problems && j.problems[0]) || j.error || r.status}`);
+  } catch (e) { say(`Not saved: ${e.message || e}. Push Download to keep a copy.`); }
+};
+$('download').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(fileBody(), null, 1)], { type: 'application/json' }));
+  a.download = `${stamp}.json`; a.click();
+};
+
+// the controller: top buttons 3 (previous) and 4 (next) on the LCXL3's DAW port; the conductor keeps every other control
+async function midi() {
+  if (!navigator.requestMIDIAccess) { $('midi').textContent = 'controller: no MIDI'; return; }
+  try {
+    const m = await navigator.requestMIDIAccess();
+    const bind = () => {
+      let n = 0;
+      for (const p of m.inputs.values()) {
+        if (/LCXL3/.test(p.name || '') && /DAW/.test(p.name || '') && p.state !== 'disconnected') { p.onmidimessage = e => { const d = A.midiStep(e.data); if (d) step(d); }; n++; }
+      }
+      $('midi').textContent = n ? 'controller: on (top buttons 3, 4)' : 'controller: not connected';
+    };
+    bind(); m.onstatechange = bind;
+  } catch (e) { $('midi').textContent = 'controller: no MIDI'; }
+}
+
+try {
+  const r = await fetch('/api/audition');
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const j = await r.json();
+  scenes = j.scenes || []; defaults = j.defaults || defaults; target = j.target || target;
+  render();
+  say(`${scenes.length} scenes. Push open (or Enter) for the first window; then N / P or the controller.`);
+} catch (e) { say(`Could not load the scene list (${e.message || e}). The server needs the audition route (conduct-serve after this change).`); }
+midi();
+window.__qa = Object.assign(window.__qa || {}, { audition: { get scenes() { return scenes; }, get verdicts() { return verdicts; }, get current() { return current; }, step, open, stamp } });
+</script>
+</body>
+</html>
