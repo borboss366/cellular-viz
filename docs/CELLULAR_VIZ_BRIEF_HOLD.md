@@ -70,7 +70,7 @@ stated here, not tuned per track.
 2. `clock.js`: `fix('hold')`, the implicit entry on hand fixes, the
    authority table in the header updated (held: the hand owns tempo
    and side; the tracker trims).
-3. Conductor page: a hold lamp and key (Shift+H), the `holdSuspect`
+3. Conductor page: a hold lamp and key (Shift+L; Shift+H is already ÷2), the `holdSuspect`
    lamp. Controller: hold on a free top-row button, LED green held,
    amber suspect.
 4. Scorer and log: `hold` and `holdSuspect` records; time held per

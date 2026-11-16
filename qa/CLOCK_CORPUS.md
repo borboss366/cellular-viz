@@ -136,13 +136,14 @@ Every BPM used by a rule comes from a least-squares fit over the window, never f
 
 Constants are frozen while the corpus grows (the list is under "Frozen tracker constants"): a new track adds a row, never a knob. A failing track gets a numbered finding that names a rule, not a number.
 
-## Frozen tracker constants (F3/F4, main 44308b4; side fixes A and A3)
+## Frozen tracker constants (F3/F4, main 44308b4; side fixes A and A3; hand-held mode)
 
 The live tracker as merged on 14 Nov: F3 (the locked tempo from a fit of the onsets, with the short-window step path) and F4 (the first-lock candidate scan, the second look and the re-acquire scans), plus fix A of the half-beat ruling (the side at the first lock from two hypotheses, phase 0 or 1/2, by the low lane's onset weight, ties broken by the attack's brightness), plus fix A3 (15 Nov: after a lock, every re-lock measures the error against the model's own beat, the side kept before the free-run; up to `reacqSlew` it slews, up to `sideGuard` it jumps once on the next bar line, beyond `sideGuard` the jump is refused and logged), plus the net-displacement budget (15 Nov: the signed sum of the re-lock corrections since the last confirmed lock never passes `sideGuard`; a step is clipped to the remainder or refused, and `netConfirmBeats` consecutive in-window beats at the lock confidence confirm the lock and reset the sum), plus persistent dissent (15 Nov: `dissentCount` sideGuard refusals in a row, the same sign, |e| >= `dissentMinE`, spread <= `dissentSpread`, over >= `dissentBeats` beats with no gap > `dissentGapS` s and the drums present, authorise one bar-line jump of their median). These are its values. Changing any of them, or any line of the tracker, needs a decision first, and this list and the sha256 change in the same PR: `qa/runner/test/tracker-frozen.test.mjs` compares both with the code.
 
-- tracker source sha256: `8f1b5d201c82525782f44b1fea342eb0685be4222c9271091ad83554da4d2ec1`
+- tracker source sha256: `1e78297af2da5f7ff0c7b8d38940c930f6808109efcab38ff3e84eae175cc1a4`
 - 15 Nov, logging only (no behaviour change): the tracker records each silent free-run -> locked re-lock with its size (`relocks`) and the PLL's applied phase correction while locked (`phaseApplied`), for the side-diag and phase-diag rows.
 - 15 Nov (house off-beat diagnosis), logging only: the side track (`sideTrack`): every phase move after the first lock summed since the last confirmed lock (`sideNet`) and since the first lock, its largest size, the number of side changes, and `sideBlocked` (0 until a side gate exists). Same day, still logging only: every source of the output beat's phase (the slew attributed to whoever wrote the pending correction, jumps by kind, and the period against a reference period), a second running sum `sideNetQ` that resets only after a quiet confirmation (8 in-window beats at the lock confidence with median |e| < 0.1), and side changes counted on arrival at another half beat. Then (still logging only) every write to the period with its writer and the old and new bpm (`periodLog`).
+- 15 Nov (the user's go 23:15, docs/CELLULAR_VIZ_BRIEF_HOLD.md): hand-held mode. Off (the default, no hand): no line of it runs and the tracker behaves as before. On (`handHold`, from clock.js `fix('hold')` or an accepted tap, flip, nudge or set-1): the phase is trimmed only from broadband onsets within `holdWindow` beat of the held model (the 3 % rate limit), the net trim since the hold stays within `holdNetMax` beat, only the F3 long fit moves the period and only within `holdTempoTol` of the held tempo (x2 and /2 by hand scale it); every other period writer (acf-*, scan-*, fit-step, fit-short-refine, hold-release, lock-lost-restore) and every jump but the hand's flip (acquire, dissent, relative, octave, rescan, secondlook, side, override) is refused and counted. `holdSuspect` (a hint, nothing moves): the free tempo estimate more than `holdSuspectTempo` off, or the drums more than `holdSuspectPhase` beat off the held beat, for more than `holdSuspectBeats` beats.
 
 Module constants:
 
@@ -153,7 +154,7 @@ Module constants:
 | `EDGES` | `[20, 60, 120, 250, 500, 2000, 4000, 8000, 16000]` |
 | `BANDS` | `[sub, kick, low, lowMid, mid, upperMid, presence, air]` |
 
-The tracker's defaults (`DEFAULTS`, in the code's order; F3's are `fitBeats` to `fitChainTol`, F4's are `acqBeats` to `acqLookRatio`, side fix A's are `sideBeats` to `sideBrightLag`, fix A3's is `sideGuard`, the net budget's is `netConfirmBeats`, persistent dissent's are `dissentCount` to `dissentOnsets`; fix A3 renamed `reacqJump` to `reacqSlew`, same value):
+The tracker's defaults (`DEFAULTS`, in the code's order; F3's are `fitBeats` to `fitChainTol`, F4's are `acqBeats` to `acqLookRatio`, side fix A's are `sideBeats` to `sideBrightLag`, fix A3's is `sideGuard`, the net budget's is `netConfirmBeats`, persistent dissent's are `dissentCount` to `dissentOnsets`, hand-held mode's are `holdWindow` to `holdSuspectBeats`; fix A3 renamed `reacqJump` to `reacqSlew`, same value):
 
 | Constant | Value |
 |---|---|
@@ -257,6 +258,12 @@ The tracker's defaults (`DEFAULTS`, in the code's order; F3's are `fitBeats` to 
 | `dissentGapS` | `4` |
 | `dissentDrumRel` | `0.5` |
 | `dissentOnsets` | `2` |
+| `holdWindow` | `0.125` |
+| `holdTempoTol` | `0.01` |
+| `holdNetMax` | `0.25` |
+| `holdSuspectTempo` | `0.03` |
+| `holdSuspectPhase` | `0.25` |
+| `holdSuspectBeats` | `8` |
 
 ## Still owed
 

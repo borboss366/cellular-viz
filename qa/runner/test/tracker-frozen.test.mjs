@@ -58,6 +58,9 @@ test('frozen tracker: CLOCK_CORPUS.md lists every DEFAULTS constant of the track
   assert.equal(code.netConfirmBeats, 8);
   // persistent dissent (a run of sideGuard refusals with the drums present authorises one half-beat move)
   assert.deepEqual([code.dissentCount, code.dissentMinE, code.dissentSpread, code.dissentBeats, code.dissentGapS, code.dissentDrumRel, code.dissentOnsets], [6, 0.4, 0.06, 16, 4, 0.5, 2]);
+  // hand-held mode (docs/CELLULAR_VIZ_BRIEF_HOLD.md: trims only within 1/8 beat, net <= 1/4 beat, tempo within 1 %; the
+  // suspect hint at 3 % or 1/4 beat for 8 beats)
+  assert.deepEqual([code.holdWindow, code.holdTempoTol, code.holdNetMax, code.holdSuspectTempo, code.holdSuspectPhase, code.holdSuspectBeats], [0.125, 0.01, 0.25, 0.03, 0.25, 8]);
 });
 
 test('frozen tracker: the module constants and the source sha256 match the doc; the frozen sentence points at the list', () => {

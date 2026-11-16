@@ -30,6 +30,14 @@
 //            (> 20 % off the held octave for > 4 s)
 //   nudge    shifts the clock against the tracker (an offset); the PLL carries on underneath, so the shift stays
 //   setOne / reset  relabel only; the tracker never touches bar position
+//   held     hand-held mode (docs/CELLULAR_VIZ_BRIEF_HOLD.md, the user 15 Nov): fix('hold') toggles it, and an accepted
+//            tap, flip, nudge or setOne enters it (or re-anchors it; HOLD_ON_FIX_DEFAULT, false = Shift+L only). The hand owns tempo and side: the tracker only
+//            trims the phase from onsets within 1/8 beat (net at most 1/4 beat since the hold, the 3 % rate limit) and
+//            follows the F3 long fit within 1 % of the held tempo. It books no jump (acquire, rescan, secondlook,
+//            relative, octave, side, dissent, override) and no other writer touches the period; in a breakdown the held
+//            model free-runs and nothing re-acquires. x2 / half scale the held model and stay held; a new tap, flip,
+//            nudge or setOne re-anchors it; hold again or restart leaves it. trackerState.held.suspect (holdSuspect) is
+//            a hint only: the free estimate disagrees > 3 % in tempo or > 1/4 beat in phase for > 8 beats
 // Every jump (tracker or hand) cancels and rebooks the clicks and future hits (#95 MUST 2); slews don't need to.
 //
 // ?clock=file:<url> (#95 "file grid", authority locked): plays the track and reads its beat grid, the sidecar
@@ -59,11 +67,13 @@
 //                                  | 'restart' (line only: a fresh tracker, as at start; the octave hold, a tap tempo,
 //                                  the side and the tempo start over; the input and onTrackerFrame listeners stay;
 //                                  returns { type: 'restart', at, origin }, not a jump)
+//                                  | 'hold' (line only: hand-held mode on / off; returns { type: 'fix', kind: 'hold', on,
+//                                  at, origin }, not a jump; tap / flip / nudge / setOne also enter it)
 //                                  acts only for origin 'fix:controller' | 'fix:key' | 'qa' (beat authority, #95 31 Oct);
 //                                  any other origin is a no-op logged in fixRejected (__qa.fixRejected)
 //   metronome.nextBeatAt() / .nextBarAt() → read-only: the clock time (now() timeline) of the next beat / bar line
 //   Hand-fix keys (Shift only; without Shift nothing touches the clock): Shift+A tap, Shift+H ÷2, Shift+D ×2,
-//   Shift+1 set the 1, Shift+, / Shift+. nudge −10 / +10 ms, Shift+0 reset, Shift+F flip (line), Shift+R restart (line). The same commands come from the
+//   Shift+1 set the 1, Shift+, / Shift+. nudge −10 / +10 ms, Shift+0 reset, Shift+F flip (line), Shift+R restart (line), Shift+L hold (line). The same commands come from the
 //   controller's Shift buttons as origin 'fix:controller' (#85 layout).
 //   metronome.setVisualOffset(ms) / .visualOffsetMs   → −100 … +200 ms, + = visuals earlier (#95 6498683963)
 //   metronome.now()              → the clock's time on the audio clock that the visuals show now (heard + offset)
@@ -113,7 +123,12 @@
   // more than TAP_OFF_MAX from the median (a missed or doubled tap) rejects the set
   const TAPS_EVEN = 4, TAPS_LINE_KEPT = 8, TAP_OFF_MAX = 0.25, TAP_LAG_MAX = 0.25;
   // Shift + key (KeyboardEvent.code) → hand fix; clear of the pages' own keys (z x c v t b [ ] `)
-  const FIX_KEYS = { KeyA: ['tap'], KeyH: ['half'], KeyD: ['x2'], Digit1: ['setOne'], Comma: ['nudge', -10], Period: ['nudge', 10], Digit0: ['reset'], KeyF: ['flip'], KeyR: ['restart'] };
+  const FIX_KEYS = { KeyA: ['tap'], KeyH: ['half'], KeyD: ['x2'], Digit1: ['setOne'], Comma: ['nudge', -10], Period: ['nudge', 10], Digit0: ['reset'], KeyF: ['flip'], KeyR: ['restart'], KeyL: ['hold'] };
+  // the hand fixes that confirm the beat and so enter hand-held mode on line (docs/CELLULAR_VIZ_BRIEF_HOLD.md).
+  // HOLD_ON_FIX_DEFAULT: true = an accepted tap, flip, nudge or setOne enters the hold (as built); false = only
+  // fix('hold') (Shift+L, the controller) does. The user's choice; Clock.create({ holdOnFix }) overrides it (tests)
+  const HOLD_ON_FIX_DEFAULT = true;
+  const HOLD_ON_FIX = ['tap', 'flip', 'nudge', 'setOne'];
   const FILE_GAIN = 1, CLICK_GAIN = 0.35, FILE_LEAD = 0.05, LINE_OWN_INPUT_MS = 1500;
   // ?clock=shared: the channel, the publisher's interval (20 Hz at most), the receiver's slew rate, the gap that
   // counts as lost, and the largest error that slews instead of jumping
@@ -247,6 +262,7 @@
   //   fileData     { buffer, grid } for a file: source (tests); load(ctx, url, gridUrl) → Promise of the same
   //   grid         the sidecar's url for a file: source (default ?grid=, else <url>.beatgrid.json)
   function create(opts = {}) {
+    const holdOnFix = typeof opts.holdOnFix === 'boolean' ? opts.holdOnFix : HOLD_ON_FIX_DEFAULT;
     const requested = opts.source || 'metronome';
     let source = requested, fallback = null;
     const fileM = /^file:(.+)$/.exec(requested);
@@ -982,11 +998,24 @@
       },
       // hand fixes on line (authority table in the header): the tracker keeps listening underneath
       lineFix(kind, arg, origin, at, from) {
+        const r = this.lineFixInner(kind, arg, origin, at, from), tr = line.tracker;
+        // hand-held mode: an accepted tap, flip, nudge or set-1 confirms the beat (enters hold, or re-anchors it)
+        if (holdOnFix && r && !r.rejected && HOLD_ON_FIX.includes(kind) && tr && tr.handHold) tr.handHold(true, at, kind);
+        return r;
+      },
+      lineFixInner(kind, arg, origin, at, from) {
         const tr = line.tracker;
         if (!tr || tr.hasModel === false) return null;
         let to = from;
+        if (kind === 'hold') {   // hand-held mode on / off (a toggle); not a jump, nothing rebooks
+          if (!tr.handHold) return null;
+          const on = !tr.held;
+          if (!tr.handHold(on, at, 'hold')) return null;
+          return { type: 'fix', at, kind: 'hold', on, origin };
+        }
         if (kind === 'flip') {   // scheduled in the tracker: the jump (origin kept) is logged and rebooked by lineFrame
           if (!tr.flip) return null;
+          if (holdOnFix && tr.handHold) tr.handHold(true, at, 'flip');   // hand-held mode first: it drops a booked tracker jump, so the flip is never refused
           const s = tr.flip(at, origin);
           if (!s) return null;
           const pending = { type: 'flip-scheduled', at, kind, atBeats: s.atBeat + line.offset, origin };

@@ -142,6 +142,14 @@
     // dissentSpread, spanning >= dissentBeats beats with no gap > dissentGapS s, authorise one bar-line jump of their
     // median; reacqNet is set to that jump. The run restarts on a sign change, a gap, |e| < dissentMinE, or any lock or jump
     dissentCount: 6, dissentMinE: 0.4, dissentSpread: 0.06, dissentBeats: 16, dissentGapS: 4, dissentDrumRel: 0.5, dissentOnsets: 2,
+    // hand-held mode (docs/CELLULAR_VIZ_BRIEF_HOLD.md, the user's go 15 Nov 23:15): after the hand confirms the beat
+    // (handHold), the tracker may trim and may not move. Phase trims only from broadband onsets within holdWindow beat
+    // of the held model (the 3 % rate limit as always); the period only from the F3 long fit, within holdTempoTol of the
+    // held tempo; the net phase trim since the hold at most holdNetMax beat. No jump is booked, no other writer touches
+    // the period. holdSuspect (a hint, nothing moves): the tracker's own free estimate disagrees with the held model by
+    // more than holdSuspectTempo in tempo (octave-folded) or holdSuspectPhase beat in phase for more than
+    // holdSuspectBeats beats
+    holdWindow: 0.125, holdTempoTol: 0.01, holdNetMax: 0.25, holdSuspectTempo: 0.03, holdSuspectPhase: 0.25, holdSuspectBeats: 8,
   };
 
   // ---------------------------------------------------------------- analysis (worklet and node)
@@ -339,6 +347,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     const sideBlocked = 0, moveBy = {}, QUIET_E = 0.1;
     function sideMove(d, src) {
       if (!everLocked || !d) return;
+      if (held && src !== 'tempo' && src !== 'jump:flip') { holdNet += d; holdNetPeak = Math.max(holdNetPeak, Math.abs(holdNet)); }   // the held model's net trim
       moveBy[src] = (moveBy[src] || 0) + d;
       if (src !== 'tempo') sideNetB0 += d;
       sideNet += d; sideNetQ += d; sideNetTotal += d;
@@ -348,8 +357,106 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     }
     // own.pending through these two (same arithmetic as before: a - b and a + (-b) are the same IEEE result), so the
     // slew can be attributed to its writers
-    function pendSet(src, v) { own.pending = v; pendBy = v ? { [src]: v } : {}; }
-    function pendAdd(src, d) { own.pending += d; pendBy[src] = (pendBy[src] || 0) + d; }
+    // held (hand-held mode): only the hold's own trims write a pending correction; a landed hand flip zeroes it ('jump')
+    function pendSet(src, v) { if (held && src !== 'hold' && src !== 'jump') { holdNote(`pending:${src}`); return; } own.pending = v; pendBy = v ? { [src]: v } : {}; }
+    function pendAdd(src, d) { if (held && src !== 'hold') { holdNote(`pending:${src}`); return; } own.pending += d; pendBy[src] = (pendBy[src] || 0) + d; }
+    // ---- hand-held mode (docs/CELLULAR_VIZ_BRIEF_HOLD.md; see DEFAULTS.holdWindow). Off: nothing below runs.
+    let held = false, heldP = 0, holdSince = null, holdNet = 0, holdNetPeak = 0, holdClips = 0, holdTrims = 0;
+    let holdSuspect = false, suspectSince = null, holdShadow = null, holdObs = [], holdEntries = 0, tapHeld = false, ownSaved = null;
+    const holdBlocked = {}, holdLog = [];
+    function holdNote(what) { holdBlocked[what] = (holdBlocked[what] || 0) + 1; }
+    function holdEvent(t, kind, extra) { holdLog.push({ t: +t.toFixed(3), kind, ...extra }); if (holdLog.length > 64) holdLog.shift(); }
+    // the held model: the output's tempo and phase now (a tap's model is folded into the own model, which is then the
+    // only output). While held, a new tap re-anchors it (its tempo and phase become the held model); a flip, nudge or
+    // set-1 keeps it (the flip lands as a jump, a nudge or set-1 is the clock's own offset or label)
+    function handHold(on, t, why) {
+      if (!own.P) return false;
+      if (!on) {
+        if (held) {
+          held = false; holdEvent(t, 'off', { why });
+          if (tapHeld && ownSaved) {   // held from a tap: back to the tap as it was (the output stays on the held model as
+            // the tap model; the tracker's own model from before the hold, run on to now, so the tap escape can judge it)
+            const out0 = outBeats(t);
+            tapModel = { T0: t, B0: out0, P: own.P, pending: 0 }; disagreeSince = null;
+            perSrc = 'hand-release'; periodNote(t, own.P, ownSaved.P); perSrc = null;
+            own.B0 = ownSaved.B0 + (t - ownSaved.T0) / ownSaved.P; own.T0 = t; own.P = ownSaved.P; own.pending = 0; pendBy = {};
+            bpm = 60 / own.P;
+          }
+          tapHeld = false; ownSaved = null;
+        }
+        holdSuspect = false; suspectSince = null;
+        return true;
+      }
+      if (held && !tapModel) return true;
+      if (tapModel) {   // the output follows the tap: it becomes the own model
+        const out0 = outBeats(t);
+        if (!ownSaved) ownSaved = { P: own.P, T0: own.T0, B0: own.B0 };   // the tracker's own model, for the release
+        perSrc = 'hand-tap'; periodNote(t, own.P, tapModel.P); perSrc = null;
+        own.P = tapModel.P; own.T0 = t; own.B0 = out0 - outOffset; tapModel = null; disagreeSince = null;
+        tapHeld = true;   // the output still follows the hand's tap tempo (snapshot().tapped stays true while held)
+      }
+      own.pending = 0; pendBy = {};
+      if (scheduled && scheduled.kind !== 'flip') { holdNote(`jump:${scheduled.kind}`); scheduled = null; }
+      if (!everLocked) { everLocked = true; barOrigin = Math.round(ownBeats(t)); }
+      held = true; heldP = own.P; holdSince = t; holdNet = 0; holdNetPeak = 0; holdEntries++;
+      holdSuspect = false; suspectSince = null; holdObs = [];
+      bpm = 60 / own.P;
+      holdEvent(t, 'on', { why, bpm: +(60 / own.P).toFixed(2) });
+      return true;
+    }
+    // an onset while held: the shadow's phase evidence (any strong onset), then a trim from an in-window one
+    function heldOnset(to, s, e) {
+      const ons = lanes.broad.onsets;
+      let mx = 0, mxIn = 0;
+      for (let i = ons.length - 1; i >= 0 && ons[i].t > to - 2; i--) {
+        mx = Math.max(mx, ons[i].s);
+        if (Math.abs(frac(ownBeats(ons[i].t) + own.pending)) <= C.holdWindow) mxIn = Math.max(mxIn, ons[i].s);
+      }
+      if (s >= 0.7 * mx) { holdObs.push({ t: to, e, s }); if (holdObs.length > 64) holdObs.shift(); }
+      if (Math.abs(e) > C.holdWindow) return;
+      if (s < C.strongRel * mxIn) return;
+      if (strongRef && s < C.refRel * strongRef) return;
+      conf = (1 - C.confAlpha) * conf + C.confAlpha * (1 - 2 * Math.abs(e));
+      // the trim, with the net move since the hold (done + pending) kept within holdNetMax
+      const cur = holdNet + own.pending, want = cur - C.trackGain * e;
+      const next = Math.max(-C.holdNetMax, Math.min(C.holdNetMax, want));
+      if (next !== want) holdClips++;
+      if (next !== cur) { pendAdd('hold', next - cur); holdTrims++; }
+      lastInWindow = to;
+      strongRef = strongRef ? 0.9 * strongRef + 0.1 * s : s;
+      if (state !== 'locked') setState('locked', to);   // no re-acquisition: trimming resumes from the held phase
+    }
+    // holdSuspect: the free estimate (the ACF's raw tempo, octave-folded) disagrees with the held model, or the drums
+    // are there (>= 4 onsets at strongRef's level in the last holdSuspectBeats beats) but none for 2 beats within
+    // holdWindow and they sit more than holdSuspectPhase off (circular mean, or scattered: a wrong tempo), for more
+    // than holdSuspectBeats beats; a hint only. (Not the plain mean of every strong onset while in-window onsets keep
+    // coming: a loud off-beat bass would pull it to 1/2 on a correctly held house track.)
+    function holdSuspectTick(t) {
+      const P = own.P, bpmNow = 60 / P;
+      let tempoDis = false, phaseDis = false;
+      if (holdShadow && t - holdShadow.t < 4) {
+        const f = holdShadow.bpm * Math.pow(2, Math.round(Math.log2(bpmNow / holdShadow.bpm)));
+        tempoDis = Math.abs(f / bpmNow - 1) > C.holdSuspectTempo;
+      }
+      const W = holdObs.filter(o => o.t > t - C.holdSuspectBeats * P && (!strongRef || o.s >= 0.7 * strongRef));
+      if (W.length >= 4 && t - lastInWindow > 2 * P) {   // (no in-window onset for 2 beats; the persistence is suspectSince's)
+        let c = 0, sn = 0;
+        for (const o of W) { c += Math.cos(2 * Math.PI * o.e); sn += Math.sin(2 * Math.PI * o.e); }
+        const R = Math.hypot(c, sn) / W.length, ph = Math.atan2(sn, c) / (2 * Math.PI);
+        phaseDis = R < 0.5 || Math.abs(ph) > C.holdSuspectPhase;
+      }
+      if (tempoDis || phaseDis) {
+        if (suspectSince === null) suspectSince = t;
+        else if (!holdSuspect && t - suspectSince > C.holdSuspectBeats * P) { holdSuspect = true; holdEvent(t, 'suspect', { tempo: tempoDis, phase: phaseDis, shadowBpm: holdShadow ? +holdShadow.bpm.toFixed(2) : null }); }
+      } else {
+        if (holdSuspect) holdEvent(t, 'suspect-off', {});
+        suspectSince = null; holdSuspect = false;
+      }
+    }
+    const heldReport = () => ({ on: held, since: holdSince === null ? null : +holdSince.toFixed(3), bpm: heldP ? +(60 / heldP).toFixed(2) : null,
+      nowBpm: own.P ? +(60 / own.P).toFixed(2) : null, net: +holdNet.toFixed(4), netPeak: +holdNetPeak.toFixed(4), clips: holdClips, trims: holdTrims,
+      suspect: holdSuspect, suspectSince: suspectSince === null ? null : +suspectSince.toFixed(3), shadowBpm: holdShadow ? +holdShadow.bpm.toFixed(2) : null,
+      entries: holdEntries, blocked: { ...holdBlocked }, log: holdLog.slice(-16) });
     function slewMoved(step, pend0) {
       if (!step) return;
       const keys = Object.keys(pendBy);
@@ -500,7 +607,14 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       periodLog.push({ t: +t.toFixed(3), src: perSrc || 'other', from: P0 ? +(60 / P0).toFixed(4) : null, to: +(60 / P1).toFixed(4) });
       if (periodLog.length > 20000) periodLog.shift();
     }
-    function ownPeriod(src, P, t) { perSrc = src; setPeriod(own, P, t); perSrc = null; }
+    function ownPeriod(src, P, t) {
+      if (held) {   // hand-held mode: only the F3 long fit (within holdTempoTol of the held tempo) and the hand's x2 / /2
+        if (src === 'hand-scale') heldP *= P / own.P;
+        else if (src === 'fit-long') P = Math.max(heldP / (1 + C.holdTempoTol), Math.min(heldP / (1 - C.holdTempoTol), P));
+        else { holdNote(`period:${src}`); return; }
+      }
+      perSrc = src; setPeriod(own, P, t); perSrc = null;
+    }
     const nextBarLine = b => barOrigin + C.bpb * (Math.floor((b - barOrigin) / C.bpb + 1e-9) + 1);
 
     // ---- tempo
@@ -659,6 +773,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     }
     function applyTempo(raw, t) {
       if (!raw || !isFinite(raw)) return;
+      // held: the free estimate only feeds holdSuspect; nothing of the ACF path runs (no acf-* write, no octave / relative
+      // booking, the octave hold untouched)
+      if (held) { holdShadow = { t, bpm: raw }; holdNote('period:acf'); return; }
       const est = raw;   // as heard: before the hysteresis and the hold's fold
       if (octaveLock && protect && t < protect.t) {
         // the user's option 2: inside the protection fix (c) neither checks nor counts (the old fold release below stays)
@@ -742,6 +859,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const ons = lanes.broad.onsets;
       const target = ownBeats(to) + own.pending;   // where the model will be once the pending slew is done
       const e = frac(target);
+      if (held) { heldOnset(to, s, e); return; }   // hand-held mode: trims only
       // The first acquisition: the phase is the low lane's amplitude-weighted mean over everything it heard since the
       // acquisition began (the kick's side), broadband's mean while the low lane has too few onsets. Each broadband onset
       // snaps the model there (nothing is booked yet); only broadband onsets within ±¼ beat of that phase count for the
@@ -1185,10 +1303,12 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         beatsRun += dt / own.P;
         if (everLocked) { if (!Pref) Pref = own.P; sideMove(dt / own.P - dt / Pref, 'tempo'); }
         const b0 = own.B0, pend0 = own.pending;
-        slew(own, dt, t < slewBoostUntil ? C.stepSlewRate : C.maxRate); if (tapModel) slew(tapModel, dt);
+        slew(own, dt, t < slewBoostUntil && !held ? C.stepSlewRate : C.maxRate); if (tapModel) slew(tapModel, dt);
         if (state === 'locked') phaseApplied += own.B0 - b0;
         slewMoved(own.B0 - b0, pend0);   // logging only
       }
+      // hand-held mode: no jump is booked but the hand's flip (anything else booked meanwhile is dropped, counted)
+      if (held && scheduled && scheduled.kind !== 'flip') { holdNote(`jump:${scheduled.kind}`); scheduled = null; dissentJump = false; }
       if (scheduled && own.P && outBeats(t) >= scheduled.atBeat) {
         const from = outBeats(t), b0j = own.B0, jumpSrc = scheduled.kind === 'acquire' && dissentJump ? 'dissent' : scheduled.kind;
         if (scheduled.kind === 'acquire') { own.B0 += scheduled.delta; pendSet('jump', 0); conf = C.lockConf; lastInWindow = t; setState('locked', t); }
@@ -1201,6 +1321,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         else { outOffset = Math.round(tapBeats(t) - ownBeats(t)); tapModel = null; disagreeSince = null; }
         logJump(t, scheduled.kind, from, outBeats(t), scheduled.origin);
         sideMove(own.B0 - b0j, `jump:${jumpSrc}`);   // logging only
+        if (held && scheduled.kind === 'flip') { holdNet = 0; holdEvent(t, 'flip', {}); }   // the hand's flip: the net trim starts again (the held tempo stays)
         dissentJump = false;
         scheduled = null;
       }
@@ -1210,7 +1331,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       laneTick(t);
       if (ob) onOnset(ob.t, ob.s);
       // tempo at ~estHz, not in free-run (no drums: keep lastConfidentBpm)
-      if (t - lastEst >= 1 / C.estHz && state !== 'free-run' && t - lanes.broad.lastOnsetT < 1.5) { lastEst = t; applyTempo(estimate(t), t); }
+      // (held: also in free-run, for the shadow estimate behind holdSuspect; its writes are gated)
+      if (t - lastEst >= 1 / C.estHz && (state !== 'free-run' || held) && t - lanes.broad.lastOnsetT < 1.5) { lastEst = t; applyTempo(estimate(t), t); }
       // F3: the locked tempo from the fit, at fitHz
       if (state === 'locked' && own.P && t - fit.lastAt >= 1 / C.fitHz) {
         const fdt = Math.min(2 / C.fitHz, t - fit.lastAt);
@@ -1219,7 +1341,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         fitTick(t);
       }
       // F4: the second look (once, secondLookAt s after the first lock) and the scan after every re-acquire
-      if (state === 'locked' && own.P && !scheduled) {
+      if (state === 'locked' && own.P && !scheduled && !held) {   // (held: no rescan, no second look)
         if (firstLockT !== null && !secondLookDone && t - firstLockT >= C.secondLookAt) { secondLookDone = true; rescanDue = null; rescan(t, 'secondlook'); }
         else if (rescanDue !== null) { rescanDue = null; rescan(t, 'rescan'); }
       }
@@ -1231,6 +1353,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         setState('free-run', t); reacq = [];
         if (lastConfidentBpm) { bpm = lastConfidentBpm; ownPeriod('lock-lost-restore', 60 / bpm, t); }
       }
+      if (held && own.P) { bpm = 60 / own.P; holdSuspectTick(t); }   // the output's tempo is the held model's
       // tap escape: the tracker's own model disagrees with the tap for > escapeSecs at high confidence → override
       if (tapModel && !scheduled) {
         const dTempo = Math.abs(tapModel.P / own.P - 1), dPhase = Math.abs(frac(tapBeats(t) - ownBeats(t)));
@@ -1271,12 +1394,18 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // fix('flip') by hand (clock.js lineFix, Shift + F or the controller): half a beat at the next bar line, logged
       // as jump { kind: 'flip', origin } when it lands. Returns what was scheduled, or null (no model, or a jump is due).
       flip(t, origin = null) {
+        if (held && scheduled && scheduled.kind !== 'flip') { holdNote(`jump:${scheduled.kind}`); scheduled = null; }   // held: the hand wins
         if (!own.P || (scheduled && scheduled.kind !== 'side')) return null;
         sideSince = null; sideHand = true;   // from now on the side is the hand's: the side check only measures
         scheduled = { kind: 'flip', delta: 0.5, atBeat: nextBarLine(outBeats(t)), origin };
         return { ...scheduled };
       },
       get scheduled() { return scheduled ? { ...scheduled } : null; },
+      // hand-held mode (docs/CELLULAR_VIZ_BRIEF_HOLD.md): on records the output's tempo and phase as the held model (again:
+      // re-anchors), off returns to the free tracker; clock.js fix('hold') toggles it and enters it on an accepted tap,
+      // flip, nudge or set-1. Returns false without a model
+      handHold(on, t, why = null) { return handHold(!!on, t, why); },
+      get held() { return held; }, get holdSuspect() { return holdSuspect; }, get heldReport() { return heldReport(); },
       // the time at which the output reaches beat b (its current linear model; slews still pending are not in it)
       timeOf(b) {
         if (!own.P) return NaN;
@@ -1295,8 +1424,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // __qa.tracker (#95 SHOULD 8)
       snapshot() {
         return { state, confidence: +conf.toFixed(3), octaveLock: octaveLock ? +octaveLock.toFixed(2) : null,
-          bpm: +(tapModel ? 60 / tapModel.P : bpm).toFixed(2), tapped: !!tapModel, lastJump: jumps[jumps.length - 1] || null,
-          lane: laneReport(), relative: relReport(), hold: holdReport() };
+          bpm: +(tapModel ? 60 / tapModel.P : bpm).toFixed(2), tapped: !!tapModel || (held && tapHeld), lastJump: jumps[jumps.length - 1] || null,
+          lane: laneReport(), relative: relReport(), hold: holdReport(), held: heldReport() };
       },
       // F3 (the harness's generic report): locked tempo moves (step, relative, octave, fallback landings; the fit's
       // rate-limited adjustments are counted apart), fit rejects by reason, the last decision
@@ -1311,7 +1440,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       get notes() { return notes; }, get relative() { return relReport(); }, get hold() { return holdReport(); }, get octaveLock() { return octaveLock; }, get hasModel() { return !!own.P; },
       get jumps() { return jumps; }, get stateLog() { return stateLog; }, get relocks() { return relockLog; }, get refused() { return refusedLog; }, get netLog() { return netLog; }, get dissentLog() { return dissentLog; }, get periodLog() { return periodLog; }, get reacqNet() { return reacqNet; }, get sideTrack() { return { net: sideNet, netMax: sideNetMax, netQ: sideNetQ, netQMax: sideNetQMax, netTotal: sideNetTotal, netB0: sideNetB0, changes: sideChanges, blocked: sideBlocked, moveBy: { ...moveBy }, beatsRun }; }, get phaseApplied() { return phaseApplied; }, get onsets() { return lanes.broad.onsets; }, get lane() { return lane; }, get laneLog() { return laneLog; }, get sideLog() { return sideLog; }, laneReport,
       get state() { return state; }, get confidence() { return conf; }, get bpm() { return tapModel ? 60 / tapModel.P : bpm; },
-      get ownBpm() { return bpm; }, get lastConfidentBpm() { return lastConfidentBpm; }, get tapped() { return !!tapModel; },
+      get ownBpm() { return bpm; }, get lastConfidentBpm() { return lastConfidentBpm; }, get tapped() { return !!tapModel || (held && tapHeld); },
       get barOrigin() { return barOrigin; },
     };
   }
