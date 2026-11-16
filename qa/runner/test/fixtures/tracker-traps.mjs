@@ -32,13 +32,17 @@ function kick(rnd, g = 1, click = 0) {   // a 60 Hz burst (120 ms decay) with a 
 // the kick carries a bright beater click and the hat on the beat is louder than the one on the off-beat (a closed hat
 // on the eighths with the downbeat accented), so the drums can lock; the off-beat bass, the trap, is unchanged.
 const TRAP_CLICK = 1.0, TRAP_BEAT_HAT_DB = -6;
-function bass(g, att = 0.025) {   // 55 Hz + its octave, a raised-cosine attack (25 ms: no transient), 180 ms long, low-passed at 150 Hz
+function bass(g, att = 0.025) {   // 55 Hz + its octave, a raised-cosine attack (25 ms: no transient), 200 ms long, low-passed at 150 Hz,
+  // the last 10 ms faded out by a raised cosine (#239: the hard cut at 27 % of the peak was a click 38 ms before the next
+  // kick at 126 BPM; the 150 ms refractory then hid the kick in parts of the track)
   const n = Math.round(0.2 * SR), x = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     const t = i / SR, a = t < att ? 0.5 - 0.5 * Math.cos(Math.PI * t / att) : Math.exp(-(t - att) / 0.15);
     x[i] = g * a * (Math.sin(2 * Math.PI * 55 * t) + 0.4 * Math.sin(2 * Math.PI * 110 * t));
   }
   biquad(x, SR, 'lp', 150, 0.707); biquad(x, SR, 'lp', 150, 0.707);
+  const nf = Math.round(0.01 * SR);
+  for (let i = 0; i < nf; i++) x[n - nf + i] *= 0.5 + 0.5 * Math.cos(Math.PI * (i + 1) / nf);   // to exactly 0 at the end
   return x;
 }
 function noiseHit(rnd, g, type, f0, q, tau, len, norm) {
