@@ -65,6 +65,9 @@ test('frozen tracker: CLOCK_CORPUS.md lists every DEFAULTS constant of the track
   const src = fs.readFileSync(SRC, 'utf8');
   assert.match(src, /fitReject\(t, 'hold-band', 60 \/ Pfit\)/, 'the hold-band reject is in fitTick');
   assert.doesNotMatch(src, /heldP \/ \(1 \+ C\.holdTempoTol\)/, 'no clamp onto the band edge');
+  // #239 hold d: on entry to free-run while held, the median of the recent accepted fit-long targets ('hold-median')
+  assert.match(src, /ownPeriod\('hold-median', Pm, t\)/, 'the hold-median writer is there');
+  assert.match(src, /holdNote\('hold-median:empty'\)/, 'an empty window keeps the period');
 });
 
 test('frozen tracker: the module constants and the source sha256 match the doc; the frozen sentence points at the list', () => {

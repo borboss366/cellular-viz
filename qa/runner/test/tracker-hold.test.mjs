@@ -92,7 +92,7 @@ function runHold(s, { hold = true, trace = false } = {}) {
           const fp = tr.holdFitPhase;
           prevRowT = rowT;
           rows.push({ beat: bi - kHold, t: s.beats[bi], bpm: tr.bpm, fit: rep.fit, dec: rep.last, steps: rep.steps - steps0,
-            kick, trimE, fitPhase: fp && fp.t !== null && fp.t > rowT - 8 * P0 ? fp.v : null,
+            kick, trimE, fitPhase: fp && fp.t !== null && fp.t > rowT - 8 * P0 ? fp.v : null, median: tr.heldReport.median,
             nW: W.length, wFrom: W.length ? W[0].from : null, wTo: W.length ? W[W.length - 1].to : null, wSrc: [...new Set(W.map(w => w.src))].join('+'),
             state: tr.state, conf: tr.confidence, e, lastIn, net: tr.heldReport.net, suspect: tr.holdSuspect });
         }
@@ -109,10 +109,12 @@ const decLine = d => (d ? `${d.path}${d.cand ? ' ' + d.cand : ''} ${d.ok ? 'ok' 
 function traceReport(t, name, s, r) {
   const P = s.P || r.P0;
   for (const x of r.rows) {
-    report(t, `hold trace ${name} beat +${x.beat} (${x.t.toFixed(1)} s): bpm ${f2(x.bpm)} (truth ${s.bpm}); fit-long target ${x.fit ? f2(x.fit.bpm) + ' @' + f2(x.fit.t) : '-'}, last decision ${decLine(x.dec)}; period writes in these 8 beats ${x.nW}${x.nW ? ` (${x.wSrc}: ${f2(x.wFrom)} -> ${f2(x.wTo)})` : ''}, step-path steps since the hold ${x.steps}; ${x.state} conf ${f2(x.conf)}; error ${x.e === null ? '-' : sgn(x.e) + ' beat ' + (x.e * P * 1000).toFixed(1) + ' ms'}; last in-window onset ${x.lastIn === null ? 'none' : x.lastIn.toFixed(2) + ' s'}; holdNet ${sgn(x.net)}; suspect ${x.suspect}; probe B: kick onset - truth median ${x.kick === null ? '-' : x.kick.toFixed(1) + ' ms'}, tracker e at trimmed onsets median ${x.trimE === null ? '-' : sgn(x.trimE)}, blocked fit line phase ${x.fitPhase === null ? '-' : sgn(x.fitPhase)}`);
+    report(t, `hold trace ${name} beat +${x.beat} (${x.t.toFixed(1)} s): bpm ${f2(x.bpm)} (truth ${s.bpm}); fit-long target ${x.fit ? f2(x.fit.bpm) + ' @' + f2(x.fit.t) : '-'}, last decision ${decLine(x.dec)}; period writes in these 8 beats ${x.nW}${x.nW ? ` (${x.wSrc}: ${f2(x.wFrom)} -> ${f2(x.wTo)})` : ''}, step-path steps since the hold ${x.steps}; ${x.state} conf ${f2(x.conf)}; error ${x.e === null ? '-' : sgn(x.e) + ' beat ' + (x.e * P * 1000).toFixed(1) + ' ms'}; last in-window onset ${x.lastIn === null ? 'none' : x.lastIn.toFixed(2) + ' s'}; holdNet ${sgn(x.net)}; suspect ${x.suspect}; probe B: kick onset - truth median ${x.kick === null ? '-' : x.kick.toFixed(1) + ' ms'}, tracker e at trimmed onsets median ${x.trimE === null ? '-' : sgn(x.trimE)}, blocked fit line phase ${x.fitPhase === null ? '-' : sgn(x.fitPhase)}; latest hold-median ${x.median ? (x.median.empty ? 'empty @' + f2(x.median.t) : f2(x.median.bpm) + ' from ' + x.median.n + ' fits (was ' + f2(x.median.from) + ') @' + f2(x.median.t)) : '-'}`);
   }
   const e = r.edge;
   report(t, `hold trace ${name} edge: ${e ? `the period reached the 1 % band edge at ${e.t.toFixed(2)} s by ${e.src} (${f2(e.from)} -> ${f2(e.to)}, held ${f2(r.heldBpm)}), tempo decision then ${decLine(e.dec)}, step-path steps since the start ${e.steps}` : 'no period write reached the 1 % band edge'}; period writes after the hold ${r.writes.length} by ${[...new Set(r.writes.map(w => w.src))].join(', ') || 'none'}`);
+  const hm = r.writes.filter(w => w.src === 'hold-median');
+  report(t, `hold trace ${name} hold-median: writes ${hm.length ? hm.map(w => `${w.t.toFixed(2)} s ${f2(w.from)} -> ${f2(w.to)}`).join(', ') : 'none'}; empty windows (period kept) ${r.held.blocked['hold-median:empty'] || 0}`);
 }
 /** after the hold (and a hand flip's bar line): the worst |error| at a true beat, in beats */
 function sideCheck(r) {

@@ -146,7 +146,9 @@
     // (handHold), the tracker may trim and may not move. Phase trims only from broadband onsets within holdWindow beat
     // of the held model (the 3 % rate limit as always); the period only from the F3 long fit, within holdTempoTol of the
     // held tempo (a fit target outside that band is rejected, never clamped); the net phase trim since the hold at most
-    // holdNetMax beat. No jump is booked, no other writer touches
+    // holdNetMax beat. On each entry to free-run while held the period is set to the median of the accepted fit-long
+    // targets of the last 2 x fitBeats beats since the latest lock (hold-median; none there: unchanged). No jump is
+    // booked, no other writer touches
     // the period. holdSuspect (a hint, nothing moves): the tracker's own free estimate disagrees with the held model by
     // more than holdSuspectTempo in tempo (octave-folded) or holdSuspectPhase beat in phase for more than
     // holdSuspectBeats beats
@@ -373,6 +375,19 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     let holdSuspect = false, suspectSince = null, holdShadow = null, holdObs = [], holdEntries = 0, tapHeld = false, ownSaved = null;
     const holdBlocked = {}, holdLog = [], holdTrimLog = [];
     let holdFitPhase = null;
+    // hold-median (#239, hold d: the breakdown froze the latest fit-long value, 0.11 % fit noise = 34 ms over 30 s): while
+    // held every accepted fit-long target is kept; on each entry to free-run the period is set once to the median of the
+    // targets of the last 2 x fitBeats beats that came after the latest entry to 'locked' (so a re-lock's newer fits are
+    // never mixed with a pre-breakdown median). None there: the period stays, logged 'hold-median:empty'.
+    let holdFits = [], lockedSince = -Infinity, holdMedianLast = null;
+    function holdMedian(t) {
+      const from = Math.max(lockedSince, t - 2 * C.fitBeats * own.P), W = holdFits.filter(x => x.t >= from).map(x => x.P);
+      if (!W.length) { holdNote('hold-median:empty'); holdMedianLast = { t: +t.toFixed(3), empty: true }; holdEvent(t, 'median-empty', {}); return; }
+      const Pm = median(W);
+      holdMedianLast = { t: +t.toFixed(3), bpm: +(60 / Pm).toFixed(3), n: W.length, from: +(60 / own.P).toFixed(3) };
+      holdEvent(t, 'median', { bpm: holdMedianLast.bpm, n: W.length });
+      if (Math.abs(Pm - own.P) > 1e-12) ownPeriod('hold-median', Pm, t);
+    }
     function holdNote(what) { holdBlocked[what] = (holdBlocked[what] || 0) + 1; }
     function holdEvent(t, kind, extra) { holdLog.push({ t: +t.toFixed(3), kind, ...extra }); if (holdLog.length > 64) holdLog.shift(); }
     // the held model: the output's tempo and phase now (a tap's model is folded into the own model, which is then the
@@ -407,7 +422,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       own.pending = 0; pendBy = {};
       if (scheduled && scheduled.kind !== 'flip') { holdNote(`jump:${scheduled.kind}`); scheduled = null; }
       if (!everLocked) { everLocked = true; barOrigin = Math.round(ownBeats(t)); }
-      held = true; heldP = own.P; holdSince = t; holdNet = 0; holdNetPeak = 0; holdEntries++;
+      held = true; heldP = own.P; holdSince = t; holdNet = 0; holdNetPeak = 0; holdEntries++; holdFits = [];
       holdSuspect = false; suspectSince = null; holdObs = [];
       bpm = 60 / own.P;
       holdEvent(t, 'on', { why, bpm: +(60 / own.P).toFixed(2) });
@@ -466,7 +481,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     const heldReport = () => ({ on: held, since: holdSince === null ? null : +holdSince.toFixed(3), bpm: heldP ? +(60 / heldP).toFixed(2) : null,
       nowBpm: own.P ? +(60 / own.P).toFixed(2) : null, net: +holdNet.toFixed(4), netPeak: +holdNetPeak.toFixed(4), clips: holdClips, trims: holdTrims,
       suspect: holdSuspect, suspectSince: suspectSince === null ? null : +suspectSince.toFixed(3), shadowBpm: holdShadow ? +holdShadow.bpm.toFixed(2) : null,
-      entries: holdEntries, blocked: { ...holdBlocked }, log: holdLog.slice(-16) });
+      entries: holdEntries, blocked: { ...holdBlocked }, median: holdMedianLast, log: holdLog.slice(-16) });
     function slewMoved(step, pend0) {
       if (!step) return;
       const keys = Object.keys(pendBy);
@@ -508,6 +523,8 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (s !== state) {
         state = s; stateLog.push({ t, state: s });
         if (s !== 'locked') { netRun = 0; netLastBeat = null; }   // fix A3b: the confirming run needs a lock
+        if (s === 'locked') lockedSince = t;   // hold-median's window starts at the latest lock
+        if (s === 'free-run' && held && own.P) holdMedian(t);   // hand-held mode only
         if (s === 'locked') dissent = [];   // fix A3c: any lock (a landed jump too) ends a dissent run
         if (s === 'locked') { laneHold = false; if (firstLockT !== null) rescanDue = t; }   // F4: every re-acquire scans
       }
@@ -622,7 +639,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         if (src === 'hand-scale') heldP *= P / own.P;
         // fit-long: fitTick rejects a target outside the band ('hold-band'), so its rate-limited step stays inside it;
         // anything outside is refused here (never clamped onto the band edge)
-        else if (src === 'fit-long') { if (Math.abs(P / heldP - 1) > C.holdTempoTol + 1e-9) { holdNote('period:fit-long-out'); return; } }
+        else if (src === 'fit-long' || src === 'hold-median') { if (Math.abs(P / heldP - 1) > C.holdTempoTol + 1e-9) { holdNote(`period:${src}-out`); return; } }
         else { holdNote(`period:${src}`); return; }
       }
       perSrc = src; setPeriod(own, P, t); perSrc = null;
@@ -1140,6 +1157,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // clamped (a: 124.94 / 130.98 / 120.63 bpm targets on a 126 track were clamped onto the band edge and drifted)
       if (held && Math.abs(Pfit / heldP - 1) > C.holdTempoTol) return fitReject(t, 'hold-band', 60 / Pfit);
       fit.lastValidT = t; fit.young = false;
+      if (held) { holdFits.push({ t, P: Pfit }); if (holdFits.length > 512) holdFits.shift(); }   // hold-median's targets
       const dt = Math.min(2 / C.fitHz, Math.max(0, t - (fit.last ? fit.last.t : t - 1 / C.fitHz)));
       fit.last = { t, bpm: +(60 / Pfit).toFixed(3), n: pts.length, span, coverage: +(distinct / span).toFixed(3) };
       let newP;
