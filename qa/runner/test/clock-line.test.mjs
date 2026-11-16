@@ -57,11 +57,11 @@ function stubClock(bpm, { click = false, offset = 0 } = {}) {
 }
 
 // the 3a analysis → frames; each frame moves the fake clock to its time, then feeds the clock and reads it (pump)
-function runLine(s, { at = [], click = false, holdOnFix } = {}) {
+function runLine(s, { at = [], click = false, autoHold } = {}) {
   const ctx = fakeContext();
   let perf = 0;
   const c = Clock.create({ source: 'line', settings: SETTINGS(click), audioContext: () => ctx, timers: false, pump: true,
-    now: () => perf, lineFeed: true, keys: false, holdOnFix });
+    now: () => perf, lineFeed: true, keys: false, autoHold });
   c.start();
   const frames = [];
   const an = T.createAnalyzer({ sampleRate: s.sr, onFrame: f => frames.push(f) });
@@ -160,13 +160,25 @@ test('tap then tracker: a correct tap is followed (the tracker only nudges it), 
   assert.equal(c.trackerState.tapped, true);
 });
 
-test('R5 through the clock: four even taps 5 % fast, then hold released → exactly one override within 4 s + 1 bar', () => {
+test('R5 through the clock: four even taps 5 % fast → exactly one override within 4 s + 1 bar', () => {
+  // D4: the tempo needs 4+ even taps now (1-3 taps only move the phase)
+  const s = render('128-steady', { sr: SR }), P = 60 / 128, t1 = s.beats.find(t => t >= 12), Pt = 60 / (128 * 1.05), t2 = t1 + 3 * Pt;
+  const { c } = runLine(s, { at: [0, 1, 2, 3].map(k => ({ t: t1 + k * Pt, fn: c => c.fix('tap', QA) })) });
+  const ov = c.jumps.filter(j => j.kind === 'override');
+  console.log(`R5 clock: taps at ${t1.toFixed(3)}, ${t2.toFixed(3)}; overrides ${ov.map(j => (j.at - t2).toFixed(2) + ' s').join(', ') || 'none'}; bpm ${c.trackerState.bpm}`);
+  assert.equal(ov.length, 1, 'exactly one override');
+  assert.equal(ov[0].origin, 'tracker');
+  assert.ok(ov[0].at - t2 <= 4 + 4 * P + 0.05, `override ${ov[0].at - t2} s after the second tap`);
+  assert.equal(c.trackerState.tapped, false);
+});
+
+test('R5 with auto-hold on: four even taps 5 % fast, then hold released → exactly one override within 4 s + 1 bar', () => {
   // D4: the tempo needs 4+ even taps now (1-3 taps only move the phase). Hand-held mode (docs/CELLULAR_VIZ_BRIEF_HOLD.md):
   // a tap enters the hold, and while held the tap is never overridden; releasing it (fix('hold') again) gives back the
   // tap as it was, with the tracker's own model, so the tap escape runs as before
   const s = render('128-steady', { sr: SR }), P = 60 / 128, t1 = s.beats.find(t => t >= 12), Pt = 60 / (128 * 1.05), t2 = t1 + 3 * Pt;
   let rel = null;
-  const { c } = runLine(s, { holdOnFix: true, at: [...[0, 1, 2, 3].map(k => ({ t: t1 + k * Pt, fn: c => c.fix('tap', QA) })), { t: t2 + 0.01, fn: c => { rel = c.fix('hold', QA); } }] });
+  const { c } = runLine(s, { autoHold: true, at: [...[0, 1, 2, 3].map(k => ({ t: t1 + k * Pt, fn: c => c.fix('tap', QA) })), { t: t2 + 0.01, fn: c => { rel = c.fix('hold', QA); } }] });
   assert.ok(rel && rel.kind === 'hold' && rel.on === false, `the hold was on after the taps and is released: ${JSON.stringify(rel)}`);
   const ov = c.jumps.filter(j => j.kind === 'override');
   console.log(`R5 clock: taps at ${t1.toFixed(3)}, ${t2.toFixed(3)}; overrides ${ov.map(j => (j.at - t2).toFixed(2) + ' s').join(', ') || 'none'}; bpm ${c.trackerState.bpm}`);
@@ -176,27 +188,14 @@ test('R5 through the clock: four even taps 5 % fast, then hold released → exac
   assert.equal(c.trackerState.tapped, false);
 });
 
-test('R5 with holdOnFix false (only Shift+L holds): four even taps 5 % fast, no hold → exactly one override within 4 s + 1 bar', () => {
-  const s = render('128-steady', { sr: SR }), P = 60 / 128, t1 = s.beats.find(t => t >= 12), Pt = 60 / (128 * 1.05), t2 = t1 + 3 * Pt;
-  let heldAfter = null;
-  const { c } = runLine(s, { holdOnFix: false, at: [...[0, 1, 2, 3].map(k => ({ t: t1 + k * Pt, fn: c => c.fix('tap', QA) })), { t: t2 + 0.01, fn: c => { heldAfter = c.trackerState.held.on; } }] });
-  const ov = c.jumps.filter(j => j.kind === 'override');
-  console.log(`R5 holdOnFix false: held after the taps ${heldAfter}; overrides ${ov.map(j => (j.at - t2).toFixed(2) + ' s').join(', ') || 'none'}; bpm ${c.trackerState.bpm}`);
-  assert.equal(heldAfter, false, 'taps do not enter the hold');
-  assert.equal(ov.length, 1, 'exactly one override');
-  assert.equal(ov[0].origin, 'tracker');
-  assert.ok(ov[0].at - t2 <= 4 + 4 * P + 0.05, `override ${ov[0].at - t2} s after the second tap`);
-  assert.equal(c.trackerState.tapped, false);
-});
-
-test('holdOnFix false: nudge, setOne and flip do not enter the hold; fix(\'hold\') still does', () => {
+test('auto-hold off: nudge, setOne and flip do not enter the hold; fix(\'hold\') still does', () => {
   const s = render('128-steady', { sr: SR }), at = t0 => s.beats.find(t => t >= t0), seen = {};
-  const { c } = runLine(s, { holdOnFix: false, at: [
+  const { c } = runLine(s, { autoHold: false, at: [
     { t: at(14), fn: c => { c.fix('nudge', 10, QA); c.fix('setOne', QA); seen.a = c.trackerState.held.on; } },
     { t: at(12), fn: c => { seen.flip = c.fix('flip', QA); seen.b = c.trackerState.held.on; } },
     { t: at(16), fn: c => { seen.hold = c.fix('hold', QA); seen.c = c.trackerState.held.on; } },
   ] });
-  console.log(`holdOnFix false: ${JSON.stringify({ a: seen.a, flip: seen.flip && seen.flip.type, b: seen.b, hold: seen.hold, c: seen.c, end: c.trackerState.held.on })}`);
+  console.log(`auto-hold off: ${JSON.stringify({ a: seen.a, flip: seen.flip && seen.flip.type, b: seen.b, hold: seen.hold, c: seen.c, end: c.trackerState.held.on })}`);
   assert.equal(seen.a, false, 'nudge and setOne: not held');
   assert.ok(seen.flip && seen.flip.type === 'flip-scheduled', 'the flip is booked');
   assert.equal(seen.b, false, 'flip: not held');
@@ -207,7 +206,7 @@ test('holdOnFix false: nudge, setOne and flip do not enter the hold; fix(\'hold\
 
 test('hold (hand-held mode): four even taps 5 % fast and no release → no override, the tap tempo held, tapped', () => {
   const s = render('128-steady', { sr: SR }), t1 = s.beats.find(t => t >= 12), Pt = 60 / (128 * 1.05);
-  const { c } = runLine(s, { holdOnFix: true, at: [0, 1, 2, 3].map(k => ({ t: t1 + k * Pt, fn: c => c.fix('tap', QA) })) });
+  const { c } = runLine(s, { autoHold: true, at: [0, 1, 2, 3].map(k => ({ t: t1 + k * Pt, fn: c => c.fix('tap', QA) })) });
   const st = c.trackerState;
   console.log(`hold after taps: held ${JSON.stringify({ on: st.held.on, bpm: st.held.bpm, nowBpm: st.held.nowBpm, net: st.held.net, suspect: st.held.suspect, blocked: st.held.blocked })}; overrides ${c.jumps.filter(j => j.kind === 'override').length}; bpm ${st.bpm}`);
   assert.equal(st.held.on, true, 'a tap enters the hold');
@@ -239,6 +238,27 @@ test('hold (hand-held mode): fix(\'hold\') toggles it (Shift+L), x2 scales the h
   assert.equal(seen.st4.on, false);
   assert.equal(seen.st5.on, false, 'restart leaves the hold (a fresh tracker)');
   assert.equal(c.trackerState.held.on, false);
+});
+
+test('auto-hold at run time: off by default; fix(\'autoHold\') switches it (logged in settingLog), a tap then holds; off again, a tap does not', () => {
+  const s = render('128-steady', { sr: SR }), at = t0 => s.beats.find(t => t >= t0), seen = {};
+  const { c } = runLine(s, { at: [
+    { t: at(11), fn: c => { seen.def = c.autoHold; seen.bad = c.fix('autoHold', true, { origin: 'page' }); seen.on = c.fix('autoHold', true, QA); seen.same = c.fix('autoHold', true, QA); } },
+    { t: at(12), fn: c => { c.fix('tap', QA); seen.held1 = c.trackerState.held.on; } },
+    { t: at(14), fn: c => { c.fix('hold', QA); seen.off = c.fix('autoHold', QA); seen.held2 = c.trackerState.held.on; } },
+    { t: at(16), fn: c => { c.fix('tap', QA); seen.held3 = c.trackerState.held.on; seen.st = c.trackerState.autoHold; } },
+  ] });
+  console.log(`auto-hold switch: ${JSON.stringify({ def: seen.def, bad: seen.bad, on: seen.on, same: seen.same, held1: seen.held1, off: seen.off, held2: seen.held2, held3: seen.held3, log: c.settingLog })}`);
+  assert.equal(seen.def, false, 'the default is off (fixes as on main)');
+  assert.equal(seen.bad, null, 'beat authority: other origins are rejected');
+  assert.deepEqual({ type: seen.on.type, kind: seen.on.kind, on: seen.on.on, origin: seen.on.origin }, { type: 'setting', kind: 'autoHold', on: true, origin: 'qa' });
+  assert.equal(seen.same, null, 'no change, no record');
+  assert.equal(seen.held1, true, 'auto-hold on: a tap enters the hold');
+  assert.equal(seen.off.on, false, 'fix(autoHold) without a value toggles');
+  assert.equal(seen.held2, false, 'Shift+L released it');
+  assert.equal(seen.held3, false, 'auto-hold off: a tap does not hold');
+  assert.equal(seen.st, false, 'trackerState.autoHold');
+  assert.deepEqual(c.settingLog.map(r => [r.kind, r.on]), [['autoHold', true], ['autoHold', false]], 'one record per change');
 });
 
 test('hold: off the line source fix(\'hold\') does nothing (metronome, file pages unchanged)', () => {
