@@ -93,9 +93,11 @@
     // with 6 onsets, the 0.22-beat phase error then took 12 beats to slew out; main 4.3)
     stepOnsets: 4, stepResid: 0.1, stepAgree: 0.025, stepNear: 0.4, stepYoungBeats: 8, fitNewestOff: 0.08,
     // box run dd840c6: adoption at beat 4 is right, but the 0.17-beat phase error then slews out at 0.03 a beat (9
-    // beats). For stepSlewBeats beats after an adopted step the phase slews at stepSlewRate (6 %), then 3 % again.
+    // beats). For stepSlewBeats beats after an adopted step the phase slews at stepSlewRate, then 3 % again (16 Nov,
+    // #243 box run ce25192: with 4 confirmations the step lands about beat 7 with -0.27 beat; at 6 % it took to beat
+    // 10 to re-lock, so 0.35: the 0.27 is gone within one beat of the adoption, still a slew, never a rewind)
     // At most one step per stepCooldown s (hc-09 churned 30 short-window steps)
-    stepSlewRate: 0.06, stepSlewBeats: 8, stepCooldown: 8,
+    stepSlewRate: 0.35, stepSlewBeats: 8, stepCooldown: 8,
     // the long fit's chain (box run dd840c6): onsets >= fitStrongRel of the strongest of the last 2 s, a whole number
     // of beats apart within fitChainTol per beat
     fitStrongRel: 0.25, fitChainTol: 0.1,
