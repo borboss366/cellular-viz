@@ -12,7 +12,8 @@
   Decks (R1): two AudioBufferSourceNode decks → equal-power crossfade → mix bus → (tap: clock.attachInput) → master.
   Shadow (R3): a second ClockTracker fed the identical frames through clock.onTrackerFrame(), never fixed.
   Log (R2): schema v1 (qa/conduct-score.mjs) through qa/conduct-log.mjs, POSTed every second to /log/<session>.
-  Keys: Shift + the clock's keys = hand fixes (A tap, H ÷2, D ×2, F flip, , . nudge, 1 set 1, 0 reset);
+  Keys: Shift + the clock's keys = hand fixes (A tap, H ÷2, D ×2, F flip, , . nudge, 1 set 1, 0 reset, R restart, L hold);
+        Shift+U auto-hold on/off (#239: kept in localStorage, default off; on = a tap, flip, nudge or set 1 also holds);
         M mark (the chosen name, snapped to the nearest reference beat, R13) · [ ] step bar1 · Shift+S confirm the
         bar while the bar lamp shows (A7b) · Space play/pause · N next (crossfade) · K answer-key lamp (R7: 0 s in the
         gate run) · Alt+, / Alt+. calibrate offset (R10).
@@ -20,6 +21,7 @@
   __qa.conductor: { log, clock, shadow, publisher, decks, tracks, load(i, deck?), play(), next(), mark(name), state() }.
   Controller (experiments/midi-controller.js): a Launch Control XL 3 on its DAW port; the lower button row = tap, flip,
   ÷2, ×2, nudge −10 / +10, set 1, restart (hold 1 s), as origin 'fix:controller'; its LEDs and display follow read().
+  Upper buttons 1 and 2 (CC 37, 38) = hold and auto-hold (#239): hold LED green held / amber suspect, auto-hold LED green on.
   Bridge: the faders and pot rows 2-3 go out unchanged on the IAC bus (the "bridge" lamp) for Resolume.
   Shared clock: the output clock is published for ?clock=shared scenes (clock.js Clock.publish, BroadcastChannel
   'cellular-viz-clock'): beats, bpm, bar at most 20 Hz, every jump and hand fix as an event.
@@ -40,6 +42,7 @@ h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#8a96ad;ma
 .big{font-size:44px;font-weight:700;font-variant-numeric:tabular-nums}.row{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
 .lamps{display:flex;gap:14px;margin:10px 0}.lamp{width:64px;height:64px;border-radius:50%;background:#222a3a;display:grid;place-items:center;font-size:12px;color:#8a96ad;transition:background 60ms}
 .lamp.on{background:#ffd23f;color:#000}.lamp.kick.on{background:#ff7a2b}.lamp.bar.on{background:#e8e8e8}.lamp.key.on{background:#9b6bff}
+.lamp.hold.on{background:#2bd16b}.lamp.suspect.on{background:#ffb02b}#autoHoldMode{align-self:center}button#autoHold.on{background:#2bd16b;color:#000}
 .conf{height:10px;background:#222a3a;border-radius:5px;overflow:hidden}.conf>i{display:block;height:100%;background:#2b5cff}
 .bands{display:flex;gap:4px;height:70px;align-items:flex-end}.bands>i{flex:1;background:#2b5cff;min-height:2px}.bands>i:nth-child(2){background:#5b85ff}
 .bandLabels{display:flex;gap:4px;margin-top:2px;font-size:11px;line-height:1.2;color:#8a96ad}.bandLabels>span{flex:1;min-width:0;text-align:center;white-space:nowrap;overflow:hidden}.bandLabels>.k{color:#ff7a2b;font-weight:700}
@@ -89,7 +92,10 @@ button.reject{background:#c0182b !important;color:#fff}
     <li>reset, Shift+0, counts the bar again. It does not clear the tempo or the octave hold.</li>
     <li>If the tempo or the octave hold is wrong and a tap does not fix it, push Shift+R (restart). The clock starts again; the music does not stop.</li>
     <li>If that does not help: reload the page (Cmd+R), then load and play the track again.</li>
-    <li>K shows or hides the key lamp (the reference beats).</li></ul>
+    <li>K shows or hides the key lamp (the reference beats).</li>
+    <li>Hold: when the beat is right, push Shift+L (or "hold"). The hold lamp goes on. The clock keeps your beat and tempo through breaks; it only trims small errors. Push Shift+L again to let the tracker move on its own.</li>
+    <li>Suspect lamp: the music seems to disagree with the held beat. Nothing moves. Check the wheel; fix by hand or release the hold.</li>
+    <li>Auto-hold: Shift+U (or "auto-hold") switches it on or off. When on, a tap, flip, nudge or set 1 also holds. The page keeps the choice; it starts off.</li></ul>
   <h2>Marks and the bar</h2>
   <ul><li>Select a name in the Marks list. Push M on that moment. [ and ] move bar1 by one beat.</li>
     <li>Shift+S confirms the bar. Push it on the "1" while the bar 1 lamp is on.</li>
@@ -110,7 +116,10 @@ button.reject{background:#c0182b !important;color:#fff}
       <div class="stateBox"><small>state</small><div id="state">-</div><small id="lane"></small></div></div>
     <div class="conf"><i id="conf" style="width:0"></i></div>
     <div class="lamps"><div class="lamp beat" id="lampBeat">beat</div><div class="lamp kick" id="lampKick">kick</div>
-      <div class="lamp bar" id="lampBar">bar 1</div><div class="lamp key" id="lampKey" hidden>key</div></div>
+      <div class="lamp bar" id="lampBar">bar 1</div><div class="lamp key" id="lampKey" hidden>key</div>
+      <div class="lamp hold" id="lampHold" title="hand-held mode: the clock keeps your beat (Shift+L)">hold</div>
+      <div class="lamp suspect" id="lampSuspect" title="held, but the music seems to disagree (a hint only)">suspect</div>
+      <small id="autoHoldMode">auto-hold: off</small></div>
     <div class="wheelBox"><canvas id="wheel" width="220" height="220"></canvas>
       <div><div id="wheelHint" class="grey">-</div>
         <div class="wheelLegend">Top = the clock beat. A kick right of the top (clockwise) comes after the beat: the clock is early. Left: the clock is late.<br>
@@ -122,7 +131,9 @@ button.reject{background:#c0182b !important;color:#fff}
       <button data-fix="tap">tap ⇧A</button><button data-fix="half">÷2 ⇧H</button><button data-fix="x2">×2 ⇧D</button>
       <button data-fix="flip">flip ⇧F</button><button data-fix="nudge" data-arg="-10">−10 ⇧,</button><button data-fix="nudge" data-arg="10">+10 ⇧.</button>
       <button data-fix="setOne">set 1 ⇧1</button><button data-fix="reset">reset ⇧0</button>
-      <button data-fix="restart" title="Start the clock again (Shift+R). The music does not stop.">restart Shift+R</button></div>
+      <button data-fix="restart" title="Start the clock again (Shift+R). The music does not stop.">restart Shift+R</button>
+      <button data-fix="hold" title="Hold the beat: the clock only trims (Shift+L). Again to release.">hold Shift+L</button>
+      <button id="autoHold" type="button" title="Auto-hold on: a tap, flip, nudge or set 1 also holds (Shift+U)">auto-hold Shift+U</button></div>
     <div class="row" id="panicBox" title="Panic for every scene in this browser (shared clock channel)"><small>scenes:</small>
       <button data-panic="blackout">Blackout B</button><button data-panic="calm">Calm `</button><button data-panic="clear">Clear</button>
       <small id="panicState">scenes: on</small></div>
@@ -297,6 +308,10 @@ clock.fix = (kind, arg, o) => {
     $('lastFix').textContent = `${kind}${arg !== undefined ? ' ' + arg : ''} at ${ctx.currentTime.toFixed(2)} s${fixNote(j)}`;
     // the last tap set (4 to 8 taps): its tempo and count, or why it was rejected
     if (kind === 'tap' && j && (j.tapBpm || j.rejected)) $('lastTap').textContent = tapNote(j);
+  } else if ((kind === 'hold' || kind === 'autoHold') && FIX_ORIGINS.has(origin) && j) {
+    // hand-held mode (#239, log v3): a hold / auto-hold press is logged as 'holdPress', never as a hand fix
+    log.add('holdPress', { kind, origin, on: !!j.on, idx: decks[live].track ? decks[live].track.idx : undefined, ...(o && o.restored ? { restored: true } : {}) });
+    $('lastFix').textContent = `${kind} ${j.on ? 'on' : 'off'} at ${ctx.currentTime.toFixed(2)} s`;
   }
   return j;
 };
@@ -333,7 +348,19 @@ function showBridgePorts() {
 }
 let pageStorage = null;
 try { pageStorage = window.localStorage; } catch (e) { /* storage blocked: the default bus each time */ }
-const controller = MidiController.create({ clock, lastFix: () => lastFixShort, storage: pageStorage,
+// hand-held mode (#239): Shift+L and the hold buttons toggle the hold in the clock (clock.fix('hold')); Shift+U and the
+// auto-hold buttons switch auto-hold (a tap, flip, nudge or set 1 also holds), kept in localStorage, default off
+function setAutoHold(on, origin = 'fix:key', restored = false) {
+  const j = clock.fix('autoHold', !!on, { origin, restored });
+  try { if (pageStorage) pageStorage.setItem(C.AUTO_HOLD_KEY, clock.autoHold ? 'on' : 'off'); } catch (e) { /* not kept */ }
+  return j;
+}
+function toggleAutoHold(origin = 'fix:key') { return setAutoHold(!clock.autoHold, origin); }
+let autoHoldSaved = null;
+try { autoHoldSaved = pageStorage ? pageStorage.getItem(C.AUTO_HOLD_KEY) : null; } catch (e) { /* storage blocked: off */ }
+if (C.autoHoldStored(autoHoldSaved)) setAutoHold(true, 'fix:key', true);   // logged as restored, not a press
+$('autoHold').onclick = () => toggleAutoHold();
+const controller = MidiController.create({ clock, lastFix: () => lastFixShort, storage: pageStorage, toggleAutoHold,
   onBridge: (b, name) => { $('bridge').textContent = BRIDGE_TEXT[b] || `bridge: ${b}`; $('bridge').title = name || 'no IAC bus: turn on the IAC Driver (Help)'; $('bridge').classList.toggle('unscored', b !== 'on'); showBridgePorts(); },
   onStatus: s => { $('ctl').textContent = CTL_TEXT[s] || `controller: ${s}`; $('ctl').classList.toggle('unscored', s !== 'connected'); } });
 controller.start().then(() => { if (controller.status === 'connected' && !controller.sysex) $('ctl').title = 'no SysEx permission: LEDs only, no display'; });
@@ -342,6 +369,7 @@ addEventListener('pagehide', () => controller.stop());
 for (const b of document.querySelectorAll('[data-fix]')) b.onclick = e => clock.fix(b.dataset.fix, b.dataset.arg !== undefined ? Number(b.dataset.arg) : undefined, { origin: 'fix:key', eventTs: e.timeStamp });
 
 let seenJumps = 0, lastState = null, lastShadowState = null, kickPrev = -200, kickAt = -1, lastSample = 0, beatFlashAt = -1;
+let lastHeld = false, lastSuspect = false;   // hand-held mode (#239): logged when they change ('hold', 'holdSuspect')
 const kicks = [];   // the phase wheel: each kick's time and its place on the clock's beat count when it was heard
 let lastFrameT = 0, wheelNow = null;
 const wheelLog = C.wheelHintLog();   // a 'wheel' log record when the hint changes and holds 0.5 s (the user 22:27)
@@ -434,6 +462,9 @@ function tick() {
   }
   const ts = clock.trackerState || {};
   if (ts.state && ts.state !== lastState) { log.add('state', { src: 'clock', from: lastState, to: ts.state }); lastState = ts.state; }
+  const hs = ts.held || null, heldOn = !!(hs && hs.on), suspectOn = heldOn && !!hs.suspect;
+  if (heldOn !== lastHeld) { log.add('hold', { on: heldOn }); lastHeld = heldOn; }
+  if (suspectOn !== lastSuspect) { log.add('holdSuspect', { on: suspectOn }); lastSuspect = suspectOn; }
   if (now - lastSample >= C.SAMPLE_S) {
     lastSample = now;
     const r = clock.read({ raw: true }), s = shadow.snapshot ? shadow.snapshot() : {};
@@ -462,6 +493,11 @@ function monitor(now, ts) {
   const lamp = d.playing && d.beats.length ? C.barLamp(d.beats, posMs(d, heard)) : { on: false };
   $('lampBar').classList.toggle('on', lamp.on);
   if (keyOn && d.playing && d.beats.length) { const near = C.barLamp(d.beats.map(b => ({ ...b, pos: 1 })), posMs(d, heard), 60); $('lampKey').classList.toggle('on', near.on); }
+  const hl = C.holdLamps(ts, clock.autoHold);   // hand-held mode (#239)
+  $('lampHold').classList.toggle('on', hl.hold);
+  $('lampSuspect').classList.toggle('on', hl.suspect);
+  setText('autoHoldMode', hl.mode);
+  $('autoHold').classList.toggle('on', !!clock.autoHold);
   const bandsLive = ts.status === 'listening' && performance.now() - lastFrameMs < 1000;   // not "live": that is the LIVE deck (TDZ, #208)
   $('bands').innerHTML = C.bandHeights(r.bands, Clock.BANDS, bandsLive).map(h => `<i style="height:${h}px"></i>`).join('');
   drawWheel(ts);
@@ -559,6 +595,7 @@ addEventListener('keydown', e => {
   else if (a.type === 'mark') mark(); else if (a.type === 'step') step(a.delta); else if (a.type === 'barOk') barOk();
   else if (a.type === 'playPause') { start(); playPause(); } else if (a.type === 'next') { start(); next(); } else if (a.type === 'keyLamp') toggleKey();
   else if (a.type === 'help') toggleHelp();
+  else if (a.type === 'autoHold') toggleAutoHold();
   else if (a.type === 'panic') panic(a.mode);
 });
 setInterval(async () => { const n = await log.flush(); $('logState').textContent = $('logState').title = log.pending.length ? `log: ${log.pending.length} waiting` : `log: ok (${log.all.length})`; $('tail').textContent = log.all.slice(-12).map(r => JSON.stringify(r)).join('\n'); }, 1000);
@@ -569,7 +606,7 @@ await loadTracks();
 
 window.__qa = Object.assign(window.__qa || {}, { conductor: {
   log, clock, shadow, publisher, controller, decks, get tracks() { return tracks; }, start, load, play: playPause, next, mark, step, barOk,
-  setOffset, toggleKey, panic, get panicSent() { return panicSent; },
+  setOffset, toggleKey, panic, get panicSent() { return panicSent; }, setAutoHold, toggleAutoHold,   // hand-held mode (#239)
   // the phase wheel's numbers (the user 20:46): median ms, the 6 o'clock weight, the drift per bar, the hint
   wheel: () => wheelNow && { medianMs: wheelNow.medianMs, sixShare: wheelNow.sixShare, six: wheelNow.six, twelve: wheelNow.twelve,
     driftDegPerBar: wheelNow.driftDegPerBar, hint: wheelNow.hint, kind: wheelNow.kind, grey: wheelNow.grey, kicks: wheelNow.kicks },

@@ -30,6 +30,14 @@
 //            (> 20 % off the held octave for > 4 s)
 //   nudge    shifts the clock against the tracker (an offset); the PLL carries on underneath, so the shift stays
 //   setOne / reset  relabel only; the tracker never touches bar position
+//   held     hand-held mode (docs/CELLULAR_VIZ_BRIEF_HOLD.md, the user 15 Nov): fix('hold') toggles it, and an accepted
+//            tap, flip, nudge or setOne enters it (or re-anchors it) while auto-hold is on (the run-time setting fix('autoHold'); off, the default, = fixes as before, hold by Shift+L only). The hand owns tempo and side: the tracker only
+//            trims the phase from onsets within 1/8 beat (net at most 1/4 beat since the hold, the 3 % rate limit) and
+//            follows the F3 long fit within 1 % of the held tempo. It books no jump (acquire, rescan, secondlook,
+//            relative, octave, side, dissent, override) and no other writer touches the period; in a breakdown the held
+//            model free-runs and nothing re-acquires. x2 / half scale the held model and stay held; a new tap, flip,
+//            nudge or setOne re-anchors it; hold again or restart leaves it. trackerState.held.suspect (holdSuspect) is
+//            a hint only: the free estimate disagrees > 3 % in tempo or > 1/4 beat in phase for > 8 beats
 // Every jump (tracker or hand) cancels and rebooks the clicks and future hits (#95 MUST 2); slews don't need to.
 //
 // ?clock=file:<url> (#95 "file grid", authority locked): plays the track and reads its beat grid, the sidecar
@@ -59,11 +67,16 @@
 //                                  | 'restart' (line only: a fresh tracker, as at start; the octave hold, a tap tempo,
 //                                  the side and the tempo start over; the input and onTrackerFrame listeners stay;
 //                                  returns { type: 'restart', at, origin }, not a jump)
+//                                  | 'hold' (line only: hand-held mode on / off; returns { type: 'fix', kind: 'hold', on,
+//                                  at, origin }, not a jump; with auto-hold on, tap / flip / nudge / setOne also enter it)
+//                                  | 'autoHold' (a setting, any source: arg true / false, none toggles; a change returns
+//                                  and logs in settingLog { type: 'setting', kind: 'autoHold', on, at, origin }; the
+//                                  clock's autoHold and trackerState.autoHold read it)
 //                                  acts only for origin 'fix:controller' | 'fix:key' | 'qa' (beat authority, #95 31 Oct);
 //                                  any other origin is a no-op logged in fixRejected (__qa.fixRejected)
 //   metronome.nextBeatAt() / .nextBarAt() → read-only: the clock time (now() timeline) of the next beat / bar line
 //   Hand-fix keys (Shift only; without Shift nothing touches the clock): Shift+A tap, Shift+H ÷2, Shift+D ×2,
-//   Shift+1 set the 1, Shift+, / Shift+. nudge −10 / +10 ms, Shift+0 reset, Shift+F flip (line), Shift+R restart (line). The same commands come from the
+//   Shift+1 set the 1, Shift+, / Shift+. nudge −10 / +10 ms, Shift+0 reset, Shift+F flip (line), Shift+R restart (line), Shift+L hold (line). The same commands come from the
 //   controller's Shift buttons as origin 'fix:controller' (#85 layout).
 //   metronome.setVisualOffset(ms) / .visualOffsetMs   → −100 … +200 ms, + = visuals earlier (#95 6498683963)
 //   metronome.now()              → the clock's time on the audio clock that the visuals show now (heard + offset)
@@ -113,7 +126,13 @@
   // more than TAP_OFF_MAX from the median (a missed or doubled tap) rejects the set
   const TAPS_EVEN = 4, TAPS_LINE_KEPT = 8, TAP_OFF_MAX = 0.25, TAP_LAG_MAX = 0.25;
   // Shift + key (KeyboardEvent.code) → hand fix; clear of the pages' own keys (z x c v t b [ ] `)
-  const FIX_KEYS = { KeyA: ['tap'], KeyH: ['half'], KeyD: ['x2'], Digit1: ['setOne'], Comma: ['nudge', -10], Period: ['nudge', 10], Digit0: ['reset'], KeyF: ['flip'], KeyR: ['restart'] };
+  const FIX_KEYS = { KeyA: ['tap'], KeyH: ['half'], KeyD: ['x2'], Digit1: ['setOne'], Comma: ['nudge', -10], Period: ['nudge', 10], Digit0: ['reset'], KeyF: ['flip'], KeyR: ['restart'], KeyL: ['hold'] };
+  // the hand fixes that confirm the beat and so enter hand-held mode on line (docs/CELLULAR_VIZ_BRIEF_HOLD.md).
+  // auto-hold (the user 16 Nov 09:08: both modes, switchable at run time): on = an accepted tap, flip, nudge or setOne
+  // enters the hold; off = those fixes behave as before hand-held mode and only fix('hold') (Shift+L, the controller) holds.
+  // AUTO_HOLD_DEFAULT is the start value; fix('autoHold', on / off / toggle) changes it (Clock.create({ autoHold }) in tests)
+  const AUTO_HOLD_DEFAULT = false;
+  const HOLD_ON_FIX = ['tap', 'flip', 'nudge', 'setOne'];
   const FILE_GAIN = 1, CLICK_GAIN = 0.35, FILE_LEAD = 0.05, LINE_OWN_INPUT_MS = 1500;
   // ?clock=shared: the channel, the publisher's interval (20 Hz at most), the receiver's slew rate, the gap that
   // counts as lost, and the largest error that slews instead of jumping
@@ -247,6 +266,7 @@
   //   fileData     { buffer, grid } for a file: source (tests); load(ctx, url, gridUrl) → Promise of the same
   //   grid         the sidecar's url for a file: source (default ?grid=, else <url>.beatgrid.json)
   function create(opts = {}) {
+    let autoHold = typeof opts.autoHold === 'boolean' ? opts.autoHold : AUTO_HOLD_DEFAULT;
     const requested = opts.source || 'metronome';
     let source = requested, fallback = null;
     const fileM = /^file:(.+)$/.exec(requested);
@@ -291,7 +311,7 @@
       source, requested, fallback, settings, file, line, shared,
       ctx: null, master: null, bus: null, clickBus: null, analyser: null, noise: null, timer: 0, playing: false,
       nextTime: 0, step: 0, hits: [], steps: [], wave: withAnalyser ? new Float32Array(2048) : null,
-      jumps: [], oneAt: 0, offsetMs: 0, hitLog: [], dueAt: 0, booked: [], taps: [], fixRejected: [],
+      jumps: [], oneAt: 0, offsetMs: 0, hitLog: [], dueAt: 0, booked: [], taps: [], fixRejected: [], settingLog: [],
       lookAhead: pumpOn ? AHEAD_MAX : AHEAD_MIN, gaps: [], lastPump: null, late: 0, lateMaxMs: 0, maxGapMs: 0,
       start() {
         if (!this.ctx) {
@@ -494,6 +514,7 @@
           if (!warned.has(w) && root.console) { warned.add(w); root.console.warn(`[clock] fix('${kind}') from origin ${w} rejected: only beat sources and Shift hand fixes move the clock`); }
           return null;
         }
+        if (kind === 'autoHold') return this.setAutoHold(arg, origin);   // a setting, any source, playing or not
         if (!this.ctx || !this.playing) return null;
         if (kind === 'restart') return line ? this.lineRestart(origin, this.now({ raw: true })) : null;   // any beat state, even no model
         // a tap is timed at its key / click event (opts.eventTs, the event's timeStamp on the performance.now() clock):
@@ -982,11 +1003,24 @@
       },
       // hand fixes on line (authority table in the header): the tracker keeps listening underneath
       lineFix(kind, arg, origin, at, from) {
+        const r = this.lineFixInner(kind, arg, origin, at, from), tr = line.tracker;
+        // hand-held mode: an accepted tap, flip, nudge or set-1 confirms the beat (enters hold, or re-anchors it)
+        if (autoHold && r && !r.rejected && HOLD_ON_FIX.includes(kind) && tr && tr.handHold) tr.handHold(true, at, kind);
+        return r;
+      },
+      lineFixInner(kind, arg, origin, at, from) {
         const tr = line.tracker;
         if (!tr || tr.hasModel === false) return null;
         let to = from;
+        if (kind === 'hold') {   // hand-held mode on / off (a toggle); not a jump, nothing rebooks
+          if (!tr.handHold) return null;
+          const on = !tr.held;
+          if (!tr.handHold(on, at, 'hold')) return null;
+          return { type: 'fix', at, kind: 'hold', on, origin };
+        }
         if (kind === 'flip') {   // scheduled in the tracker: the jump (origin kept) is logged and rebooked by lineFrame
           if (!tr.flip) return null;
+          if (autoHold && tr.handHold) tr.handHold(true, at, 'flip');   // hand-held mode first: it drops a booked tracker jump, so the flip is never refused
           const s = tr.flip(at, origin);
           if (!s) return null;
           const pending = { type: 'flip-scheduled', at, kind, atBeats: s.atBeat + line.offset, origin };
@@ -1070,10 +1104,22 @@
       // __qa.tracker (#95 SHOULD 8): null on other sources
       // the QA truths' view of the line source (3c, experiments/clock-truth.html): the rise probe's times and the tracker
       get lineProbe() { return line ? { rises: line.rises, tracker: line.tracker, delayMs: lineDelayMs() } : null; },
+      // auto-hold (see AUTO_HOLD_DEFAULT): v true / 'on' / 1 sets it, false / 'off' / 0 clears it, nothing toggles. A change
+      // returns and logs (settingLog) { type: 'setting', kind: 'autoHold', on, at, origin }; no change returns null
+      setAutoHold(v, origin) {
+        const on = v === undefined || v === null ? !autoHold : (v === true || v === 'on' || v === 1);
+        if (on === autoHold) return null;
+        autoHold = on;
+        const rec = { type: 'setting', kind: 'autoHold', on, at: this.ctx ? this.now({ raw: true }) : null, origin };
+        this.settingLog.push(rec);
+        if (this.settingLog.length > JUMPS_KEPT) this.settingLog.shift();
+        return rec;
+      },
+      get autoHold() { return autoHold; },
       get trackerState() {
         if (!line) return null;
         const s = line.tracker && line.tracker.snapshot ? line.tracker.snapshot() : { state: 'acquire', confidence: 0, octaveLock: null, bpm: 0, tapped: false, lastJump: null };
-        return { ...s, status: line.status, error: line.error, offsetBeats: +line.offset.toFixed(4), states: line.stateLog.slice(-16), device: line.device || null };
+        return { ...s, autoHold, status: line.status, error: line.error, offsetBeats: +line.offset.toFixed(4), states: line.stateLog.slice(-16), device: line.device || null };
       },
 
       // a keydown from the page: Shift + a hand-fix key → fix(…, { origin: 'fix:key' }); anything else is ignored

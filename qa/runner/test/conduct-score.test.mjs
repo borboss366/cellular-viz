@@ -334,6 +334,36 @@ test('schema v2: a log with "wheel" records and sample.wheel parses and scores e
   const withWheel = C.scoreSession(parsed, info);
   assert.deepEqual([withWheel.session.inPct, withWheel.session.pass, withWheel.session.findings], [base.session.inPct, base.session.pass, base.session.findings], 'the session score is unchanged');
   assert.deepEqual(withWheel.tracks[0].conducted, base.tracks[0].conducted);
-  assert.deepEqual(C.checkRecord({ type: 'session', ctx: 0, v: 3 }), ['session: v is not 1 or 2']);
+  assert.deepEqual(C.checkRecord({ type: 'session', ctx: 0, v: 4 }), ['session: v is not 1 or 2 or 3']);   // v3: #239
   assert.deepEqual(C.checkRecord({ type: 'wheel', ctx: 1 }), ['wheel: kind missing']);
+});
+
+test('schema v3 (#239 hand-held mode): hold / holdSuspect / holdPress parse; time held, inside-gate % held vs free, suspects; a hold press is never a fix', () => {
+  // the clock exact up to 31 s, then 50 ms late (loose); held 11-31 s; suspect 15-17 s
+  const { records, info } = one({ clock: beatsList(T.map(t => (t >= 31.25 ? t + 0.05 : t))) });
+  const v3 = records.map(r => (r.type === 'session' ? { ...r, v: 3 } : r));
+  v3.push({ type: 'holdPress', ctx: 0.5, kind: 'autoHold', origin: 'fix:key', on: true, restored: true },
+    { type: 'holdPress', ctx: 11, kind: 'hold', origin: 'fix:key', on: true, idx: 0 }, { type: 'hold', ctx: 11, on: true },
+    { type: 'holdSuspect', ctx: 15, on: true }, { type: 'holdSuspect', ctx: 17, on: false },
+    { type: 'hold', ctx: 31, on: false }, { type: 'holdPress', ctx: 40, kind: 'autoHold', origin: 'fix:controller', on: false, idx: 0 });
+  const parsed = C.parseLog(v3.map(r => JSON.stringify(r)).join('\n') + '\n');
+  assert.equal(parsed.filter(r => r.type === 'holdPress').length, 3);
+  const res = C.scoreSession(parsed, info), tr = res.tracks[0], h = tr.conducted.hold;
+  assert.equal(h.heldS, 20, 'held 11-31 s');
+  assert.equal(h.heldPct, 33.33, 'of the 60 s played');
+  assert.equal(h.inHeldPct, 100, 'every reference beat in the held time is in');
+  assert.ok(h.inFreePct > 20 && h.inFreePct < 30, `free time: before 11 s in, after 31 s loose (${h.inFreePct})`);
+  assert.deepEqual([h.suspects, h.suspectS], [1, 2]);
+  assert.deepEqual(h.presses, { hold: 1, autoHold: 1 }, 'the restored auto-hold at load is not a press');
+  assert.equal(tr.fixes.length, 0, 'hold presses are not hand fixes');
+  assert.equal(res.session.fixes, 0);
+  const md = C.renderReport(res);
+  assert.match(md, /## Hand-held mode \(report-only\)/);
+  assert.match(md, /\| c1 \| 20 \| 33\.33 \| 100 \| /);
+  // a log without hold records: never held, no section (older reports stay as they were)
+  const plain = C.scoreSession(records, info);
+  assert.deepEqual(plain.tracks[0].conducted.hold, { heldS: 0, heldPct: 0, inHeldPct: null, inFreePct: plain.tracks[0].conducted.inPct, suspects: 0, suspectS: 0, presses: { hold: 0, autoHold: 0 } });
+  assert.doesNotMatch(C.renderReport(plain), /Hand-held mode/);
+  assert.deepEqual(C.checkRecord({ type: 'hold', ctx: 1 }), ['hold: on missing']);
+  assert.deepEqual(C.checkRecord({ type: 'holdPress', ctx: 1, kind: 'hold' }), ['holdPress: origin missing']);
 });

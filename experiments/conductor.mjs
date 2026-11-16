@@ -71,10 +71,20 @@ export function pageKey(e) {
   if (e.altKey) return e.code === 'Comma' ? { type: 'offset', dir: -1 } : e.code === 'Period' ? { type: 'offset', dir: 1 } : null;
   if (e.repeat) return null;
   if (e.key === '?') return { type: 'help' };   // the Help panel (Shift+/ on most layouts)
-  if (e.shiftKey) return e.code === 'KeyS' ? { type: 'barOk' } : null;
+  if (e.shiftKey) return e.code === 'KeyS' ? { type: 'barOk' } : e.code === 'KeyU' ? { type: 'autoHold' } : null;   // Shift+U: auto-hold (#239)
   return { KeyM: { type: 'mark' }, BracketLeft: { type: 'step', delta: -1 }, BracketRight: { type: 'step', delta: 1 },
     Space: { type: 'playPause' }, KeyN: { type: 'next' }, KeyK: { type: 'keyLamp' },
     KeyB: { type: 'panic', mode: 'blackout' }, Backquote: { type: 'panic', mode: 'calm' } }[e.code] || null;
+}
+// ---------- hand-held mode (#239, docs/CELLULAR_VIZ_BRIEF_HOLD.md) ----------
+/** the page's auto-hold choice in localStorage ('on' / 'off'; anything else, or nothing, is off: the default) */
+export const AUTO_HOLD_KEY = 'cellular-viz.conductor.autoHold';
+export const autoHoldStored = v => v === 'on';
+/** the hold lamps from trackerState and the clock's auto-hold: HOLD while held, SUSPECT while held and holdSuspect,
+ *  and the mode line shown next to them (plain ASCII, #205) */
+export function holdLamps(ts, autoHold) {
+  const h = ts && ts.held, on = !!(h && h.on);
+  return { hold: on, suspect: on && !!h.suspect, mode: autoHold ? 'auto-hold: on' : 'auto-hold: off' };
 }
 /** the panic message the conductor sends for a button or key: the same mode again clears (as B and ` do in a scene) */
 export function panicNext(current, mode) {
