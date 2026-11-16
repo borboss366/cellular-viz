@@ -41,7 +41,7 @@ async function rig(o = {}) {
   let now = 1000;
   const nav = o.noMidi ? {} : { requestMIDIAccess: async q => { if (o.deny) throw new Error('denied'); if (o.denySysex && q && q.sysex) throw new Error('no sysex'); return access; } };
   const bridges = [];
-  const ctl = M.create({ clock, navigator: nav, perfNow: () => now, lastFix: () => o.lastFix || '', storage: o.storage, onBridge: (b, n) => bridges.push([b, n]),
+  const ctl = M.create({ clock, navigator: nav, perfNow: () => now, lastFix: () => o.lastFix || '', storage: o.storage, onBridge: (b, n) => bridges.push([b, n]), toggleAutoHold: o.toggleAutoHold,
     setInterval: () => 1, clearInterval: () => {}, setTimeout: (f, ms) => { timers.push({ f, at: now + ms }); return timers.length; },
     clearTimeout: h => { timers[h - 1] = null; }, onStatus: s => statuses.push(s) });
   clock.nowRef = () => now;
@@ -67,6 +67,45 @@ test('the constants are the hardware-checked map (lcxl3.map.json, 15 Nov)', () =
   assert.equal(M.MAP.DISPLAY_TARGET, MAP.display.textTarget);
   for (const k of ['off', 'red', 'amber', 'green', 'flash']) assert.equal(MAP.palette[k].verified, 'hardware 15 Nov', k);
   for (const k of [MAP.buttons.lowerRow, MAP.dawMode, MAP.display, MAP.surfaceMode]) assert.equal(k.verified, 'hardware 15 Nov');
+  // hand-held mode (#239): hold and auto-hold on the first two upper-row buttons, named in the map
+  assert.deepEqual([M.MAP.HOLD_CC, M.MAP.AUTO_HOLD_CC], [37, 38]);
+  for (const cc of M.MAP.UPPER) assert.ok(MAP.buttons.upperRow.ccs.includes(cc), `${cc} is an upper-row button`);
+  assert.match(MAP.buttons.upperRow.use['37'], /^hold/);
+  assert.match(MAP.buttons.upperRow.use['38'], /^auto-hold/);
+});
+
+test('hold (upper 1, CC 37) and auto-hold (upper 2, CC 38): one press each, origin fix:controller; the page keeps auto-hold when it gives toggleAutoHold', async () => {
+  const { clock, press } = await rig();
+  press(37, 127, 200); press(37, 0, 250);
+  press(38, 127, 300); press(38, 0, 350);
+  assert.deepEqual(clock.fixes, [{ kind: 'hold', arg: undefined, origin: 'fix:controller', eventTs: 200 }, { kind: 'autoHold', arg: undefined, origin: 'fix:controller', eventTs: 300 }], 'a release does nothing');
+  const toggles = [];
+  const r = await rig({ toggleAutoHold: origin => toggles.push(origin) });
+  r.press(38, 127, 400); r.press(38, 0, 450);
+  assert.deepEqual(toggles, ['fix:controller'], 'the page\'s toggle (localStorage) gets the press');
+  assert.deepEqual(r.clock.fixes, [], 'and the controller does not switch it a second time');
+});
+
+test('hold LED: green held, amber held + holdSuspect, dark not held; auto-hold LED green on, dark off; both dark on stop', async () => {
+  const { clock, ctl, out, clear } = await rig();
+  const led = cc => { clear(); ctl.tick(); return out().sent.filter(b => b[1] === cc).map(hex); };
+  assert.deepEqual(led(37), ['b0 25 00'], 'not held: dark');
+  clock.trackerState = { state: 'locked', held: { on: true, suspect: false } };
+  assert.deepEqual(led(37), ['b0 25 15'], 'held: green 21');
+  assert.deepEqual(led(37), [], 'diffed: nothing more');
+  clock.trackerState = { state: 'locked', held: { on: true, suspect: true } };
+  assert.deepEqual(led(37), ['b0 25 09'], 'held + suspect: amber 9');
+  clock.trackerState = { state: 'locked', held: { on: false, suspect: true } };
+  assert.deepEqual(led(37), ['b0 25 00'], 'released: dark (a stale suspect does not light it)');
+  clock.autoHold = true;
+  assert.deepEqual(led(38), ['b0 26 15'], 'auto-hold on: green');
+  clock.autoHold = false;
+  assert.deepEqual(led(38), ['b0 26 00'], 'auto-hold off: dark');
+  clock.autoHold = true; clock.trackerState = { state: 'locked', held: { on: true } }; ctl.tick();
+  clear(); ctl.stop();
+  const s = out().sent.map(hex);
+  assert.ok(s.includes('b0 25 00') && s.includes('b0 26 00'), 'stop darkens both');
+  assert.equal(s[s.length - 1], '9f 0c 00', 'DAW mode off stays last');
 });
 
 test('start: the DAW ports by name, DAW mode on, the surface mode asked, the display configured', async () => {
@@ -95,9 +134,9 @@ test('restart fires only after a 1 s hold; an early release does nothing', async
   press(52, 0); advance(2000); assert.equal(clock.fixes.length, 1);
 });
 
-test('the upper row, the pots, the faders and Shift move nothing', async () => {
+test('the upper row\'s free buttons (CC 39-44), the pots, the faders and Shift move nothing', async () => {
   const { clock, inp } = await rig();
-  for (let cc = 37; cc <= 44; cc++) inp().onmidimessage({ data: [0xB0, cc, 127] });
+  for (let cc = 39; cc <= 44; cc++) inp().onmidimessage({ data: [0xB0, cc, 127] });   // 37 and 38: hold, auto-hold (#239)
   for (let cc = 5; cc <= 36; cc++) inp().onmidimessage({ data: [0xBF, cc, 64] });
   inp().onmidimessage({ data: [0xB6, 63, 127] });
   inp().onmidimessage({ data: [0xF0, 0x00, 0xF7] });

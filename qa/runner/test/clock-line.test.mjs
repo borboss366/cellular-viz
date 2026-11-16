@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { render } from './fixtures/tracker-scenarios.mjs';
+import { holdLamps } from '../../../experiments/conductor.mjs';
 const require = createRequire(import.meta.url);
 const Clock = require('../../../experiments/clock.js');
 const T = require('../../../experiments/clock-tracker.js');
@@ -237,6 +238,22 @@ test('hold (hand-held mode): fix(\'hold\') toggles it (Shift+L), x2 scales the h
   assert.equal(seen.off.on, false, 'the second press releases');
   assert.equal(seen.st4.on, false);
   assert.equal(seen.st5.on, false, 'restart leaves the hold (a fresh tracker)');
+  assert.equal(c.trackerState.held.on, false);
+});
+
+test('the conductor page (#239): Shift+L toggles held on the line clock and the HOLD lamp follows; SUSPECT only while held', () => {
+  const s = render('128-steady', { sr: SR }), at = t0 => s.beats.find(t => t >= t0), seen = [];
+  const key = { shiftKey: true, code: 'KeyL', target: { tagName: 'BODY' }, preventDefault() {} };
+  const lamp = c => { const ts = c.trackerState; return { held: ts.held.on, ...holdLamps(ts, c.autoHold) }; };
+  const { c } = runLine(s, { at: [
+    { t: at(11), fn: c => seen.push({ before: true, ...lamp(c) }) },
+    { t: at(12), fn: c => { c.handFixKey(key); seen.push(lamp(c)); } },
+    { t: at(16), fn: c => seen.push(lamp(c)) },
+    { t: at(17), fn: c => { c.handFixKey(key); seen.push(lamp(c)); } },
+  ] });
+  console.log(`page hold lamp: ${JSON.stringify(seen)}`);
+  assert.deepEqual(seen.map(x => [x.held, x.hold, x.suspect]), [[false, false, false], [true, true, false], [true, true, false], [false, false, false]]);
+  assert.equal(seen[0].mode, 'auto-hold: off', 'the page default');
   assert.equal(c.trackerState.held.on, false);
 });
 

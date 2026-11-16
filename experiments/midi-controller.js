@@ -14,8 +14,11 @@
 //   tap · flip · ÷2 · ×2 · nudge −10 · nudge +10 · set 1 · restart (fires after a 1 s hold; its LED flashes red while
 //   held, a release before 1 s does nothing). ÷2 / ×2 pressed again release the hold (clock.js D4, not here).
 // Every press is clock.fix(kind, arg, { origin: 'fix:controller', eventTs }) with the MIDI event's timeStamp (the
-// performance.now() clock, as a key's). The upper row, pot row 1 and Shift are not used yet; the faders and pot rows
-// 2–3 go to the bridge.
+// performance.now() clock, as a key's). Upper row (hand-held mode, docs/CELLULAR_VIZ_BRIEF_HOLD.md), ch1 CC 37 and 38:
+// button 1 = hold (clock.fix('hold'), a toggle; LED green while held, amber while held and holdSuspect, dark when not
+// held), button 2 = auto-hold (opts.toggleAutoHold(origin) when the page keeps the choice, else
+// clock.fix('autoHold'); LED green when on, dark when off). Upper buttons 3–8, pot row 1 and Shift are not used yet;
+// the faders and pot rows 2–3 go to the bridge.
 // LEDs (D3), from the page's own read() and trackerState, diffed, at most 20 Hz: the tap button lights in the first
 // quarter of each beat, green locked / amber acquiring / red free-run (steady before the first lock: no beats to
 // flash on), dark with no tracker. The beat flashes are booked ahead with MIDIOutput.send(bytes, timestamp): Chrome
@@ -41,6 +44,8 @@
 
   const BUTTON_CH = 0xB0, FLASH_CH = 0xB1, FEATURE_CH = 0xB6, QUERY_CH = 0xB7;
   const LOWER = [45, 46, 47, 48, 49, 50, 51, 52];
+  // the upper row's used buttons (hand-held mode): hold, auto-hold; CC 39-44 stay free
+  const UPPER = [37, 38], HOLD_CC = 37, AUTO_HOLD_CC = 38;
   const COLOUR = { off: 0, red: 5, amber: 9, green: 21 };
   const POT_CH = 0xBF, BRIDGE_CCS = [[5, 12], [21, 36]], BRIDGE_DEFAULT = /IAC/, DEVICE_PORT = /LCXL3/;
   const BRIDGE_KEY = 'cellular-viz.lcxl3.bridgePort';
@@ -70,17 +75,21 @@
     if (!data || data.length < 3) return null;
     const [st, cc, v] = data;
     if (st === BUTTON_CH && LOWER.includes(cc)) return { type: 'button', index: LOWER.indexOf(cc), down: v > 0 };
+    if (st === BUTTON_CH && UPPER.includes(cc)) return { type: 'upper', which: cc === HOLD_CC ? 'hold' : 'autoHold', down: v > 0 };
     if (st === FEATURE_CH && cc === MODE_CC) return { type: 'mode', value: v };
     return null;
   }
 
   /**
-   * what each lower-row LED shows: { [cc]: [status, cc, index] }; the tap LED is null while it flashes on the beats
-   * (booked ahead by the controller, not diffed). view: { playing, state, beats, phase, rejecting, restartHeld }
+   * what each lower-row and used upper-row LED shows: { [cc]: [status, cc, index] }; the tap LED is null while it
+   * flashes on the beats (booked ahead by the controller, not diffed).
+   * view: { playing, state, beats, phase, rejecting, restartHeld, held, holdSuspect, autoHold }
    */
   function leds(view) {
     const out = {};
-    for (const cc of LOWER) out[cc] = [BUTTON_CH, cc, COLOUR.off];
+    for (const cc of [...LOWER, ...UPPER]) out[cc] = [BUTTON_CH, cc, COLOUR.off];
+    if (view.held) out[HOLD_CC] = [BUTTON_CH, HOLD_CC, view.holdSuspect ? COLOUR.amber : COLOUR.green];
+    if (view.autoHold) out[AUTO_HOLD_CC] = [BUTTON_CH, AUTO_HOLD_CC, COLOUR.green];
     const tap = LOWER[0], restart = LOWER[7];
     if (view.rejecting) out[tap] = [FLASH_CH, tap, COLOUR.red];
     else if (view.playing && STATE_COLOUR[view.state]) out[tap] = view.beats >= 0 ? null : [BUTTON_CH, tap, STATE_COLOUR[view.state]];
@@ -166,6 +175,13 @@
         if (holdTimer !== null) { clearT(holdTimer); holdTimer = null; }
       }
     }
+    // the upper row: hold (a toggle in the clock) and auto-hold (the page keeps the choice when it gives toggleAutoHold)
+    function onUpper(which, down, eventTs) {
+      if (!down) return;
+      if (which === 'hold') return clock.fix('hold', undefined, { origin: 'fix:controller', eventTs });
+      if (o.toggleAutoHold) return o.toggleAutoHold('fix:controller');
+      return clock.fix('autoHold', undefined, { origin: 'fix:controller', eventTs });
+    }
     function onMessage(e) {
       if (bridgeOut && forwarded(e && e.data)) {
         try { bridgeOut.send([...e.data]); ctl.forwarded++; } catch (err) { bridgeOut = null; bridgeState(); }
@@ -174,6 +190,7 @@
       const m = decode(e && e.data);
       if (!m) return;
       if (m.type === 'button') return onButton(m.index, m.down, e.timeStamp);
+      if (m.type === 'upper') return onUpper(m.which, m.down, e.timeStamp);
       // the Mode Select page (or a Custom Mode) took the surface: set DAW Mixer back; the user has to close the page
       if (m.value !== MODE_MIXER && m.value !== MODE_CONTROL) {
         modeSelectUntil = perfNow() + MODE_SELECT_MS;
@@ -197,8 +214,10 @@
 
     function view() {
       const playing = !!clock.playing, r = playing ? clock.read() : {}, ts = clock.trackerState || {};
+      const h = ts.held || null;
       return { playing, state: ts.state, beats: r.beats, phase: r.phase, bpm: r.bpm, confidence: r.confidence, lastFix: lastFix(),
-        rejecting: perfNow() < rejectUntil, restartHeld, modeSelect: ctl.status === 'mode-select' };
+        rejecting: perfNow() < rejectUntil, restartHeld, modeSelect: ctl.status === 'mode-select',
+        held: !!(h && h.on), holdSuspect: !!(h && h.on && h.suspect), autoHold: !!clock.autoHold };
     }
     // the tap LED's flashes, booked on the device's clock for every beat in the look-ahead not booked yet
     function bookBeats(v, now) {
@@ -225,7 +244,7 @@
       lastTickAt = now;
       if (ctl.status === 'mode-select' && now >= modeSelectUntil) setStatus('connected');
       const v = view(), want = leds(v);
-      for (const cc of LOWER) {
+      for (const cc of [...LOWER, ...UPPER]) {
         const m = want[cc];
         if (m === null) {
           if (ledSent[cc] && ledSent[cc].startsWith(String(FLASH_CH))) send([FLASH_CH, cc, COLOUR.off]);
@@ -268,6 +287,7 @@
       if (output) {
         if (ctl.sysex) send(displayConfig(0x00));
         for (const cc of LOWER) { send([FLASH_CH, cc, COLOUR.off]); send([BUTTON_CH, cc, COLOUR.off]); }
+        for (const cc of UPPER) send([BUTTON_CH, cc, COLOUR.off]);
         send(DAW_OFF);
       }
       setStatus('off');
@@ -277,7 +297,7 @@
   }
 
   const api = { create, decode, forwarded, leds, displayLines,
-    MAP: { LOWER, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS, POT_CH, BRIDGE_CCS, BRIDGE_KEY } };
+    MAP: { LOWER, UPPER, HOLD_CC, AUTO_HOLD_CC, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS, POT_CH, BRIDGE_CCS, BRIDGE_KEY } };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MidiController = api;
 })(typeof window !== 'undefined' ? window : globalThis);

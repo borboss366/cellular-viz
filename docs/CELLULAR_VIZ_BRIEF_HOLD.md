@@ -71,8 +71,8 @@ stated here, not tuned per track.
    authority table in the header updated (held: the hand owns tempo
    and side; the tracker trims).
 3. Conductor page: a hold lamp and key (Shift+L; Shift+H is already ÷2), the `holdSuspect`
-   lamp. Controller: hold on a free top-row button, LED green held,
-   amber suspect.
+   lamp; the auto-hold switch on Shift+U (#239). Controller: hold on upper button 1 (CC 37), LED green held,
+   amber suspect; auto-hold on upper button 2 (CC 38), LED green on.
 4. Scorer and log: `hold` and `holdSuspect` records; time held per
    track; inside-gate % reported separately for held and free time.
 5. Tests (node, no audio):
