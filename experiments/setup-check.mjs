@@ -10,8 +10,8 @@ export const CLOCK_CHANNEL = 'cellular-viz-clock';
 export const LISTEN_MS = 3000;
 // the controller's ports (midi-controller.js: DEVICE_PORT /LCXL3/, the DAW port by /DAW/) and the bridge's bus
 export const LCXL3_RE = /LCXL3/, DAW_RE = /DAW/, IAC_BUS = 'IAC Driver Bus 1';
-// shown with the IAC row whatever its status (VIZ research, 16 Nov: Resolume must listen on the bus too)
-export const RESOLUME_IAC_HINT = 'In Resolume, open Preferences > MIDI and enable IAC Driver Bus 1.';
+// shown with the IAC row whatever its status (Resolume must listen on the bus too; resolume.com/support/en/midi-shortcuts)
+export const RESOLUME_IAC_HINT = 'In Resolume, open Preferences > MIDI. Turn on MIDI Input for IAC Driver Bus 1. Open the MIDI monitor to see the messages.';
 export const BLACKHOLE_RE = /BlackHole/i;
 
 const row = (item, status, detail, fix = '') => ({ item, status, detail, fix: status === 'PASS' ? '' : fix });

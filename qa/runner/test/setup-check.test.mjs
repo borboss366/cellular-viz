@@ -22,7 +22,7 @@ test('setup-check: MIDI ports -> the LCXL3 DAW ports and IAC Driver Bus 1, each 
   assert.equal(noIac[1].status, 'FAIL');
   assert.equal(noIac[1].fix, 'Open Audio MIDI Setup. Open MIDI Studio. Double-click IAC Driver. Select Device is online');
   // the Resolume side of the bus, shown with the IAC row whatever its status (VIZ research, 16 Nov)
-  for (const r of [good[1], noIac[1]]) assert.equal(r.hint, 'In Resolume, open Preferences > MIDI and enable IAC Driver Bus 1.');
+  for (const r of [good[1], noIac[1]]) assert.equal(r.hint, 'In Resolume, open Preferences > MIDI. Turn on MIDI Input for IAC Driver Bus 1. Open the MIDI monitor to see the messages.');
   assert.equal(good[0].hint, undefined);
   const noDaw = S.classifyMidi({ inputs: ['LCXL3 1 MIDI Out'], outputs: ['LCXL3 1 MIDI In', 'IAC Driver Bus 1'] });
   assert.deepEqual(noDaw.map(r => r.status), ['FAIL', 'PASS'], 'the MIDI port alone is not the DAW port');
@@ -83,13 +83,14 @@ test('setup-check: set.json -> the pages to check, every one a file in experimen
 });
 
 /** a fake Mac: canned command output and a fake /Applications, then the script with the given flags */
-function fakeMac({ pages404 = [], noBlackHole = false, wifiOn = false } = {}) {
+function fakeMac({ pages404 = [], noBlackHole = false, wifiOn = false, obs = null } = {}) {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'mac-check-')), cmd = path.join(d, 'cmd'), root = path.join(d, 'root');
   const mk = p => fs.mkdirSync(path.join(root, p), { recursive: true });
   fs.mkdirSync(cmd, { recursive: true });
   mk('Applications/Google Chrome.app/Contents'); mk('Applications/Resolume Arena/Arena.app/Contents'); mk('Applications/NDI Tools/NDI Scan Converter.app');
   fs.writeFileSync(path.join(root, 'Applications/Google Chrome.app/Contents/Info.plist'), 'CFBundleShortVersionString=131.0.6778.86\n');
   fs.writeFileSync(path.join(root, 'Applications/Resolume Arena/Arena.app/Contents/Info.plist'), 'CFBundleShortVersionString=7.21.0\n');
+  if (obs) { mk('Applications/OBS.app/Contents'); fs.writeFileSync(path.join(root, 'Applications/OBS.app/Contents/Info.plist'), `CFBundleShortVersionString=${obs}\n`); }
   const w = (n, s) => fs.writeFileSync(path.join(cmd, n), s);
   w('sw_vers', '14.5\n'); w('arm64', 'yes\n'); w('cpu', 'Apple M2\n'); w('tunnel', 'yes\n');
   w('wifi_ports', 'Hardware Port: Ethernet\nDevice: en1\nEthernet Address: 00:00:00:00:00:01\n\nHardware Port: Wi-Fi\nDevice: en0\nEthernet Address: 00:00:00:00:00:02\n');
@@ -124,6 +125,9 @@ test('mac-check.sh: sh -n passes; with a fake Mac --json parses, every row has a
     assert.ok(at('Capture route NDI Scan Converter') < at('Capture route OBS NDI') && at('Capture route OBS NDI') < at('Capture route Syphon'), 'route order');
     assert.deepEqual([by['Capture route OBS NDI'].status, by['Capture route Syphon'].status], ['INFO', 'INFO'], 'not ready is info while another route is ready');
     assert.equal(by['Local Network'].status, 'INFO');
+    assert.equal(by['Scan Converter'].status, 'INFO');
+    assert.equal(by['Scan Converter'].detail, 'Scan Converter sends one window per instance. Three scenes need three instances, or use OBS + DistroAV');
+    assert.equal(by['OBS version'], undefined, 'no OBS, no OBS version row');
     assert.equal(by['Local Network'].detail, 'Allow Resolume in System Settings > Privacy & Security > Local Network');
     assert.match(by['Google Chrome'].detail, /131\.0\.6778\.86/); assert.match(by.Displays.detail, /^2 displays/);
     assert.deepEqual(j.summary, { pass: j.results.filter(x => x.status === 'PASS').length, warn: 0, fail: 0 });
@@ -142,7 +146,7 @@ test('mac-check.sh: sh -n passes; with a fake Mac --json parses, every row has a
 });
 
 test('mac-check.sh: no tunnel is a FAIL with the ssh step; Wi-Fi on is a WARN; an unknown option exits 2', () => {
-  const c = fakeMac({ wifiOn: true });
+  const c = fakeMac({ wifiOn: true, obs: '30.2.3' });
   try {
     fs.rmSync(path.join(c.env.MAC_CHECK_FAKE, 'tunnel'));
     const r = spawnSync('sh', [SCRIPT, '--no-open'], { encoding: 'utf8', env: c.env });
@@ -150,6 +154,13 @@ test('mac-check.sh: no tunnel is a FAIL with the ssh step; Wi-Fi on is a WARN; a
     assert.match(r.stdout, /^FAIL Tunnel: port 8790 is not open on localhost\. Open the tunnel: ssh -L 8790:localhost:8790 puggie@192\.168\.8\.164$/m);
     assert.match(r.stdout, /^WARN Wi-Fi: Wi-Fi \(en0\) is on\. Turn off Wi-Fi while you set up NDI\. NDI on a Mac uses Wi-Fi when it is on$/m);
     assert.match(r.stdout, /^INFO Local Network: Allow Resolume in System Settings > Privacy & Security > Local Network$/m);
+    // DistroAV 6.2.x needs OBS 31.1.1 or later and the NDI runtime 6.3 or later (its 6.2.0 release notes)
+    assert.match(r.stdout, /^WARN OBS version: OBS 30\.2\.3 is below 31\.1\.1 \(DistroAV 6\.2 needs 31\.1\.1 or later\)\. Update OBS to 31\.1\.1 or later from obsproject\.com$/m);
+    assert.match(r.stdout, /^INFO NDI runtime version: not found/m);
+    const d = fakeMac({ obs: '31.1.1' });
+    try {
+      assert.match(spawnSync('sh', [SCRIPT, '--no-open'], { encoding: 'utf8', env: d.env }).stdout, /^PASS OBS version: OBS 31\.1\.1 /m);
+    } finally { fs.rmSync(d.d, { recursive: true, force: true }); }
     assert.equal(spawnSync('sh', [SCRIPT, '--bogus'], { encoding: 'utf8', env: c.env }).status, 2);
   } finally { fs.rmSync(c.d, { recursive: true, force: true }); }
 });

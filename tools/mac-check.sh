@@ -73,6 +73,11 @@ plistver() {  # app bundle path : CFBundleShortVersionString (fake: a line "CFBu
   defaults read "$1/Contents/Info" CFBundleShortVersionString 2>/dev/null
 }
 
+verlt() {  # a b : true when version a is below version b (dotted numbers; a missing part counts as 0)
+  awk -v a="$1" -v b="$2" 'BEGIN { na = split(a, x, "."); nb = split(b, y, "."); n = na > nb ? na : nb
+    for (i = 1; i <= n; i++) { p = x[i] + 0; q = y[i] + 0; if (p < q) exit 0; if (p > q) exit 1 } exit 1 }'
+}
+
 # ---- 1. macOS and the chip
 ver=$(out sw_vers sw_vers -productVersion)
 if [ -z "$ver" ]; then
@@ -163,13 +168,25 @@ elif [ -d "$APPS/NDI Tools" ]; then
 else
   report INFO "Capture route NDI Scan Converter" "not ready: NDI Scan Converter not found"
 fi
-# (a) OBS + the DistroAV plugin (or the older obs-ndi) + the NDI runtime
+if [ -n "$scan" ] || [ -d "$APPS/NDI Tools" ]; then
+  report INFO "Scan Converter" "Scan Converter sends one window per instance. Three scenes need three instances, or use OBS + DistroAV"
+fi
+# (a) OBS + the DistroAV plugin (or the older obs-ndi) + the NDI runtime. DistroAV 6.2.x needs OBS 31.1.1 or later and
+# the NDI runtime 6.3 or later (DistroAV 6.2.0 release notes)
 if [ -d "$obs" ]; then obsv=$(plistver "$obs"); obstxt="OBS ${obsv:-version unknown}"; else obstxt='OBS not found'; fi
 distro=$(plugin 'distroav|obs-ndi')
 if [ -d "$obs" ] && [ -n "$distro" ] && [ -n "$ndilib" ]; then
   report PASS "Capture route OBS NDI" "$obstxt, plugin $distro, NDI runtime"; routes=$((routes + 1))
 else
   report INFO "Capture route OBS NDI" "not ready: $obstxt; DistroAV plugin ${distro:-not found}; NDI runtime $( [ -n "$ndilib" ] && echo found || echo 'not found')"
+fi
+if [ -d "$obs" ]; then
+  if [ -z "$obsv" ]; then report INFO "OBS version" "not found"
+  elif verlt "$obsv" 31.1.1; then report WARN "OBS version" "OBS $obsv is below 31.1.1 (DistroAV 6.2 needs 31.1.1 or later)" "Update OBS to 31.1.1 or later from obsproject.com"
+  else report PASS "OBS version" "OBS $obsv (DistroAV 6.2 needs 31.1.1 or later)"; fi
+fi
+if [ -d "$obs" ] || [ -n "$ndilib" ]; then
+  report INFO "NDI runtime version" "not found (DistroAV 6.2 needs 6.3 or later; check it in the NDI installer)"
 fi
 # (b) Syphon: OBS + a syphon plugin, or a Syphon app in /Applications
 syph=$(plugin 'syphon')
