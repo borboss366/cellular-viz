@@ -15,13 +15,17 @@ scenes, and build a VJ set the way a DJ prepares a USB stick.
 - Nothing merged to main that changes a page the user has open tonight
   (the three in set.json, the conductor, set.html, setup-check). Work
   on branches; merge after he reports the test run.
+- No box test runs while the user plays tonight (they load the box that
+  serves his tracks). Branches are pushed; the box runs them after his
+  report.
 
 ## Task 1 — Audition page (so the user can pick seven with the controller in hand)
 
 `experiments/audition.html`: every scene page in the folder as a row.
 - Open: one scene in a window with the set defaults (`clock=shared`,
   `audio=line`, `in=BlackHole`), one at a time, next and previous by
-  key and by two controller buttons.
+  key and by two controller buttons. Use two of the free top buttons 3
+  to 8 (CC 39 to 44). Top buttons 1 and 2 are hold and auto-hold (#239).
 - Per row, facts the box already knows: has no-beat mode (yes or no),
   passes its beat-match row, frame time at 1080p from the last run,
   which knobs and buttons it declares (the module's own control tags;
@@ -46,6 +50,8 @@ moving under it.
   pot, every scene has no-beat mode or is marked accepted without it),
   then tags the commit `set/<name>` and writes `sets/<name>.json` (the
   resolved set with the commit hash).
+- set-release.sh creates and pushes a git tag: VIZ dev or the user runs
+  it, never a box agent on its own.
 - conduct-serve gains `--set <name>`: serves `experiments/` from that
   tag (a git worktree under a temp folder), the tracks and sessions as
   now. The conductor and set.html show the release name and hash in
