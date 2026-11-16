@@ -308,6 +308,10 @@ clock.fix = (kind, arg, o) => {
     $('lastFix').textContent = `${kind}${arg !== undefined ? ' ' + arg : ''} at ${ctx.currentTime.toFixed(2)} s${fixNote(j)}`;
     // the last tap set (4 to 8 taps): its tempo and count, or why it was rejected
     if (kind === 'tap' && j && (j.tapBpm || j.rejected)) $('lastTap').textContent = tapNote(j);
+  } else if ((kind === 'hold' || kind === 'autoHold') && FIX_ORIGINS.has(origin) && j) {
+    // hand-held mode (#239, log v3): a hold / auto-hold press is logged as 'holdPress', never as a hand fix
+    log.add('holdPress', { kind, origin, on: !!j.on, idx: decks[live].track ? decks[live].track.idx : undefined, ...(o && o.restored ? { restored: true } : {}) });
+    $('lastFix').textContent = `${kind} ${j.on ? 'on' : 'off'} at ${ctx.currentTime.toFixed(2)} s`;
   }
   return j;
 };
@@ -346,15 +350,15 @@ let pageStorage = null;
 try { pageStorage = window.localStorage; } catch (e) { /* storage blocked: the default bus each time */ }
 // hand-held mode (#239): Shift+L and the hold buttons toggle the hold in the clock (clock.fix('hold')); Shift+U and the
 // auto-hold buttons switch auto-hold (a tap, flip, nudge or set 1 also holds), kept in localStorage, default off
-function setAutoHold(on, origin = 'fix:key') {
-  const j = clock.fix('autoHold', !!on, { origin });
+function setAutoHold(on, origin = 'fix:key', restored = false) {
+  const j = clock.fix('autoHold', !!on, { origin, restored });
   try { if (pageStorage) pageStorage.setItem(C.AUTO_HOLD_KEY, clock.autoHold ? 'on' : 'off'); } catch (e) { /* not kept */ }
   return j;
 }
 function toggleAutoHold(origin = 'fix:key') { return setAutoHold(!clock.autoHold, origin); }
 let autoHoldSaved = null;
 try { autoHoldSaved = pageStorage ? pageStorage.getItem(C.AUTO_HOLD_KEY) : null; } catch (e) { /* storage blocked: off */ }
-if (C.autoHoldStored(autoHoldSaved)) setAutoHold(true);
+if (C.autoHoldStored(autoHoldSaved)) setAutoHold(true, 'fix:key', true);   // logged as restored, not a press
 $('autoHold').onclick = () => toggleAutoHold();
 const controller = MidiController.create({ clock, lastFix: () => lastFixShort, storage: pageStorage, toggleAutoHold,
   onBridge: (b, name) => { $('bridge').textContent = BRIDGE_TEXT[b] || `bridge: ${b}`; $('bridge').title = name || 'no IAC bus: turn on the IAC Driver (Help)'; $('bridge').classList.toggle('unscored', b !== 'on'); showBridgePorts(); },
@@ -365,6 +369,7 @@ addEventListener('pagehide', () => controller.stop());
 for (const b of document.querySelectorAll('[data-fix]')) b.onclick = e => clock.fix(b.dataset.fix, b.dataset.arg !== undefined ? Number(b.dataset.arg) : undefined, { origin: 'fix:key', eventTs: e.timeStamp });
 
 let seenJumps = 0, lastState = null, lastShadowState = null, kickPrev = -200, kickAt = -1, lastSample = 0, beatFlashAt = -1;
+let lastHeld = false, lastSuspect = false;   // hand-held mode (#239): logged when they change ('hold', 'holdSuspect')
 const kicks = [];   // the phase wheel: each kick's time and its place on the clock's beat count when it was heard
 let lastFrameT = 0, wheelNow = null;
 const wheelLog = C.wheelHintLog();   // a 'wheel' log record when the hint changes and holds 0.5 s (the user 22:27)
@@ -457,6 +462,9 @@ function tick() {
   }
   const ts = clock.trackerState || {};
   if (ts.state && ts.state !== lastState) { log.add('state', { src: 'clock', from: lastState, to: ts.state }); lastState = ts.state; }
+  const hs = ts.held || null, heldOn = !!(hs && hs.on), suspectOn = heldOn && !!hs.suspect;
+  if (heldOn !== lastHeld) { log.add('hold', { on: heldOn }); lastHeld = heldOn; }
+  if (suspectOn !== lastSuspect) { log.add('holdSuspect', { on: suspectOn }); lastSuspect = suspectOn; }
   if (now - lastSample >= C.SAMPLE_S) {
     lastSample = now;
     const r = clock.read({ raw: true }), s = shadow.snapshot ? shadow.snapshot() : {};

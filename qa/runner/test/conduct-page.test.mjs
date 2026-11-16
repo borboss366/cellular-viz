@@ -244,10 +244,16 @@ test('hand-held mode on the page (#239): Shift+U is the page\'s auto-hold key, S
   for (const s of ['Shift+L', 'Shift+U', 'Suspect lamp']) assert.ok(panel.includes(s), `Help: ${s}`);
   assert.match(html, /a\.type === 'autoHold'\) toggleAutoHold\(\)/, 'the key is wired');
   assert.match(html, /pageStorage\.setItem\(C\.AUTO_HOLD_KEY, clock\.autoHold \? 'on' : 'off'\)/, 'the choice is kept');
-  assert.match(html, /if \(C\.autoHoldStored\(autoHoldSaved\)\) setAutoHold\(true\)/, 'restored at load, else off');
+  assert.match(html, /if \(C\.autoHoldStored\(autoHoldSaved\)\) setAutoHold\(true, 'fix:key', true\)/, 'restored at load (logged as restored), else off');
   assert.match(html, /MidiController\.create\(\{[^\n]*toggleAutoHold/, 'the controller button goes through the page (kept too)');
   assert.match(html, /\$\('lampHold'\)\.classList\.toggle\('on', hl\.hold\)/);
   assert.match(html, /\$\('lampSuspect'\)\.classList\.toggle\('on', hl\.suspect\)/);
+  // c3 (log v3): the clock's hold / holdSuspect when they change, and every hold / auto-hold press, never as a 'fix'
+  assert.match(html, /if \(heldOn !== lastHeld\) \{ log\.add\('hold', \{ on: heldOn \}\)/);
+  assert.match(html, /if \(suspectOn !== lastSuspect\) \{ log\.add\('holdSuspect', \{ on: suspectOn \}\)/);
+  assert.match(html, /log\.add\('holdPress', \{ kind, origin, on: !!j\.on, idx:/);
+  assert.equal(C.FIX_KIND.hold, undefined, 'hold is not a hand fix kind');
+  assert.equal(C.FIX_KIND.autoHold, undefined);
 });
 
 test('conductor monitor (9 Nov sitting): the beat side as 0 or 1/2, "octave hold N bpm" only while held and red when far off', () => {
@@ -473,7 +479,8 @@ test('wheel log on the page: a "wheel" record through log.add with the state, th
   assert.match(html, /posMs: tr && dl\.playing \? Math\.round\(posMs\(dl, wrec\.ctx\)\) : null/);
   assert.match(html, /wheel: wheelNow \? \{ kind: C\.wheelKind\(wheelNow\), ms: wheelNow\.medianMs \} : null \}\);/, 'the sample record carries the wheel');
   const L = await import('../../conduct-log.mjs');
-  assert.equal(L.SCHEMA_V, 2);
+  assert.equal(L.SCHEMA_V, 3);   // v3 (#239): hold, holdSuspect, holdPress
+  for (const k of ['hold', 'holdSuspect', 'holdPress']) assert.ok(L.TYPES.includes(k), k);
   assert.ok(L.TYPES.includes('wheel'));
   const log = new L.ConductLog({ id: 'conductor-20261110-222700', now: () => 3 });
   const r = log.add('wheel', { ctx: 2.5, kind: 'flip', hint: 'half a beat off: flip (Shift+F)', medianMs: null, sixShare: 0.8, driftDegPerBar: 2, state: 'locked', idx: 0, id: 'hc-07', posMs: 61000 });

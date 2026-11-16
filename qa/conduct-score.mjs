@@ -30,7 +30,14 @@
 //   wheel    { kind, hint, medianMs, sixShare, driftDegPerBar, state, idx?, id?, posMs }   v2: the phase-wheel hint once it
 //            held 0.5 s (ctx = when it began); kind on | nudge | flip | tap | grey | none. Reported, never scored
 //   sample.wheel { kind, ms } (v2): the wheel's hint kind and marker ms at that sample
-// v1 and v2 logs both parse (v2 only adds the wheel fields).
+//   hold     { on }                                         v3 (#239): the clock's hand-held mode on / off, when it changes
+//   holdSuspect { on }                                      v3: holdSuspect on / off while held (a hint), when it changes
+//   holdPress { kind: 'hold' | 'autoHold', origin, on, restored? }   v3: a hold or auto-hold press; NEVER a hand fix
+//            (not in fixes, no verdict); restored: the page set its kept auto-hold choice at load
+// Per track (v3, report-only): conducted.hold { heldS, heldPct, inHeldPct, inFreePct, suspects, suspectS, presses }:
+// the time held inside the track's span, the inside-gate % of the held and of the free reference beats, the
+// holdSuspect onsets and time, the hold / auto-hold presses. A log without hold records reads as never held.
+// v1, v2 and v3 logs all parse (v2 adds the wheel fields, v3 the hold records).
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -64,9 +71,9 @@ function firstAtOrAfter(a, t) { let lo = 0, hi = a.length; while (lo < hi) { con
 export const RECORD_FIELDS = {
   session: ['v'], latency: [], track: ['idx', 'event'], pair: ['idx', 'posMs'], xfade: ['from', 'to', 'event'], beat: ['src'],
   sample: [], fix: ['id', 'kind'], jump: ['fromBeats', 'toBeats'], state: ['to'], mark: ['idx', 'name', 'trackMs'], key: ['shown'],
-  wheel: ['kind'],
+  wheel: ['kind'], hold: ['on'], holdSuspect: ['on'], holdPress: ['kind', 'origin'],
 };
-export const SCHEMA_VERSIONS = [1, 2];
+export const SCHEMA_VERSIONS = [1, 2, 3];
 /** every jump kind a session can log (Q9: each clock.jumps entry appears once): the tracker's own (acquire, override,
  *  side, flip, octave: #214's evidence release of a wrong octave hold, and relative: #214's re-acquire after a 4:3 /
  *  3:2 tempo move; both booked on a bar line, forward only), the
@@ -169,7 +176,31 @@ export function readSession(records) {
   }
   if (shownAt !== null) keyShownS += endCtx - shownAt;
   return { head, input: head.input || 'line:page', latency, clockLatency, clock, shadow, samples, sampleT: samples.map(s => s.t),
-    tracks, xfades, fixes: recs.filter(r => r.type === 'fix'), jumps: recs.filter(r => r.type === 'jump'), keyShownS, endCtx };
+    tracks, xfades, fixes: recs.filter(r => r.type === 'fix'), jumps: recs.filter(r => r.type === 'jump'), keyShownS, endCtx,
+    held: onSpans(recs, 'hold', endCtx), suspect: onSpans(recs, 'holdSuspect', endCtx), holdPresses: recs.filter(r => r.type === 'holdPress') };
+}
+/** v3: the [from, to) spans while a hold / holdSuspect record said on (the last one open to the end of the log) */
+function onSpans(recs, type, endCtx) {
+  const out = [];
+  let from = null;
+  for (const r of recs) {
+    if (r.type !== type) continue;
+    if (r.on && from === null) from = r.ctx;
+    else if (!r.on && from !== null) { out.push([from, r.ctx]); from = null; }
+  }
+  if (from !== null) out.push([from, endCtx]);
+  return out;
+}
+const inSpans = (spans, t) => spans.some(([a, b]) => t >= a - 1e-9 && t < b - 1e-9);
+const overlapS = (spans, a, b) => spans.reduce((s, [x, y]) => s + Math.max(0, Math.min(b, y) - Math.max(a, x)), 0);
+/** v3, report-only: time held in [a, b), the inside-gate % of the held and the free scored beats, the suspects, the presses */
+export function holdStats(S, beats, a, b, idx) {
+  const sc = scored(beats), share = B => { const tot = B.reduce((x, y) => x + y.P, 0); return tot > 0 ? rnd(100 * B.filter(y => y.cls === 'in').reduce((x, y) => x + y.P, 0) / tot, 2) : null; };
+  const heldB = sc.filter(y => inSpans(S.held, y.t)), freeB = sc.filter(y => !inSpans(S.held, y.t));
+  const heldS = overlapS(S.held, a, b), presses = { hold: 0, autoHold: 0 };
+  for (const p of S.holdPresses) if (!p.restored && (num(p.idx) ? p.idx === idx : p.ctx >= a && p.ctx < b) && p.kind in presses) presses[p.kind]++;
+  return { heldS: rnd(heldS, 2), heldPct: b > a ? rnd(100 * heldS / (b - a), 2) : null, inHeldPct: share(heldB), inFreePct: share(freeB),
+    suspects: S.suspect.filter(([x]) => x >= a && x < b).length, suspectS: rnd(overlapS(S.suspect, a, b), 2), presses };
 }
 /** a position in the track (ms) → render time, through the play segment that covers it; null when it never played */
 function posToCtx(tr, ms) {
@@ -413,7 +444,7 @@ function scoreTrack(S, tr, info, cols) {
     const p = per[src];
     return { inPct: p.st.inPct, in70Pct: p.st.in70Pct, absE: p.st.absE, lockBeats: p.st.lockBeats, classes: p.st.classes,
       episodes: p.eps.length, octave: octaveFree ? { factor: p.pick.m, parity: p.pick.m === 0.5 ? p.pick.parity : null, flips: p.flips } : null,
-      sideSpan: p.side, confMedian: rnd(confOf(src), 3) };
+      sideSpan: p.side, confMedian: rnd(confOf(src), 3), ...(src === 'clock' ? { hold: holdStats(S, p.pick.beats, spanStart, spanEnd, idx) } : {}) };
   };
   return { ...base, scored: true, reason: null, playedS: C.st.playedS, segs: tr.segs.length,
     timelineResidualMs: rnd(Math.max(...tr.segs.map(s => s.fit.residualMs)), 2), shiftMs: shiftMs || 0,
@@ -565,6 +596,11 @@ export function renderReport(res) {
   if (eps.length) {
     L.push('', '## Episodes (R6)', '');
     for (const t of eps) for (const e of t.episodes) L.push(`- ${t.label} #${e.n} at ${e.startS} s: ${e.cls}, ${e.outcome}; reaction ${v(e.reactionBeats)} beats, landed ${v(e.landBeats)}, clean after ${v(e.timeToCleanBeats)} beats; fixes ${e.fixes.join(', ') || 'none'}`);
+  }
+  const held = res.tracks.filter(t => t.scored && t.conducted.hold && (t.conducted.hold.heldS > 0 || t.conducted.hold.presses.hold || t.conducted.hold.presses.autoHold));
+  if (held.length) {   // v3 (#239): only when the session held or pressed hold, so older reports stay as they were
+    L.push('', '## Hand-held mode (report-only)', '', '| track | held s | held % | in % held | in % free | suspects | suspect s | hold presses | auto-hold presses |', '|---|---|---|---|---|---|---|---|---|');
+    for (const t of held) { const h = t.conducted.hold; L.push(`| ${t.label} | ${h.heldS} | ${v(h.heldPct)} | ${v(h.inHeldPct)} | ${v(h.inFreePct)} | ${h.suspects} | ${h.suspectS} | ${h.presses.hold} | ${h.presses.autoHold} |`); }
   }
   if (s.unscored.length) { L.push('', '## Unscored (R8)', ''); for (const u of s.unscored) L.push(`- ${u.label}: ${u.reason}`); }
   L.push('', '## Timelines (conducted; . in, l loose, s side, o octave, t tempo, x lost, | excluded)', '');
