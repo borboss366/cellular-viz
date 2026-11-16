@@ -145,7 +145,8 @@
     // hand-held mode (docs/CELLULAR_VIZ_BRIEF_HOLD.md, the user's go 15 Nov 23:15): after the hand confirms the beat
     // (handHold), the tracker may trim and may not move. Phase trims only from broadband onsets within holdWindow beat
     // of the held model (the 3 % rate limit as always); the period only from the F3 long fit, within holdTempoTol of the
-    // held tempo; the net phase trim since the hold at most holdNetMax beat. No jump is booked, no other writer touches
+    // held tempo (a fit target outside that band is rejected, never clamped); the net phase trim since the hold at most
+    // holdNetMax beat. No jump is booked, no other writer touches
     // the period. holdSuspect (a hint, nothing moves): the tracker's own free estimate disagrees with the held model by
     // more than holdSuspectTempo in tempo (octave-folded) or holdSuspectPhase beat in phase for more than
     // holdSuspectBeats beats
@@ -358,12 +359,20 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // own.pending through these two (same arithmetic as before: a - b and a + (-b) are the same IEEE result), so the
     // slew can be attributed to its writers
     // held (hand-held mode): only the hold's own trims write a pending correction; a landed hand flip zeroes it ('jump')
-    function pendSet(src, v) { if (held && src !== 'hold' && src !== 'jump') { holdNote(`pending:${src}`); return; } own.pending = v; pendBy = v ? { [src]: v } : {}; }
+    function pendSet(src, v) {
+      if (held && src !== 'hold' && src !== 'jump') {
+        holdNote(`pending:${src}`);
+        if (src === 'fit') holdFitPhase = { t: lastT, v };   // logging only: the phase the F3 fit line would have written
+        return;
+      }
+      own.pending = v; pendBy = v ? { [src]: v } : {};
+    }
     function pendAdd(src, d) { if (held && src !== 'hold') { holdNote(`pending:${src}`); return; } own.pending += d; pendBy[src] = (pendBy[src] || 0) + d; }
     // ---- hand-held mode (docs/CELLULAR_VIZ_BRIEF_HOLD.md; see DEFAULTS.holdWindow). Off: nothing below runs.
     let held = false, heldP = 0, holdSince = null, holdNet = 0, holdNetPeak = 0, holdClips = 0, holdTrims = 0;
     let holdSuspect = false, suspectSince = null, holdShadow = null, holdObs = [], holdEntries = 0, tapHeld = false, ownSaved = null;
-    const holdBlocked = {}, holdLog = [];
+    const holdBlocked = {}, holdLog = [], holdTrimLog = [];
+    let holdFitPhase = null;
     function holdNote(what) { holdBlocked[what] = (holdBlocked[what] || 0) + 1; }
     function holdEvent(t, kind, extra) { holdLog.push({ t: +t.toFixed(3), kind, ...extra }); if (holdLog.length > 64) holdLog.shift(); }
     // the held model: the output's tempo and phase now (a tap's model is folded into the own model, which is then the
@@ -422,6 +431,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       const next = Math.max(-C.holdNetMax, Math.min(C.holdNetMax, want));
       if (next !== want) holdClips++;
       if (next !== cur) { pendAdd('hold', next - cur); holdTrims++; }
+      holdTrimLog.push({ t: to, e }); if (holdTrimLog.length > 256) holdTrimLog.shift();   // logging only: the tracker's own e
       lastInWindow = to;
       strongRef = strongRef ? 0.9 * strongRef + 0.1 * s : s;
       if (state !== 'locked') setState('locked', to);   // no re-acquisition: trimming resumes from the held phase
@@ -610,7 +620,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     function ownPeriod(src, P, t) {
       if (held) {   // hand-held mode: only the F3 long fit (within holdTempoTol of the held tempo) and the hand's x2 / /2
         if (src === 'hand-scale') heldP *= P / own.P;
-        else if (src === 'fit-long') P = Math.max(heldP / (1 + C.holdTempoTol), Math.min(heldP / (1 - C.holdTempoTol), P));
+        // fit-long: fitTick rejects a target outside the band ('hold-band'), so its rate-limited step stays inside it;
+        // anything outside is refused here (never clamped onto the band edge)
+        else if (src === 'fit-long') { if (Math.abs(P / heldP - 1) > C.holdTempoTol + 1e-9) { holdNote('period:fit-long-out'); return; } }
         else { holdNote(`period:${src}`); return; }
       }
       perSrc = src; setPeriod(own, P, t); perSrc = null;
@@ -1124,6 +1136,9 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (!slopes.length) return fitReject(t, 'pairs');
       const Pfit = mid(slopes), b = mid(pts.map(p => p.t - Pfit * p.k));
       if (!(Pfit > 0) || Math.abs(Pfit / P - 1) > C.fitAccept) return fitReject(t, 'accept', 60 / Pfit);
+      // hand-held mode (#239 trace, cause A): a target more than holdTempoTol from the held tempo is rejected, never
+      // clamped (a: 124.94 / 130.98 / 120.63 bpm targets on a 126 track were clamped onto the band edge and drifted)
+      if (held && Math.abs(Pfit / heldP - 1) > C.holdTempoTol) return fitReject(t, 'hold-band', 60 / Pfit);
       fit.lastValidT = t; fit.young = false;
       const dt = Math.min(2 / C.fitHz, Math.max(0, t - (fit.last ? fit.last.t : t - 1 / C.fitHz)));
       fit.last = { t, bpm: +(60 / Pfit).toFixed(3), n: pts.length, span, coverage: +(distinct / span).toFixed(3) };
@@ -1406,6 +1421,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       // flip, nudge or set-1. Returns false without a model
       handHold(on, t, why = null) { return handHold(!!on, t, why); },
       get held() { return held; }, get holdSuspect() { return holdSuspect; }, get heldReport() { return heldReport(); },
+      get holdTrimLog() { return holdTrimLog; }, get holdFitPhase() { return holdFitPhase; },   // logging only (#239 probe)
       // the time at which the output reaches beat b (its current linear model; slews still pending are not in it)
       timeOf(b) {
         if (!own.P) return NaN;

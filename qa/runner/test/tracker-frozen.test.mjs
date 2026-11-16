@@ -61,6 +61,10 @@ test('frozen tracker: CLOCK_CORPUS.md lists every DEFAULTS constant of the track
   // hand-held mode (docs/CELLULAR_VIZ_BRIEF_HOLD.md: trims only within 1/8 beat, net <= 1/4 beat, tempo within 1 %; the
   // suspect hint at 3 % or 1/4 beat for 8 beats)
   assert.deepEqual([code.holdWindow, code.holdTempoTol, code.holdNetMax, code.holdSuspectTempo, code.holdSuspectPhase, code.holdSuspectBeats], [0.125, 0.01, 0.25, 0.03, 0.25, 8]);
+  // #239 cause A: while held a fit-long target outside holdTempoTol is rejected ('hold-band'), not clamped
+  const src = fs.readFileSync(SRC, 'utf8');
+  assert.match(src, /fitReject\(t, 'hold-band', 60 \/ Pfit\)/, 'the hold-band reject is in fitTick');
+  assert.doesNotMatch(src, /heldP \/ \(1 \+ C\.holdTempoTol\)/, 'no clamp onto the band edge');
 });
 
 test('frozen tracker: the module constants and the source sha256 match the doc; the frozen sentence points at the list', () => {

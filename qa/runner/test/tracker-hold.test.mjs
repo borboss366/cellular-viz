@@ -37,8 +37,22 @@ function runHold(s, { hold = true, trace = false } = {}) {
   // behind it, the first write that reached the 1 % band edge, and one row every 8 true beats from the hold on
   const writes = [], rows = [];
   let seenPl = 0, edge = null, kHold = null, wFrom = 0, steps0 = 0;
+  // cause-B probe: every detected broadband onset within 1/4 beat of a true beat (the kicks; the off-beat bass and hat
+  // sit at 1/2), as onset time minus that beat in ms
+  const kickDev = [];
+  let lastOnT = -Infinity, prevRowT = -Infinity;
   for (const f of frames) {
     tr.push(f);
+    if (trace) {
+      const ons = tr.onsets || [];
+      for (let i = 0; i < ons.length; i++) {
+        const o = ons[i];
+        if (o.t <= lastOnT) continue;
+        lastOnT = o.t;
+        const k = Math.round((o.t - s.beats[0]) / P0), d = o.t - (s.beats[0] + k * P0);
+        if (Math.abs(d) <= P0 / 4) kickDev.push({ t: o.t, ms: d * 1000 });
+      }
+    }
     if (trace && holdT !== null) {
       const pl = tr.periodLog || [];
       for (; seenPl < pl.length; seenPl++) {
@@ -72,7 +86,13 @@ function runHold(s, { hold = true, trace = false } = {}) {
           let lastIn = null;
           for (let i = ons.length - 1; i >= 0; i--) if (Math.abs(frac(tr.beatsAt(ons[i].t))) <= C.holdWindow) { lastIn = ons[i].t; break; }
           const W = writes.slice(wFrom); wFrom = writes.length;
+          const rowT = s.beats[bi], med = a => { if (!a.length) return null; const x = [...a].sort((p, q) => p - q); return x[x.length >> 1]; };
+          const kick = med(kickDev.filter(x => x.t > prevRowT && x.t <= rowT).map(x => x.ms));
+          const trimE = med((tr.holdTrimLog || []).filter(x => x.t > prevRowT && x.t <= rowT).map(x => x.e));
+          const fp = tr.holdFitPhase;
+          prevRowT = rowT;
           rows.push({ beat: bi - kHold, t: s.beats[bi], bpm: tr.bpm, fit: rep.fit, dec: rep.last, steps: rep.steps - steps0,
+            kick, trimE, fitPhase: fp && fp.t !== null && fp.t > rowT - 8 * P0 ? fp.v : null,
             nW: W.length, wFrom: W.length ? W[0].from : null, wTo: W.length ? W[W.length - 1].to : null, wSrc: [...new Set(W.map(w => w.src))].join('+'),
             state: tr.state, conf: tr.confidence, e, lastIn, net: tr.heldReport.net, suspect: tr.holdSuspect });
         }
@@ -81,7 +101,7 @@ function runHold(s, { hold = true, trace = false } = {}) {
     }
   }
   const jumps = (tr.jumps || []).filter(j => holdT !== null && j.at >= holdT);
-  return { tr, P0, per, lockT, holdT, flipped, heldBpm, worstTempo, worstAt, suspectT, jumps, held: tr.heldReport, snap: tr.snapshot(), writes, rows, edge };
+  return { tr, P0, per, lockT, holdT, flipped, heldBpm, worstTempo, worstAt, suspectT, jumps, held: tr.heldReport, snap: tr.snapshot(), writes, rows, edge, kickDev };
 }
 const f2 = x => (x === null || x === undefined ? '-' : (+x).toFixed(2));
 const decLine = d => (d ? `${d.path}${d.cand ? ' ' + d.cand : ''} ${d.ok ? 'ok' : 'rejected' + (d.why ? ' (' + d.why + ')' : '')} @${f2(d.t)}` : '-');
@@ -89,7 +109,7 @@ const decLine = d => (d ? `${d.path}${d.cand ? ' ' + d.cand : ''} ${d.ok ? 'ok' 
 function traceReport(t, name, s, r) {
   const P = s.P || r.P0;
   for (const x of r.rows) {
-    report(t, `hold trace ${name} beat +${x.beat} (${x.t.toFixed(1)} s): bpm ${f2(x.bpm)} (truth ${s.bpm}); fit-long target ${x.fit ? f2(x.fit.bpm) + ' @' + f2(x.fit.t) : '-'}, last decision ${decLine(x.dec)}; period writes in these 8 beats ${x.nW}${x.nW ? ` (${x.wSrc}: ${f2(x.wFrom)} -> ${f2(x.wTo)})` : ''}, step-path steps since the hold ${x.steps}; ${x.state} conf ${f2(x.conf)}; error ${x.e === null ? '-' : sgn(x.e) + ' beat ' + (x.e * P * 1000).toFixed(1) + ' ms'}; last in-window onset ${x.lastIn === null ? 'none' : x.lastIn.toFixed(2) + ' s'}; holdNet ${sgn(x.net)}; suspect ${x.suspect}`);
+    report(t, `hold trace ${name} beat +${x.beat} (${x.t.toFixed(1)} s): bpm ${f2(x.bpm)} (truth ${s.bpm}); fit-long target ${x.fit ? f2(x.fit.bpm) + ' @' + f2(x.fit.t) : '-'}, last decision ${decLine(x.dec)}; period writes in these 8 beats ${x.nW}${x.nW ? ` (${x.wSrc}: ${f2(x.wFrom)} -> ${f2(x.wTo)})` : ''}, step-path steps since the hold ${x.steps}; ${x.state} conf ${f2(x.conf)}; error ${x.e === null ? '-' : sgn(x.e) + ' beat ' + (x.e * P * 1000).toFixed(1) + ' ms'}; last in-window onset ${x.lastIn === null ? 'none' : x.lastIn.toFixed(2) + ' s'}; holdNet ${sgn(x.net)}; suspect ${x.suspect}; probe B: kick onset - truth median ${x.kick === null ? '-' : x.kick.toFixed(1) + ' ms'}, tracker e at trimmed onsets median ${x.trimE === null ? '-' : sgn(x.trimE)}, blocked fit line phase ${x.fitPhase === null ? '-' : sgn(x.fitPhase)}`);
   }
   const e = r.edge;
   report(t, `hold trace ${name} edge: ${e ? `the period reached the 1 % band edge at ${e.t.toFixed(2)} s by ${e.src} (${f2(e.from)} -> ${f2(e.to)}, held ${f2(r.heldBpm)}), tempo decision then ${decLine(e.dec)}, step-path steps since the start ${e.steps}` : 'no period write reached the 1 % band edge'}; period writes after the hold ${r.writes.length} by ${[...new Set(r.writes.map(w => w.src))].join(', ') || 'none'}`);
@@ -139,6 +159,10 @@ test('hold d: a 16-bar breakdown (kick and on-beat hat out, off-beat bass and ha
   const back = s.drops[0][1], first = r.per.filter(p => p.t >= back - 1e-6).slice(0, 8), ms = first.map(p => (p.e === null ? NaN : p.e * s.P * 1000));
   const sc = sideCheck(r);
   report(t, `hold 16-bar breakdown ${s.name}: kick out ${s.drops[0][0].toFixed(1)}-${back.toFixed(1)} s; ${heldLine(r)}; first 8 beats after the return (ms) ${ms.map(x => x.toFixed(1)).join(' ')}; states ${(r.tr.stateLog || []).filter(x => x.t > r.holdT).map(x => `${x.state}@${x.t.toFixed(1)}`).join(' ') || 'no change'}`);
+  {   // probe B at the return: is the error vs the grid onset bias in the fixture (the kicks detected early or late)?
+    const K = r.kickDev.filter(x => x.t >= back - s.P / 4 && x.t < back + 8 * s.P - s.P / 4).map(x => x.ms), Ks = [...K].sort((p, q) => p - q);
+    report(t, `hold 16-bar breakdown ${s.name} probe B at the return: kick onset - truth over the first 8 beats (ms) ${K.map(x => x.toFixed(1)).join(' ') || 'none'}; median ${Ks.length ? Ks[Ks.length >> 1].toFixed(1) : '-'}; clock error at those beats (ms) ${ms.map(x => x.toFixed(1)).join(' ')}`);
+  }
   traceReport(t, 'd (16-bar breakdown)', s, r);
   assert.ok(r.holdT !== null && r.holdT + (r.flipped ? 4 * s.P : 0) < s.drops[0][0], `held before the breakdown (${r.holdT})`);
   assert.equal(first.length, 8);
