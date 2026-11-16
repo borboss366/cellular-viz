@@ -31,7 +31,7 @@
 //   nudge    shifts the clock against the tracker (an offset); the PLL carries on underneath, so the shift stays
 //   setOne / reset  relabel only; the tracker never touches bar position
 //   held     hand-held mode (docs/CELLULAR_VIZ_BRIEF_HOLD.md, the user 15 Nov): fix('hold') toggles it, and an accepted
-//            tap, flip, nudge or setOne enters it (or re-anchors it) while auto-hold is on (the run-time setting fix('autoHold'); off, the default, = fixes as before, hold by Shift+L only). The hand owns tempo and side: the tracker only
+//            tap, flip, nudge or setOne enters it (or re-anchors it) while auto-hold is on (the run-time setting fix('autoHold'); off, the default, = fixes as before, hold by Shift+L only; while held they re-anchor it either way, #244). The hand owns tempo and side: the tracker only
 //            trims the phase from onsets within 1/8 beat (net at most 1/4 beat since the hold, the 3 % rate limit) and
 //            follows the F3 long fit within 1 % of the held tempo. It books no jump (acquire, rescan, secondlook,
 //            relative, octave, side, dissent, override) and no other writer touches the period; in a breakdown the held
@@ -1004,8 +1004,9 @@
       // hand fixes on line (authority table in the header): the tracker keeps listening underneath
       lineFix(kind, arg, origin, at, from) {
         const r = this.lineFixInner(kind, arg, origin, at, from), tr = line.tracker;
-        // hand-held mode: an accepted tap, flip, nudge or set-1 confirms the beat (enters hold, or re-anchors it)
-        if (autoHold && r && !r.rejected && HOLD_ON_FIX.includes(kind) && tr && tr.handHold) tr.handHold(true, at, kind);
+        // hand-held mode: an accepted tap, flip, nudge or set-1 confirms the beat (enters hold, or re-anchors it); while
+        // held it re-anchors with auto-hold off too (#244: a hand fix re-arms the one re-centre)
+        if ((autoHold || (tr && tr.held)) && r && !r.rejected && HOLD_ON_FIX.includes(kind) && tr && tr.handHold) tr.handHold(true, at, kind);
         return r;
       },
       lineFixInner(kind, arg, origin, at, from) {

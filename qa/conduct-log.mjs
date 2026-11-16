@@ -9,8 +9,9 @@
 // v2 (the user 10 Nov 22:27): adds 'wheel' records (the phase-wheel hint when it changes) and sample.wheel { kind, ms }
 // v3 (#239, hand-held mode): adds 'hold' and 'holdSuspect' (the clock's state when it changes, { on }) and 'holdPress'
 // (a hold or auto-hold press { kind: 'hold' | 'autoHold', origin, on }): presses, never hand fixes
+// v3 addition (#244): 'holdRecentre' { from, to, n } when the held tempo re-centred (trackerState.held.recentres grew)
 export const SCHEMA_V = 3;
-export const TYPES = ['session', 'latency', 'track', 'pair', 'xfade', 'beat', 'sample', 'fix', 'jump', 'state', 'mark', 'key', 'wheel', 'hold', 'holdSuspect', 'holdPress'];
+export const TYPES = ['session', 'latency', 'track', 'pair', 'xfade', 'beat', 'sample', 'fix', 'jump', 'state', 'mark', 'key', 'wheel', 'hold', 'holdSuspect', 'holdPress', 'holdRecentre'];
 export const PAIR_EVERY_S = 5, SAMPLE_EVERY_S = 0.1;
 const pad = n => String(n).padStart(2, '0');
 

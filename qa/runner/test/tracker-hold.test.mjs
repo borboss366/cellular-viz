@@ -11,10 +11,14 @@
 //   e. a real 120 -> 128 step under hold: nothing moves (tempo within 1 % of 120, no jump, net <= holdNetMax) and
 //      holdSuspect comes on within 16 beats of the step
 //   f. hold off: no gate ever fires (held off, nothing blocked), so every other tracker test runs as before
+//   h. taps 1.2 % fast re-centre once on the true tempo (#241)
+//   i, j (#244, bound the re-centre): after one re-centre a bait 2 % past the centre moves nothing (i: within 3 % of
+//      the hand, refused as spent, holdSuspect 'tempo'; j: more than 3 % from the hand, refused as far). k (re-arm by a
+//      nudge, auto-hold off) is in clock-line.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { render, steadyScenario } from './fixtures/tracker-scenarios.mjs';
+import { render, steadyScenario, stepsScenario } from './fixtures/tracker-scenarios.mjs';
 import { houseTrap, sideBreakdown, frac } from './fixtures/tracker-traps.mjs';
 const require = createRequire(import.meta.url);
 const T = require('../../../experiments/clock-tracker.js');
@@ -235,4 +239,59 @@ test('hold h: a hold entered by taps 1.2 % fast on a steady 125 track re-centres
   for (const x of last) assert.ok(Math.abs(x) <= GATE_MS, `on the beat after 32 bars: ${last.map(v => v.toFixed(1)).join(' ')} ms`);
   assert.deepEqual(jumps.map(j => j.kind), [], 'no jump while held');
   assert.equal(H.on, true, 'still held');
+});
+
+// #244 (the reviewer's addendum, bound the re-centre): the limit is the hand's tempo handP, not the moving centre, and
+// one re-centre per hold entry or re-anchor. A hold entered by four taps off by tapRatio on segment 0, SETTLE s after
+// the first lock (as hold h); segment 1 is the bait. Every frame: the first re-centre, the first holdSuspect with
+// reason 'tempo', the largest re-centre count
+function runSteps(s, tapRatio) {
+  const tr = T.createTracker(), frames = [];
+  const an = T.createAnalyzer({ sampleRate: s.sr, onFrame: f => frames.push(f) });
+  for (let i = 0; i < s.samples.length; i += 128) an.process(s.samples.subarray(i, Math.min(s.samples.length, i + 128)), i / s.sr);
+  let lockT = null, holdT = null, rec1 = null, tempoSuspectT = null, tapBpm = null;
+  for (const f of frames) {
+    tr.push(f);
+    if (lockT === null && tr.state === 'locked') lockT = f.t;
+    if (holdT === null && lockT !== null && f.t >= lockT + SETTLE) {
+      const beat = [...s.beats].reverse().find(b => b <= f.t);
+      tapBpm = s.segs[0].bpm * tapRatio;
+      tr.tap({ t: beat, bpm: tapBpm });
+      tr.handHold(true, f.t, 'tap');
+      holdT = f.t;
+    }
+    if (holdT !== null) {
+      const H = tr.heldReport;
+      if (rec1 === null && H.recentres >= 1) rec1 = { ...H.recentre, seenAt: f.t };
+      if (tempoSuspectT === null && H.suspect && H.suspectWhy === 'tempo') tempoSuspectT = f.t;
+    }
+  }
+  return { tr, lockT, holdT, rec1, tempoSuspectT, tapBpm, H: tr.heldReport };
+}
+const stepsLine = (name, s, r) => `${name} ${s.name}: taps at ${f2(r.tapBpm)} bpm, held at ${r.holdT === null ? 'never' : r.holdT.toFixed(2) + ' s'}; hand ${f2(r.H.handBpm)}; first re-centre ${r.rec1 ? `${r.rec1.from} -> ${r.rec1.to} at ${r.rec1.t} s` : 'never'}; bait ${s.segs[1].bpm} from ${s.starts[1].toFixed(2)} s; re-centres ${r.H.recentres}; centre at the end ${f2(r.H.bpm)}; holdSuspect 'tempo' ${r.tempoSuspectT === null ? 'never' : `at ${r.tempoSuspectT.toFixed(2)} s (${((r.tempoSuspectT - s.starts[1]) * s.segs[1].bpm / 60).toFixed(1)} beats into the bait)`}; blocked ${JSON.stringify(r.H.blocked)}`;
+
+test('hold i (#244, the walk): after one re-centre a bait 2 % past the centre (within 3 % of the hand) moves nothing: re-centres stay 1, refused as spent, holdSuspect \'tempo\' within 16 beats (hard)', (t) => {
+  const s = stepsScenario({ segs: [{ bpm: 125, beats: 96 }, { bpm: 127.5, beats: 128 }] }), r = runSteps(s, 1.012);
+  report(t, stepsLine('hold i', s, r));
+  assert.ok(r.holdT !== null && r.holdT < s.starts[1] - 16 * 60 / 125, `held well before the bait (${r.holdT})`);
+  assert.ok(r.rec1 && r.rec1.t < s.starts[1], 'the first re-centre lands before the bait');
+  assert.ok(Math.abs(r.rec1.to / 125 - 1) <= 0.002, `re-centred on 125 (${r.rec1.to})`);
+  assert.equal(r.H.recentres, 1, 'one re-centre per hold entry');
+  assert.ok(Math.abs(r.H.bpm - r.rec1.to) < 0.01, `the centre stays where the re-centre put it (${r.H.bpm})`);
+  assert.ok((r.H.blocked['recentre:spent'] || 0) > 0, 'the bait run is refused as spent');
+  assert.ok(r.tempoSuspectT !== null && r.tempoSuspectT >= s.starts[1] && r.tempoSuspectT <= s.starts[1] + 16 * 60 / 127.5, `holdSuspect 'tempo' within 16 beats of the bait (${r.tempoSuspectT})`);
+  assert.equal(r.H.on, true, 'still held: holdSuspect is a hint only');
+});
+
+test('hold j (#244, the far target): refusals agreeing 2 % from the centre but more than 3 % from the hand do not re-centre: refused as far (hard)', (t) => {
+  // taps 1.2 % slow: the hand 123.52, the re-centre to 125; the bait 127.5 is 2 % from the centre, 3.2 % from the hand
+  const s = stepsScenario({ segs: [{ bpm: 125, beats: 96 }, { bpm: 127.5, beats: 128 }] }), r = runSteps(s, 1 / 1.012);
+  report(t, stepsLine('hold j', s, r));
+  assert.ok(r.holdT !== null && r.holdT < s.starts[1] - 16 * 60 / 125, `held well before the bait (${r.holdT})`);
+  assert.ok(r.rec1 && r.rec1.t < s.starts[1], 'the first re-centre lands before the bait');
+  assert.ok(Math.abs(127.5 / r.H.handBpm - 1) > C.holdSuspectTempo, `the bait is more than holdSuspectTempo from the hand (${r.H.handBpm})`);
+  assert.equal(r.H.recentres, 1, 'no re-centre onto the far target');
+  assert.ok(Math.abs(r.H.bpm - r.rec1.to) < 0.01, `the centre stays (${r.H.bpm})`);
+  assert.ok((r.H.blocked['recentre:far'] || 0) > 0, 'the bait run is refused as far (the hand is checked first)');
+  assert.equal(r.H.on, true);
 });
