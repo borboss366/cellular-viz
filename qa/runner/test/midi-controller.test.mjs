@@ -324,7 +324,10 @@ test('bridge: the page\'s own controls never reach the bus (button rows, pot row
   own.push([0xB6, 63, 127], [0xB6, 30, 1], [0xB0, 5, 64], [0xF0, 0x00, 0x20, 0x29, 0xF7], [0xBF, 4, 1], [0xBF, 37, 1]);
   for (const d of own) inp().onmidimessage({ data: d, timeStamp: 1 });
   assert.deepEqual(iac.sent, []);
-  assert.equal(clock.fixes.length, 8 - 1, 'the lower row still drives the clock (restart waits for its hold)');
+  // by kind: the 7 lower-row fixes (restart waits for its hold) and, since #239 c2, hold and autoHold from upper CC 37 / 38
+  const kinds = clock.fixes.map(f => f.kind);
+  assert.deepEqual(kinds.filter(k => k !== 'hold' && k !== 'autoHold'), ['tap', 'flip', 'half', 'x2', 'nudge', 'nudge', 'setOne'], 'the lower row still drives the clock (restart waits for its hold)');
+  assert.deepEqual(kinds.filter(k => k === 'hold' || k === 'autoHold'), ['hold', 'autoHold'], 'upper CC 37 / 38: hold and auto-hold, one each (presses only)');
   for (const d of own) assert.equal(M.forwarded(d), false, hex(d));
 });
 
