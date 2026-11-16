@@ -206,3 +206,15 @@ export function kickDropoutScenario({ sr = 44100, bpm = 124 } = {}) {
   s.gapStart = beats[64]; s.gapEnd = beats[96];
   return s;
 }
+// #244 (bound the re-centre, hold i / j / k): the groove at a sequence of steady tempos, back to back ({ bpm, beats }
+// each); s.starts[i] is segment i's first beat. Not in BUILD (the scenario list other tests walk).
+export function stepsScenario({ sr = 44100, segs = [{ bpm: 125, beats: 64 }] } = {}) {
+  const ivals = [];
+  for (const g of segs) for (let k = 0; k < g.beats; k++) ivals.push(60 / g.bpm);
+  const beats = gridFrom(ivals).slice(0, ivals.length), duration = beats[beats.length - 1] + 1, starts = [];
+  let k = 0;
+  for (const g of segs) { starts.push(beats[k]); k += g.beats; }
+  const s = make(`steps-${segs.map(g => g.bpm).join('-')}`, sr, { duration, beats, bpm: segs.map(g => g.bpm), hits: groove(beats) });
+  s.starts = starts; s.segs = segs;
+  return s;
+}

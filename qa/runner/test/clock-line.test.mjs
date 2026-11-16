@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { render } from './fixtures/tracker-scenarios.mjs';
+import { render, stepsScenario } from './fixtures/tracker-scenarios.mjs';
 import { holdLamps } from '../../../experiments/conductor.mjs';
 const require = createRequire(import.meta.url);
 const Clock = require('../../../experiments/clock.js');
@@ -552,4 +552,35 @@ test('D4: a tap is timed at its key event (eventTs), not when the handler runs; 
   for (let i = 0; i < 10; i++) { k.until(3.5 + i * 0.5); last = k.c.fix('tap', QA); }
   assert.equal(last.taps, 8);
   assert.ok(Math.abs(last.tapBpm - 120) < 0.5, `${last.tapBpm}`);
+});
+
+// #244 (bound the re-centre): one re-centre per hold entry or re-anchor, and a hand fix while held re-arms it, with
+// auto-hold off too (clock.js lineFix re-anchors on an accepted tap, flip, nudge or set-1 while held)
+test('hold k (#244, auto-hold off): held by fix(hold), a +1.8 % change re-centres once; a nudge re-arms it and the change back re-centres again; without the nudge it is refused as spent (hard)', () => {
+  const s = stepsScenario({ segs: [{ bpm: 125, beats: 64 }, { bpm: 127.25, beats: 64 }, { bpm: 125, beats: 64 }] });
+  const tN = s.starts[2] - 8 * 60 / 127.25;   // the nudge: 2 bars before the change back
+  const go = nudge => {
+    const seen = {};
+    const at = [{ t: 14, fn: c => { seen.hold = c.fix('hold', QA); seen.hand0 = c.trackerState.held.handBpm; } },
+      { t: tN, fn: c => { seen.recBefore = c.trackerState.held.recentres; seen.centre1 = c.trackerState.held.bpm; if (nudge) seen.nudge = c.fix('nudge', 10, QA); seen.hand1 = c.trackerState.held.handBpm; } }];
+    const { c } = runLine(s, { autoHold: false, at });
+    return { c, seen, H: c.trackerState.held };
+  };
+  const a = go(true), b = go(false);
+  const line = (k, x) => `${k}: held ${JSON.stringify(x.seen.hold && x.seen.hold.on)} at hand ${x.seen.hand0}; before the nudge time re-centres ${x.seen.recBefore}, centre ${x.seen.centre1}, hand after ${x.seen.hand1}; end re-centres ${x.H.recentres}, centre ${x.H.bpm}, hand ${x.H.handBpm}, last ${JSON.stringify(x.H.recentre)}, blocked ${JSON.stringify(x.H.blocked)}`;
+  console.log(`hold k ${s.name}: ${line('with nudge', a)} | ${line('without', b)}`);
+  for (const x of [a, b]) {
+    assert.equal(x.c.autoHold, false, 'auto-hold off');
+    assert.equal(x.seen.hold.on, true, 'held by fix(hold)');
+    assert.equal(x.seen.recBefore, 1, 'the +1.8 % change re-centred once before the nudge time');
+    assert.ok(Math.abs(x.seen.centre1 / 127.25 - 1) <= 0.005, `onto 127.25 (${x.seen.centre1})`);
+    assert.equal(x.H.on, true, 'still held');
+  }
+  assert.ok(a.seen.nudge && !a.seen.nudge.rejected, 'the nudge is accepted');
+  assert.ok(Math.abs(a.seen.hand1 - a.seen.centre1) < 0.01, `the nudge re-anchors the hand on the centre (${a.seen.hand1})`);
+  assert.equal(a.H.recentres, 2, 'the re-armed re-centre follows the change back');
+  assert.ok(Math.abs(a.H.bpm / 125 - 1) <= 0.005, `back on 125 (${a.H.bpm})`);
+  assert.equal(b.H.recentres, 1, 'without the nudge: one re-centre per hold entry');
+  assert.ok(Math.abs(b.H.bpm - b.seen.centre1) < 0.01, `the centre stays (${b.H.bpm})`);
+  assert.ok((b.H.blocked['recentre:spent'] || 0) > 0, 'the change back is refused as spent');
 });

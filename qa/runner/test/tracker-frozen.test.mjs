@@ -71,6 +71,12 @@ test('frozen tracker: CLOCK_CORPUS.md lists every DEFAULTS constant of the track
   // #240: the centre moves once to the median of stepEstimates agreeing hold-band refusals ('hold-recentre')
   assert.match(src, /ownPeriod\('hold-recentre', m, t\)/, 'the hold-recentre writer is there');
   assert.match(src, /bandRun\.slice\(-C\.stepEstimates\)/, 'over the last stepEstimates refused targets');
+  // #244 (bound the re-centre): within holdSuspectTempo of the hand's tempo handP (checked first, 'far'), at most one per
+  // hold entry or re-anchor ('spent'); a hand re-anchor re-arms it
+  assert.match(src, /const why = Math\.abs\(m \/ handP - 1\) > C\.holdSuspectTempo \? 'far' : !recentreArmed \? 'spent' : null;/, 'far before spent, against handP');
+  assert.match(src, /holdRecentres\+\+; recentreArmed = false;/, 'one re-centre, then spent');
+  assert.match(src, /handP = heldP; recentreArmed = true;/, 'a re-anchor re-arms it on the held tempo');
+  assert.match(src, /heldP \*= P \/ own\.P; handP \*= P \/ own\.P;/, 'x2 and /2 scale the hand tempo too');
   // #243 box run ce25192 (option A): the adopted step's phase error slews out at 35 % a beat, not 6 %
   assert.equal(code.stepSlewRate, 0.35);
   // #243 trace: a fit-step needs stepOnsets newer short fits within stepAgree, not one confirmation

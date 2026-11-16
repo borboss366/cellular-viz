@@ -370,6 +370,7 @@ for (const b of document.querySelectorAll('[data-fix]')) b.onclick = e => clock.
 
 let seenJumps = 0, lastState = null, lastShadowState = null, kickPrev = -200, kickAt = -1, lastSample = 0, beatFlashAt = -1;
 let lastHeld = false, lastSuspect = false;   // hand-held mode (#239): logged when they change ('hold', 'holdSuspect')
+let lastRecentres = 0;   // #244: each re-centre of the held tempo, logged as 'holdRecentre' when held.recentres grows
 const kicks = [];   // the phase wheel: each kick's time and its place on the clock's beat count when it was heard
 let lastFrameT = 0, wheelNow = null;
 const wheelLog = C.wheelHintLog();   // a 'wheel' log record when the hint changes and holds 0.5 s (the user 22:27)
@@ -465,6 +466,9 @@ function tick() {
   const hs = ts.held || null, heldOn = !!(hs && hs.on), suspectOn = heldOn && !!hs.suspect;
   if (heldOn !== lastHeld) { log.add('hold', { on: heldOn }); lastHeld = heldOn; }
   if (suspectOn !== lastSuspect) { log.add('holdSuspect', { on: suspectOn }); lastSuspect = suspectOn; }
+  const rcN = hs && Number.isFinite(hs.recentres) ? hs.recentres : 0;   // a fresh tracker (restart) starts again at 0
+  if (rcN > lastRecentres && hs.recentre) log.add('holdRecentre', { from: hs.recentre.from, to: hs.recentre.to, n: rcN });
+  lastRecentres = rcN;
   if (now - lastSample >= C.SAMPLE_S) {
     lastSample = now;
     const r = clock.read({ raw: true }), s = shadow.snapshot ? shadow.snapshot() : {};

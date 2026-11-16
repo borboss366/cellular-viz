@@ -151,7 +151,8 @@
     // holdNetMax beat. On each entry to free-run while held the period is set to the median of the accepted fit-long
     // targets of the last 2 x fitBeats beats since the latest lock (hold-median; none there: unchanged). When the last
     // stepEstimates refused targets agree within holdTempoTol and sit within holdSuspectTempo of the centre, the centre
-    // moves to their median once (hold-recentre: a tap tempo 1 % off no longer locks the tracker out). No jump is
+    // moves to their median once (hold-recentre: a tap tempo 1 % off no longer locks the tracker out; #244: only within
+    // holdSuspectTempo of the hand's tempo, once per hold entry or re-anchor, else holdSuspect 'tempo'). No jump is
     // booked, no other writer touches
     // the period. holdSuspect (a hint, nothing moves): the tracker's own free estimate disagrees with the held model by
     // more than holdSuspectTempo in tempo (octave-folded) or holdSuspectPhase beat in phase for more than
@@ -389,15 +390,30 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // (an accepted fit ends the run; a tick without a target is no result). When the last stepEstimates of them agree
     // within holdTempoTol of their median and that median is within holdSuspectTempo of the centre, the centre and the
     // period move to it once (writer hold-recentre; beats continuous, so the phase stays the hand's) and the run restarts.
+    // Bounded (#244, the reviewer's addendum, the user's go 16 Nov 14:37): the limit is measured against the hand's own
+    // tempo handP (set on each hold entry and re-anchor by the hand, scaled by the hand's x2 and /2, never by the
+    // tracker), not against heldP, and at most one re-centre runs per hold entry or re-anchor (a hand fix re-arms it).
+    // An agreeing run that is not re-centred ('far': median more than holdSuspectTempo from handP; 'spent': the one
+    // re-centre is used) moves nothing; it raises holdSuspect, reason 'tempo', until an accepted fit ends the run.
     let bandRun = [], holdRecentres = 0, holdRecentreLast = null;
+    let handP = 0, recentreArmed = true, bandSuspect = false, suspectWhy = null;
     function holdRecentre(t) {
       const W = bandRun.slice(-C.stepEstimates), m = median(W);
       if (W.length < C.stepEstimates || !(m > 0)) return false;
-      if (W.some(P => Math.abs(P / m - 1) > C.holdTempoTol) || Math.abs(m / heldP - 1) > C.holdSuspectTempo) return false;
+      if (W.some(P => Math.abs(P / m - 1) > C.holdTempoTol)) return false;
+      const why = Math.abs(m / handP - 1) > C.holdSuspectTempo ? 'far' : !recentreArmed ? 'spent' : null;
+      if (why) {
+        holdNote(`recentre:${why}`);
+        if (!bandSuspect) {
+          bandSuspect = true;
+          if (!holdSuspect) { holdSuspect = true; suspectWhy = 'tempo'; if (suspectSince === null) suspectSince = t; holdEvent(t, 'suspect', { tempo: true, phase: false, reason: 'tempo', run: why, runBpm: +(60 / m).toFixed(2) }); }
+        }
+        return false;
+      }
       const from = 60 / heldP;
       heldP = m;
       ownPeriod('hold-recentre', m, t);
-      bpm = 60 / own.P; bandRun = []; holdRecentres++;
+      bpm = 60 / own.P; bandRun = []; holdRecentres++; recentreArmed = false;
       holdRecentreLast = { t: +t.toFixed(3), from: +from.toFixed(3), to: +(60 / m).toFixed(3), n: W.length };
       holdEvent(t, 'recentre', { from: holdRecentreLast.from, to: holdRecentreLast.to });
       return true;
@@ -430,10 +446,13 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
           }
           tapHeld = false; ownSaved = null;
         }
-        holdSuspect = false; suspectSince = null;
+        holdSuspect = false; suspectSince = null; suspectWhy = null; bandSuspect = false;
         return true;
       }
-      if (held && !tapModel) return true;
+      if (held && !tapModel) {   // a re-anchor by the hand (flip, nudge, set-1): the hand's tempo is the held one, re-centre re-armed
+        handP = heldP; recentreArmed = true; bandSuspect = false; holdEvent(t, 'reanchor', { why, bpm: +(60 / heldP).toFixed(2) });
+        return true;
+      }
       if (tapModel) {   // the output follows the tap: it becomes the own model
         const out0 = outBeats(t);
         if (!ownSaved) ownSaved = { P: own.P, T0: own.T0, B0: own.B0 };   // the tracker's own model, for the release
@@ -445,6 +464,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (scheduled && scheduled.kind !== 'flip') { holdNote(`jump:${scheduled.kind}`); scheduled = null; }
       if (!everLocked) { everLocked = true; barOrigin = Math.round(ownBeats(t)); }
       held = true; heldP = own.P; holdSince = t; holdNet = 0; holdNetPeak = 0; holdEntries++; holdFits = []; bandRun = [];
+      handP = own.P; recentreArmed = true; bandSuspect = false;
       holdSuspect = false; suspectSince = null; holdObs = [];
       bpm = 60 / own.P;
       holdEvent(t, 'on', { why, bpm: +(60 / own.P).toFixed(2) });
@@ -492,17 +512,18 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         const R = Math.hypot(c, sn) / W.length, ph = Math.atan2(sn, c) / (2 * Math.PI);
         phaseDis = R < 0.5 || Math.abs(ph) > C.holdSuspectPhase;
       }
-      if (tempoDis || phaseDis) {
+      if (tempoDis || phaseDis || bandSuspect) {
         if (suspectSince === null) suspectSince = t;
-        else if (!holdSuspect && t - suspectSince > C.holdSuspectBeats * P) { holdSuspect = true; holdEvent(t, 'suspect', { tempo: tempoDis, phase: phaseDis, shadowBpm: holdShadow ? +holdShadow.bpm.toFixed(2) : null }); }
+        else if (!holdSuspect && t - suspectSince > C.holdSuspectBeats * P) { holdSuspect = true; suspectWhy = tempoDis || bandSuspect ? 'tempo' : 'phase'; holdEvent(t, 'suspect', { tempo: tempoDis, phase: phaseDis, reason: suspectWhy, shadowBpm: holdShadow ? +holdShadow.bpm.toFixed(2) : null }); }
       } else {
         if (holdSuspect) holdEvent(t, 'suspect-off', {});
-        suspectSince = null; holdSuspect = false;
+        suspectSince = null; holdSuspect = false; suspectWhy = null;
       }
     }
     const heldReport = () => ({ on: held, since: holdSince === null ? null : +holdSince.toFixed(3), bpm: heldP ? +(60 / heldP).toFixed(2) : null,
       nowBpm: own.P ? +(60 / own.P).toFixed(2) : null, net: +holdNet.toFixed(4), netPeak: +holdNetPeak.toFixed(4), clips: holdClips, trims: holdTrims,
-      suspect: holdSuspect, suspectSince: suspectSince === null ? null : +suspectSince.toFixed(3), shadowBpm: holdShadow ? +holdShadow.bpm.toFixed(2) : null,
+      suspect: holdSuspect, suspectWhy, suspectSince: suspectSince === null ? null : +suspectSince.toFixed(3), shadowBpm: holdShadow ? +holdShadow.bpm.toFixed(2) : null,
+      handBpm: handP ? +(60 / handP).toFixed(2) : null, recentreArmed,
       entries: holdEntries, blocked: { ...holdBlocked }, median: holdMedianLast, recentres: holdRecentres, recentre: holdRecentreLast, log: holdLog.slice(-16) });
     function slewMoved(step, pend0) {
       if (!step) return;
@@ -658,7 +679,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     }
     function ownPeriod(src, P, t) {
       if (held) {   // hand-held mode: only the F3 long fit (within holdTempoTol of the held tempo) and the hand's x2 / /2
-        if (src === 'hand-scale') heldP *= P / own.P;
+        if (src === 'hand-scale') { heldP *= P / own.P; handP *= P / own.P; }
         // fit-long: fitTick rejects a target outside the band ('hold-band'), so its rate-limited step stays inside it;
         // anything outside is refused here (never clamped onto the band edge)
         else if (src === 'fit-long' || src === 'hold-median' || src === 'hold-recentre') { if (Math.abs(P / heldP - 1) > C.holdTempoTol + 1e-9) { holdNote(`period:${src}-out`); return; } }
@@ -1187,7 +1208,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         return fitReject(t, 'hold-band', 60 / Pfit);
       }
       fit.lastValidT = t; fit.young = false;
-      if (held) { holdFits.push({ t, P: Pfit }); if (holdFits.length > 512) holdFits.shift(); bandRun = []; }   // hold-median's targets; an accepted fit ends a refused run
+      if (held) { holdFits.push({ t, P: Pfit }); if (holdFits.length > 512) holdFits.shift(); bandRun = []; bandSuspect = false; }   // hold-median's targets; an accepted fit ends a refused run (and its 'tempo' hint)
       const dt = Math.min(2 / C.fitHz, Math.max(0, t - (fit.last ? fit.last.t : t - 1 / C.fitHz)));
       fit.last = { t, bpm: +(60 / Pfit).toFixed(3), n: pts.length, span, coverage: +(distinct / span).toFixed(3) };
       let newP;

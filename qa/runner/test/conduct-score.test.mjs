@@ -345,6 +345,7 @@ test('schema v3 (#239 hand-held mode): hold / holdSuspect / holdPress parse; tim
   v3.push({ type: 'holdPress', ctx: 0.5, kind: 'autoHold', origin: 'fix:key', on: true, restored: true },
     { type: 'holdPress', ctx: 11, kind: 'hold', origin: 'fix:key', on: true, idx: 0 }, { type: 'hold', ctx: 11, on: true },
     { type: 'holdSuspect', ctx: 15, on: true }, { type: 'holdSuspect', ctx: 17, on: false },
+    { type: 'holdRecentre', ctx: 20, from: 126.51, to: 125, n: 1 },
     { type: 'hold', ctx: 31, on: false }, { type: 'holdPress', ctx: 40, kind: 'autoHold', origin: 'fix:controller', on: false, idx: 0 });
   const parsed = C.parseLog(v3.map(r => JSON.stringify(r)).join('\n') + '\n');
   assert.equal(parsed.filter(r => r.type === 'holdPress').length, 3);
@@ -355,15 +356,19 @@ test('schema v3 (#239 hand-held mode): hold / holdSuspect / holdPress parse; tim
   assert.ok(h.inFreePct > 20 && h.inFreePct < 30, `free time: before 11 s in, after 31 s loose (${h.inFreePct})`);
   assert.deepEqual([h.suspects, h.suspectS], [1, 2]);
   assert.deepEqual(h.presses, { hold: 1, autoHold: 1 }, 'the restored auto-hold at load is not a press');
+  assert.equal(h.recentres, 1, 'the re-centre (#244) is counted per track');
   assert.equal(tr.fixes.length, 0, 'hold presses are not hand fixes');
   assert.equal(res.session.fixes, 0);
   const md = C.renderReport(res);
   assert.match(md, /## Hand-held mode \(report-only\)/);
   assert.match(md, /\| c1 \| 20 \| 33\.33 \| 100 \| /);
+  assert.match(md, /\| re-centres \|/);
+  assert.match(md, /\| c1 \| 20 \|[^\n]*\| 1 \|$/m, 'the re-centres column');
   // a log without hold records: never held, no section (older reports stay as they were)
   const plain = C.scoreSession(records, info);
-  assert.deepEqual(plain.tracks[0].conducted.hold, { heldS: 0, heldPct: 0, inHeldPct: null, inFreePct: plain.tracks[0].conducted.inPct, suspects: 0, suspectS: 0, presses: { hold: 0, autoHold: 0 } });
+  assert.deepEqual(plain.tracks[0].conducted.hold, { heldS: 0, heldPct: 0, inHeldPct: null, inFreePct: plain.tracks[0].conducted.inPct, suspects: 0, suspectS: 0, presses: { hold: 0, autoHold: 0 }, recentres: 0 });
   assert.doesNotMatch(C.renderReport(plain), /Hand-held mode/);
   assert.deepEqual(C.checkRecord({ type: 'hold', ctx: 1 }), ['hold: on missing']);
   assert.deepEqual(C.checkRecord({ type: 'holdPress', ctx: 1, kind: 'hold' }), ['holdPress: origin missing']);
+  assert.deepEqual(C.checkRecord({ type: 'holdRecentre', ctx: 1, from: 126 }), ['holdRecentre: to missing']);
 });
