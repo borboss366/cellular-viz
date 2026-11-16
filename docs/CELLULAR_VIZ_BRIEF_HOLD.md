@@ -103,3 +103,39 @@ than that, the finding is about transitions, not about hold.
 Any new estimator rule; the parked side gate and tempo gate (#221 F2);
 Pro DJ Link (if the friend's players have Link, it becomes a source
 above this one and hold is the fallback).
+
+## Addendum, 16 Nov: bound the re-centre (reviewer, after #239 and #241)
+
+**Finding.** `holdRecentre` moves the held tempo when the last
+`stepEstimates` refused fit-long targets agree. Its 3 % limit
+(`holdSuspectTempo`) is measured against the current `heldP`, which the
+re-centre itself moves, and nothing limits how many times it runs. The
+held tempo can therefore walk in steps of up to 3 %. That is the
+tempo-excursion route (#236, house-01 and house-02) reopened inside
+hold. The only test, hold h, covers the good case.
+
+**Rule.**
+1. Keep the hand's tempo: `handP`, set on each entry to hold and on
+   each re-anchor (tap, flip, nudge, set-1), never by the tracker.
+2. A re-centre is allowed only when the target is within
+   `holdSuspectTempo` of `handP` (not of `heldP`).
+3. At most one re-centre per hold entry or re-anchor. A hand fix
+   re-arms it.
+4. A later run of agreeing refusals does not move anything. It raises
+   `holdSuspect` (reason `tempo`), and the hand decides.
+
+No new constant.
+
+**Tests (node, hard).**
+- hold h stays green: taps 1.2 % fast re-centre once and hold within
+  35 ms after 32 bars.
+- hold i, the walk: after one re-centre, a sustained bait whose fits
+  agree 2 % further away for 32 bars. The held tempo does not move
+  again, `recentres` stays 1, `holdSuspect` raises within 16 beats.
+- hold j, the far target: refusals agreeing 2.5 % from the current
+  centre but 3.5 % from `handP` do not re-centre.
+- hold k, re-arm: a re-anchor by nudge after a re-centre allows one
+  more.
+
+**Report.** `snapshot().hold` gains `handBpm` and `recentres`; the
+scorer prints re-centres per track.
