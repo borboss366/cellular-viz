@@ -155,6 +155,9 @@
     // more than holdSuspectTempo in tempo (octave-folded) or holdSuspectPhase beat in phase for more than
     // holdSuspectBeats beats
     holdWindow: 0.125, holdTempoTol: 0.01, holdNetMax: 0.25, holdSuspectTempo: 0.03, holdSuspectPhase: 0.25, holdSuspectBeats: 8,
+    // the evidence gate (16 Nov, #242 trace): not held, a locked fit-long write more than evidenceTempo from the home
+    // tempo, moving away from it, needs stepEstimates agreeing fit-long targets (holdTempoTol); else refused 'evidence'
+    evidenceTempo: 0.02,
   };
 
   // ---------------------------------------------------------------- analysis (worklet and node)
@@ -388,6 +391,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
     // within holdTempoTol of their median and that median is within holdSuspectTempo of the centre, the centre and the
     // period move to it once (writer hold-recentre; beats continuous, so the phase stays the hand's) and the run restarts.
     let bandRun = [], holdRecentres = 0, holdRecentreLast = null;
+    let evRun = [];   // the evidence gate's accepted fit-long targets since the latest lock (see evidenceRefuses)
     function holdRecentre(t) {
       const W = bandRun.slice(-C.stepEstimates), m = median(W);
       if (W.length < C.stepEstimates || !(m > 0)) return false;
@@ -543,7 +547,7 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       if (s !== state) {
         state = s; stateLog.push({ t, state: s });
         if (s !== 'locked') { netRun = 0; netLastBeat = null; }   // fix A3b: the confirming run needs a lock
-        if (s === 'locked') lockedSince = t;   // hold-median's window starts at the latest lock
+        if (s === 'locked') { lockedSince = t; evRun = []; }   // hold-median's window and the evidence gate's targets start at the latest lock
         if (s === 'free-run' && held && own.P) holdMedian(t);   // hand-held mode only
         if (s === 'locked') dissent = [];   // fix A3c: any lock (a landed jump too) ends a dissent run
         if (s === 'locked') { laneHold = false; if (firstLockT !== null) rescanDue = t; }   // F4: every re-acquire scans
@@ -1061,6 +1065,22 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       return decisionLast;
     }
     function fitReject(t, why, cand) { fit.rejects[why] = (fit.rejects[why] || 0) + 1; tempoDecision(t, 'fit', cand, false, why); }
+    // the evidence gate (#242 trace, the user's go 16 Nov 13:26; Sandstorm 148-156 s: 12 fit-long writes walked a locked
+    // 136 to 130.6 and 128.2 on 9-11 onsets after a re-acquire). Not held: a fit-long write (rate-limited or the long
+    // fit's own step) that takes the tempo more than evidenceTempo from the home tempo (trustedBpm), and further from it
+    // than it is now, needs the last stepEstimates accepted fit-long targets within holdTempoTol of their median and this
+    // fit's target within holdTempoTol of that median; otherwise the fit is refused, reason 'evidence'. A write towards
+    // home always passes; with no home yet there is no gate. The home is octave-folded (x1/2, x1 or x2, the nearest to
+    // the current tempo: a hand x2 does not move trustedBpm). The targets restart at every lock
+    function evidenceRefuses(newP, Pfit) {
+      if (!(trustedBpm > 0)) return false;
+      const cur = 60 / own.P, H = trustedBpm * [0.5, 2].reduce((a, k) => (Math.abs(Math.log(cur / (trustedBpm * k))) < Math.abs(Math.log(cur / (trustedBpm * a))) ? k : a), 1);
+      const d1 = Math.abs(60 / newP / H - 1), d0 = Math.abs(cur / H - 1);
+      if (d1 <= C.evidenceTempo || d1 <= d0) return false;
+      const W = evRun.slice(-C.stepEstimates), m = median(W);
+      if (W.length < C.stepEstimates || !(m > 0)) return true;
+      return W.some(p => Math.abs(p / m - 1) > C.holdTempoTol) || Math.abs(Pfit / m - 1) > C.holdTempoTol;
+    }
     // one fit: the in-window broadband onsets of the last fitBeats beats, indexed from the newest at the current
     // period, the inliers' Theil-Sen slope = the period, their median intercept = where the beat is
     // the step path's short check: the last stepOnsets strong broadband onsets, chained newest to oldest on gaps of a
@@ -1182,20 +1202,22 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
       }
       fit.lastValidT = t; fit.young = false;
       if (held) { holdFits.push({ t, P: Pfit }); if (holdFits.length > 512) holdFits.shift(); bandRun = []; }   // hold-median's targets; an accepted fit ends a refused run
+      else { evRun.push(Pfit); if (evRun.length > C.stepEstimates) evRun.shift(); }   // the evidence gate's targets (not held)
       const dt = Math.min(2 / C.fitHz, Math.max(0, t - (fit.last ? fit.last.t : t - 1 / C.fitHz)));
       fit.last = { t, bpm: +(60 / Pfit).toFixed(3), n: pts.length, span, coverage: +(distinct / span).toFixed(3) };
-      let newP;
+      let newP, isStep = false;
       if (Math.abs(Pfit / P - 1) > C.stepPct) {
-        if (++fit.stepRun >= C.stepEstimates && t - fit.stepAt >= C.stepCooldown) {
-          newP = Pfit; fit.stepRun = 0; fit.steps++; fit.stepAt = t; slewBoostUntil = t + C.stepSlewBeats * Pfit;
-          tempoDecision(t, 'step', 60 / Pfit, true); tempoMoves++;
-        }
+        if (++fit.stepRun >= C.stepEstimates && t - fit.stepAt >= C.stepCooldown) { newP = Pfit; isStep = true; }
       } else fit.stepRun = 0;
       if (newP === undefined) {
         const lim = C.tempoRateMax * dt * P;   // the rate limit: at most tempoRateMax of the period per second
         newP = P + Math.max(-lim, Math.min(lim, Pfit - P));
-        tempoDecision(t, 'fit', 60 / Pfit, true);
       }
+      if (!held && evidenceRefuses(newP, Pfit)) return fitReject(t, 'evidence', 60 / Pfit);
+      if (isStep) {
+        fit.stepRun = 0; fit.steps++; fit.stepAt = t; slewBoostUntil = t + C.stepSlewBeats * Pfit;
+        tempoDecision(t, 'step', 60 / Pfit, true); tempoMoves++;
+      } else tempoDecision(t, 'fit', 60 / Pfit, true);
       if (Math.abs(newP - P) > 1e-12) { ownPeriod('fit-long', newP, t); bpm = 60 / newP; fit.adjusts++; }
       // the phase: the model's beat onto the fitted line (as a pending correction, slewed under the 3 % rule); not
       // while the short check holds a step candidate, nor while the newest onset already sits off the long line by

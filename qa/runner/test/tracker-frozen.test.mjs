@@ -71,6 +71,10 @@ test('frozen tracker: CLOCK_CORPUS.md lists every DEFAULTS constant of the track
   // #240: the centre moves once to the median of stepEstimates agreeing hold-band refusals ('hold-recentre')
   assert.match(src, /ownPeriod\('hold-recentre', m, t\)/, 'the hold-recentre writer is there');
   assert.match(src, /bandRun\.slice\(-C\.stepEstimates\)/, 'over the last stepEstimates refused targets');
+  // #242 trace: not held, a locked fit-long write more than evidenceTempo from home needs stepEstimates agreeing targets
+  assert.equal(code.evidenceTempo, 0.02);
+  assert.match(src, /if \(!held && evidenceRefuses\(newP, Pfit\)\) return fitReject\(t, 'evidence', 60 \/ Pfit\)/, 'the evidence gate is in fitTick');
+  assert.match(src, /evRun\.slice\(-C\.stepEstimates\)/, 'over the last stepEstimates accepted targets');
 });
 
 test('frozen tracker: the module constants and the source sha256 match the doc; the frozen sentence points at the list', () => {

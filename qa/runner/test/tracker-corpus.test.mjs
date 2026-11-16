@@ -431,7 +431,11 @@ function gateRun(mono, lib) {
       if (blk !== lastBlock) { lastBlock = blk; applied.push({ t: tt, cum: tr.phaseApplied, state: tr.state }); }
     }
     for (const at of counter(t => tr.beatsAt(t), b => tr.timeOf(b), tt)) beats.push(at);
-    samples.push({ t: tt, bpm: tr.bpm || null, conf: tr.confidence, state: tr.state });
+    // the latest short-fit target (fit-step's evidence), the latest fit-long target and the 'evidence' refusals so far
+    // (#242 follow-up; read only when the tracker has a tempo report: main 501cfe1's has none)
+    const tRep = tr.tempoReport || null;
+    samples.push({ t: tt, bpm: tr.bpm || null, conf: tr.confidence, state: tr.state,
+      sf: tRep && tRep.short ? tRep.short.last : null, lf: tRep ? tRep.fit : null, ev: tRep && tRep.refusedBy ? (tRep.refusedBy.evidence || 0) : null });
   }, lib);
   // the side at the first lock (half-beat fix A: the two bin weights, the brightness, the choice) and the side moves
   const side = tr.snapshot ? tr.snapshot().lane.side : null;
@@ -450,7 +454,8 @@ function gateRun(mono, lib) {
 }
 // c1c (the moves were the period, not phase pulls): the tracker's bpm against the reference grid's local bpm, per
 // step s, with every writer of the period in the window (count, net bpm change, largest single change)
-const TEMPO_DIAG = { 'house-01': [40, 95, 1], 'house-02': [55, 80, 1], 'sicko-mode': [0, GATE_SECS, 15] };
+// #242 trace follow-up (the evidence gate): sincere's 30 s and dj-set-brejcha's 140 s excursions, Sandstorm 140-176 s
+const TEMPO_DIAG = { 'house-01': [40, 95, 1], 'house-02': [55, 80, 1], 'sicko-mode': [0, GATE_SECS, 15], 'sincere': [24, 40, 1], 'dj-set-brejcha': [130, 160, 1], 'sandstorm': [140, 176, 1] };
 function gridSecs(gridBeats) { return (gridBeats || []).map(b => (b && Number.isFinite(b.ms) ? b.ms / 1000 : NaN)).filter(Number.isFinite).sort((p, q) => p - q); }
 function refBpm(G, t0, t1) {   // beats of the grid in [t0, t1) over their span; null with fewer than 2
   const B = G.filter(x => x >= t0 && x < t1);
@@ -462,7 +467,14 @@ function tempoText(run, gridBeats, [from, to, step]) {
   for (let w0 = from; w0 < to; w0 += step) {
     const W = S.filter(x => x.t >= w0 && x.t < w0 + step && x.bpm).map(x => x.bpm).sort((p, q) => p - q);
     const tb = W.length ? W[W.length >> 1] : null, rb = refBpm(G, w0 - (step < 4 ? 1.5 : 0), w0 + step + (step < 4 ? 1.5 : 0));
-    rows.push(`${w0}s ${f(tb)}/${f(rb)}${tb && rb ? ` (${((tb / rb - 1) * 100).toFixed(1)} %)` : ''}`);
+    // at the window's end: the latest short-fit target (bpm, or why none), the latest fit-long target, the 'evidence'
+    // refusals inside the window
+    const inW = S.filter(x => x.t >= w0 && x.t < w0 + step), z = inW.length ? inW[inW.length - 1] : null;
+    const prevEv = S.filter(x => x.t < w0 && x.ev !== null).map(x => x.ev).pop() || 0;
+    const sfT = z && z.sf ? (z.sf.bpm ? `${z.sf.bpm.toFixed(2)}@${z.sf.t.toFixed(1)}` : `none (${z.sf.why})`) : '-';
+    const lfT = z && z.lf ? `${z.lf.bpm.toFixed(2)} n${z.lf.n}@${z.lf.t.toFixed(1)}` : '-';
+    const evT = z && z.ev !== null ? ` ev ${z.ev - prevEv}` : '';
+    rows.push(`${w0}s ${f(tb)}/${f(rb)}${tb && rb ? ` (${((tb / rb - 1) * 100).toFixed(1)} %)` : ''} short ${sfT} long ${lfT}${evT}`);
   }
   const P = (run.periodLog || []).filter(p => p.t >= from && p.t < to), by = {};
   for (const p of P) {
@@ -471,7 +483,7 @@ function tempoText(run, gridBeats, [from, to, step]) {
     b.n++; b.net += d; if (Math.abs(d) > Math.abs(b.big)) { b.big = d; b.bigAt = p.t; }
   }
   const writers = Object.entries(by).sort((a, b) => Math.abs(b[1].net) - Math.abs(a[1].net)).map(([k, v]) => `${k} x${v.n} net ${v.net >= 0 ? '+' : ''}${v.net.toFixed(2)} bpm (largest ${v.big >= 0 ? '+' : ''}${v.big.toFixed(2)} at ${v.bigAt === null ? '-' : v.bigAt.toFixed(1) + ' s'})`);
-  return `tempo ${from}-${to} s per ${step} s (tracker bpm / ref grid bpm, the ref over the window${step < 4 ? ' +-1.5 s' : ''}): ${rows.join(' | ')}; writers of the period in the window: ${writers.join('; ') || 'none'}`;
+  return `tempo ${from}-${to} s per ${step} s (tracker bpm / ref grid bpm, the ref over the window${step < 4 ? ' +-1.5 s' : ''}; at the window's end the latest short-fit target, the latest fit-long target with its onsets, ev = fit-long 'evidence' refusals in the window): ${rows.join(' | ')}; writers of the period in the window: ${writers.join('; ') || 'none'}`;
 }
 // the side track (house off-beat diagnosis, 15 Nov; logging only on this commit): per 15 s window the largest |sideNet|
 // (phase moved since the last confirmed lock) and the phase moved since the first lock at the window's end; then the
