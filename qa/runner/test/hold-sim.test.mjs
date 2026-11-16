@@ -34,6 +34,9 @@ export const SIM_IDS = ['house-01', 'house-02', 'house-03', 'house-04', 'house-0
   'voodoo-people', 'sincere', 'dj-set-brejcha', 'opus'];
 export const MODES = ['free', 'off', 'on'];
 const SIM_SECS = 180, REACT_BARS = 2, FLIP_BEATS = 4, TEMPO_BEATS = 8, TEMPO_TOL = 0.03, SIDE = 0.375, COOL_BEATS = 16, UNDO_S = 60;
+// the wrong-hold probe (Orchestrator 16 Nov, after the b5bc2ca run): on these tracks, hand modes off and on, one line
+// every 8 reference beats after the first lock and one per press (report-only; nothing in the hand or the clock changes)
+export const PROBE_IDS = ['house-02', 'opus', 'voodoo-people'];
 const QA = { origin: 'qa' };
 function say(t, line) { console.log(`# ${line}`); t.diagnostic(`corpus: report: ${line}`); }
 
@@ -66,13 +69,17 @@ export function markUndone(presses, kind, t) {
 }
 
 /** one clock over the frames with the hand of `mode`: output beats, samples, hold / fix records, presses */
-function simulate(frames, G, mode) {
+function simulate(frames, G, mode, probe = false) {
   const ctx = fakeContext();
   let perf = 0;
   const c = Clock.create({ source: 'line', settings: SETTINGS(), audioContext: () => ctx, timers: false, pump: true, now: () => perf,
     lineFeed: true, keys: false, autoHold: mode === 'on' });
   c.start();
   const hand = mode !== 'free', st = { offRun: 0, tempoRun: 0 }, presses = [], recs = [], beats = [], samples = [];
+  const rows = [], pressRows = [];   // the probe's lines (probe only)
+  let bandSeen = 0, pressAt = null;
+  const tempoRep = () => (c.line && c.line.tracker && c.line.tracker.tempoReport) || {};
+  const refBpm8 = k => { const iv = []; for (let j = Math.max(1, k - 7); j <= k; j++) iv.push(G[j] - G[j - 1]); iv.sort((a, b) => a - b); return iv.length ? 60 / iv[iv.length >> 1] : null; };
   const counter = CD.beatCounter();
   let gi = 0, plan = null, coolUntil = -Infinity, everLocked = false, fixId = 0, lastHeld = false, lastSus = false, nextS = 0;
   const localP = k => { const iv = []; for (let j = Math.max(1, k - 3); j <= k; j++) iv.push(G[j] - G[j - 1]); iv.sort((a, b) => a - b); return iv[iv.length >> 1]; };
@@ -83,13 +90,26 @@ function simulate(frames, G, mode) {
     if (ts.state === 'locked') everLocked = true;
     // a planned press, due now: the flip, or the next of the 4 taps
     if (plan && f.t >= plan.times[plan.i]) {
+      if (probe && plan.i === 0) pressAt = { t: f.t, kind: plan.kind, bpm: ts.bpm, held: !!(ts.held && ts.held.on), heldBpm: ts.held ? ts.held.bpm : null, ref: refBpm8(Math.max(1, G.findIndex(x => x > f.t) - 1)) };
       const kind = plan.kind === 'flip' ? 'flip' : 'tap', j = c.fix(kind, QA);
       recs.push({ type: 'fix', ctx: f.t, id: ++fixId, kind, origin: 'qa', ...(j && j.rejected ? { rejected: j.rejected } : {}) });
-      if (++plan.i >= plan.times.length) { presses.push({ kind: plan.kind, at: f.t, undone: false }); coolUntil = f.t + COOL_BEATS * plan.P; plan = null; st.offRun = 0; st.tempoRun = 0; }
+      if (probe && j && j.tapBpm) pressAt.tapBpm = j.tapBpm;
+      if (probe && j && j.rejected) pressAt.rejected = j.rejected;
+      if (++plan.i >= plan.times.length) {
+        if (probe) { const a = c.trackerState || {}; pressRows.push({ ...pressAt, after: { held: !!(a.held && a.held.on), heldBpm: a.held ? a.held.bpm : null, bpm: a.bpm } }); }
+        presses.push({ kind: plan.kind, at: f.t, undone: false }); coolUntil = f.t + COOL_BEATS * plan.P; plan = null; st.offRun = 0; st.tempoRun = 0;
+      }
     }
     // the hand reads every reference beat that has passed
     while (gi < G.length && G[gi] <= f.t) {
       const k = gi++, t = G[k];
+      if (probe && everLocked && k >= 1 && k % 8 === 0) {   // the probe row (read only)
+        const rep = tempoRep(), band = (rep.refusedBy && rep.refusedBy['hold-band']) || 0, b0 = c.baseBeats(t);
+        const e = b0 >= 0 ? b0 - Math.round(b0) : null, h = ts.held || null;
+        rows.push({ t, k, bpm: ts.bpm, ref: refBpm8(k), held: !!(h && h.on), heldBpm: h ? h.bpm : null, fit: rep.fit ? rep.fit.bpm : null,
+          dec: rep.last ? `${rep.last.path}${rep.last.ok ? '' : ' ' + (rep.last.why || 'rejected')}` : '-', band: band - bandSeen, e, P: G[k] - G[k - 1], suspect: !!(h && h.suspect), state: ts.state });
+        bandSeen = band;
+      }
       if (!hand || k < 1 || !everLocked || plan || t < coolUntil) continue;
       const b = c.baseBeats(t), P = localP(k), bpm = ts.bpm;
       if (!(b >= 0) || !(bpm > 0)) continue;
@@ -111,7 +131,22 @@ function simulate(frames, G, mode) {
       if (sus !== lastSus) { recs.push({ type: 'holdSuspect', ctx: f.t, on: sus }); lastSus = sus; }
     }
   }
-  return { beats, samples, recs, presses };
+  return { beats, samples, recs, presses, rows, pressRows };
+}
+const p1 = x => (x === null || x === undefined || !Number.isFinite(x) ? '-' : x.toFixed(2));
+/** the probe's lines for one track and mode */
+function probeLines(id, mode, run) {
+  const out = [];
+  const off = (x, r) => (Number.isFinite(x) && Number.isFinite(r) && r > 0 ? `${(100 * (x / r - 1)).toFixed(2)} %` : '-');
+  for (const r of run.rows) {
+    out.push(`hold-sim probe ${id} ${mode} beat ${r.k} (${r.t.toFixed(1)} s): clock ${p1(r.bpm)} bpm, ref ${p1(r.ref)} (${off(r.bpm, r.ref)}); held ${r.held ? `yes at ${p1(r.heldBpm)} (centre vs ref ${off(r.heldBpm, r.ref)})` : 'no'}`
+      + `; fit-long target ${p1(r.fit)}, last decision ${r.dec}, hold-band rejects in these 8 beats ${r.band}; phase ${r.e === null ? '-' : `${r.e >= 0 ? '+' : ''}${r.e.toFixed(3)} beat (${(r.e * r.P * 1000).toFixed(0)} ms)`}; ${r.state}; suspect ${r.suspect}`);
+  }
+  for (const p of run.pressRows) {
+    out.push(`hold-sim probe ${id} ${mode} press ${p.kind} at ${p.t.toFixed(1)} s: before clock ${p1(p.bpm)} bpm, ref ${p1(p.ref)} (${off(p.bpm, p.ref)}), held ${p.held ? p1(p.heldBpm) : 'no'}`
+      + `${p.tapBpm ? `; tap tempo ${p1(p.tapBpm)} (${off(p.tapBpm, p.ref)} vs ref)` : ''}${p.rejected ? `; a tap rejected (${p.rejected})` : ''}; after: held ${p.after.held ? `yes, centre ${p1(p.after.heldBpm)} (${off(p.after.heldBpm, p.ref)} vs ref)` : 'no'}, clock ${p1(p.after.bpm)}`);
+  }
+  return out;
 }
 /** the clock's run → the conductor scorer's track (as the gate table's gateScore, with the hold and fix records) */
 function score(run, id, row, grid, secs) {
@@ -170,7 +205,9 @@ test(`hold-sim: the simulated hand on the bad tracks, free / hand with auto-hold
     for (let i = 0; i < d.mono.length; i += 128) an.process(d.mono.subarray(i, Math.min(d.mono.length, i + 128)), i / SR);
     const G = grid.beats.map(b => (b && Number.isFinite(b.ms) ? b.ms / 1000 : NaN)).filter(Number.isFinite).sort((p, q) => p - q);
     for (const mode of MODES) {
-      const run = simulate(frames, G, mode), tr = score(run, id, rows.get(id) || null, grid, secs);
+      const probe = PROBE_IDS.includes(id) && mode !== 'free';
+      const run = simulate(frames, G, mode, probe), tr = score(run, id, rows.get(id) || null, grid, secs);
+      if (probe) for (const line of probeLines(id, mode, run)) say(t, `${line} [report-only]`);
       if (!tr.scored) { say(t, `hold-sim ${id} ${mode}: not scored (${tr.reason})`); continue; }
       const c = tr.conducted, h = c.hold || { heldS: 0, inHeldPct: null, inFreePct: null, suspects: 0, suspectS: 0 };
       const flips = run.presses.filter(p => p.kind === 'flip'), taps = run.presses.filter(p => p.kind === 'taps');
