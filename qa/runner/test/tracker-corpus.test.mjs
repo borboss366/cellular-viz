@@ -410,7 +410,9 @@ const SCORE = await import('../../conduct-score.mjs');
 const CD = await import('../../../experiments/conductor.mjs');
 const GATE_SECS = 180;
 /** one tracker over the audio: its output beats (as the conductor logs the shadow's), 0.1 s samples, first lock */
-function gateRun(mono, lib) {
+function gateRun(mono, lib, diag = false) {
+  const dg = [], dgOn = [];   // the F3 / creep diagnosis (diag only): 0.1 s samples, every broadband onset with its e when detected
+  let dgSeen = -Infinity, dgLaneAt = -Infinity, dgLow = null;
   const beats = [], samples = [], counter = CD.beatCounter(), applied = [], decided = [], sideS = [];
   let lockT = null, lastBlock = null, nRel = 0, nRef = 0;
   const tr = track(mono, (tr, tt) => {
@@ -432,6 +434,16 @@ function gateRun(mono, lib) {
     }
     for (const at of counter(t => tr.beatsAt(t), b => tr.timeOf(b), tt)) beats.push(at);
     samples.push({ t: tt, bpm: tr.bpm || null, conf: tr.confidence, state: tr.state });
+    if (diag) {
+      // every new broadband onset with its phase against the model then (e, beats; the PLL's window is +-1/4 beat)
+      const ons = tr.onsets || [];
+      for (const o of ons) if (o.t > dgSeen) { dgOn.push({ t: o.t, s: o.s, e: tr.bpm ? fracB(tr.beatsAt(o.t)) : null }); dgSeen = o.t; }
+      if (tt - dgLaneAt >= 1) { dgLaneAt = tt; const l = tr.snapshot ? tr.snapshot().lane : null; dgLow = l && l.low ? { on: l.low.on, off: l.low.off, R: l.low.R } : null; }
+      const rep = tr.tempoReport || {}, P = tr.bpm ? 60 / tr.bpm : null;
+      const inFit = P ? ons.filter(o => o.t > tt - T.DEFAULTS.fitBeats * P).length : null;
+      dg.push({ t: tt, bpm: tr.bpm || null, ownBpm: tr.ownBpm || null, conf: tr.confidence, state: tr.state, applied: typeof tr.phaseApplied === 'number' ? tr.phaseApplied : null,
+        fit: rep.fit ? { bpm: rep.fit.bpm, n: rep.fit.n, t: rep.fit.t } : null, dec: rep.last || null, inFit, low: dgLow });
+    }
   }, lib);
   // the side at the first lock (half-beat fix A: the two bin weights, the brightness, the choice) and the side moves
   const side = tr.snapshot ? tr.snapshot().lane.side : null;
@@ -446,11 +458,56 @@ function gateRun(mono, lib) {
   for (const n of net) jumps.push({ at: n.at, kind: `${n.kind}-${n.path.replace(' ', '-')}`, d: n.applied });
   jumps.sort((x, y) => x.at - y.at);
   const states = (tr.stateLog || []).map(s => ({ t: s.t, state: s.state }));
-  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states, applied, decided, net, dissent, sideS, sideEnd: tr.sideTrack || null, periodLog: (tr.periodLog || []).slice() };
+  return { beats, samples, lockT, side, sideMoves: tr.notes ? tr.notes.filter(n => n.kind === 'side').length : null, jumps, states, applied, decided, net, dissent, sideS, sideEnd: tr.sideTrack || null, periodLog: (tr.periodLog || []).slice(), dg, dgOn };
 }
 // c1c (the moves were the period, not phase pulls): the tracker's bpm against the reference grid's local bpm, per
 // step s, with every writer of the period in the window (count, net bpm change, largest single change)
 const TEMPO_DIAG = { 'house-01': [40, 95, 1], 'house-02': [55, 80, 1], 'sicko-mode': [0, GATE_SECS, 15] };
+// Diagnostics, the user 16 Nov 13:26 (report-only, the tracker unchanged):
+// A. the Sandstorm F3 tempo row (#232: the loss is in 120-180 s): every step s in [from, to), the clock's bpm against
+//    the grid's, fit-long's target and the last tempo decision, every period write in the step, state, confidence and
+//    the broadband onsets in the fit window: which writer, or which missing fit, puts the tempo more than 2 % off
+const F3_DIAG = { 'sandstorm': [100, GATE_SECS, 4] };
+// B. the slow creep (the phase walk while locked): every 8 reference beats in [from, to), the phase error against the
+//    grid, the PLL's applied correction in those beats, the broadband onsets the PLL can use (|e| <= 1/4 beat: their
+//    median e) and the share of all broadband onsets near 0 vs near 1/2, the low lane's on / off weight, tempo vs the
+//    grid, the state: does the PLL pull toward the off-beat bass or hat, or does the tempo drift
+const CREEP_DIAG = { 'sincere': [0, GATE_SECS], 'dj-set-brejcha': [0, GATE_SECS], 'house-02': [60, 75] };
+const dgAt = (run, t) => { let best = null; for (const s of run.dg) { if (s.t > t + 1e-9) break; best = s; } return best; };
+const fx = (x, d = 2) => (x === null || x === undefined || !Number.isFinite(x) ? '-' : (+x).toFixed(d));
+const decText = d => (d ? `${d.path}${d.cand ? ' ' + fx(d.cand) : ''} ${d.ok ? 'ok' : 'rejected' + (d.why ? ' (' + d.why + ')' : '')} @${fx(d.t, 1)}` : '-');
+function f3DiagLines(run, gridBeats, [from, to, step]) {
+  const G = gridSecs(gridBeats), out = [];
+  for (let t0 = from; t0 < to; t0 += step) {
+    const s = dgAt(run, t0 + step), ref = refBpm(G, t0, t0 + step), off = s && s.bpm && ref ? 100 * (s.bpm / ref - 1) : null;
+    const W = (run.periodLog || []).filter(p => p.t >= t0 && p.t < t0 + step);
+    const by = {};
+    for (const p of W) (by[p.src] || (by[p.src] = [])).push(p);
+    const writes = Object.entries(by).map(([k, L]) => `${k} x${L.length} ${fx(L[0].from)} -> ${fx(L[L.length - 1].to)}`).join('; ') || 'none';
+    out.push(`${t0}-${t0 + step}s: clock ${fx(s && s.bpm)} bpm vs grid ${fx(ref)} (${off === null ? '-' : (off >= 0 ? '+' : '') + off.toFixed(2) + ' %'}${off !== null && Math.abs(off) > 2 ? ' OFF' : ''})`
+      + `; fit-long target ${s && s.fit ? fx(s.fit.bpm) + ' (n ' + s.fit.n + ' @' + fx(s.fit.t, 1) + ')' : '-'}, last decision ${decText(s && s.dec)}; period writes ${writes}`
+      + `; ${s ? s.state : '-'} conf ${fx(s && s.conf)}; broadband onsets in the fit window ${s && s.inFit !== null ? s.inFit : '-'}`);
+  }
+  return out;
+}
+function creepDiagLines(run, gridBeats, B, [from, to]) {
+  const G = gridSecs(gridBeats).filter(t => t >= from && t < to), out = [], med = a => { if (!a.length) return null; const x = [...a].sort((p, q) => p - q); return x[x.length >> 1]; };
+  for (let i = 0; i + 8 <= G.length; i += 8) {
+    const a = G[i], b = G[i + 7] + (G[i + 7] - G[i + 6] || 0), P = (G[i + 7] - G[i]) / 7;
+    const E = B.filter(x => x.t >= a - 1e-9 && x.t < b && Number.isFinite(x.e));
+    const eMs = med(E.map(x => x.e)), phi = med(E.map(x => x.phi));
+    const s0 = dgAt(run, a), s1 = dgAt(run, b), applied = s0 && s1 && s0.applied !== null && s1.applied !== null ? s1.applied - s0.applied : null;
+    const ons = run.dgOn.filter(o => o.t >= a && o.t < b && o.e !== null), use = ons.filter(o => Math.abs(o.e) <= 0.25);
+    const near0 = ons.filter(o => Math.abs(o.e) <= 0.125).length, nearHalf = ons.filter(o => Math.abs(o.e) >= 0.375).length;
+    const ref = refBpm(G, a, b + 1e-6), bpm = s1 && s1.bpm, off = bpm && ref ? 100 * (bpm / ref - 1) : null, lo = s1 && s1.low;
+    out.push(`${fx(a, 1)}-${fx(b, 1)}s: phase vs grid ${phi === null ? '-' : (phi >= 0 ? '+' : '') + phi.toFixed(3)} beat (${eMs === null ? '-' : fx(eMs, 0)} ms)`
+      + `; PLL applied ${applied === null ? '-' : (applied >= 0 ? '+' : '') + applied.toFixed(4)} beat`
+      + `; broadband onsets ${ons.length}: usable (|e|<=1/4) ${use.length}, median e ${use.length ? (med(use.map(o => o.e)) >= 0 ? '+' : '') + med(use.map(o => o.e)).toFixed(3) : '-'}; near 0 ${near0}, near 1/2 ${nearHalf}`
+      + `; low lane on ${fx(lo && lo.on)} / off ${fx(lo && lo.off)} (R ${fx(lo && lo.R)}); kick band: no onset lane`
+      + `; tempo ${fx(bpm)} vs grid ${fx(ref)} (${off === null ? '-' : (off >= 0 ? '+' : '') + off.toFixed(2) + ' %'}); ${s1 ? s1.state : '-'}`);
+  }
+  return out;
+}
 function gridSecs(gridBeats) { return (gridBeats || []).map(b => (b && Number.isFinite(b.ms) ? b.ms / 1000 : NaN)).filter(Number.isFinite).sort((p, q) => p - q); }
 function refBpm(G, t0, t1) {   // beats of the grid in [t0, t1) over their span; null with fewer than 2
   const B = G.filter(x => x >= t0 && x < t1);
@@ -618,7 +675,7 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
     const d = f.skip ? f : await decode(f, GATE_SECS);
     if (d.skip) { say(t, `gate-table ${row.id}: skipped (${d.skip})`); continue; }
     const secs = Math.floor(d.mono.length / SR);
-    const before = gateRun(d.mono, BASE501), after = gateRun(d.mono, T);
+    const before = gateRun(d.mono, BASE501), after = gateRun(d.mono, T, !!(F3_DIAG[row.id] || CREEP_DIAG[row.id]));
     const b = gateScore(before, row.id, row, grid, secs), a = gateScore(after, row.id, row, grid, secs);
     if (!b.tr.scored || !a.tr.scored) { say(t, `gate-table ${row.id}: not scored (${b.tr.reason || a.tr.reason})`); continue; }
     const bi = b.tr.alone.inPct, ai = a.tr.alone.inPct, delta = ai - bi, house = isHouse(row.id);
@@ -653,6 +710,8 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
       if (DECIDE_DIAG.includes(row.id)) say(t, `side-diag ${row.id} after: re-lock decisions: ${decidedText(after)} [report-only]`);
       say(t, `side-diag ${row.id} before (main 501cfe1): ${windowDiag(b.beats, secs)}; ${movesText(before)} [report-only]`);
     }
+    if (F3_DIAG[row.id]) for (const line of f3DiagLines(after, grid.beats, F3_DIAG[row.id])) say(t, `f3-diag ${row.id} after: ${line} [report-only]`);
+    if (CREEP_DIAG[row.id]) for (const line of creepDiagLines(after, grid.beats, a.beats, CREEP_DIAG[row.id])) say(t, `creep-diag ${row.id} after: ${line} [report-only]`);
   }
   const pct = s => (s.playedS > 0 ? 100 * s.inS / s.playedS : null);
   say(t, `gate-table summary: ${n} of ${rows.filter(r => !isHouse(r.id)).length} non-hc rows scored (house set apart) (first ${GATE_SECS} s) | inside-gate, time-weighted: before ${fmt(pct(sum.before))} %, after ${fmt(pct(sum.after))} %`
