@@ -9,7 +9,9 @@
 //   - the clock half a beat off (|phase| >= 0.375 beat) for FLIP_BEATS beats in a row -> flip;
 //   - the clock's tempo more than 3 % off the local reference tempo for TEMPO_BEATS beats -> 4 even taps on the
 //     reference beats (the tempo wins over the side: a wrong tempo makes the phase meaningless);
-//   - nothing else; after a press it waits COOL_BEATS beats before it reads again.
+//   - held with the SUSPECT lamp on for RELEASE_BEATS reference beats in a row -> it releases the hold (Shift+L; a
+//     press, logged as holdPress kind hold, listed as release@t), like a real hand (#241, Orchestrator 16 Nov);
+//   - nothing else; after a press it waits COOL_BEATS beats before it reads again, then its rules apply as before.
 // A press is "undone" when the same error comes back within UNDO_S s of it. Per track and mode: inside-gate % (the
 // conductor scorer, qa/conduct-score.mjs, on the clock's output beats), the presses (flips, tap sets of 4), the ones
 // undone, the time held, the inside-gate % of the held and of the free time, the holdSuspect onsets and seconds. One
@@ -30,10 +32,11 @@ const A = await import('../audio.mjs');
 const SCORE = await import('../../conduct-score.mjs');
 const CD = await import('../../../experiments/conductor.mjs');
 
+// opus is out (#240 probe): its reference grid is unusable in the first 180 s (ref bpm 176, 107, 130, 81 ... per 8 beats)
 export const SIM_IDS = ['house-01', 'house-02', 'house-03', 'house-04', 'house-05', 'sandstorm', 'sicko-mode', 're-rewind',
-  'voodoo-people', 'sincere', 'dj-set-brejcha', 'opus'];
+  'voodoo-people', 'sincere', 'dj-set-brejcha'];
 export const MODES = ['free', 'off', 'on'];
-const SIM_SECS = 180, REACT_BARS = 2, FLIP_BEATS = 4, TEMPO_BEATS = 8, TEMPO_TOL = 0.03, SIDE = 0.375, COOL_BEATS = 16, UNDO_S = 60;
+const SIM_SECS = 180, REACT_BARS = 2, FLIP_BEATS = 4, TEMPO_BEATS = 8, TEMPO_TOL = 0.03, SIDE = 0.375, COOL_BEATS = 16, UNDO_S = 60, RELEASE_BEATS = 8;
 const QA = { origin: 'qa' };
 function say(t, line) { console.log(`# ${line}`); t.diagnostic(`corpus: report: ${line}`); }
 
@@ -74,7 +77,7 @@ function simulate(frames, G, mode) {
   c.start();
   const hand = mode !== 'free', st = { offRun: 0, tempoRun: 0 }, presses = [], recs = [], beats = [], samples = [];
   const counter = CD.beatCounter();
-  let gi = 0, plan = null, coolUntil = -Infinity, everLocked = false, fixId = 0, lastHeld = false, lastSus = false, nextS = 0;
+  let gi = 0, plan = null, coolUntil = -Infinity, everLocked = false, fixId = 0, lastHeld = false, lastSus = false, nextS = 0, susRun = 0;
   const localP = k => { const iv = []; for (let j = Math.max(1, k - 3); j <= k; j++) iv.push(G[j] - G[j - 1]); iv.sort((a, b) => a - b); return iv[iv.length >> 1]; };
   for (const f of frames) {
     ctx.currentTime = f.t; perf = f.t * 1000;
@@ -90,6 +93,19 @@ function simulate(frames, G, mode) {
     // the hand reads every reference beat that has passed
     while (gi < G.length && G[gi] <= f.t) {
       const k = gi++, t = G[k];
+      // the SUSPECT lamp, read at every reference beat: released after RELEASE_BEATS in a row (not while a press is planned)
+      const susOn = !!(ts.held && ts.held.on && ts.held.suspect);
+      susRun = hand && everLocked && susOn ? susRun + 1 : 0;
+      if (hand && !plan && susRun >= RELEASE_BEATS) {
+        const j = c.fix('hold', QA);
+        if (j && j.on === false) {
+          recs.push({ type: 'holdPress', ctx: f.t, kind: 'hold', origin: 'qa', on: false });
+          presses.push({ kind: 'release', at: f.t, undone: false });
+          coolUntil = t + COOL_BEATS * (k >= 1 ? G[k] - G[k - 1] : 0.5); st.offRun = 0; st.tempoRun = 0;
+        }
+        susRun = 0;
+        continue;
+      }
       if (!hand || k < 1 || !everLocked || plan || t < coolUntil) continue;
       const b = c.baseBeats(t), P = localP(k), bpm = ts.bpm;
       if (!(b >= 0) || !(bpm > 0)) continue;
@@ -156,7 +172,7 @@ test(`hold-sim: the simulated hand on the bad tracks, free / hand with auto-hold
   const rows = new Map(C.loadCorpus().map(r => [r.id, r]));
   const json = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
   const fmt = x => (x === null || x === undefined ? '-' : Number(x).toFixed(1));
-  const sum = Object.fromEntries(MODES.map(m => [m, { inS: 0, playedS: 0, heldS: 0, flips: 0, taps: 0, undone: 0, suspects: 0, suspectS: 0, n: 0 }]));
+  const sum = Object.fromEntries(MODES.map(m => [m, { inS: 0, playedS: 0, heldS: 0, flips: 0, taps: 0, releases: 0, undone: 0, suspects: 0, suspectS: 0, n: 0 }]));
   const t0 = Date.now();
   for (const id of SIM_IDS) {
     const stem = map.tracks[id];
@@ -173,11 +189,11 @@ test(`hold-sim: the simulated hand on the bad tracks, free / hand with auto-hold
       const run = simulate(frames, G, mode), tr = score(run, id, rows.get(id) || null, grid, secs);
       if (!tr.scored) { say(t, `hold-sim ${id} ${mode}: not scored (${tr.reason})`); continue; }
       const c = tr.conducted, h = c.hold || { heldS: 0, inHeldPct: null, inFreePct: null, suspects: 0, suspectS: 0 };
-      const flips = run.presses.filter(p => p.kind === 'flip'), taps = run.presses.filter(p => p.kind === 'taps');
+      const flips = run.presses.filter(p => p.kind === 'flip'), taps = run.presses.filter(p => p.kind === 'taps'), releases = run.presses.filter(p => p.kind === 'release');
       const undone = run.presses.filter(p => p.undone).length, s = sum[mode];
       s.n++; s.inS += c.inPct / 100 * tr.playedS; s.playedS += tr.playedS; s.heldS += h.heldS; s.flips += flips.length; s.taps += taps.length;
-      s.undone += undone; s.suspects += h.suspects; s.suspectS += h.suspectS;
-      say(t, `hold-sim ${id} ${mode}: inside-gate ${fmt(c.inPct)} % of ${fmt(tr.playedS)} s | presses: flips ${flips.length} (undone within ${UNDO_S} s ${flips.filter(p => p.undone).length}), tap sets ${taps.length} (undone ${taps.filter(p => p.undone).length})`
+      s.releases += releases.length; s.undone += undone; s.suspects += h.suspects; s.suspectS += h.suspectS;
+      say(t, `hold-sim ${id} ${mode}: inside-gate ${fmt(c.inPct)} % of ${fmt(tr.playedS)} s | presses: flips ${flips.length} (undone within ${UNDO_S} s ${flips.filter(p => p.undone).length}), tap sets ${taps.length} (undone ${taps.filter(p => p.undone).length}), releases on SUSPECT ${releases.length}`
         + ` at ${run.presses.map(p => `${p.kind}@${p.at.toFixed(1)}s${p.undone ? '(undone)' : ''}`).join(' ') || '-'} | held ${fmt(h.heldS)} s, inside-gate held ${fmt(h.inHeldPct)} %, free ${fmt(h.inFreePct)} %`
         + ` | holdSuspect ${h.suspects} times, ${fmt(h.suspectS)} s | episodes ${tr.episodes.length} [report-only]`);
     }
@@ -185,7 +201,7 @@ test(`hold-sim: the simulated hand on the bad tracks, free / hand with auto-hold
   const pct = s => (s.playedS > 0 ? 100 * s.inS / s.playedS : null);
   for (const mode of MODES) {
     const s = sum[mode], label = { free: 'free (no hand)', off: 'hand, auto-hold off', on: 'hand, auto-hold on' }[mode];
-    say(t, `hold-sim summary ${label}: ${s.n} of ${SIM_IDS.length} tracks | inside-gate, time-weighted ${fmt(pct(s))} % | presses: flips ${s.flips}, tap sets ${s.taps}, undone within ${UNDO_S} s ${s.undone} | held ${fmt(s.heldS)} s | holdSuspect ${s.suspects} times, ${fmt(s.suspectS)} s [report-only]`);
+    say(t, `hold-sim summary ${label}: ${s.n} of ${SIM_IDS.length} tracks | inside-gate, time-weighted ${fmt(pct(s))} % | presses: flips ${s.flips}, tap sets ${s.taps}, releases on SUSPECT ${s.releases}, undone within ${UNDO_S} s ${s.undone} | held ${fmt(s.heldS)} s | holdSuspect ${s.suspects} times, ${fmt(s.suspectS)} s [report-only]`);
   }
   say(t, `hold-sim run time ${((Date.now() - t0) / 1000).toFixed(0)} s [report-only]`);
   assert.ok(true, 'report-only');
