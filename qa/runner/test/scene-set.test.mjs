@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
@@ -209,4 +210,35 @@ test('set.html: loads set.json and set.js, opens each scene in its own named win
   assert.match(html, /window\.open\(qa\.urls\[i\], SetLib\.windowName\(i\), SetLib\.windowFeatures\(qa\.set, i\)\)/);
   assert.ok(/^[\x00-\x7f]*$/.test(html), 'ASCII only');
   assert.ok(/^[\x00-\x7f]*$/.test(fs.readFileSync(path.join(EX, 'set.json'), 'utf8')), 'set.json ASCII only');
+});
+
+// 16 Nov: set.html's top-level `function open(i)` replaced window.open (a classic script's function declarations become
+// properties of window), so its own window.open(...) called itself until "Maximum call stack size exceeded" and no
+// scene window opened. Here the page's inline script runs with the fake window as its global, as in a browser.
+test('set.html: "Open all scenes" and each "Open" call the browser\'s window.open, once per scene (no self-call)', async () => {
+  const html = fs.readFileSync(path.join(EX, 'set.html'), 'utf8');
+  const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+  assert.equal(inline.length, 1, 'one inline script');
+  const set = JSON.parse(fs.readFileSync(path.join(EX, 'set.json'), 'utf8'));
+  const els = {}, el = id => (els[id] ||= { id, textContent: '', onclick: null, children: [], appendChild(c) { this.children.push(c); }, append(...c) { this.children.push(...c); } });
+  const opened = [];
+  const win = {
+    document: { getElementById: el, createElement: tag => ({ tag, textContent: '', className: '', onclick: null, children: [], appendChild(c) { this.children.push(c); }, append(...c) { this.children.push(...c); } }) },
+    fetch: async () => ({ ok: true, json: async () => set }),
+    open: (url, name, features) => { opened.push({ url, name, features }); return {}; },
+  };
+  win.window = win; win.globalThis = win;
+  const ctx = vm.createContext(win);
+  vm.runInContext(fs.readFileSync(path.join(EX, 'set.js'), 'utf8'), ctx);
+  vm.runInContext(inline[0], ctx);
+  await new Promise(r => setImmediate(r));
+  assert.equal(win.__qa.set.urls.length, set.scenes.length, 'set.json loaded');
+  el('openAll').onclick();
+  assert.equal(opened.length, set.scenes.length, 'one window.open per scene');
+  assert.deepEqual(opened.map(o => o.name), set.scenes.map((s, i) => `cellular-viz-set-${i}`));
+  assert.deepEqual(opened.map(o => o.url), win.__qa.set.urls);
+  const openBtn = el('list').children[0].children[2].children[0];
+  openBtn.onclick();
+  assert.equal(opened.length, set.scenes.length + 1, 'the row button opens its scene');
+  assert.equal(el('status').textContent.startsWith('opened: '), true);
 });
