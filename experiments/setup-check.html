@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>setup check</title>
+<!--
+  The browser half of the Mac setup check (the user, 16 Nov 15:57). tools/mac-check.sh opens it in Chrome through the
+  tunnel (http://localhost:8790/experiments/setup-check.html, a secure context). "Run checks" (a user gesture) asks
+  for MIDI with system exclusive messages and for the microphone, then lists PASS / WARN / FAIL with one fix step:
+  secure context, WebGL2 and the GPU, the LCXL3 DAW ports and IAC Driver Bus 1, BlackHole as an audio input, the
+  shared clock (3 s on BroadcastChannel 'cellular-viz-clock'), the panic channel. The rules are in setup-check.mjs.
+  Plain ASCII only (#205).
+-->
+<style>
+:root{color-scheme:dark}body{margin:0;font:16px/1.45 system-ui,sans-serif;background:#0b0e14;color:#dde3ee}
+main{max-width:900px;margin:0 auto;padding:16px}h1{font-size:20px;margin:0 0 8px}
+button{font:inherit;color:inherit;background:#2b5cff;border:0;border-radius:8px;padding:10px 18px;cursor:pointer}
+button:disabled{background:#3a4560;cursor:default}
+ul{list-style:none;padding:0}li{background:#141a26;border-radius:8px;margin:6px 0;padding:8px 12px}
+.st{display:inline-block;min-width:4.5em;font-weight:700}.PASS .st{color:#2bd16b}.WARN .st{color:#ffb02b}.FAIL .st{color:#ff5a6e}
+.fix{color:#ffd23f;margin-top:2px}small,.note{color:#8a96ad}pre{white-space:pre-wrap;font-size:12px;color:#8a96ad}
+</style>
+</head>
+<body>
+<main>
+  <h1>Setup check</h1>
+  <p class="note">For the shared clock check: open the conductor page in this Chrome first, push Start audio and Play. Then push Run checks.</p>
+  <button id="run">Run checks</button> <small id="state"></small>
+  <ul id="list"></ul>
+  <p id="sum"></p>
+  <pre id="ports"></pre>
+</main>
+<script type="module">
+import * as S from './setup-check.mjs';
+const $ = id => document.getElementById(id);
+const rows = [];
+function show() {
+  $('list').innerHTML = '';
+  for (const r of rows) {
+    const li = document.createElement('li'); li.className = r.status;
+    const head = document.createElement('div'); const st = document.createElement('span'); st.className = 'st'; st.textContent = r.status;
+    head.append(st, document.createTextNode(`${r.item}: ${r.detail}`)); li.append(head);
+    if (r.fix) { const f = document.createElement('div'); f.className = 'fix'; f.textContent = r.fix; li.append(f); }
+    if (r.hint) { const h = document.createElement('div'); h.className = 'note'; h.textContent = r.hint; li.append(h); }
+    $('list').append(li);
+  }
+  const s = S.summary(rows);
+  $('sum').textContent = `${s.pass} PASS, ${s.warn} WARN, ${s.fail} FAIL`;
+}
+const add = r => { for (const x of [].concat(r)) rows.push(x); show(); };
+
+function webgl() {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    if (!gl) return S.classifyWebgl(false, null);
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    return S.classifyWebgl(true, ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+  } catch (e) { return S.classifyWebgl(false, null); }
+}
+async function midi() {
+  if (!navigator.requestMIDIAccess) return S.classifyMidi({ error: 'navigator.requestMIDIAccess is missing' });
+  try {
+    const m = await navigator.requestMIDIAccess({ sysex: true });
+    const inputs = [...m.inputs.values()].map(p => p.name || ''), outputs = [...m.outputs.values()].map(p => p.name || '');
+    $('ports').textContent = `MIDI inputs: ${inputs.join(' | ') || 'none'}\nMIDI outputs: ${outputs.join(' | ') || 'none'}`;
+    return S.classifyMidi({ inputs, outputs });
+  } catch (e) { return S.classifyMidi({ error: String((e && e.message) || e) }); }
+}
+async function audioIn() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return S.classifyAudioInputs([], { error: 'navigator.mediaDevices is missing' });
+  try {
+    const st = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    for (const t of st.getTracks()) t.stop();
+    const labels = devs.filter(d => d.kind === 'audioinput').map(d => d.label);
+    $('ports').textContent += `\nAudio inputs: ${labels.join(' | ') || 'none'}`;
+    return S.classifyAudioInputs(labels);
+  } catch (e) { return S.classifyAudioInputs([], { permission: false, error: String((e && e.name) || e) }); }
+}
+function clockAndPanic() {
+  return new Promise(resolve => {
+    let ch;
+    try { ch = new BroadcastChannel(S.CLOCK_CHANNEL); } catch (e) { resolve([S.classifyClock([]), S.classifyPanic(false, String(e))]); return; }
+    const msgs = [];
+    ch.onmessage = e => msgs.push(e.data);
+    setTimeout(() => { ch.close(); resolve([S.classifyClock(msgs), S.classifyPanic(true)]); }, S.LISTEN_MS);
+  });
+}
+$('run').onclick = async () => {
+  $('run').disabled = true; rows.length = 0; $('ports').textContent = ''; show();
+  $('state').textContent = 'running ...';
+  add(S.classifySecure(window.isSecureContext, location.href));
+  add(webgl());
+  add(await midi());
+  add(await audioIn());
+  $('state').textContent = `listening ${S.LISTEN_MS / 1000} s on the clock channel ...`;
+  add(await clockAndPanic());
+  $('state').textContent = 'done';
+  $('run').disabled = false;
+};
+window.__qa = Object.assign(window.__qa || {}, { setupCheck: { rows } });
+</script>
+</body>
+</html>
