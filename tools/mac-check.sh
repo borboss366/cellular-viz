@@ -8,9 +8,9 @@
 #
 # One line per check: PASS / WARN / FAIL (INFO is not counted), the item, and for WARN / FAIL one fix step.
 # The end: a count, and exit code 1 when a check FAILs. macOS built-ins only (sw_vers, sysctl, system_profiler, ls,
-# defaults, pgrep, curl, nc, networksetup, open); POSIX sh. Plain ASCII.
+# defaults, pgrep, ps, curl, nc, networksetup, open); POSIX sh. Plain ASCII.
 #
-# Tests (qa/runner/test/mac-check.test.mjs) run it on Linux with MAC_CHECK_FAKE=<folder>: each command's output is
+# Tests (qa/runner/test/setup-check.test.mjs) run it on Linux with MAC_CHECK_FAKE=<folder>: each command's output is
 # read from a file in that folder, and the file system paths start at MAC_CHECK_ROOT.
 
 BASE="${MAC_CHECK_BASE:-http://localhost:8790}"
@@ -99,6 +99,19 @@ if [ -d "$chrome" ]; then
 else
   report FAIL "Google Chrome" "not found in /Applications" "Install Google Chrome from google.com/chrome"
 fi
+# Chrome stops drawing a window that other windows cover fully (macOS occlusion), so OBS captures a still frame (the
+# Resolume setup, 16 Nov). The main process (not the helpers) must run with the flag.
+OCCL='--disable-backgrounding-occluded-windows'
+cmain=$(out chrome_ps ps -axww -o command= | grep -E '/Google Chrome\.app/Contents/MacOS/Google Chrome( |$)')
+nmain=$(printf '%s\n' "$cmain" | grep -c .)
+nflag=$(printf '%s\n' "$cmain" | grep -c -e " $OCCL")
+if [ "$nmain" -eq 0 ]; then
+  report INFO "Chrome occlusion" "Chrome is not running. Start it with $OCCL before the scene windows"
+elif [ "$nflag" -eq "$nmain" ]; then
+  report PASS "Chrome occlusion" "Chrome runs with $OCCL"
+else
+  report WARN "Chrome occlusion" "Chrome runs without $OCCL: a fully covered scene window stops drawing and OBS captures a still frame" "Quit Chrome. Run: open -na \"Google Chrome\" --args $OCCL"
+fi
 
 # ---- 3. Audio: BlackHole 2ch, a Multi-Output Device, the default output
 audio=$(out sp_audio system_profiler SPAudioDataType)
@@ -116,7 +129,9 @@ esac
 # ---- 4. The Launch Control XL 3 on USB
 usb=$(out sp_usb system_profiler SPUSBDataType)
 usbh=$(out sp_usbhost system_profiler SPUSBHostDataType)
-if printf '%s\n%s\n' "$usb" "$usbh" | grep -qi 'Launch Control'; then report PASS "LCXL3 on USB" "Launch Control found"
+# system_profiler names it "LCXL3 1" on the show Mac (16 Nov), "Launch Control XL 3" elsewhere
+lc=$(printf '%s\n%s\n' "$usb" "$usbh" | grep -Ei 'Launch Control|LCXL3' | head -n 1 | sed -e 's/^ *//' -e 's/:$//')
+if [ -n "$lc" ]; then report PASS "LCXL3 on USB" "found: $lc"
 else report WARN "LCXL3 on USB" "not found" "Connect the Launch Control XL 3 with a USB cable"; fi
 
 # ---- 5. Displays
