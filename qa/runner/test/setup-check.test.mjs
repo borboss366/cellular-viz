@@ -83,7 +83,7 @@ test('setup-check: set.json -> the pages to check, every one a file in experimen
 });
 
 /** a fake Mac: canned command output and a fake /Applications, then the script with the given flags */
-function fakeMac({ pages404 = [], noBlackHole = false, wifiOn = false, obs = null } = {}) {
+function fakeMac({ pages404 = [], noBlackHole = false, wifiOn = false, obs = null, usb = 'USB:\n    Launch Control XL 3:\n      Product ID: 0x0001\n', chromePs = null } = {}) {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'mac-check-')), cmd = path.join(d, 'cmd'), root = path.join(d, 'root');
   const mk = p => fs.mkdirSync(path.join(root, p), { recursive: true });
   fs.mkdirSync(cmd, { recursive: true });
@@ -97,7 +97,8 @@ function fakeMac({ pages404 = [], noBlackHole = false, wifiOn = false, obs = nul
   w('wifi_power', `Wi-Fi Power (en0): ${wifiOn ? 'On' : 'Off'}\n`);
   w('sp_audio', ['Audio:', '', '    Devices:', '', ...(noBlackHole ? [] : ['        BlackHole 2ch:', '', '          Input Channels: 2', '']),
     '        Multi-Output Device:', '', '          Default Output Device: Yes', '          Output Channels: 2', '', '        MacBook Pro Speakers:', '', '          Output Channels: 2', ''].join('\n'));
-  w('sp_usb', 'USB:\n    Launch Control XL 3:\n      Product ID: 0x0001\n');
+  w('sp_usb', usb);
+  if (chromePs !== null) w('chrome_ps', chromePs);
   w('sp_displays', 'Graphics/Displays:\n    Apple M2:\n      Displays:\n        Color LCD:\n          Resolution: 3024 x 1964 Retina\n        Projector:\n          Resolution: 1920 x 1080 (1080p FHD - Full High Definition)\n');
   const set = fs.readFileSync(path.join(EXP, 'set.json'), 'utf8');
   w('set_json', set);
@@ -163,4 +164,51 @@ test('mac-check.sh: no tunnel is a FAIL with the ssh step; Wi-Fi on is a WARN; a
     } finally { fs.rmSync(d.d, { recursive: true, force: true }); }
     assert.equal(spawnSync('sh', [SCRIPT, '--bogus'], { encoding: 'utf8', env: c.env }).status, 2);
   } finally { fs.rmSync(c.d, { recursive: true, force: true }); }
+});
+
+/** the fake Mac's --json rows by item */
+function macRows(opts) {
+  const m = fakeMac(opts);
+  try {
+    const r = spawnSync('sh', [SCRIPT, '--json', '--no-open'], { encoding: 'utf8', env: m.env });
+    return Object.fromEntries(JSON.parse(r.stdout).results.map(x => [x.item, x]));
+  } finally { fs.rmSync(m.d, { recursive: true, force: true }); }
+}
+
+// The Resolume setup, 16 Nov: system_profiler lists the controller as "LCXL3 1", and the old check (grep "Launch Control")
+// gave a false WARN.
+test('mac-check.sh: the controller listed as "LCXL3 1" is PASS; "Launch Control XL 3" too; no controller is a WARN', () => {
+  const lcxl3 = macRows({ usb: 'USB:\n\n    USB 3.1 Bus:\n\n        LCXL3 1:\n\n          Product ID: 0x0001\n          Vendor ID: 0x1235\n' })['LCXL3 on USB'];
+  assert.equal(lcxl3.status, 'PASS', JSON.stringify(lcxl3));
+  assert.equal(lcxl3.detail, 'found: LCXL3 1');
+  const old = macRows({})['LCXL3 on USB'];
+  assert.equal(old.status, 'PASS'); assert.equal(old.detail, 'found: Launch Control XL 3');
+  const none = macRows({ usb: 'USB:\n    USB Keyboard:\n      Product ID: 0x0002\n' })['LCXL3 on USB'];
+  assert.equal(none.status, 'WARN'); assert.equal(none.fix, 'Connect the Launch Control XL 3 with a USB cable');
+});
+
+// The Resolume setup, 16 Nov: Chrome stops drawing a fully covered window, so OBS captured a still frame. The check reads
+// the main Chrome process's arguments (ps); helper processes do not count.
+test('mac-check.sh: Chrome occlusion is PASS with --disable-backgrounding-occluded-windows, WARN without it, INFO when Chrome is not running', () => {
+  const MAIN = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  const HELPER = '/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.79/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer';
+  const ps = main => ['/sbin/launchd', '/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder', main, HELPER, ''].join('\n');
+  const on = macRows({ chromePs: ps(`${MAIN} --disable-backgrounding-occluded-windows`) })['Chrome occlusion'];
+  assert.equal(on.status, 'PASS', JSON.stringify(on));
+  assert.equal(on.detail, 'Chrome runs with --disable-backgrounding-occluded-windows');
+  const off = macRows({ chromePs: ps(MAIN) })['Chrome occlusion'];
+  assert.equal(off.status, 'WARN', JSON.stringify(off));
+  assert.equal(off.fix, 'Quit Chrome. Run: open -na "Google Chrome" --args --disable-backgrounding-occluded-windows');
+  assert.match(off.detail, /still frame/);
+  // the flag on a helper only is not enough
+  assert.equal(macRows({ chromePs: ps(MAIN).replace('--type=renderer', '--type=renderer --disable-backgrounding-occluded-windows') })['Chrome occlusion'].status, 'WARN');
+  const notRunning = macRows({ chromePs: ps('/usr/bin/true') })['Chrome occlusion'];
+  assert.equal(notRunning.status, 'INFO'); assert.match(notRunning.detail, /^Chrome is not running/);
+  assert.equal(macRows({})['Chrome occlusion'].status, 'INFO', 'no ps output: not running');
+  // the text output: the WARN line with its fix step
+  const m = fakeMac({ chromePs: ps(MAIN) });
+  try {
+    const r = spawnSync('sh', [SCRIPT, '--no-open'], { encoding: 'utf8', env: m.env });
+    assert.match(r.stdout, /^WARN Chrome occlusion: Chrome runs without --disable-backgrounding-occluded-windows: .*\. Quit Chrome\. Run: open -na "Google Chrome" --args --disable-backgrounding-occluded-windows$/m);
+  } finally { fs.rmSync(m.d, { recursive: true, force: true }); }
 });
