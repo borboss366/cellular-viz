@@ -19,9 +19,16 @@ Gate: the three scenes move on the projector. A fader fades its layer.
 1. Play 20 minutes from the conductor. Include one breakdown and one track change. Use tracks with a clear kick.
 2. Hold: when the beat is right, push Shift+L (or top button 1). If SUSPECT comes on, tap again or release with Shift+L. Try auto-hold once (Shift+U or top button 2).
 3. Try one hand fix on the conductor (Shift+F flip or a tap) and see that all scenes follow.
-4. Measure the delay: film the conductor screen and the projector in one shot with the phone in slow motion. Count the frames between the conductor's beat flash and the scene's beat on the projector. Write the result in ms.
-5. At the end, push panic on the conductor. All goes black.
-6. On the conductor, push "Download log". Copy the file to the box: `ssh puggie@192.168.8.164 mkdir -p /home/puggie/pi-durable-worker/data/conductor-logs` then `scp <file> puggie@192.168.8.164:/home/puggie/pi-durable-worker/data/conductor-logs/`. Write down the file name.
+4. Hold test on "Gasolina" (on its own, auto-hold OFF). Write down the track time of each event.
+   a. Play "Gasolina" from the start. Wait until the state shows locked and the beat is right.
+   b. Push hold (Shift+L). Write down the time and the bpm.
+   c. Watch for 2 minutes. Write down each change of the state word (held, free-run, SUSPECT) and whether the scenes stay on the beat by ear and eye.
+   d. If the clock is wrong while held: first tap 8 times on the beat (this re-anchors the hold). Write down what happens.
+   e. If it is still wrong: push hold again to release it. Write down whether the tracker finds the beat again, and after how many seconds.
+   f. Push "Download log" after this test. Copy the log to the box as in step 7 (the last step). Write down the file name, separately from the 20-minute log.
+5. Measure the delay: film the conductor screen and the projector in one shot with the phone in slow motion. Count the frames between the conductor's beat flash and the scene's beat on the projector. Write the result in ms.
+6. At the end, push panic on the conductor. All goes black.
+7. On the conductor, push "Download log". Copy the file to the box: `ssh puggie@192.168.8.164 mkdir -p /home/puggie/pi-durable-worker/data/conductor-logs` then `scp <file> puggie@192.168.8.164:/home/puggie/pi-durable-worker/data/conductor-logs/`. Write down the file name.
 Gate: 20 minutes without a freeze or a crash; the log is on the box.
 
 ## Part 2 - OBS Browser Source test (no code)
@@ -45,3 +52,4 @@ Expected: the shared clock and maybe BlackHole FAIL (OBS runs its own browser). 
 
 ## At the end
 Write notes/mac-session-2026-11-17.md: the gate of each part, the hold presses and what SUSPECT did, the delay in ms and how you measured it, the conductor log file name on the box, every Part 2 result line, and problems with fixes. Give the user a short summary to paste to his Orchestrator bot.
+In the notes also write the Gasolina hold test: each event with its track time, and the log file name.
