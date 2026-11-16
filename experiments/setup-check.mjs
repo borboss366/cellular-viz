@@ -1,7 +1,8 @@
 // The Mac setup check (the user, 16 Nov 15:57: "a tool that I can run on the Mac to check whether everything is set
 // up properly"). Pure classification for the browser half (experiments/setup-check.html) and its node tests; the
 // shell half (tools/mac-check.sh) runs without node and does its own parsing. Every check returns
-//   { item, status: 'PASS' | 'WARN' | 'FAIL', detail, fix }   (fix: one short step, ASD-STE100 style; '' on PASS)
+//   { item, status: 'PASS' | 'WARN' | 'FAIL', detail, fix, hint? }   (fix: one short step, ASD-STE100 style; '' on PASS;
+//   hint: shown whatever the status)
 // Text is plain ASCII (#205).
 
 // the shared clock's BroadcastChannel (clock.js SHARED_CHANNEL; panic.js CHANNEL is the same channel)
@@ -9,6 +10,8 @@ export const CLOCK_CHANNEL = 'cellular-viz-clock';
 export const LISTEN_MS = 3000;
 // the controller's ports (midi-controller.js: DEVICE_PORT /LCXL3/, the DAW port by /DAW/) and the bridge's bus
 export const LCXL3_RE = /LCXL3/, DAW_RE = /DAW/, IAC_BUS = 'IAC Driver Bus 1';
+// shown with the IAC row whatever its status (VIZ research, 16 Nov: Resolume must listen on the bus too)
+export const RESOLUME_IAC_HINT = 'In Resolume, open Preferences > MIDI and enable IAC Driver Bus 1.';
 export const BLACKHOLE_RE = /BlackHole/i;
 
 const row = (item, status, detail, fix = '') => ({ item, status, detail, fix: status === 'PASS' ? '' : fix });
@@ -41,6 +44,7 @@ export function classifyMidi({ inputs = [], outputs = [], error = null } = {}) {
   const bus = iac ? row('IAC Driver Bus 1', 'PASS', `"${iac}" is present`)
     : row('IAC Driver Bus 1', 'FAIL', 'IAC Driver Bus 1 not found',
       'Open Audio MIDI Setup. Open MIDI Studio. Double-click IAC Driver. Select Device is online');
+  bus.hint = RESOLUME_IAC_HINT;
   return [lc, bus];
 }
 

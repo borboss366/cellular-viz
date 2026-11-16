@@ -42,6 +42,7 @@ function show() {
     const head = document.createElement('div'); const st = document.createElement('span'); st.className = 'st'; st.textContent = r.status;
     head.append(st, document.createTextNode(`${r.item}: ${r.detail}`)); li.append(head);
     if (r.fix) { const f = document.createElement('div'); f.className = 'fix'; f.textContent = r.fix; li.append(f); }
+    if (r.hint) { const h = document.createElement('div'); h.className = 'note'; h.textContent = r.hint; li.append(h); }
     $('list').append(li);
   }
   const s = S.summary(rows);

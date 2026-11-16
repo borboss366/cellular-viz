@@ -8,7 +8,7 @@
 #
 # One line per check: PASS / WARN / FAIL (INFO is not counted), the item, and for WARN / FAIL one fix step.
 # The end: a count, and exit code 1 when a check FAILs. macOS built-ins only (sw_vers, sysctl, system_profiler, ls,
-# defaults, pgrep, curl, nc, open); POSIX sh. Plain ASCII.
+# defaults, pgrep, curl, nc, networksetup, open); POSIX sh. Plain ASCII.
 #
 # Tests (qa/runner/test/mac-check.test.mjs) run it on Linux with MAC_CHECK_FAKE=<folder>: each command's output is
 # read from a file in that folder, and the file system paths start at MAC_CHECK_ROOT.
@@ -152,13 +152,26 @@ for f in "$ROOT/usr/local/lib/libndi.dylib" "$ROOT/Library/NDI SDK for Apple/lib
   if [ -e "$f" ]; then ndilib=$f; break; fi
 done
 routes=0
+# (c) NDI Tools for Mac with NDI Scan Converter (VIZ research's Resolume routing, 16 Nov: the first choice; it brings
+# its own NDI library): "NDI Scan Converter" (or its newer name "NDI Screen Capture") in /Applications or in an
+# "NDI Tools" folder there, or the "NDI Tools" folder itself
+scan=$( { ls "$APPS"; ls "$APPS/NDI Tools"; } 2>/dev/null | grep -i -E 'NDI.*(Scan Converter|Screen Capture)' | head -n 1)
+if [ -n "$scan" ]; then
+  report PASS "Capture route NDI Scan Converter" "$scan"; routes=$((routes + 1))
+elif [ -d "$APPS/NDI Tools" ]; then
+  report PASS "Capture route NDI Scan Converter" "NDI Tools folder in /Applications (NDI Scan Converter not seen in it)"; routes=$((routes + 1))
+else
+  report INFO "Capture route NDI Scan Converter" "not ready: NDI Scan Converter not found"
+fi
+# (a) OBS + the DistroAV plugin (or the older obs-ndi) + the NDI runtime
 if [ -d "$obs" ]; then obsv=$(plistver "$obs"); obstxt="OBS ${obsv:-version unknown}"; else obstxt='OBS not found'; fi
 distro=$(plugin 'distroav|obs-ndi')
 if [ -d "$obs" ] && [ -n "$distro" ] && [ -n "$ndilib" ]; then
-  report PASS "Capture route NDI" "$obstxt, plugin $distro, NDI runtime"; routes=$((routes + 1))
+  report PASS "Capture route OBS NDI" "$obstxt, plugin $distro, NDI runtime"; routes=$((routes + 1))
 else
-  report INFO "Capture route NDI" "not ready: $obstxt; DistroAV plugin ${distro:-not found}; NDI runtime $( [ -n "$ndilib" ] && echo found || echo 'not found')"
+  report INFO "Capture route OBS NDI" "not ready: $obstxt; DistroAV plugin ${distro:-not found}; NDI runtime $( [ -n "$ndilib" ] && echo found || echo 'not found')"
 fi
+# (b) Syphon: OBS + a syphon plugin, or a Syphon app in /Applications
 syph=$(plugin 'syphon')
 syapp=$(ls "$APPS" 2>/dev/null | grep -i 'syphon' | head -n 1)
 if [ -d "$obs" ] && [ -n "$syph" ]; then
@@ -168,17 +181,22 @@ elif [ -n "$syapp" ]; then
 else
   report INFO "Capture route Syphon" "not ready: $obstxt; Syphon plugin not found; no Syphon app in /Applications"
 fi
-# (c) NDI Tools' Scan Converter / Screen Capture (VIZ research's Resolume routing, 16 Nov: the first choice); it brings
-# its own NDI library
-scan=$( { ls "$APPS"; ls "$APPS/NDI Tools"; } 2>/dev/null | grep -i -E 'NDI.*(Scan Converter|Screen Capture)' | head -n 1)
-if [ -n "$scan" ]; then
-  report PASS "Capture route NDI Tools" "$scan"; routes=$((routes + 1))
-else
-  report INFO "Capture route NDI Tools" "not ready: NDI Scan Converter or Screen Capture not found"
-fi
 if [ "$routes" -eq 0 ]; then
-  report FAIL "Capture route" "no route is ready (NDI Tools, OBS with NDI, or Syphon)" "Install NDI Tools from ndi.video. Or install OBS from obsproject.com, then DistroAV and the NDI runtime"
+  report FAIL "Capture route" "no route is ready (NDI Scan Converter, OBS with NDI, or Syphon)" "Install NDI Tools from ndi.video. Or install OBS from obsproject.com, then DistroAV and the NDI runtime"
 fi
+# NDI and the network: Wi-Fi on is a WARN; the Local Network permission cannot be read from the shell (INFO)
+wdev=$(out wifi_ports networksetup -listallhardwareports | awk '/^Hardware Port: (Wi-Fi|AirPort)$/ { f = 1; next } f && /^Device:/ { print $2; exit }')
+if [ -z "$wdev" ]; then
+  report INFO "Wi-Fi" "no Wi-Fi device found"
+else
+  wp=$(out wifi_power networksetup -getairportpower "$wdev")
+  case "$wp" in
+    *": On"*) report WARN "Wi-Fi" "Wi-Fi ($wdev) is on" "Turn off Wi-Fi while you set up NDI. NDI on a Mac uses Wi-Fi when it is on" ;;
+    *": Off"*) report PASS "Wi-Fi" "Wi-Fi ($wdev) is off" ;;
+    *) report INFO "Wi-Fi" "the Wi-Fi state ($wdev) is not known" ;;
+  esac
+fi
+report INFO "Local Network" "Allow Resolume in System Settings > Privacy & Security > Local Network"
 
 # ---- 8. The tunnel and the pages
 if ok tunnel nc -z -G 2 localhost 8790; then
