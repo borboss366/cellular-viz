@@ -14,7 +14,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { render } from './fixtures/tracker-scenarios.mjs';
+import { render, steadyScenario } from './fixtures/tracker-scenarios.mjs';
 import { houseTrap, sideBreakdown, frac } from './fixtures/tracker-traps.mjs';
 const require = createRequire(import.meta.url);
 const T = require('../../../experiments/clock-tracker.js');
@@ -200,4 +200,39 @@ test('hold g: handHold without a model returns false; off when not held is a no-
   const tr = T.createTracker();
   assert.equal(tr.handHold(true, 0), false, 'no model yet');
   assert.equal(tr.held, false);
+});
+
+// hold-recentre (#240 probe, the user's go 16 Nov 12:40): house-02's 4-tap tempo was 1.09 % fast, became the centre, and
+// every correct fit-long target was refused as hold-band until the hold drifted to the off-beat
+test('hold h: a hold entered by taps 1.2 % fast on a steady 125 track re-centres on the tracker\'s tempo within 8 beats and stays within 35 ms after 32 bars (hard)', (t) => {
+  const s = steadyScenario({ bpm: 125, barsN: 48 }), P = 60 / 125, tr = T.createTracker(), frames = [];
+  const an = T.createAnalyzer({ sampleRate: s.sr, onFrame: f => frames.push(f) });
+  for (let i = 0; i < s.samples.length; i += 128) an.process(s.samples.subarray(i, Math.min(s.samples.length, i + 128)), i / s.sr);
+  const per = [];
+  let lockT = null, holdT = null, rec = null, jumps0 = 0, bi = 0, tapBpm = null;
+  for (const f of frames) {
+    tr.push(f);
+    if (lockT === null && tr.state === 'locked') lockT = f.t;
+    if (holdT === null && lockT !== null && f.t >= lockT + SETTLE) {
+      const beat = [...s.beats].reverse().find(b => b <= f.t);   // the hand taps on the beat, 1.2 % fast
+      tapBpm = 125 * 1.012;
+      tr.tap({ t: beat, bpm: tapBpm });
+      tr.handHold(true, f.t, 'tap');
+      holdT = f.t; jumps0 = (tr.jumps || []).length;
+    }
+    if (holdT !== null && rec === null && tr.heldReport.recentre) rec = { ...tr.heldReport.recentre, seenAt: f.t };
+    while (bi < s.beats.length && s.beats[bi] <= f.t) { per.push({ t: s.beats[bi], e: holdT === null ? null : frac(tr.beatsAt(s.beats[bi])) }); bi++; }
+  }
+  assert.ok(holdT !== null, 'locked and held');
+  const end = holdT + 32 * 4 * P, last = per.filter(p => p.t > end - 8 * P - 1e-6 && p.t <= end + 1e-6).map(p => p.e * P * 1000);
+  const H = tr.heldReport, jumps = (tr.jumps || []).slice(jumps0);
+  report(t, `hold h steady-125, taps at ${tapBpm.toFixed(2)} bpm: held at ${holdT.toFixed(2)} s; recentre ${rec ? `${rec.from} -> ${rec.to} bpm at ${rec.t} s (${((rec.t - holdT) / P).toFixed(1)} beats after the hold, ${rec.n} refused targets)` : 'never'}; recentres ${H.recentres}`
+    + `; last 8 beats after 32 bars (ms) ${last.map(x => x.toFixed(1)).join(' ')}; net ${sgn(H.net)}; jumps while held ${jumps.map(j => j.kind).join(' ') || 'none'}; blocked ${JSON.stringify(H.blocked)}`);
+  assert.ok(rec, 'the centre moves to the tracker\'s tempo');
+  assert.ok(rec.t - holdT <= 8 * P + 1e-6, `within 8 beats of the hold (${((rec.t - holdT) / P).toFixed(1)})`);
+  assert.ok(Math.abs(rec.to / 125 - 1) <= 0.002, `to within 0.2 % of 125 (${rec.to})`);
+  assert.equal(last.length, 8, 'the track runs 32 bars past the hold');
+  for (const x of last) assert.ok(Math.abs(x) <= GATE_MS, `on the beat after 32 bars: ${last.map(v => v.toFixed(1)).join(' ')} ms`);
+  assert.deepEqual(jumps.map(j => j.kind), [], 'no jump while held');
+  assert.equal(H.on, true, 'still held');
 });
