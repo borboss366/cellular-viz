@@ -42,7 +42,9 @@ const $ = id => document.getElementById(id);
 const qa = { set: null, urls: [], errors: [], opened: [] };
 window.__qa = Object.assign(window.__qa || {}, { set: qa });
 const ascii = s => String(s).replace(/[^\x20-\x7e]/g, '?');
-function open(i) {
+// not `open`: a top-level function in a classic script replaces window.open, and the call below then recursed
+// until the stack overflowed, so no window ever opened (the Resolume setup, 16 Nov)
+function openScene(i) {
   const w = window.open(qa.urls[i], SetLib.windowName(i), SetLib.windowFeatures(qa.set, i));
   qa.opened.push({ i, url: qa.urls[i], ok: !!w });
   $('status').textContent = w ? `opened: ${qa.set.scenes[i].name || qa.set.scenes[i].page}` : 'the browser blocked the window: let this site open pop-ups';
@@ -54,7 +56,7 @@ function render() {
     const tr = document.createElement('tr');
     const name = document.createElement('td'); name.textContent = ascii(s.name || s.page);
     const url = document.createElement('td'); const code = document.createElement('code'); code.textContent = ascii(qa.urls[i]); url.appendChild(code);
-    const act = document.createElement('td'); const b = document.createElement('button'); b.textContent = 'Open'; b.onclick = () => open(i); act.appendChild(b);
+    const act = document.createElement('td'); const b = document.createElement('button'); b.textContent = 'Open'; b.onclick = () => openScene(i); act.appendChild(b);
     tr.append(name, url, act); list.appendChild(tr);
   });
 }
@@ -73,7 +75,7 @@ async function load() {
     $('status').textContent = 'set.json did not load';
   }
 }
-$('openAll').onclick = () => { if (qa.set) qa.set.scenes.forEach((s, i) => open(i)); };
+$('openAll').onclick = () => { if (qa.set) qa.set.scenes.forEach((s, i) => openScene(i)); };
 load();
 </script>
 </body>
