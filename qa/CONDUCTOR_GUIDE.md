@@ -3,6 +3,9 @@
 The page is `experiments/clock-conductor.html` (#188). The box serves it at :8790. The setup steps are in
 `qa/runner/README.md`, section "Conductor page (:8790)". On the page, push "Help" or `?` for a short form of this guide.
 
+## Check the Mac first
+On the Mac, open the tunnel (step 3 below), then run `sh tools/mac-check.sh` in the repo folder. It checks Chrome, BlackHole 2ch, the Multi-Output Device, the LCXL3, the displays, Resolume, the capture route (NDI Tools, OBS with DistroAV, Syphon) and the pages through the tunnel, gives one fix step per problem, and opens `experiments/setup-check.html` in Chrome (push "Run checks": WebGL2, MIDI ports, BlackHole input, the shared clock, the panic channel). `--no-open` skips the page, `--json` prints JSON.
+
 ## Before the sitting (on the box)
 1. Start the server:
    `podman exec -d --env-file ~/.config/cellular-viz-runner.env pi-durable-worker sh -c 'sh "$RUNNER_HOME/qa/runner/conductor.sh"'`
