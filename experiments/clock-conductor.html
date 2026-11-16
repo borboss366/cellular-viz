@@ -37,6 +37,7 @@ h1{font-size:18px;margin:0;flex:none;white-space:nowrap}.banner{padding:3px 10px
 main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;padding:12px}
 section{background:#141a26;border-radius:12px;padding:12px;min-width:0}
 .deck .name,#msg,#lastFix,#bar1,#tail{overflow-wrap:anywhere}.deck{min-height:2.8em}.fixline{min-height:2.8em}
+.corrBox{margin-top:6px}#corrections{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.35}
 select{max-width:100%}#tracks{width:100%}
 h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#8a96ad;margin:0 0 8px}
 .big{font-size:44px;font-weight:700;font-variant-numeric:tabular-nums}.row{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
@@ -138,6 +139,7 @@ button.reject{background:#c0182b !important;color:#fff}
       <button data-panic="blackout">Blackout B</button><button data-panic="calm">Calm `</button><button data-panic="clear">Clear</button>
       <small id="panicState">scenes: on</small></div>
     <div class="fixline"><small>last fix:</small> <span id="lastFix">–</span> <small>last taps:</small> <span id="lastTap">–</span></div>
+    <div class="corrBox"><small>Corrections now</small><div id="corrections">-</div></div>
   </section>
   <section>
     <h2>Playlist</h2>
@@ -169,6 +171,7 @@ button.reject{background:#c0182b !important;color:#fff}
 import { snapMark, stepMark, markRecord, beatTimes } from '../qa/marks.mjs';
 import { ConductLog, sessionId } from '../qa/conduct-log.mjs';
 import * as C from './conductor.mjs';
+import { createCorrections, PANEL_HZ } from './corrections.mjs';
 
 const qs = new URLSearchParams(location.search), $ = id => document.getElementById(id);
 const inputMode = qs.get('clock') === 'line' ? 'line' : 'line:page';
@@ -290,9 +293,18 @@ function attach() {
   if (inputMode === 'line:page') clock.attachInput(mixBus);   // post-crossfade, pre-master: the same graph
 }
 clock.onTrackerFrame(f => { shadow.push(f); onFrame(f); });
+// the corrections panel (17 Nov): display only, from the clock's state and these fix results (corrections.mjs)
+const corr = createCorrections();
+let corrAt = -1;
+// track time (ms) of the LIVE deck at a clock time, or null when nothing plays
+const trackAt = t => { const dl = decks[live]; return dl.track && dl.playing ? Math.max(0, posMs(dl, t)) : null; };
+const outBpm = () => { const s = clock.playing ? clock.trackerState : null; return s ? s.bpm : 0; };
 const fix0 = clock.fix.bind(clock);
 clock.fix = (kind, arg, o) => {
-  const j = fix0(kind, arg, o), origin = o && o.origin;
+  const bpm0 = outBpm(), j = fix0(kind, arg, o), origin = o && o.origin;
+  if (FIX_ORIGINS.has(origin) && kind !== 'autoHold' && (C.FIX_KIND[kind] || kind === 'hold')) {
+    corr.fix({ kind, arg, j, at: ctx.currentTime, ms: trackAt(ctx.currentTime), bpmBefore: bpm0, bpmAfter: outBpm() });
+  }
   if (FIX_ORIGINS.has(origin) && C.FIX_KIND[kind]) {
     const rec = { id: ++fixId, kind: C.FIX_KIND[kind], origin, idx: decks[live].track ? decks[live].track.idx : undefined };
     if (arg !== undefined) rec.arg = arg;
@@ -460,6 +472,7 @@ function tick() {
   for (; seenJumps < clock.jumps.length; seenJumps++) {
     const j = clock.jumps[seenJumps];
     log.add('jump', { kind: j.kind, origin: j.origin || 'hand', fromBeats: j.fromBeats, toBeats: j.toBeats, ctx: j.at });
+    corr.jump(j, trackAt(j.at));
   }
   const ts = clock.trackerState || {};
   if (ts.state && ts.state !== lastState) { log.add('state', { src: 'clock', from: lastState, to: ts.state }); lastState = ts.state; }
@@ -478,6 +491,11 @@ function tick() {
   for (const d of decks) if (d.playing && d.track && now - d.lastPair >= C.PAIR_S) { d.lastPair = now; log.add('pair', { idx: d.track.idx, posMs: Math.round(posMs(d, now)) }); }
   if (fade && now >= fade.end) { log.add('xfade', { from: fade.from, to: fade.to, event: 'end', mode: 'B', ctx: fade.end }); stopDeck(fade.out); fade = null; render(); }
   monitor(now, ts);
+  if (now - corrAt >= 1 / PANEL_HZ) {   // the corrections panel: at most PANEL_HZ times a second, text set only on a change
+    corrAt = now;
+    setText('corrections', corr.text({ ts, hand: clock.handState, autoHold: clock.autoHold, nowMs: trackAt(now), trackAt,
+      hasBeats: clock.lineBeats(now) >= 0 }));
+  }
 }
 function monitor(now, ts) {
   const r = clock.read(), d = decks[live];

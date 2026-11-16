@@ -1117,6 +1117,15 @@
         return rec;
       },
       get autoHold() { return autoHold; },
+      // read-only, for the conductor's corrections panel (17 Nov): which key holds the octave (line.hold), a release
+      // booked for the bar line, a flip booked in the tracker, the set-1 beat, the taps in the current run. Copies only:
+      // nothing here changes the clock. null off line
+      get handState() {
+        if (!line) return null;
+        const sc = line.tracker && line.tracker.scheduled;
+        return { octaveHold: line.hold ? { ...line.hold } : null, holdRelease: line.holdRelease ? { ...line.holdRelease } : null,
+          flipDue: !!(sc && sc.kind === 'flip'), oneAt: this.oneAt, taps: this.taps.length };
+      },
       get trackerState() {
         if (!line) return null;
         const s = line.tracker && line.tracker.snapshot ? line.tracker.snapshot() : { state: 'acquire', confidence: 0, octaveLock: null, bpm: 0, tapped: false, lastJump: null };

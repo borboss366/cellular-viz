@@ -80,6 +80,9 @@ with no fade.
 - The line under the state: the lane, the beat side (0 or 1/2) and "octave hold N bpm" while ×2 or ÷2 holds the tempo.
   The octave hold turns red when it is far from the output tempo. Then push "restart" (Shift+R).
 - key lamp: push K to show or hide it. It lights on each beat of the reference grid.
+- Corrections now (under "last fix"): one line each for tempo, octave, side, nudge, bar 1, hold and the tracker, with
+  the value now and since when (track time mm:ss). Then your last 8 fixes, newest first, each with its status: active,
+  replaced by a newer fix, taken back by the tracker, released, or cleared by restart.
 
 ## Fix the clock
 - Main lobe of the wheel at the bottom (off-beat): push "flip" (Shift+F).
