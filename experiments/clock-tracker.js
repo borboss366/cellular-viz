@@ -88,14 +88,16 @@
     // after a 6 % step the new beats leave the window (0.06 beat a beat, the PLL corrects 0.03) before they are half
     // of it. The short check fits the last stepOnsets strong onsets on their own chained grid (not filtered by the
     // window), max residual stepResid x P (main's drift(): 4 onsets, 0.1 P); a fit more than stepPct off, confirmed
-    // once by a fit on a newer onset within stepAgree, is adopted at once and the long window restarts at the step;
+    // by stepOnsets fits on newer onsets within stepAgree (16 Nov, #243 trace; was once), is adopted at once and the long window restarts at the step;
     // for stepYoungBeats beats after it the short fit sets the period directly (box run 4ac9fd7: adopted at beat 5
     // with 6 onsets, the 0.22-beat phase error then took 12 beats to slew out; main 4.3)
     stepOnsets: 4, stepResid: 0.1, stepAgree: 0.025, stepNear: 0.4, stepYoungBeats: 8, fitNewestOff: 0.08,
     // box run dd840c6: adoption at beat 4 is right, but the 0.17-beat phase error then slews out at 0.03 a beat (9
-    // beats). For stepSlewBeats beats after an adopted step the phase slews at stepSlewRate (6 %), then 3 % again.
+    // beats). For stepSlewBeats beats after an adopted step the phase slews at stepSlewRate, then 3 % again (16 Nov,
+    // #243 box run ce25192: with 4 confirmations the step lands about beat 7 with -0.27 beat; at 6 % it took to beat
+    // 10 to re-lock, so 0.35: the 0.27 is gone within one beat of the adoption, still a slew, never a rewind)
     // At most one step per stepCooldown s (hc-09 churned 30 short-window steps)
-    stepSlewRate: 0.06, stepSlewBeats: 8, stepCooldown: 8,
+    stepSlewRate: 0.35, stepSlewBeats: 8, stepCooldown: 8,
     // the long fit's chain (box run dd840c6): onsets >= fitStrongRel of the strongest of the last 2 s, a whole number
     // of beats apart within fitChainTol per beat
     fitStrongRel: 0.25, fitChainTol: 0.1,
@@ -1113,12 +1115,16 @@ registerProcessor('clock-tracker', ClockTrackerProcessor);
         }
         return;
       }
-      // a candidate is confirmed once: by a fit on a newer onset (one more beat) within stepAgree; it adopts that
-      // newer fit. Fits on the same onsets (6 a second) only update it
+      // a candidate is confirmed by stepOnsets fits on newer onsets (one more beat each), each within stepAgree of the
+      // candidate, and all of them within stepAgree of the newest, which is adopted (#243 trace, 16 Nov: one
+      // confirmation let fill and stab lines through, sincere +6.11 at 32.5 s, dj-set-brejcha +8.17 at 139.9 s,
+      // Sandstorm +9.24 at 167.5 s). Fits on the same onsets (6 a second) only update it
       const fresh = !fit.stepCand || Math.abs(s.P / fit.stepCand.P - 1) > C.stepAgree;
-      if (fresh) { fit.stepCand = { P: s.P, since: t, n: 1, anchor: s.anchor }; return; }
+      if (fresh) { fit.stepCand = { P: s.P, since: t, n: 1, anchor: s.anchor, newer: [] }; return; }
       if (s.anchor <= fit.stepCand.anchor + 0.5 * s.P) { fit.stepCand.P = s.P; return; }
-      fit.stepCand.n++;
+      fit.stepCand.n++; fit.stepCand.anchor = s.anchor; fit.stepCand.P = s.P; fit.stepCand.newer.push(s.P);
+      if (fit.stepCand.newer.length < C.stepOnsets) return;
+      if (fit.stepCand.newer.slice(-C.stepOnsets).some(p => Math.abs(p / s.P - 1) > C.stepAgree)) { fit.stepCand = { P: s.P, since: t, n: 1, anchor: s.anchor, newer: [] }; return; }
       // adopt: the period at once; the beat onto the short line (a pending correction, slewed under the 3 % rule).
       // A line half a beat off the model is the off-beat stream: not adopted
       const eAt = frac(ownBeats(t) - (t - s.b) / s.P);   // the model's beat at the line's beat, at the new period

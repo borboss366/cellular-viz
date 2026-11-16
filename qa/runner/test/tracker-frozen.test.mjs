@@ -71,6 +71,11 @@ test('frozen tracker: CLOCK_CORPUS.md lists every DEFAULTS constant of the track
   // #240: the centre moves once to the median of stepEstimates agreeing hold-band refusals ('hold-recentre')
   assert.match(src, /ownPeriod\('hold-recentre', m, t\)/, 'the hold-recentre writer is there');
   assert.match(src, /bandRun\.slice\(-C\.stepEstimates\)/, 'over the last stepEstimates refused targets');
+  // #243 box run ce25192 (option A): the adopted step's phase error slews out at 35 % a beat, not 6 %
+  assert.equal(code.stepSlewRate, 0.35);
+  // #243 trace: a fit-step needs stepOnsets newer short fits within stepAgree, not one confirmation
+  assert.match(src, /if \(fit\.stepCand\.newer\.length < C\.stepOnsets\) return;/, 'the step waits for stepOnsets newer fits');
+  assert.match(src, /fit\.stepCand\.newer\.slice\(-C\.stepOnsets\)\.some\(p => Math\.abs\(p \/ s\.P - 1\) > C\.stepAgree\)/, 'all within stepAgree of the adopted fit');
 });
 
 test('frozen tracker: the module constants and the source sha256 match the doc; the frozen sentence points at the list', () => {
