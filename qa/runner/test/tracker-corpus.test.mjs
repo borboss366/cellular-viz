@@ -17,6 +17,7 @@ import http from 'node:http';
 import { createRequire } from 'node:module';
 import { BUDGET_BEATS, relockFigures, relockText } from './fixtures/relock.mjs';
 import { heavyLock } from './fixtures/heavy-lock.mjs';
+import { walkProbe, walkText } from './fixtures/walk-r.mjs';
 const heavy = async t => { const release = await heavyLock('tracker-corpus', { signal: t.signal }); t.after(release); };
 
 const require = createRequire(import.meta.url);
@@ -410,10 +411,12 @@ const SCORE = await import('../../conduct-score.mjs');
 const CD = await import('../../../experiments/conductor.mjs');
 const GATE_SECS = 180;
 /** one tracker over the audio: its output beats (as the conductor logs the shadow's), 0.1 s samples, first lock */
-function gateRun(mono, lib) {
+function gateRun(mono, lib, walk = false) {
   const beats = [], samples = [], counter = CD.beatCounter(), applied = [], decided = [], sideS = [];
   let lockT = null, lastBlock = null, nRel = 0, nRef = 0;
+  const wp = walk ? walkProbe(T.DEFAULTS) : null;   // the fit-long walk diagnosis (WALK_DIAG ids, the tracker under test)
   const tr = track(mono, (tr, tt) => {
+    if (wp) wp.tick(tr, tt);
     if (lockT === null && tr.state === 'locked') lockT = tt;
     if (lockT !== null && tr.sideTrack) {
       const st = tr.sideTrack;
@@ -435,7 +438,8 @@ function gateRun(mono, lib) {
     // (#242 follow-up; read only when the tracker has a tempo report: main 501cfe1's has none)
     const tRep = tr.tempoReport || null;
     samples.push({ t: tt, bpm: tr.bpm || null, conf: tr.confidence, state: tr.state,
-      sf: tRep && tRep.short ? tRep.short.last : null, lf: tRep ? tRep.fit : null, sc: tRep && tRep.short ? tRep.short.cand : null });
+      sf: tRep && tRep.short ? tRep.short.last : null, lf: tRep ? tRep.fit : null, sc: tRep && tRep.short ? tRep.short.cand : null,
+      w: wp ? wp.sample(tr, tt) : null });
   }, lib);
   // the side at the first lock (half-beat fix A: the two bin weights, the brightness, the choice) and the side moves
   const side = tr.snapshot ? tr.snapshot().lane.side : null;
@@ -456,6 +460,10 @@ function gateRun(mono, lib) {
 // step s, with every writer of the period in the window (count, net bpm change, largest single change)
 // #242 trace follow-up (#243, the fit-step confirmations): sincere's 30 s and dj-set-brejcha's 140 s excursions, Sandstorm 140-176 s
 const TEMPO_DIAG = { 'house-01': [40, 95, 1], 'house-02': [55, 80, 1], 'sicko-mode': [0, GATE_SECS, 15], 'sincere': [24, 40, 1], 'dj-set-brejcha': [130, 160, 1], 'sandstorm': [140, 176, 1] };
+// the fit-long walk diagnosis (report-only, after #245): on these ids each tempo-diag second also reads the anchor (bpm at
+// the latest lock or adopted step), the home tempo, the fit-long target and R over relSecs at the target and at the
+// anchor (fixtures/walk-r.mjs): does R at the target lose during the wrong walks (house-02 66-72 s, sandstorm 148-156 s)?
+const WALK_DIAG = ['house-02', 'sandstorm', 'dj-set-brejcha'];
 function gridSecs(gridBeats) { return (gridBeats || []).map(b => (b && Number.isFinite(b.ms) ? b.ms / 1000 : NaN)).filter(Number.isFinite).sort((p, q) => p - q); }
 function refBpm(G, t0, t1) {   // beats of the grid in [t0, t1) over their span; null with fewer than 2
   const B = G.filter(x => x >= t0 && x < t1);
@@ -472,7 +480,7 @@ function tempoText(run, gridBeats, [from, to, step]) {
     const sfT = z && z.sf ? (z.sf.bpm ? `${z.sf.bpm.toFixed(2)}@${z.sf.t.toFixed(1)}` : `none (${z.sf.why})`) : '-';
     const lfT = z && z.lf ? `${z.lf.bpm.toFixed(2)} n${z.lf.n}@${z.lf.t.toFixed(1)}` : '-';
     const scT = z && z.sc ? ` cand ${z.sc.bpm.toFixed(2)} n${z.sc.n}` : '';
-    rows.push(`${w0}s ${f(tb)}/${f(rb)}${tb && rb ? ` (${((tb / rb - 1) * 100).toFixed(1)} %)` : ''} short ${sfT}${scT} long ${lfT}`);
+    rows.push(`${w0}s ${f(tb)}/${f(rb)}${tb && rb ? ` (${((tb / rb - 1) * 100).toFixed(1)} %)` : ''} short ${sfT}${scT} long ${lfT}${z && z.w ? ` [walk: ${walkText(z.w)}]` : ''}`);
   }
   const P = (run.periodLog || []).filter(p => p.t >= from && p.t < to), by = {};
   for (const p of P) {
@@ -628,7 +636,7 @@ test(`gate table: the 4/4 party set (non-hc corpus rows), inside-gate % and time
     const d = f.skip ? f : await decode(f, GATE_SECS);
     if (d.skip) { say(t, `gate-table ${row.id}: skipped (${d.skip})`); continue; }
     const secs = Math.floor(d.mono.length / SR);
-    const before = gateRun(d.mono, BASE501), after = gateRun(d.mono, T);
+    const before = gateRun(d.mono, BASE501), after = gateRun(d.mono, T, WALK_DIAG.includes(row.id));
     const b = gateScore(before, row.id, row, grid, secs), a = gateScore(after, row.id, row, grid, secs);
     if (!b.tr.scored || !a.tr.scored) { say(t, `gate-table ${row.id}: not scored (${b.tr.reason || a.tr.reason})`); continue; }
     const bi = b.tr.alone.inPct, ai = a.tr.alone.inPct, delta = ai - bi, house = isHouse(row.id);

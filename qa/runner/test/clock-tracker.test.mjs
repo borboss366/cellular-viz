@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { render, renderHits, rampScenario, swingTrapScenario, steadyScenario, kickDropoutScenario } from './fixtures/tracker-scenarios.mjs';
 import { BUDGET_BEATS, relockFigures, relockText } from './fixtures/relock.mjs';
+import { walkProbe, walkText } from './fixtures/walk-r.mjs';
 // report-only rows: test-pr.sh (the runner's copy) prints a passing file's lines only when they start with "corpus: ",
 // so these go out as "corpus: report: ..." (numbers only) and QA box sees them on every run
 const report = (t, line) => { console.log(`# ${line}`); t.diagnostic(`corpus: report: ${line}`); };
@@ -16,6 +17,19 @@ const require = createRequire(import.meta.url);
 const T = require('../../../experiments/clock-tracker.js');
 
 const SR = 44100;
+// the fit-long walk diagnosis on the real changes (report-only, after #245): a separate tracker run over the same samples,
+// one sample every `every` s from `from` to `to` (fixtures/walk-r.mjs: anchor, home, fit-long target, R at both)
+function walkRun(samples, sr, from, to, every = 2) {
+  const tr = T.createTracker(), wp = walkProbe(T.DEFAULTS), rows = [];
+  let next = from;
+  const an = T.createAnalyzer({ sampleRate: sr, onFrame: f => {
+    tr.push(f); wp.tick(tr, f.t);
+    if (f.t >= next && f.t <= to + 1e-9) { rows.push(wp.sample(tr, f.t)); next += every; }
+  } });
+  for (let i = 0; i < samples.length; i += 128) an.process(samples.subarray(i, Math.min(samples.length, i + 128)), i / sr);
+  return rows;
+}
+const walkLine = (name, rows, t0) => `walk ${name}: ${rows.map(x => `+${(x.t - t0).toFixed(0)}s ${walkText(x)}`).join(' | ') || 'no samples'}`;
 const pct = (a, p) => { if (!a.length) return NaN; const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * (s.length - 1) + 0.5))]; };
 const frac = x => x - Math.round(x);
 
@@ -142,8 +156,9 @@ test('81-stomp-clap: reported (octave predicted double, never gated)', () => {
   assert.ok(['double', 'same'].includes(octave), `81 tracked as ${o.tr.ownBpm}`);
 });
 
-test('step-120-128: re-lock ≤ 8 beats after the step', () => {
+test('step-120-128: re-lock ≤ 8 beats after the step', (t) => {
   const s = render('step-120-128', { sr: SR }), o = run(s);
+  { const tStep = s.events.find(e => e.kind === 'step').t; report(t, walkLine('step-120-128', walkRun(s.samples, SR, tStep, tStep + 16), tStep)); }
   const bias = phaseStats(o, s, { to: 30 }).bias;   // the analysis delay, from the steady part before the step
   const after = o.errs.filter(x => x.t >= 30);
   // re-lock: the first true beat after the step from which the next 4 beats all sit within 0.05 beat (around the bias)
@@ -455,6 +470,7 @@ const pts = a => a.slice(0, 6).map(x => `${x.t.toFixed(1)}:${x.bpm.toFixed(1)}${
 
 test('F3 ramp: +10 % from 126 to 139 over 32 bars, the tempo within 1 % of the true tempo with a lag of 4 s or less (hard)', (t) => {
   const s = rampScenario({ sr: SR }), { o, trace } = bpmTrace(s);
+  report(t, walkLine('ramp 126 -> 139', walkRun(s.samples, SR, s.rampStart, s.rampEnd), s.rampStart));
   assert.ok(o.lockT !== null, 'locks');
   const from = o.lockT + 8 * 60 / 126, lag = 4;
   const checked = trace.filter(x => x.t >= from && x.t <= s.duration - 0.5);
@@ -515,8 +531,9 @@ test('F3 kick dropout 124: 8 bars of hats only, the tempo within 1 % of 124 thro
 });
 
 test('F3 hard cut 128 -> 136 at 30 s: a stable lock within 8 beats (hard)', (t) => {
-  const f = relockFigures(traceOf(T, hardCut(128, 136, 30, 60), SR), 30, 136);
+  const cut = hardCut(128, 136, 30, 60), f = relockFigures(traceOf(T, cut, SR), 30, 136);
   report(t, `F3 hard cut 128 -> 136: ${relockText('now', f)}`);
+  report(t, walkLine('hard cut 128 -> 136', walkRun(cut, SR, 30, 46), 30));
   assert.ok(f.stable && f.stable.beats <= BUDGET_BEATS, `stable lock after ${f.stable ? f.stable.beats : 'never'} beats (budget ${BUDGET_BEATS})`);
 });
 
