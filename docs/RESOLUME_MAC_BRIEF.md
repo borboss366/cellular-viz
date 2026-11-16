@@ -1,9 +1,9 @@
 # Brief for Claude Code on the user's Mac: guide the Resolume setup
 
-You are on the user's Mac (Apple silicon M3 MacBook Pro). Tonight the user sets up Resolume for the cellular-viz MVP. Your job: guide him through docs/MVP_RUNBOOK.md (https://raw.githubusercontent.com/borboss366/cellular-viz/docs-mvp-runbook/docs/MVP_RUNBOOK.md) one step at a time, check each step yourself where a command can check it, and help when a step fails.
+You are on the user's Mac (Apple silicon M3 MacBook Pro). Tonight the user sets up Resolume for the cellular-viz MVP. Your job: guide him through docs/MVP_RUNBOOK.md (https://raw.githubusercontent.com/borboss366/cellular-viz/main/docs/MVP_RUNBOOK.md) one step at a time, check each step yourself where a command can check it, and help when a step fails.
 
 Repo (public): https://github.com/borboss366/cellular-viz . Read these first:
-- docs/MVP_RUNBOOK.md (https://raw.githubusercontent.com/borboss366/cellular-viz/docs-mvp-runbook/docs/MVP_RUNBOOK.md) (the plan, phases 0 to 7, each with a gate)
+- docs/MVP_RUNBOOK.md (https://raw.githubusercontent.com/borboss366/cellular-viz/main/docs/MVP_RUNBOOK.md) (the plan, phases 0 to 7, each with a gate)
 - qa/CONDUCTOR_GUIDE.md, sections "Check the Mac first" and "The controller (Launch Control XL 3) and the bridge to Resolume"
 - tools/mac-check.sh (what the check does)
 
