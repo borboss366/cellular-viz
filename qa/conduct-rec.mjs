@@ -12,22 +12,34 @@
 export const CHUNK_FRAMES = 24000, CHANNELS = 2, BYTES_PER_FRAME = 2 * CHANNELS;
 
 /** the AudioWorklet processor: interleaved stereo Int16 chunks of CHUNK_FRAMES frames, each with the context frame of
- *  its first sample; a mono input is copied to both channels, no input is silence (the timeline never skips) */
+ *  its first sample; a mono input is copied to both channels, no input is silence (the timeline never skips).
+ *  The frames are counted here: currentFrame is read only to start the count and to see a real jump ahead. Chrome
+ *  sets the worklet's currentFrame only when the render thread gets the graph lock
+ *  (BaseAudioContext::UpdateWorkletGlobalScopeOnRenderingThread, a try-lock), so while the main thread holds it a
+ *  quantum sees the previous quantum's value: a chunk starting there got a start frame 128 too early (box run of #261
+ *  @90c354d, gaps 1) although every sample was in the file. A stale value is never ahead of the count; ahead means
+ *  frames that never reached this processor: they are written as silence (skipped) so the file stays on the
+ *  context's clock, and counted. Before the first chunk is out, ahead means the very first reading was stale: the
+ *  count is re-anchored instead. */
 export const REC_WORKLET = `
+const s16 = x => (x >= 1 ? 32767 : x <= -1 ? -32768 : Math.round(x * 32767));
 class ConductRec extends AudioWorkletProcessor {
-  constructor() { super(); this.buf = new Int16Array(${CHUNK_FRAMES * CHANNELS}); this.n = 0; this.first = 0; }
+  constructor() { super(); this.buf = new Int16Array(${CHUNK_FRAMES * CHANNELS}); this.n = 0; this.first = 0; this.start = -1; this.done = 0; this.skipped = 0; this.posted = false; }
+  put(l, r) {
+    if (this.n === 0) this.first = this.start + this.done;
+    this.buf[this.n++] = l; this.buf[this.n++] = r; this.done++;
+    if (this.n >= this.buf.length) {
+      this.port.postMessage({ frame: this.first, data: this.buf.buffer, skipped: this.skipped }, [this.buf.buffer]);
+      this.buf = new Int16Array(${CHUNK_FRAMES * CHANNELS}); this.n = 0; this.posted = true;
+    }
+  }
   process(inputs) {
     const inp = inputs[0] || [], L = inp[0] || null, R = inp[1] || L, frames = L ? L.length : 128;
-    const s = x => (x >= 1 ? 32767 : x <= -1 ? -32768 : Math.round(x * 32767));
-    for (let i = 0; i < frames; i++) {
-      if (this.n === 0) this.first = currentFrame + i;
-      this.buf[this.n++] = L ? s(L[i]) : 0;
-      this.buf[this.n++] = R ? s(R[i]) : 0;
-      if (this.n >= this.buf.length) {
-        this.port.postMessage({ frame: this.first, data: this.buf.buffer }, [this.buf.buffer]);
-        this.buf = new Int16Array(${CHUNK_FRAMES * CHANNELS}); this.n = 0;
-      }
-    }
+    if (this.start < 0) this.start = currentFrame;
+    const ahead = currentFrame - (this.start + this.done);
+    if (ahead > 0 && !this.posted) { this.start += ahead; this.first = this.start; }   // the first reading was stale: re-anchor
+    else if (ahead > 0) { this.skipped += ahead; for (let k = 0; k < ahead; k++) this.put(0, 0); }
+    for (let i = 0; i < frames; i++) this.put(L ? s16(L[i]) : 0, R ? s16(R[i]) : 0);
     return true;
   }
 }
@@ -49,7 +61,7 @@ export function wavHeader(sampleRate, channels, dataBytes) {
  *  server answers 409 with its size, and a chunk it already has is not sent again) */
 export function createRecorder({ ctx, post, workletUrl = null, retryMs = 1000 }) {
   const st = { started: false, ready: false, startCtx: null, sampleRate: ctx.sampleRate, channels: CHANNELS, bytes: 0, queue: [], sending: false,
-    gaps: 0, nextFrame: null, error: null, node: null, retry: 0 };
+    gaps: 0, skipped: 0, nextFrame: null, error: null, node: null, retry: 0 };
   async function send() {
     if (st.sending) return;
     st.sending = true;
@@ -70,7 +82,10 @@ export function createRecorder({ ctx, post, workletUrl = null, retryMs = 1000 })
     } finally { st.sending = false; }
     if (st.queue.length && !st.retry) st.retry = setTimeout(() => { st.retry = 0; send(); }, retryMs);
   }
-  function chunk({ frame, data }) {
+  // gaps: a chunk that does not start where the last one ended (the processor's own count makes it 0); skipped: frames
+  // the context rendered that never reached the processor, written as silence (real audio lost; 0 expected)
+  function chunk({ frame, data, skipped = 0 }) {
+    st.skipped = skipped;
     if (st.startCtx === null) st.startCtx = frame / st.sampleRate;
     else if (st.nextFrame !== null && frame !== st.nextFrame) st.gaps++;
     st.nextFrame = frame + data.byteLength / BYTES_PER_FRAME;
@@ -105,7 +120,7 @@ export function createRecorder({ ctx, post, workletUrl = null, retryMs = 1000 })
     if (!st.started) return 'rec: waiting for the input';
     if (!st.ready) return st.error ? `rec: ERROR ${st.error}` : 'rec: starting';
     const mb = (st.bytes / 1048576).toFixed(1), s = Math.floor(seconds());
-    return `rec: ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} (${mb} MB)${st.queue.length > 2 ? `, ${st.queue.length} waiting` : ''}${st.error ? ` ERROR ${st.error}` : ''}`;
+    return `rec: ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} (${mb} MB)${st.queue.length > 2 ? `, ${st.queue.length} waiting` : ''}${st.skipped ? `, ${(st.skipped / st.sampleRate).toFixed(2)} s lost` : ''}${st.error ? ` ERROR ${st.error}` : ''}`;
   }
   return { start, stop, chunk, send, text, seconds, get state() { return st; } };
 }

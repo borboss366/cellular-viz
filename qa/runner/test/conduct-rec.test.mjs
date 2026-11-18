@@ -13,7 +13,7 @@ import vm from 'node:vm';
 import * as R from '../../conduct-rec.mjs';
 import * as S from '../../conduct-serve.mjs';
 
-test('conduct-rec: the worklet makes stereo Int16 chunks from the frame of their first sample (mono to both, clip, silence); the WAV header', () => {
+test('conduct-rec: the worklet makes stereo Int16 chunks from the frame of their first sample (mono to both, clip, silence; a stale currentFrame is no gap, a real jump is silence); the WAV header', async () => {
   const h = R.wavHeader(48000, 2, 1000), v = new DataView(h.buffer);
   assert.equal(h.length, 44);
   const tag = o => String.fromCharCode(h[o], h[o + 1], h[o + 2], h[o + 3]);
@@ -47,6 +47,46 @@ test('conduct-rec: the worklet makes stereo Int16 chunks from the frame of their
   for (let k = 0; k < 188; k++) { ctx.currentFrame = frame; p.process([[]]); frame += 128; }
   assert.equal(posted.length, 2);
   assert.equal(posted[1].frame, 1000 + R.CHUNK_FRAMES, 'the next chunk starts at the frame after the last');
+  assert.deepEqual(posted.map(m => m.skipped), [0, 0]);
+
+  // The box run of #261 @90c354d counted one gap. Chrome sets the worklet's currentFrame only when its render thread
+  // gets the graph lock (a try-lock); while the main thread holds it, a quantum sees the previous quantum's value.
+  // Quantum 187 holds the chunk boundary: the old processor took the stale value as the next chunk's start (128 early,
+  // gaps 1) though every sample was written. The frames now come from the processor's own count.
+  posted.length = 0;
+  const p2 = new reg.cls();
+  frame = 5000;
+  for (let k = 0; k < 376; k++) {
+    ctx.currentFrame = k === 187 ? frame - 128 : frame;   // the stale currentFrame at the chunk boundary
+    p2.process([[fill(0.25)]]);
+    frame += 128;
+  }
+  assert.deepEqual(posted.map(m => m.frame), [5000, 5000 + R.CHUNK_FRAMES], 'no gap from a stale currentFrame');
+  assert.deepEqual(posted.map(m => m.skipped), [0, 0]);
+  const rq = R.createRecorder({ ctx: { sampleRate: 48000 }, post: async () => ({ status: 200, ok: true, json: async () => ({}) }) });
+  for (const m of posted) await rq.chunk(m);
+  assert.deepEqual([rq.state.gaps, rq.state.skipped], [0, 0], 'the page sees no gap either');
+  // a stale very first reading: re-anchored before the first chunk goes out, no silence
+  posted.length = 0;
+  const p4 = new reg.cls();
+  frame = 7000;
+  for (let k = 0; k < 188; k++) { ctx.currentFrame = k === 0 ? frame - 128 : frame; p4.process([[fill(0.25)]]); frame += 128; }
+  assert.deepEqual([posted[0].frame, posted[0].skipped], [7000, 0]);
+
+  // a real jump ahead (frames that never reached the processor): written as silence and counted, the file stays on the
+  // context's clock
+  posted.length = 0;
+  const p3 = new reg.cls();
+  frame = 0;
+  for (let k = 0; k < 376; k++) {
+    if (k === 200) frame += 256;   // after the first chunk is out (quantum 187)
+    ctx.currentFrame = frame;
+    p3.process([[fill(0.25)]]);
+    frame += 128;
+  }
+  assert.deepEqual(posted.map(m => [m.frame, m.skipped]), [[0, 0], [R.CHUNK_FRAMES, 256]]);
+  const c3 = new Int16Array(posted[1].data);   // quantum 200 starts at frame 25600 = 1600 into the second chunk
+  assert.deepEqual([c3[2 * 1599], c3[2 * 1600], c3[2 * 1855], c3[2 * 1856]], [8192, 0, 0, 8192], '256 frames of silence where the frames were lost');
 });
 
 test('conduct-rec: the sender keeps the order and the offsets: the first chunk carries sr, ch, start; a lost answer, the box down, a gap', async () => {

@@ -642,7 +642,7 @@ window.__qa = Object.assign(window.__qa || {}, { conductor: {
   setOffset, toggleKey, panic, get panicSent() { return panicSent; }, setAutoHold, toggleAutoHold,   // hand-held mode (#239)
   // the recording (Saturday brief task 3)
   rec: () => recorder && { started: recorder.state.started, ready: recorder.state.ready, bytes: recorder.state.bytes, startCtx: recorder.state.startCtx,
-    sampleRate: recorder.state.sampleRate, gaps: recorder.state.gaps, waiting: recorder.state.queue.length, error: recorder.state.error, text: recorder.text() },
+    sampleRate: recorder.state.sampleRate, gaps: recorder.state.gaps, skipped: recorder.state.skipped, waiting: recorder.state.queue.length, error: recorder.state.error, text: recorder.text() },
   // the phase wheel's numbers (the user 20:46): median ms, the 6 o'clock weight, the drift per bar, the hint
   wheel: () => wheelNow && { medianMs: wheelNow.medianMs, sixShare: wheelNow.sixShare, six: wheelNow.six, twelve: wheelNow.twelve,
     driftDegPerBar: wheelNow.driftDegPerBar, hint: wheelNow.hint, kind: wheelNow.kind, grey: wheelNow.grey, kicks: wheelNow.kicks },

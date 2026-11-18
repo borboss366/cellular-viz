@@ -170,7 +170,7 @@ test('guest mode: ?clock=line&in=<label>, no playlist, no track: the matching in
     // 5. the recording of the input next to the log (Saturday brief task 3): <session>.wav, sample 0 at startCtx
     const recNow = await page.evaluate(() => window.__qa.conductor.rec());
     t.diagnostic(`corpus: report: guest mode rec ${JSON.stringify(recNow)}`);
-    assert.ok(recNow && recNow.ready && !recNow.error && recNow.gaps === 0, `recording: ${JSON.stringify(recNow)}`);
+    assert.ok(recNow && recNow.ready && !recNow.error && recNow.gaps === 0 && recNow.skipped === 0, `recording: ${JSON.stringify(recNow)}`);
     const side = JSON.parse(fs.readFileSync(path.join(sessions, `${id}.wav.json`), 'utf8'));
     assert.deepEqual([side.sampleRate, side.channels, side.format], [recNow.sampleRate, 2, 's16le']);
     assert.equal(side.startCtx, recNow.startCtx, 'the box and the page agree on sample 0');
