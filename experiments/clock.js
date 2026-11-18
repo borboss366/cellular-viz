@@ -78,7 +78,10 @@
 //   Hand-fix keys (Shift only; without Shift nothing touches the clock): Shift+A tap, Shift+H ÷2, Shift+D ×2,
 //   Shift+1 set the 1, Shift+, / Shift+. nudge −10 / +10 ms, Shift+0 reset, Shift+F flip (line), Shift+R restart (line), Shift+L hold (line). The same commands come from the
 //   controller's Shift buttons as origin 'fix:controller' (#85 layout).
-//   metronome.setVisualOffset(ms) / .visualOffsetMs   → −100 … +200 ms, + = visuals earlier (#95 6498683963)
+//   metronome.setVisualOffset(ms) / .visualOffsetMs   → −100 … +500 ms, + = visuals earlier (#95 6498683963; +500 for the
+//                                  Chrome → OBS → NDI → Resolume → projector route, Saturday fix list 19 Nov). The booking
+//                                  look-ahead grows by a positive offset (bookAhead()), so hits still reach the visuals on
+//                                  time at a large offset (before, hits past currentTime + look-ahead came late)
 //   metronome.now()              → the clock's time on the audio clock that the visuals show now (heard + offset)
 //   Clock.qaEvents(metronome)    → events and jumps merged, sorted by time (for __qa.events)
 //   metronome.lateStats          → { late, lateMaxMs, maxGapMs, lookAheadMs } (#95: heavy 4K frames; __qa.clockLate)
@@ -98,8 +101,12 @@
 // jump event lands as a jump of its own kind at the publisher's time (a flip lands on the same bar line). Bar and
 // beat-in-bar follow the publisher's. No message for SHARED_LOST_MS (2 s): free-run at the last tempo, the badge
 // says "shared clock lost"; the next message re-locks silently (a slew, unless the publisher jumped meanwhile).
+// The visual offset (Saturday fix list, 19 Nov): a scene takes the publisher's offsetMs from every clock message, so the
+// conductor's Calibrate slider moves every scene (+ = visuals earlier, the conductor's meaning); ?offset=<ms> on the
+// scene's URL (or opts.offset) fixes the scene's own offset and the messages' offsetMs is then ignored. No offsetMs, or
+// 0: the scene's offset stays 0, as before.
 // Hand fixes do nothing on a scene (the conductor owns them). The page shows a small "shared" badge (opts.badge false:
-// none). clock.sharedState = { state: waiting|locked|free-run, msgs, jumpsIn, lastErrMs, lost, skipped }.
+// none). clock.sharedState = { state: waiting|locked|free-run, msgs, jumpsIn, lastErrMs, lost, skipped, offsetMs, offsetFrom: url|publisher }.
 //   Clock.publish(clock, { timers, post, epochNow }) → { tick(), panic(mode), stop(), sent }: the conductor side;
 //   panic(mode) sends { type: 'panic', v: 1, t, mode: blackout|calm|clear } on the same channel (panic.js in every scene)
 //
@@ -119,7 +126,7 @@
   const TAU = { kick: 0.150, snare: 0.120, hat: 0.040 };
   const LANES = ['kick', 'snare', 'hat'];
   const BANDS = ['sub', 'kick', 'low', 'lowMid', 'mid', 'upperMid', 'presence', 'air'];
-  const OFFSET_MIN = -100, OFFSET_MAX = 200, JUMPS_KEPT = 256, HITLOG_KEPT = 4096;
+  const OFFSET_MIN = -100, OFFSET_MAX = 500, JUMPS_KEPT = 256, HITLOG_KEPT = 4096;
   const AHEAD_MIN = 0.1, AHEAD_MAX = 0.25, GAPS_KEPT = 120, GAPS_MIN = 10, PUMP_MIN_MS = 4;
   const FIX_ORIGINS = ['fix:controller', 'fix:key', 'qa'], QUANTUM = 0.003, NO_DOUBLE = 0.020, TAP_GAP = 2, TAPS_KEPT = 5;
   // D4 on line (the user 10 Nov 20:27): 4 to 8 taps set the tempo by a line fit and clear the hold; only an interval
@@ -301,7 +308,11 @@
       step: null, lastBooked: -Infinity, seenJumps: 0, stateLog: [], rises: [], taps: [] } : null;
     // shared: the flywheel from the conductor's messages (see the header)
     const shared = source === 'shared' ? { state: 'waiting', model: null, pending: 0, slewAt: null, lastMsg: null, msgs: 0, jumpsIn: 0,
-      lastErrMs: null, lost: false, step: null, lastBooked: -Infinity, skipped: 0, channel: null, badge: null, stateLog: [] } : null;
+      lastErrMs: null, lost: false, step: null, lastBooked: -Infinity, skipped: 0, channel: null, badge: null, stateLog: [], fixedOffset: null } : null;
+    if (shared) {   // ?offset=<ms> on a scene's URL (or opts.offset) wins over the publisher's offsetMs
+      const v = parseFloat(opts.offset !== undefined ? opts.offset : queryParam('offset'));
+      if (Number.isFinite(v)) shared.fixedOffset = v;
+    }
     const epochNow = opts.epochNow || epochNowDefault;
     const lineDelayMs = () => (opts.trackerOptions && Number.isFinite(opts.trackerOptions.analysisDelayMs) ? opts.trackerOptions.analysisDelayMs
       : root.ClockTracker ? root.ClockTracker.ANALYSIS_DELAY_MS : null);
@@ -354,7 +365,7 @@
         if (line) return this.lineSchedule();
         if (shared) return this.sharedSchedule();
         const ct = this.ctx.currentTime;
-        while (this.nextTime < ct + this.lookAhead) {
+        while (this.nextTime < ct + this.bookAhead()) {
           if (this.nextTime < ct) { this.late++; this.lateMaxMs = Math.max(this.lateMaxMs, (ct - this.nextTime) * 1000); }   // booked after its own time
           this.queueStep(this.step, this.nextTime); this.nextTime += 60 / settings.bpm / 4; this.step++;
         }
@@ -439,6 +450,9 @@
         if (Number.isFinite(ms)) this.offsetMs = Math.max(OFFSET_MIN, Math.min(OFFSET_MAX, ms));
         return this.offsetMs;
       },
+      // how far past currentTime the loops book: the look-ahead, plus a positive visual offset (the visuals read that far
+      // ahead, so the hits must exist by then); at offset ≤ 0 exactly the look-ahead, as before
+      bookAhead() { return this.offsetMs > 0 ? this.lookAhead + this.offsetMs / 1000 : this.lookAhead; },
       // the audio-clock time whose sound the visuals show now: heard time, moved by the visual offset
       now(o) {
         if (!this.ctx) return NaN;
@@ -636,7 +650,7 @@
         for (;;) {
           if (file.warp.at(file.step / 4) - file.nudgeMs > file.durationMs) break;   // the track has ended: no hits past it
           const t = this.beatTime(file.step / 4);
-          if (t >= ct + this.lookAhead) break;
+          if (t >= ct + this.bookAhead()) break;
           if (t < ct) { this.late++; this.lateMaxMs = Math.max(this.lateMaxMs, (ct - t) * 1000); }
           this.queueFileStep(file.step, t); file.step++;
         }
@@ -739,6 +753,7 @@
         if (!shared || !msg || typeof msg !== 'object' || !this.ctx) return;
         if (msg.type === 'jump') return this.sharedJump(msg);
         if (msg.type !== 'clock' || !(msg.bpm > 0) || !Number.isFinite(msg.beats) || !Number.isFinite(msg.t)) return;
+        if (shared.fixedOffset === null && Number.isFinite(msg.offsetMs)) this.setVisualOffset(msg.offsetMs);   // the conductor's Calibrate
         const hNow = this.now({ raw: true }), target = msg.beats + (hNow - this.sharedHeard(msg.t)) * msg.bpm / 60;
         shared.msgs++; shared.lastMsg = { t: msg.t, at: epochNow(), confidence: msg.confidence, state: msg.state };
         const bpb = msg.bpb > 0 ? msg.bpb : settings.bpb;
@@ -804,7 +819,7 @@
           const t = this.sharedTime(shared.step / 4);
           if (!Number.isFinite(t)) break;
           if (t <= shared.lastBooked + NO_DOUBLE || t < ct) { if (t < ct) shared.skipped++; shared.step++; continue; }
-          if (t >= ct + this.lookAhead) break;
+          if (t >= ct + this.bookAhead()) break;
           this.queueLineStep(shared.step, t); shared.lastBooked = t; shared.step++;
         }
         const old = ct - 1;
@@ -828,7 +843,8 @@
       get sharedState() {
         if (!shared) return null;
         return { state: shared.state, msgs: shared.msgs, jumpsIn: shared.jumpsIn, lost: shared.lost, skipped: shared.skipped,
-          lastErrMs: shared.lastErrMs === null ? null : +shared.lastErrMs.toFixed(3), bpm: shared.model ? shared.model.bpm : null, states: shared.stateLog.slice(-16) };
+          lastErrMs: shared.lastErrMs === null ? null : +shared.lastErrMs.toFixed(3), bpm: shared.model ? shared.model.bpm : null, states: shared.stateLog.slice(-16),
+          offsetMs: this.offsetMs, offsetFrom: shared.fixedOffset !== null ? 'url' : 'publisher' };
       },
 
       // ---------- the line source (#173, PR 3b) ----------
@@ -951,7 +967,7 @@
           const t = this.lineTime(line.step / 4);
           if (!Number.isFinite(t)) break;
           if (t <= line.lastBooked + NO_DOUBLE) { line.step++; continue; }   // the grid sped up under a booked step: never twice
-          if (t >= ct + this.lookAhead) break;
+          if (t >= ct + this.bookAhead()) break;
           if (t < ct) { this.late++; this.lateMaxMs = Math.max(this.lateMaxMs, (ct - t) * 1000); }
           this.queueLineStep(line.step, t); line.lastBooked = t; line.step++;
         }
@@ -1148,6 +1164,7 @@
     };
     // the Shift hand-fix keys on the page (clocks the caller drives itself, timers:false, don't listen)
     if (useTimers && opts.keys !== false && typeof root.addEventListener === 'function') root.addEventListener('keydown', e => clock.handFixKey(e));
+    if (shared && shared.fixedOffset !== null) clock.setVisualOffset(shared.fixedOffset);
     return clock;
   }
 
