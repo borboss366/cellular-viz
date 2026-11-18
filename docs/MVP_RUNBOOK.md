@@ -5,6 +5,8 @@ Goal: 20 minutes of music, three scenes blended in Resolume on the projector. On
 Route: Chrome scene windows -> OBS (window capture) -> DistroAV (one NDI stream per window) -> Resolume (NDI sources) -> projector.
 Fallbacks: NDI Scan Converter (one copy per window), or the OBS Syphon plugin (github.com/ryrotella/obs-syphon-plugin, "Syphon Output" filter per source).
 
+A guest DJ plays (the music comes from the DJ's controller, not the conductor): follow `docs/GUEST_DJ_RUNBOOK.md`.
+
 ## Phase 0 - Check the Mac (10 min)
 1. Connect the projector to HDMI. Connect the LCXL3 to USB.
 2. In Terminal, run `ssh -L 8790:localhost:8790 puggie@192.168.8.164`. Keep this window open.
