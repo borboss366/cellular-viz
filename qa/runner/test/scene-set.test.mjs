@@ -186,9 +186,40 @@ test('set.json is valid and its URLs are right: each scene with ?clock=shared&au
     assert.match(page, /Clock\.create\(\{ source: query\.get\('clock'\)/, `${set.scenes[i].page} reads ?clock=`);
     assert.match(page, /<script src="panic\.js"><\/script>/);
   }
-  assert.equal(SetLib.windowFeatures(set, 0), 'popup=yes,width=1920,height=1080,left=0,top=0');
-  assert.equal(SetLib.windowFeatures(set, 2), 'popup=yes,width=1920,height=1080,left=80,top=80');
+  assert.deepEqual(set.window, { width: 960, height: 540, bar: 63 }, 'content 960x540 pt + the 63 pt Chrome bar (mac session 18 Nov)');
   assert.notEqual(SetLib.windowName(0), SetLib.windowName(1));
+});
+
+// mac session 18 Nov (the user): "Open all scenes" places the windows evenly on a diagonal at the capture size, so they
+// are not moved by hand each session. Content 960x540 pt (window.open width/height are the content in Chrome); outer
+// 960 x (540 + 63) pt; on Retina 1920x1080 px after OBS's Crop/Pad top 126.
+test('set.js windowFeatures: an even diagonal of the available screen at the content size; n = 1; old set.json', () => {
+  const set = JSON.parse(fs.readFileSync(path.join(EX, 'set.json'), 'utf8'));
+  const mac = { availLeft: 0, availTop: 38, availWidth: 1728, availHeight: 1079 };   // the show Mac, menu bar 38 pt
+  assert.deepEqual([0, 1, 2].map(i => SetLib.windowFeatures(set, i, 3, mac)), [
+    'popup=yes,width=960,height=540,left=0,top=38',     // Hodge Kaleidoscope
+    'popup=yes,width=960,height=540,left=384,top=276',  // Mass Gap
+    'popup=yes,width=960,height=540,left=768,top=514',  // Lenia Effects
+  ]);
+  // n = 1: the corner of the available area
+  assert.equal(SetLib.windowFeatures(set, 0, 1, mac), 'popup=yes,width=960,height=540,left=0,top=38');
+  // a second screen to the left (negative availLeft), odd steps round to whole numbers
+  assert.equal(SetLib.windowFeatures(set, 1, 4, { availLeft: -1920, availTop: 25, availWidth: 1920, availHeight: 1055 }),
+    'popup=yes,width=960,height=540,left=-1600,top=176');
+  // the window larger than the screen: never left of or above the available area
+  const big = { version: 1, window: { width: 1920, height: 1080 }, scenes: [{ page: 'a.html' }, { page: 'b.html' }] };
+  for (const i of [0, 1]) assert.equal(SetLib.windowFeatures(big, i, 2, mac), 'popup=yes,width=1920,height=1080,left=0,top=38');
+  // an old set.json (width/height only, bar 63 by default) is valid and still lays out
+  assert.deepEqual(SetLib.validate(big), []);
+  assert.equal(SetLib.windowFeatures({ version: 1, window: { width: 960, height: 540 } }, 2, 3, mac), 'popup=yes,width=960,height=540,left=768,top=514');
+  assert.equal(SetLib.windowFeatures({ version: 1 }, 0, 3, { availLeft: 0, availTop: 0, availWidth: 3840, availHeight: 2160 }),
+    'popup=yes,width=1920,height=1080,left=0,top=0', 'no window: 1920x1080 as before');
+  assert.equal(SetLib.windowFeatures({ version: 1, window: { width: 960, height: 540, bar: 0 } }, 1, 2, mac), 'popup=yes,width=960,height=540,left=768,top=577');
+  // no screen (old callers): the old 40 px cascade
+  assert.equal(SetLib.windowFeatures(big, 2), 'popup=yes,width=1920,height=1080,left=80,top=80');
+  // bar limits
+  for (const bar of [-1, 201, 1.5, '63']) assert.ok(SetLib.validate({ version: 1, window: { bar }, scenes: [{ page: 'a.html' }] }).some(e => /window\.bar/.test(e)), `bar ${bar}`);
+  for (const bar of [0, 63, 200]) assert.deepEqual(SetLib.validate({ version: 1, window: { bar }, scenes: [{ page: 'a.html' }] }), []);
 });
 
 test('set.js: per-scene query overrides and removes defaults, encodes values; bad pages and bad sets are refused', () => {
@@ -207,7 +238,7 @@ test('set.html: loads set.json and set.js, opens each scene in its own named win
   const html = fs.readFileSync(path.join(EX, 'set.html'), 'utf8');
   assert.match(html, /<script src="set\.js"><\/script>/);
   assert.match(html, /fetch\('set\.json', \{ cache: 'no-store' \}\)/);
-  assert.match(html, /window\.open\(qa\.urls\[i\], SetLib\.windowName\(i\), SetLib\.windowFeatures\(qa\.set, i\)\)/);
+  assert.match(html, /window\.open\(qa\.urls\[i\], SetLib\.windowName\(i\), SetLib\.windowFeatures\(qa\.set, i, qa\.set\.scenes\.length, window\.screen\)\)/);
   assert.ok(/^[\x00-\x7f]*$/.test(html), 'ASCII only');
   assert.ok(/^[\x00-\x7f]*$/.test(fs.readFileSync(path.join(EX, 'set.json'), 'utf8')), 'set.json ASCII only');
 });
@@ -226,6 +257,7 @@ test('set.html: "Open all scenes" and each "Open" call the browser\'s window.ope
     document: { getElementById: el, createElement: tag => ({ tag, textContent: '', className: '', onclick: null, children: [], appendChild(c) { this.children.push(c); }, append(...c) { this.children.push(...c); } }) },
     fetch: async () => ({ ok: true, json: async () => set }),
     open: (url, name, features) => { opened.push({ url, name, features }); return {}; },
+    screen: { availLeft: 0, availTop: 38, availWidth: 1728, availHeight: 1079 },
   };
   win.window = win; win.globalThis = win;
   const ctx = vm.createContext(win);
@@ -235,6 +267,7 @@ test('set.html: "Open all scenes" and each "Open" call the browser\'s window.ope
   assert.equal(win.__qa.set.urls.length, set.scenes.length, 'set.json loaded');
   el('openAll').onclick();
   assert.equal(opened.length, set.scenes.length, 'one window.open per scene');
+  assert.deepEqual(opened.map(o => o.features.replace(/^.*left=/, 'left=')), ['left=0,top=38', 'left=384,top=276', 'left=768,top=514'], 'the diagonal from the page\'s screen');
   assert.deepEqual(opened.map(o => o.name), set.scenes.map((s, i) => `cellular-viz-set-${i}`));
   assert.deepEqual(opened.map(o => o.url), win.__qa.set.urls);
   const openBtn = el('list').children[0].children[2].children[0];
