@@ -27,6 +27,11 @@
 //   POST /log/<session>          JSONL lines appended to <sessions>/<session>.jsonl; every line must fit schema v1
 //                                (qa/conduct-score.mjs checkRecord) and stay ≤ 64 KB (R9), else 400 and nothing is written
 //   GET  /log/<session>          the session so far (the page's download)
+//   POST /rec/<session>?off=N[&sr=&ch=&start=]  the page's recording of its input (Saturday brief task 3, qa/conduct-rec.mjs):
+//                                16-bit PCM appended to <sessions>/<session>.wav at data offset N (else 409 with the size
+//                                the box has), the WAV header rewritten after each chunk; the first chunk (N = 0) also
+//                                writes <session>.wav.json { sampleRate, channels, startCtx: the log's ctx time of sample 0 }
+//   GET  /rec/<session>          that .wav.json
 //   GET  /api/audition           the audition page's rows (docs/CELLULAR_VIZ_BRIEF_SET_RELEASE.md Task 1): every scene page
 //                                in experiments/ (qa/audition.mjs isScenePage) with the facts its source and the box's
 //                                newest check results hold (qa/<id>/checks/ under QA_HOME, or --qa-home), else 'unknown'
@@ -42,9 +47,10 @@ import { sourceTracks, audioDir } from './runner/audio.mjs';
 import { loadMap } from './corpus.mjs';
 import { checkRecord } from './conduct-score.mjs';
 import * as AU from './audition.mjs';
+import { wavHeader } from './conduct-rec.mjs';
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const BROWSER_MODULES = ['marks.mjs', 'conduct-log.mjs', 'audition.mjs'];
+export const BROWSER_MODULES = ['marks.mjs', 'conduct-log.mjs', 'audition.mjs', 'conduct-rec.mjs'];
 export const SESSION_RE = /^conductor-\d{8}-\d{6}(-[a-z0-9]{1,8})?$/;
 export const MAX_POST = 4 << 20, MAX_LINE = 64 << 10;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
@@ -183,6 +189,41 @@ export function createHandler({ tracksDir, sessionsDir, repo = REPO, qaHome = pr
             fs.mkdirSync(sessionsDir, { recursive: true });
             fs.writeFileSync(file, JSON.stringify(obj, null, 1) + '\n');
             return json(res, 200, { ok: true, file: `${parts[2]}.json`, keeps: AU.keepCount(obj.verdicts) });
+          });
+          return undefined;
+        }
+      }
+      if (parts[0] === 'rec' && parts.length === 2 && SESSION_RE.test(parts[1])) {
+        const wav = path.join(sessionsDir, `${parts[1]}.wav`), side = `${wav}.json`;
+        if (req.method === 'GET') return sendFile(req, res, side, 'application/json');
+        if (req.method === 'POST') {
+          const chunks = [];
+          let size = 0;
+          req.on('data', c => { size += c.length; if (size <= MAX_POST) chunks.push(c); });
+          req.on('end', () => {
+            if (size > MAX_POST) return json(res, 413, { error: 'too large' });
+            const body = Buffer.concat(chunks), q = url.searchParams, off = Number(q.get('off'));
+            let meta = null;
+            try { meta = JSON.parse(fs.readFileSync(side, 'utf8')); } catch { /* the first chunk */ }
+            if (!meta) {
+              const sr = Number(q.get('sr')), ch = Number(q.get('ch')), start = Number(q.get('start'));
+              if (!(Number.isInteger(sr) && sr >= 8000 && sr <= 192000 && (ch === 1 || ch === 2) && q.get('start') !== null && Number.isFinite(start) && start >= 0)) {
+                return json(res, 400, { error: 'the first chunk needs sr, ch and start' });
+              }
+              if (off !== 0) return json(res, 409, { error: 'offset', size: 0 });
+              meta = { version: 1, session: parts[1], file: `${parts[1]}.wav`, format: 's16le', sampleRate: sr, channels: ch, startCtx: start };
+              fs.mkdirSync(sessionsDir, { recursive: true });
+              fs.writeFileSync(wav, Buffer.from(wavHeader(sr, ch, 0)));
+              fs.writeFileSync(side, JSON.stringify(meta) + '\n');
+            }
+            const have = Math.max(0, fs.statSync(wav).size - 44);
+            if (off !== have) return json(res, 409, { error: 'offset', size: have });
+            if (body.length % (2 * meta.channels)) return json(res, 400, { error: 'whole frames only' });
+            if (body.length) fs.appendFileSync(wav, body);
+            const data = have + body.length, head = Buffer.from(wavHeader(meta.sampleRate, meta.channels, data));
+            const fd = fs.openSync(wav, 'r+');
+            try { fs.writeSync(fd, head, 0, head.length, 0); } finally { fs.closeSync(fd); }
+            return json(res, 200, { ok: true, size: data, seconds: +(data / (2 * meta.channels * meta.sampleRate)).toFixed(3) });
           });
           return undefined;
         }

@@ -163,6 +163,7 @@ button.reject{background:#c0182b !important;color:#fff}
   </section>
   <section>
     <h2>Session</h2>
+    <div><small id="recState">rec: off</small></div>
     <div><small>records:</small> <span id="nrec">0</span> · <small>key lamp shown:</small> <span id="keyS">0.0</span> s</div>
     <pre id="tail" style="white-space:pre-wrap;font-size:12px;max-height:220px;overflow:auto"></pre>
   </section>
@@ -172,6 +173,7 @@ import { snapMark, stepMark, markRecord, beatTimes } from '../qa/marks.mjs';
 import { ConductLog, sessionId } from '../qa/conduct-log.mjs';
 import * as C from './conductor.mjs';
 import { createCorrections, PANEL_HZ } from './corrections.mjs';
+import { createRecorder } from '../qa/conduct-rec.mjs';
 
 const qs = new URLSearchParams(location.search), $ = id => document.getElementById(id);
 const inputMode = qs.get('clock') === 'line' ? 'line' : 'line:page';
@@ -193,6 +195,11 @@ const id = sessionId();
 const log = new ConductLog({ id, input: inputMode, now: () => ctx.currentTime,
   post: async body => { const r = await fetch(`/log/${id}`, { method: 'POST', body }); if (!r.ok) throw new Error(`HTTP ${r.status}`); } });
 $('session').textContent = $('session').title = id;
+// the recording of the clock's input next to the log (Saturday brief task 3, qa/conduct-rec.mjs): <session>.wav on the
+// box, its sample 0 at the log's ctx time in <session>.wav.json. On in guest mode (?clock=line; ?rec=0 turns it off),
+// off with the playlist (?rec=1 turns it on)
+const recOn = inputMode === 'line' ? qs.get('rec') !== '0' : qs.get('rec') === '1';
+const recorder = recOn ? createRecorder({ ctx, post: (q, body) => fetch(`/rec/${id}?${q}`, { method: 'POST', body }) }) : null;
 
 // ---------- tracks and decks (R1) ----------
 let tracks = [];
@@ -468,6 +475,7 @@ function toggleKey() {
 function tick() {
   requestAnimationFrame(tick);
   if (!clock.playing) return;
+  if (recorder && !recorder.state.started) { const inNode = inputMode === 'line' ? clock.lineInputNode : mixBus; if (inNode) recorder.start(inNode); }
   const now = ctx.currentTime;
   for (const h of clock.hitsDue(['kick'])) { log.add('beat', { src: 'clock', ctx: h.time }); beatFlashAt = h.time; }
   for (; seenJumps < clock.jumps.length; seenJumps++) {
@@ -624,12 +632,17 @@ addEventListener('keydown', e => {
 setInterval(async () => { const n = await log.flush(); $('logState').textContent = $('logState').title = log.pending.length ? `log: ${log.pending.length} waiting` : `log: ok (${log.all.length})`; $('tail').textContent = log.all.slice(-12).map(r => JSON.stringify(r)).join('\n'); }, 1000);
 setInterval(logLatency, 5000);
 addEventListener('beforeunload', () => { if (log.pending.length) navigator.sendBeacon(`/log/${id}`, log.pending.map(r => JSON.stringify(r)).join('\n') + '\n'); });
+setInterval(() => setText('recState', recorder ? recorder.text() : 'rec: off'), 1000);
+addEventListener('beforeunload', () => { if (recorder) recorder.stop((q, body) => navigator.sendBeacon(`/rec/${id}?${q}`, new Blob([body]))); });
 requestAnimationFrame(tick);
 await loadTracks();
 
 window.__qa = Object.assign(window.__qa || {}, { conductor: {
   log, clock, shadow, publisher, controller, decks, get tracks() { return tracks; }, start, load, play: playPause, next, mark, step, barOk,
   setOffset, toggleKey, panic, get panicSent() { return panicSent; }, setAutoHold, toggleAutoHold,   // hand-held mode (#239)
+  // the recording (Saturday brief task 3)
+  rec: () => recorder && { started: recorder.state.started, ready: recorder.state.ready, bytes: recorder.state.bytes, startCtx: recorder.state.startCtx,
+    sampleRate: recorder.state.sampleRate, gaps: recorder.state.gaps, waiting: recorder.state.queue.length, error: recorder.state.error, text: recorder.text() },
   // the phase wheel's numbers (the user 20:46): median ms, the 6 o'clock weight, the drift per bar, the hint
   wheel: () => wheelNow && { medianMs: wheelNow.medianMs, sixShare: wheelNow.sixShare, six: wheelNow.six, twelve: wheelNow.twelve,
     driftDegPerBar: wheelNow.driftDegPerBar, hint: wheelNow.hint, kind: wheelNow.kind, grey: wheelNow.grey, kicks: wheelNow.kicks },
