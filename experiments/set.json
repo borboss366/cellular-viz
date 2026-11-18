@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "about": "The set for set.html (the apartment MVP). Edit freely: scenes are pages in this folder; query adds to or overrides defaults (null removes a key).",
+  "about": "The set for set.html (the apartment MVP). Edit freely: scenes are pages in this folder; query adds to or overrides defaults (null removes a key). window: each scene's content size (pt) and Chrome's bar height; Open all scenes places them on an even diagonal of the screen.",
   "defaults": { "clock": "shared", "audio": "line", "in": "BlackHole", "capture": "1" },
-  "window": { "width": 1920, "height": 1080 },
+  "window": { "width": 960, "height": 540, "bar": 63 },
   "scenes": [
     { "name": "Hodge Kaleidoscope", "page": "16-hodge-kaleidoscope.html" },
     { "name": "Mass Gap", "page": "12-mass-gap.html" },

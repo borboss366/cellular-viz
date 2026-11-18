@@ -6,7 +6,8 @@
 <title>set launcher</title>
 <!--
   The set launcher (the apartment MVP, Task 2). It reads set.json (next to this page; edit it to change the set) and
-  opens each scene in its own 1920x1080 window with the set's query string, for example
+  opens each scene in its own window (content 960x540 pt, set.json "window"; 1920x1080 px on Retina after OBS's Crop/Pad
+  top 126), evenly on a diagonal of the screen, with the set's query string, for example
     16-hodge-kaleidoscope.html?clock=shared&audio=line&in=BlackHole&capture=1
   Open the conductor (clock-conductor.html) in the same browser: the scenes follow its clock (?clock=shared) and its
   panic buttons. Resolume (or OBS) captures each window. Plain ASCII only (#205).
@@ -58,7 +59,7 @@ const ascii = s => String(s).replace(/[^\x20-\x7e]/g, '?');
 // not `open`: a top-level function in a classic script replaces window.open, and the call below then recursed
 // until the stack overflowed, so no window ever opened (the Resolume setup, 16 Nov)
 function openScene(i) {
-  const w = window.open(qa.urls[i], SetLib.windowName(i), SetLib.windowFeatures(qa.set, i));
+  const w = window.open(qa.urls[i], SetLib.windowName(i), SetLib.windowFeatures(qa.set, i, qa.set.scenes.length, window.screen));
   qa.opened.push({ i, url: qa.urls[i], ok: !!w });
   $('status').textContent = w ? `opened: ${qa.set.scenes[i].name || qa.set.scenes[i].page}` : 'the browser blocked the window: let this site open pop-ups';
   return w;
