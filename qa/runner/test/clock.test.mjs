@@ -188,7 +188,7 @@ test('phase is the fraction of beats in [0,1); bar and beatInBar count bpb', () 
   });
 });
 
-test('visual offset: read() is the raw clock read later by the offset; clamped to −100 … +200 ms', () => {
+test('visual offset: read() is the raw clock read later by the offset; clamped to −100 … +500 ms', () => {
   const ctx = fakeContext(), c = Clock.create({ settings: SETTINGS(), audioContext: () => ctx, timers: false });
   ctx.currentTime = 0.3; c.start();
   assert.equal(c.visualOffsetMs, 0);
@@ -203,8 +203,10 @@ test('visual offset: read() is the raw clock read later by the offset; clamped t
   c.setVisualOffset(0);
   const a = c.read(), b = c.read({ raw: true });
   assert.deepEqual(a, b, 'at 0 the offset changes nothing');
-  assert.equal(c.setVisualOffset(-500), -100); assert.equal(c.setVisualOffset(999), 200);
-  assert.equal(c.setVisualOffset(NaN), 200); assert.equal(c.setVisualOffset(-100.5), -100);
+  assert.equal(c.setVisualOffset(-500), -100); assert.equal(c.setVisualOffset(999), 500);
+  assert.equal(c.setVisualOffset(NaN), 500); assert.equal(c.setVisualOffset(-100.5), -100);
+  assert.equal(c.setVisualOffset(300), 300);
+  assert.equal(Clock.OFFSET_MAX, 500); assert.equal(Clock.OFFSET_MIN, -100);
 });
 
 test('the offset never touches beats or bpm at a fixed audio time', () => {
@@ -212,7 +214,7 @@ test('the offset never touches beats or bpm at a fixed audio time', () => {
   ctx.currentTime = 0.3; c.start();
   drive([c], ctx, 2, () => {});
   const base = c.read({ raw: true });
-  for (const X of [-100, -3, 0, 17, 200]) { c.setVisualOffset(X); const r = c.read({ raw: true }); assert.equal(r.beats, base.beats); assert.equal(r.bpm, base.bpm); }
+  for (const X of [-100, -3, 0, 17, 200, 500]) { c.setVisualOffset(X); const r = c.read({ raw: true }); assert.equal(r.beats, base.beats); assert.equal(r.bpm, base.bpm); }
 });
 
 test('hand commands are visible on the next read and logged as jumps, never as hits', () => {

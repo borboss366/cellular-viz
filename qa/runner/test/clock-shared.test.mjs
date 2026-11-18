@@ -26,11 +26,11 @@ function fakeContext(t0 = 0) {
 const SETTINGS = bpm => ({ bpm, bpb: 4, muted: true, kick: 'x---x---x---x---', snare: '----x-------x---', hat: '--x---x---x---x-' });
 
 /** a world: one wall clock (ms), a receiver on ?clock=shared whose AudioContext runs on its own time base */
-function world({ recvT0 = 7.3 } = {}) {
+function world({ recvT0 = 7.3, opts = {} } = {}) {
   const w = { ms: 1e6 };
   const rctx = fakeContext(recvT0);
   const recv = Clock.create({ source: 'shared', settings: SETTINGS(120), audioContext: () => rctx, timers: false, pump: true,
-    now: () => w.ms, epochNow: () => w.ms, sharedFeed: true, keys: false, badge: false });
+    now: () => w.ms, epochNow: () => w.ms, sharedFeed: true, keys: false, badge: false, ...opts });
   recv.start();
   const hNow = () => recv.now({ raw: true });
   return { w, rctx, recv, hNow };
@@ -44,14 +44,15 @@ function metronomePublisher(w, bpm, pubT0 = 0.4) {
   const pub = Clock.publish(pc, { timers: false, epochNow: () => w.ms, post: m => sent.push(m) });
   return { pctx, pc, pub, sent };
 }
-/** advance the wall clock by ms in 5 ms steps; both contexts follow; deliver(msg) hands over what the publisher posts */
+/** advance the wall clock by ms in 5 ms steps; both contexts follow; deliver hands over what the publisher posts (a
+ *  function: each message goes through it first) */
 function run(W, P, ms, { deliver = true, each } = {}) {
   for (let s = 0; s < ms; s += 5) {
     W.w.ms += 5; W.rctx.currentTime += 0.005; P.pctx.currentTime += 0.005;
     P.pc.schedule();
     const before = P.sent.length;
     P.pub.tick();
-    if (deliver) for (const m of P.sent.slice(before)) W.recv.sharedMessage(m);
+    if (deliver) for (const m of P.sent.slice(before)) W.recv.sharedMessage(typeof deliver === 'function' ? deliver(m) : m);
     W.recv.schedule();
     if (each) each();
   }
@@ -176,4 +177,96 @@ test('shared: the conductor page publishes its output clock; ?clock=shared is a 
   const pubPage = fs.readFileSync(path.join(EX, 'clock-publish.html'), 'utf8');
   assert.match(pubPage, /Clock\.publish\(clock\)/);
   assert.ok(/^[\x00-\x7f]*$/.test(pubPage), 'the publisher page is plain ASCII (#205)');
+});
+
+// ---------- the visual offset on the shared clock (Saturday fix list, 19 Nov: "the delay should be done too") ----------
+// mac session 18 Nov: the conductor's Calibrate slider moved only the conductor's own flash; the scenes ignored the
+// offsetMs in every clock message. Now a scene takes it (+ = visuals earlier, as on the conductor: now() = heard time
+// + offset, so the visuals show the music offsetMs ahead, covering the Chrome -> OBS -> NDI -> Resolume -> projector lag).
+test('shared offset: the scene follows the publisher\'s offsetMs (+ = visuals earlier), changes and back to 0', () => {
+  const W = world(), P = metronomePublisher(W.w, 128);
+  P.pc.setVisualOffset(120);
+  run(W, P, 1000);
+  assert.equal(W.recv.visualOffsetMs, 120, 'the publisher\'s offset');
+  assert.ok(Math.abs(W.recv.now() - W.recv.now({ raw: true }) - 0.120) < 1e-12, 'the scene\'s visual time is 120 ms ahead of the heard time');
+  const rb = W.recv.read({ raw: true, lead: 0.120 }), vb = W.recv.read();
+  assert.ok(Math.abs(vb.beats - rb.beats) < 1e-9, 'read() shows the beat 120 ms ahead, as the conductor\'s flash');
+  assert.equal(W.recv.sharedState.offsetMs, 120); assert.equal(W.recv.sharedState.offsetFrom, 'publisher');
+  P.pc.setVisualOffset(300);
+  run(W, P, 200);
+  assert.equal(W.recv.visualOffsetMs, 300, 'a slider move reaches the scene with the next message (20 Hz)');
+  P.pc.setVisualOffset(0);
+  run(W, P, 200);
+  assert.equal(W.recv.visualOffsetMs, 0);
+  assert.equal(W.recv.jumps.length, 0, 'the offset moves no beats: no jump');
+  assert.equal(W.recv.lateStats.late, 0);
+});
+
+test('shared offset: offsetMs 0, or no offsetMs at all (an older publisher), changes nothing (same hits, beats, offset 0)', () => {
+  const A = world(), PA = metronomePublisher(A.w, 128);
+  const B = world(), PB = metronomePublisher(B.w, 128);
+  const strip = m => { const c = { ...m }; delete c.offsetMs; return c; };
+  run(A, PA, 4000, { each: () => A.recv.hitsDue() });
+  run(B, PB, 4000, { deliver: strip, each: () => B.recv.hitsDue() });
+  assert.ok(PA.sent.some(m => m.type === 'clock' && m.offsetMs === 0), 'A got offsetMs 0');
+  assert.equal(A.recv.visualOffsetMs, 0); assert.equal(B.recv.visualOffsetMs, 0);
+  assert.equal(A.recv.bookAhead(), A.recv.lookAhead, 'at offset 0 the booking horizon is the look-ahead, as before');
+  assert.ok(A.recv.hitLog.length > 15, `${A.recv.hitLog.length} hits`);
+  assert.deepEqual(A.recv.hitLog.map(h => `${h.lane}@${h.time.toFixed(9)}`), B.recv.hitLog.map(h => `${h.lane}@${h.time.toFixed(9)}`));
+  const ra = A.recv.read({ raw: true }), rb = B.recv.read({ raw: true });
+  for (const k of ['beats', 'bpm', 'phase', 'bar', 'beatInBar']) assert.equal(ra[k], rb[k], k);
+  assert.equal(A.recv.now(), A.recv.now({ raw: true }), 'no visual offset');
+  assert.deepEqual([A.recv.lateStats.late, B.recv.lateStats.late, A.recv.sharedState.skipped, B.recv.sharedState.skipped], [0, 0, 0, 0]);
+});
+
+// +140 ms: the route delay measured on 18 Nov (notes, "Delay measured": the projector ~140 ms after the conductor's
+// beat lamp), so the slider's Saturday value; +300 ms: headroom. Both are over the 100 ms look-ahead.
+for (const OFF of [140, 300]) {
+  test(`shared offset: at +${OFF} ms (over the 100 ms look-ahead) every hit still reaches the visuals on time, none late or skipped`, () => {
+    const W = world(), P = metronomePublisher(W.w, 128);
+    P.pc.setVisualOffset(OFF);
+    run(W, P, 3000, { each: () => W.recv.hitsDue() });   // a frame every 5 ms: the look-ahead adapts down to its 100 ms floor
+    assert.equal(W.recv.visualOffsetMs, OFF);
+    assert.equal(W.recv.lateStats.lookAheadMs, 100, `the look-ahead is at its floor, so +${OFF} ms is past it`);
+    const v0 = W.recv.now(), got = [];
+    let worst = 0, leadMin = Infinity;
+    run(W, P, 6000, { each: () => {
+      const v = W.recv.now(), heard = W.recv.now({ raw: true });
+      for (const h of W.recv.hitsDue()) { got.push(h); worst = Math.max(worst, v - h.time); leadMin = Math.min(leadMin, h.time - heard); }
+    } });
+    const v1 = W.recv.now();
+    const want = W.recv.hitLog.filter(h => h.time > v0 && h.time <= v1);
+    console.log(`# shared +${OFF} ms: ${got.length} hits handed out, worst ${(worst * 1000).toFixed(3)} ms after their time; ${JSON.stringify(W.recv.lateStats)}`);
+    assert.ok(want.length >= 25, `${want.length} hits in 6 s at 128`);
+    assert.deepEqual(got.filter(h => h.time > v0).map(h => h.time), want.map(h => h.time), 'every hit in the window handed out, once, in order');
+    assert.ok(worst <= 0.0051, `each hit within one 5 ms frame of its time: worst ${(worst * 1000).toFixed(3)} ms (before 19 Nov: ~${OFF - 100} ms)`);
+    assert.equal(W.recv.lateStats.late, 0, 'no step booked after its own time');
+    assert.equal(W.recv.sharedState.skipped, 0, 'no step skipped');
+    // the sign: each hit reaches the visuals ~OFF ms BEFORE its sound is heard (visuals earlier)
+    assert.ok(leadMin >= OFF / 1000 - 0.0051 && leadMin <= OFF / 1000 + 1e-9, `handed out ${(leadMin * 1000).toFixed(3)} ms before it is heard`);
+  });
+}
+
+test('shared offset: ?offset= on the scene URL (or opts.offset) wins over the publisher\'s offsetMs; other sources ignore ?offset=', () => {
+  const W = world({ opts: { offset: 40 } }), P = metronomePublisher(W.w, 128);
+  assert.equal(W.recv.visualOffsetMs, 40, 'set at create');
+  P.pc.setVisualOffset(300);
+  run(W, P, 1000);
+  assert.equal(W.recv.visualOffsetMs, 40, 'the publisher\'s 300 is ignored');
+  assert.equal(W.recv.sharedState.offsetFrom, 'url');
+  const had = Object.prototype.hasOwnProperty.call(globalThis, 'location'), old = globalThis.location;
+  try {
+    globalThis.location = { search: '?clock=shared&offset=-20&capture=1' };
+    const U = world(), PU = metronomePublisher(U.w, 128);
+    PU.pc.setVisualOffset(150);
+    run(U, PU, 1000);
+    assert.equal(U.recv.visualOffsetMs, -20, '?offset=-20 from the page URL');
+    assert.equal(U.recv.sharedState.offsetFrom, 'url');
+    const m = Clock.create({ source: 'metronome', settings: SETTINGS(120), audioContext: () => fakeContext(), timers: false, keys: false });
+    assert.equal(m.visualOffsetMs, 0, 'a page not on the shared clock does not read ?offset= here');
+  } finally {
+    if (had) globalThis.location = old; else delete globalThis.location;
+  }
+  const N = world();
+  assert.equal(N.recv.visualOffsetMs, 0); assert.equal(N.recv.sharedState.offsetFrom, 'publisher');
 });

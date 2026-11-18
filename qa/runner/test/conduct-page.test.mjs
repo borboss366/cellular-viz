@@ -71,12 +71,13 @@ test('conductor.mjs: deck positions, equal-power fade, shadow beats once each, t
 
 test('conductor.mjs: calibrate steps accelerate and clamp (R10); venue profiles round-trip, bad files refused', () => {
   assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 20].map(C.calStep), [1, 1, 2, 2, 4, 4, 8, 8, 10, 10]);
-  assert.deepEqual([C.clampOffset(-500), C.clampOffset(250), C.clampOffset('12.4')], [-100, 200, 12]);
+  assert.deepEqual([C.clampOffset(-500), C.clampOffset(250), C.clampOffset(750), C.clampOffset('12.4')], [-100, 250, 500, 12]);
+  assert.equal(C.OFFSET_MAX, 500, 'the route delay (Chrome -> OBS -> NDI -> Resolume -> projector) needs up to +500 ms (19 Nov)');
   const p = { club: { offsetMs: 35 }, 'home desk': { offsetMs: -4 } };
   assert.deepEqual(C.importProfiles(C.exportProfiles(p)), p);
   assert.throws(() => C.importProfiles('{"profiles":{}}'), /version 1/);
   assert.throws(() => C.importProfiles(JSON.stringify({ version: 1, profiles: { x: { offsetMs: 'a' } } })), /profile x/);
-  assert.equal(C.importProfiles(JSON.stringify({ version: 1, profiles: { far: { offsetMs: 999 } } })).far.offsetMs, 200);
+  assert.equal(C.importProfiles(JSON.stringify({ version: 1, profiles: { far: { offsetMs: 999 } } })).far.offsetMs, C.OFFSET_MAX, 'an imported profile clamps to OFFSET_MAX (500 since 19 Nov)');
 });
 
 test('conductor.mjs pageKey: M [ ] Shift+S Space N K Alt+,/. are the page\'s; Shift + the clock\'s keys and typing are not', () => {

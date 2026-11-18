@@ -120,7 +120,10 @@ test('R4 timebase: visual offset 0 and +60 ms give the same hit times and raw be
   // 10 s at 128 (~21 beats, ~10 hits a bar): 40 steps (2 s, ~1 bar) were too short for > 20 hits on #180's first test-pr
   for (let i = 0; i < 200; i++) { A.step(50); B.step(50); }
   assert.ok(A.c.hitLog.length > 20, `hits logged in 10 s: ${A.c.hitLog.length}`);
-  assert.deepEqual(B.c.hitLog.map(h => h.time), A.c.hitLog.map(h => h.time));
+  // +60 ms books 60 ms further ahead (bookAhead, 19 Nov): the same hit times, B only has the next few booked already
+  const n = A.c.hitLog.length, lastA = A.c.hitLog[n - 1].time;
+  assert.deepEqual(B.c.hitLog.slice(0, n).map(h => h.time), A.c.hitLog.map(h => h.time));
+  assert.ok(B.c.hitLog.slice(n).every(h => h.time > lastA), 'the extra hits are only the next ones');
   assert.equal(B.c.read({ raw: true }).beats, A.c.read({ raw: true }).beats);
   assert.ok(Math.abs(B.c.read().beats - A.c.read().beats - 0.060 * 128 / 60) < 1e-9, 'only the visual read moves');
 });
