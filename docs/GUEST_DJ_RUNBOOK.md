@@ -49,7 +49,8 @@ Gate: the scenes move with the music. Shift+F on the conductor flips all of them
 3. In Resolume, put one of Resolume's own clips (for example a generator from the Sources tab) in layer 4. This is
    the fallback picture (section 6).
 4. Ask the DJ: "May we record the audio and film the projector?" Continue with steps 5 to 7 only after a yes.
-5. In QuickTime Player, select File > New Audio Recording. Select `<interface>` as the input. Push Record.
+5. In QuickTime Player, select File > New Audio Recording. Click the arrow next to the Record button. Select `<interface>` as the Microphone and Quality: Maximum (uncompressed 24-bit AIFF-C, 44.1 kHz; about 16 MB per minute in stereo). Push Record.
+   If box task 3 (#261, the conductor's own recording) is merged, it is the main recording; QuickTime is the fallback.
 6. Put the phone on the tripod. Point it at the projector and the room. Start the video.
 7. If Friday showed no frame drops: in OBS, start one recording (the audio input, the three captures, the conductor).
 
@@ -79,12 +80,12 @@ Gate: the scenes move with the music. Shift+F on the conductor flips all of them
 
 ## 7. After the visit: the files to the box
 All files go to one folder on the box, outside the repo: `/home/puggie/pi-durable-worker/data/saturday-2026-11-21/`.
-1. Stop the QuickTime recording. Save it (File > Save) as `saturday-audio.m4a`.
+1. Stop the QuickTime recording. Save it (File > Save) as `saturday-audio.aifc`.
 2. Stop the phone video. Copy it to the Mac.
 3. On the conductor, push "Download log".
 4. In Terminal, run:
    `ssh puggie@192.168.8.164 mkdir -p /home/puggie/pi-durable-worker/data/saturday-2026-11-21/audio /home/puggie/pi-durable-worker/data/saturday-2026-11-21/log /home/puggie/pi-durable-worker/data/saturday-2026-11-21/video`
-5. Run `scp saturday-audio.m4a puggie@192.168.8.164:/home/puggie/pi-durable-worker/data/saturday-2026-11-21/audio/`
+5. Run `scp saturday-audio.aifc puggie@192.168.8.164:/home/puggie/pi-durable-worker/data/saturday-2026-11-21/audio/`
 6. Run `scp <the downloaded log>.jsonl puggie@192.168.8.164:/home/puggie/pi-durable-worker/data/saturday-2026-11-21/log/`
 7. Run `scp <the phone video> puggie@192.168.8.164:/home/puggie/pi-durable-worker/data/saturday-2026-11-21/video/`
 8. If you made an OBS recording, copy it to the `video/` folder the same way.
