@@ -214,7 +214,7 @@ test('the offset never touches beats or bpm at a fixed audio time', () => {
   ctx.currentTime = 0.3; c.start();
   drive([c], ctx, 2, () => {});
   const base = c.read({ raw: true });
-  for (const X of [-100, -3, 0, 17, 200]) { c.setVisualOffset(X); const r = c.read({ raw: true }); assert.equal(r.beats, base.beats); assert.equal(r.bpm, base.bpm); }
+  for (const X of [-100, -3, 0, 17, 200, 500]) { c.setVisualOffset(X); const r = c.read({ raw: true }); assert.equal(r.beats, base.beats); assert.equal(r.bpm, base.bpm); }
 });
 
 test('hand commands are visible on the next read and logged as jumps, never as hits', () => {
