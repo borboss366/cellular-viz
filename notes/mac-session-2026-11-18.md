@@ -150,7 +150,7 @@ Gate: the three scenes move on the projector; a fader fades its layer. Result: *
 | auto-hold tried | yes (the user: tap, hold and auto-hold "do the trick") |
 | hand fix followed by all scenes | ___ |
 | panic -> black | PASS: Blackout (B) on the conductor -> all three scenes black on the projector; B again (or Clear) brings them back. "Works perfectly" (the user) |
-| delay (frames, fps, ms) | not counted on the Mac. The user's phone video is on the box: data/conductor-logs/delay-slowmo-2026-11-18.mp4 (41.3 MB, 47.8 s, 1080 x 1920 portrait, sha256 a9a93268…eb717, same on both sides). The box counts the frames. ffprobe: 1424 frames, played at about 29.8 fps, and the tag com.android.capture.fps = 120. So **one frame in the file = 1/120 s = 8.33 ms** of real time (not 33 ms). Delay ms = frames between the conductor's flash and the projector's beat x 8.33 |
+| delay (frames, fps, ms) | not counted on the Mac. The user's phone video is on the box: data/conductor-logs/delay-slowmo-2026-11-18.mp4 (41.3 MB, 47.8 s, 1080 x 1920 portrait, sha256 a9a93268…eb717, same on both sides). The box counts the frames. ffprobe: 1424 frames, played at about 29.8 fps, and the tag com.android.capture.fps = 120. So **one frame in the file = 1/120 s = 8.33 ms** of real time (not 33 ms). Delay ms = frames between the conductor's flash and the projector's beat x 8.33 **Measured on the Mac afterwards (19 Nov 00:20): about 140 ms, see "Delay measured" below.** |
 | log file on the box | `conductor-20261118-225849.jsonl` in data/conductor-logs/ (5.55 MB, 34 025 lines, sha256 35681d6a…6e92, same on the Mac and the box). It covers about 44.7 min (2679 s of ctx) |
 
 What the log counts (read on the Mac, the box scores it):
@@ -241,6 +241,31 @@ Expected:
 - OBS Settings > Video > Common FPS Values = 60 would raise it, at a CPU/GPU cost. That is a setting change: only with
   the user's OK, and best tried on Friday's dress rehearsal with OBS Stats and Resolume's fps in view.
 
+## Delay measured (19 Nov, from the 120 fps video)
+**The projector shows the beat about 140 ms after the conductor's beat lamp** (median 16-17 frames; middle half
+125-150 ms; range 108-175 ms over 19 beats).
+- Video: data/conductor-logs/delay-slowmo-2026-11-18.mp4 on the box, 1424 frames.
+  - Capture is 120 fps (com.android.capture.fps), so 1 frame = 8.33 ms.
+  - Check: the beat lamp's onsets are 58.4 frames apart = 123.3 bpm, against the conductor's 122.9.
+- Signals per frame (ffmpeg -> 270 x 480 RGB, numpy):
+  - the count of yellow pixels in the conductor's lamp row: the beat lamp lights for 14 frames ≈ the page's 0.1 s;
+  - the mean brightness of the projector area: the scene's bars jump on the beat.
+- Each beat-lamp onset was matched to the largest brightness rise in the next 45 frames.
+  - 19 of 24 beats gave 13-21 frames.
+  - 4 gave 38-44 frames: the scene had no clear jump on that beat, so the next one was picked. They are left out.
+  - 1 (the first) gave 14 frames.
+- What the number means:
+  - The beat lamp marks when the beat is heard (the clock reads now − output latency), so the picture lags the sound
+    by about 140 ms. That matches the user's "the visualisation lags a bit".
+  - The route is Chrome -> OBS Window Capture -> DistroAV NDI -> Resolume -> the projector, including the projector's
+    own input lag.
+  - The ±15 ms spread is mostly sampling: the conductor's screen at 60 Hz and OBS at 30 fps.
+- Next:
+  - The scenes need about +140 ms of visual offset. That is inside today's OFFSET_MAX of 200 ms, but the scenes don't
+    apply the conductor's offset yet (see Problems: clock.js sharedMessage). That is box work.
+  - OBS at 60 fps (Friday, with the user's OK) may cut the spread and some of the delay. Measure again afterwards the
+    same way.
+
 ## What the user decided
 - **Controls (the user, 18 Nov): "From the tools - tapping, hold and auto hold seem to do the trick. Most likely I won't
   need other controls on the external controller."**
@@ -309,7 +334,8 @@ of it and changes no code.
 - Part 2 partial: an OBS Browser Source draws on the GPU and reaches Resolume over NDI, but it gets no shared clock
   (BroadcastChannel) and no MIDI or mic (CEF has no prompt). Saturday stays on Chrome windows.
 - The user decided: no more work on hold, SUSPECT or controller mappings this week.
-- For the box: the scenes ignore the conductor's offsetMs (clock.js sharedMessage); "Open all scenes" should place the
+- Delay measured from the video: the projector is about 140 ms behind the heard beat (125-150 ms).
+- For the box: the scenes ignore the conductor's offsetMs (clock.js sharedMessage), and they need about +140 ms; "Open all scenes" should place the
   windows 960x603 pt on a diagonal; setup-check's MIDI check needs a timeout; a runbook line on HDMI drops (Resolume
-  Output again); count the delay from the video.
+  Output again);
 - Tag saturday-rc1 = 8ec264c.
