@@ -29,6 +29,7 @@ the product. Everything else serves them.
 - Do not merge to main a change to a page the user has open during his
   session (conductor, set, audition, setup-check, the set's scenes).
   The Orchestrator knows when he is in a session.
+- The Orchestrator tells the agents when a session starts and ends; without its word, assume no session.
 
 ## Testing
 - Every number in a report comes from a script in the repo, named.
