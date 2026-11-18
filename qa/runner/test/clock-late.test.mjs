@@ -104,7 +104,12 @@ function offsetRun(offset) {
   }
   return { c, worst, n };
 }
-test('clockLate: at a +300 ms visual offset the hits still reach the visuals on time and none is late; at 0 as before', () => {
+test('clockLate: at a +140 or +300 ms visual offset the hits still reach the visuals on time and none is late; at 0 as before', () => {
+  // +140 ms: the route delay measured on 18 Nov (the Saturday slider value)
+  const s = offsetRun(140);
+  assert.equal(s.c.lateStats.lookAheadMs, 100);
+  assert.ok(s.n > 30 && s.worst <= 0.0051, `+140: ${s.n} hits, worst ${(s.worst * 1000).toFixed(3)} ms`);
+  assert.equal(s.c.lateStats.late, 0);
   const a = offsetRun(300);
   console.log(`# offset +300: ${a.n} hits, worst ${(a.worst * 1000).toFixed(3)} ms after their time; ${JSON.stringify(a.c.lateStats)}`);
   assert.equal(a.c.lateStats.lookAheadMs, 100, 'the look-ahead is at its floor: +300 ms is past it');

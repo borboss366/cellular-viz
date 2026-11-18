@@ -56,9 +56,10 @@ Gate: the scenes move with the music. Shift+F on the conductor flips all of them
 
 Calibrate the delay (in the 15:30 sound check, with music that has a clear kick): watch the projector, not the laptop.
 On the conductor, move the "offset" slider (or Alt+, / Alt+.) until the beat on the projector lands on the kick you
-hear. + makes the pictures earlier. On 18 Nov the projector was about 140 ms behind, so start near 140. The slider
-moves all three scenes. The conductor's own flash then runs early on the laptop; that is expected. Type a name next to
-it (for example `saturday`) and push Save. After a reload the slider starts at 0: pick the saved name in the list.
+hear. + makes the pictures earlier. On this setup start at +140 (measured on 18 Nov: the projector about 140 ms
+behind the conductor's beat lamp), then fine-tune by eye. The slider moves all three scenes. The conductor's beat
+lamp stays on the sound; its white flash bar runs early; that is expected. Type a name next to it (for example
+`saturday`) and push Save. After a reload the slider starts at 0: pick the saved name in the list.
 Do not move it during the set. The parts of a scene that follow the sound level itself (the line-input band levels)
 stay late by the route delay; only the beat-timed parts move.
 

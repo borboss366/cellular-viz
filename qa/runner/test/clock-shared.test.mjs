@@ -219,29 +219,33 @@ test('shared offset: offsetMs 0, or no offsetMs at all (an older publisher), cha
   assert.deepEqual([A.recv.lateStats.late, B.recv.lateStats.late, A.recv.sharedState.skipped, B.recv.sharedState.skipped], [0, 0, 0, 0]);
 });
 
-test('shared offset: at +300 ms (over the 100 ms look-ahead) every hit still reaches the visuals on time, none late or skipped', () => {
-  const W = world(), P = metronomePublisher(W.w, 128);
-  P.pc.setVisualOffset(300);
-  run(W, P, 3000, { each: () => W.recv.hitsDue() });   // a frame every 5 ms: the look-ahead adapts down to its 100 ms floor
-  assert.equal(W.recv.visualOffsetMs, 300);
-  assert.equal(W.recv.lateStats.lookAheadMs, 100, 'the look-ahead is at its floor, so +300 ms is past it');
-  const v0 = W.recv.now(), got = [];
-  let worst = 0, leadMin = Infinity;
-  run(W, P, 6000, { each: () => {
-    const v = W.recv.now(), heard = W.recv.now({ raw: true });
-    for (const h of W.recv.hitsDue()) { got.push(h); worst = Math.max(worst, v - h.time); leadMin = Math.min(leadMin, h.time - heard); }
-  } });
-  const v1 = W.recv.now();
-  const want = W.recv.hitLog.filter(h => h.time > v0 && h.time <= v1);
-  console.log(`# shared +300 ms: ${got.length} hits handed out, worst ${(worst * 1000).toFixed(3)} ms after their time; ${JSON.stringify(W.recv.lateStats)}`);
-  assert.ok(want.length >= 25, `${want.length} hits in 6 s at 128`);
-  assert.deepEqual(got.filter(h => h.time > v0).map(h => h.time), want.map(h => h.time), 'every hit in the window handed out, once, in order');
-  assert.ok(worst <= 0.0051, `each hit within one 5 ms frame of its time: worst ${(worst * 1000).toFixed(3)} ms (before 19 Nov: ~200 ms)`);
-  assert.equal(W.recv.lateStats.late, 0, 'no step booked after its own time');
-  assert.equal(W.recv.sharedState.skipped, 0, 'no step skipped');
-  // the sign: each hit reaches the visuals ~300 ms BEFORE its sound is heard (visuals earlier)
-  assert.ok(leadMin >= 0.2949 && leadMin <= 0.3, `handed out ${(leadMin * 1000).toFixed(3)} ms before it is heard`);
-});
+// +140 ms: the route delay measured on 18 Nov (notes, "Delay measured": the projector ~140 ms after the conductor's
+// beat lamp), so the slider's Saturday value; +300 ms: headroom. Both are over the 100 ms look-ahead.
+for (const OFF of [140, 300]) {
+  test(`shared offset: at +${OFF} ms (over the 100 ms look-ahead) every hit still reaches the visuals on time, none late or skipped`, () => {
+    const W = world(), P = metronomePublisher(W.w, 128);
+    P.pc.setVisualOffset(OFF);
+    run(W, P, 3000, { each: () => W.recv.hitsDue() });   // a frame every 5 ms: the look-ahead adapts down to its 100 ms floor
+    assert.equal(W.recv.visualOffsetMs, OFF);
+    assert.equal(W.recv.lateStats.lookAheadMs, 100, `the look-ahead is at its floor, so +${OFF} ms is past it`);
+    const v0 = W.recv.now(), got = [];
+    let worst = 0, leadMin = Infinity;
+    run(W, P, 6000, { each: () => {
+      const v = W.recv.now(), heard = W.recv.now({ raw: true });
+      for (const h of W.recv.hitsDue()) { got.push(h); worst = Math.max(worst, v - h.time); leadMin = Math.min(leadMin, h.time - heard); }
+    } });
+    const v1 = W.recv.now();
+    const want = W.recv.hitLog.filter(h => h.time > v0 && h.time <= v1);
+    console.log(`# shared +${OFF} ms: ${got.length} hits handed out, worst ${(worst * 1000).toFixed(3)} ms after their time; ${JSON.stringify(W.recv.lateStats)}`);
+    assert.ok(want.length >= 25, `${want.length} hits in 6 s at 128`);
+    assert.deepEqual(got.filter(h => h.time > v0).map(h => h.time), want.map(h => h.time), 'every hit in the window handed out, once, in order');
+    assert.ok(worst <= 0.0051, `each hit within one 5 ms frame of its time: worst ${(worst * 1000).toFixed(3)} ms (before 19 Nov: ~${OFF - 100} ms)`);
+    assert.equal(W.recv.lateStats.late, 0, 'no step booked after its own time');
+    assert.equal(W.recv.sharedState.skipped, 0, 'no step skipped');
+    // the sign: each hit reaches the visuals ~OFF ms BEFORE its sound is heard (visuals earlier)
+    assert.ok(leadMin >= OFF / 1000 - 0.0051 && leadMin <= OFF / 1000 + 1e-9, `handed out ${(leadMin * 1000).toFixed(3)} ms before it is heard`);
+  });
+}
 
 test('shared offset: ?offset= on the scene URL (or opts.offset) wins over the publisher\'s offsetMs; other sources ignore ?offset=', () => {
   const W = world({ opts: { offset: 40 } }), P = metronomePublisher(W.w, 128);
