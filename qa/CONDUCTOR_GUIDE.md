@@ -17,6 +17,7 @@ Setting up Resolume: docs/MVP_RUNBOOK.md.
    http://localhost:8790/?clock=line
 5. To hear the clock: add `?click=1` to the address (or `&click=1` after `?clock=line`). The page then plays a click
    on each clock beat.
+6. Guest mode (a DJ plays, no playlist): open http://localhost:8790/experiments/clock-conductor.html?clock=line&in=<part of the input's name> and push "Start audio". Load no track. The clock listens to that input, the scenes follow it, all fixes, hold and the log work, and "Corrections now" shows the time since Start audio.
 
 ## The parts of the page
 - Header: the input ("line:page" or "line"), the track badge ("no track", "scored" or "UNSCORED (no grid)"), the
