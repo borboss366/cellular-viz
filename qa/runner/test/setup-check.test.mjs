@@ -83,7 +83,7 @@ test('setup-check: set.json -> the pages to check, every one a file in experimen
 });
 
 /** a fake Mac: canned command output and a fake /Applications, then the script with the given flags */
-function fakeMac({ pages404 = [], noBlackHole = false, wifiOn = false, obs = null, usb = 'USB:\n    Launch Control XL 3:\n      Product ID: 0x0001\n', chromePs = null } = {}) {
+function fakeMac({ pages404 = [], noBlackHole = false, wifiOn = false, obs = null, usb = 'USB:\n    Launch Control XL 3:\n      Product ID: 0x0001\n', chromePs = null, lineIn = 'USB Audio CODEC', mic = false } = {}) {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'mac-check-')), cmd = path.join(d, 'cmd'), root = path.join(d, 'root');
   const mk = p => fs.mkdirSync(path.join(root, p), { recursive: true });
   fs.mkdirSync(cmd, { recursive: true });
@@ -96,6 +96,8 @@ function fakeMac({ pages404 = [], noBlackHole = false, wifiOn = false, obs = nul
   w('wifi_ports', 'Hardware Port: Ethernet\nDevice: en1\nEthernet Address: 00:00:00:00:00:01\n\nHardware Port: Wi-Fi\nDevice: en0\nEthernet Address: 00:00:00:00:00:02\n');
   w('wifi_power', `Wi-Fi Power (en0): ${wifiOn ? 'On' : 'Off'}\n`);
   w('sp_audio', ['Audio:', '', '    Devices:', '', ...(noBlackHole ? [] : ['        BlackHole 2ch:', '', '          Input Channels: 2', '']),
+    ...(lineIn ? [`        ${lineIn}:`, '', '          Input Channels: 2', '          Manufacturer: Generic', '          Output Channels: 2', ''] : []),
+    ...(mic ? ['        MacBook Pro Microphone:', '', '          Default Input Device: Yes', '          Input Channels: 1', ''] : []),
     '        Multi-Output Device:', '', '          Default Output Device: Yes', '          Output Channels: 2', '', '        MacBook Pro Speakers:', '', '          Output Channels: 2', ''].join('\n'));
   w('sp_usb', usb);
   if (chromePs !== null) w('chrome_ps', chromePs);
@@ -120,7 +122,7 @@ test('mac-check.sh: sh -n passes; with a fake Mac --json parses, every row has a
     assert.equal(j.tool, 'mac-check');
     assert.ok(j.results.every(x => ['PASS', 'WARN', 'FAIL', 'INFO'].includes(x.status) && x.item && typeof x.detail === 'string'));
     const by = Object.fromEntries(j.results.map(x => [x.item, x]));
-    for (const k of ['macOS', 'Google Chrome', 'BlackHole 2ch', 'Multi-Output Device', 'Default output', 'LCXL3 on USB', 'Displays', 'Resolume', 'Capture route NDI Scan Converter', 'Wi-Fi', 'Tunnel', 'Pages']) assert.equal(by[k] && by[k].status, 'PASS', `${k}: ${JSON.stringify(by[k])}`);
+    for (const k of ['macOS', 'Google Chrome', 'BlackHole 2ch', 'Multi-Output Device', 'Default output', 'Line input', 'LCXL3 on USB', 'Displays', 'Resolume', 'Capture route NDI Scan Converter', 'Wi-Fi', 'Tunnel', 'Pages']) assert.equal(by[k] && by[k].status, 'PASS', `${k}: ${JSON.stringify(by[k])}`);
     // the capture routes in VIZ research's order: NDI Scan Converter, OBS + DistroAV + NDI runtime, Syphon
     const at = k => j.results.findIndex(x => x.item === k);
     assert.ok(at('Capture route NDI Scan Converter') < at('Capture route OBS NDI') && at('Capture route OBS NDI') < at('Capture route Syphon'), 'route order');
@@ -210,5 +212,27 @@ test('mac-check.sh: Chrome occlusion is PASS with --disable-backgrounding-occlud
   try {
     const r = spawnSync('sh', [SCRIPT, '--no-open'], { encoding: 'utf8', env: m.env });
     assert.match(r.stdout, /^WARN Chrome occlusion: Chrome runs without --disable-backgrounding-occluded-windows: .*\. Quit Chrome\. Run: open -na "Google Chrome" --args --disable-backgrounding-occluded-windows$/m);
+  } finally { fs.rmSync(m.d, { recursive: true, force: true }); }
+});
+
+// Saturday brief task 4: a line input for the guest DJ (a USB audio interface). Every device with input channels,
+// minus BlackHole and the Mac's own microphone, is named (PASS); only those two, or none: WARN with the fix.
+test('mac-check.sh: "Line input" names the inputs other than BlackHole and the built-in microphone; only those, or none: WARN', () => {
+  const both = macRows({ lineIn: 'Scarlett 2i2 USB', mic: true })['Line input'];
+  assert.equal(both.status, 'PASS', JSON.stringify(both));
+  assert.equal(both.detail, 'Scarlett 2i2 USB', 'BlackHole 2ch and MacBook Pro Microphone are not named');
+  const only = macRows({ lineIn: null, mic: true })['Line input'];
+  assert.equal(only.status, 'WARN', JSON.stringify(only));
+  assert.equal(only.detail, 'only BlackHole 2ch, MacBook Pro Microphone');
+  assert.equal(only.fix, 'Connect the USB audio interface. Then run this tool again. Fallback: the built-in microphone');
+  assert.equal(macRows({ lineIn: null })['Line input'].detail, 'only BlackHole 2ch');
+  const none = macRows({ lineIn: null, noBlackHole: true })['Line input'];
+  assert.deepEqual([none.status, none.detail], ['WARN', 'no audio input found']);
+  // output-only devices (the speakers, the Multi-Output Device) are never inputs
+  assert.equal(macRows({})['Line input'].detail, 'USB Audio CODEC');
+  const m = fakeMac({ lineIn: null, mic: true });
+  try {
+    const r = spawnSync('sh', [SCRIPT, '--no-open'], { encoding: 'utf8', env: m.env });
+    assert.match(r.stdout, /^WARN Line input: only BlackHole 2ch, MacBook Pro Microphone\. Connect the USB audio interface\. Then run this tool again\. Fallback: the built-in microphone$/m);
   } finally { fs.rmSync(m.d, { recursive: true, force: true }); }
 });
