@@ -10,7 +10,9 @@
     16-hodge-kaleidoscope.html?clock=shared&audio=line&in=BlackHole&capture=1
   Open the conductor (clock-conductor.html) in the same browser: the scenes follow its clock (?clock=shared) and its
   panic buttons. Resolume (or OBS) captures each window. Plain ASCII only (#205).
-  Logic: set.js (SetLib). __qa.set = { set, urls, errors, opened }.
+  The input (Saturday brief task 2): the "Input" field (or set.html?in=<label>) is passed as in=<label> to every
+  scene, over set.json's defaults.in; empty: set.json's. The same label as the conductor's ?in=.
+  Logic: set.js (SetLib). __qa.set = { set, urls, errors, opened, inLabel }.
 -->
 <style>
 :root{color-scheme:dark}
@@ -25,6 +27,8 @@ small{color:#8a96ad}
 </head>
 <body>
 <h1>Set launcher</h1>
+<p><label>Input <input id="inLabel" type="text" size="28" placeholder="from set.json"></label>
+  <small>part of the audio input's name for every scene, as on the conductor (for example USB Audio). Empty: set.json's.</small></p>
 <p><button id="openAll">Open all scenes</button> <small id="status">loading set.json</small></p>
 <div id="errors"></div>
 <table id="list"></table>
@@ -39,8 +43,17 @@ small{color:#8a96ad}
 <script src="set.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const qa = { set: null, urls: [], errors: [], opened: [] };
+const qa = { set: null, urls: [], errors: [], opened: [], inLabel: null };
 window.__qa = Object.assign(window.__qa || {}, { set: qa });
+// the input label for every scene: the field, filled from set.html?in= (Saturday brief task 2)
+const inField = $('inLabel');
+inField.value = SetLib.queryIn(window.location && window.location.search);
+function buildUrls() {
+  const lab = String(inField.value || '').trim();
+  qa.inLabel = lab || null;
+  qa.urls = qa.set.scenes.map(s => SetLib.buildUrl(qa.set, s, lab ? { in: lab } : null));
+}
+inField.oninput = () => { if (qa.set) { buildUrls(); render(); } };
 const ascii = s => String(s).replace(/[^\x20-\x7e]/g, '?');
 // not `open`: a top-level function in a classic script replaces window.open, and the call below then recursed
 // until the stack overflowed, so no window ever opened (the Resolume setup, 16 Nov)
@@ -67,7 +80,7 @@ async function load() {
     const set = await res.json();
     qa.errors = SetLib.validate(set);
     if (qa.errors.length) throw new Error('set.json has problems:\n' + qa.errors.join('\n'));
-    qa.set = set; qa.urls = set.scenes.map(s => SetLib.buildUrl(set, s));
+    qa.set = set; buildUrls();
     render();
     $('status').textContent = `${set.scenes.length} scenes`;
   } catch (e) {
