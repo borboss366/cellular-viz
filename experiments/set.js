@@ -3,7 +3,10 @@
 //   set.json: { version: 1, defaults: { clock, audio, in, capture, ... }, window: { width, height },
 //               scenes: [{ name, page: 'NN-name.html', query?: { key: value | null } }] }
 //   validate(set)            -> [] or the problems, in words
-//   buildUrl(set, scene)     -> 'NN-name.html?clock=shared&audio=line&in=BlackHole&capture=1' (relative to set.html)
+//   buildUrl(set, scene, over) -> 'NN-name.html?clock=shared&audio=line&in=BlackHole&capture=1' (relative to set.html);
+//                            over (optional) wins over the defaults and the scene's own query, e.g. { in: 'USB Audio' }
+//                            from set.html's input field (Saturday brief task 2: one input label for every scene)
+//   queryIn(search)          -> the ?in= value of a location.search ('' when there is none)
 //   windowFeatures(set, i)   -> the window.open features: a popup of the set's size, each one offset a little
 //   windowName(i)            -> a fixed name per slot, so opening a scene again reuses its window
 (function (root) {
@@ -38,9 +41,9 @@
     return errs;
   }
 
-  function buildUrl(set, scene) {
+  function buildUrl(set, scene, over) {
     if (!scene || typeof scene.page !== 'string' || !PAGE.test(scene.page)) throw new Error(`not a page in this folder: ${scene && scene.page}`);
-    const q = Object.assign({}, (set && set.defaults) || {}, scene.query || {});
+    const q = Object.assign({}, (set && set.defaults) || {}, scene.query || {}, over || {});
     const parts = [];
     for (const [k, v] of Object.entries(q)) {
       if (v === null || v === undefined || !KEY.test(k)) continue;
@@ -55,8 +58,13 @@
     return `popup=yes,width=${w},height=${h},left=${off},top=${off}`;
   }
   const windowName = i => `cellular-viz-set-${i}`;
+  function queryIn(search) {
+    const m = /[?&]in=([^&#]*)/.exec(String(search || ''));
+    if (!m) return '';
+    try { return decodeURIComponent(m[1].replace(/\+/g, ' ')).trim(); } catch (e) { return ''; }
+  }
 
-  const api = { validate, buildUrl, windowFeatures, windowName, PAGE };
+  const api = { validate, buildUrl, windowFeatures, windowName, queryIn, PAGE };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.SetLib = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

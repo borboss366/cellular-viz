@@ -242,3 +242,63 @@ test('set.html: "Open all scenes" and each "Open" call the browser\'s window.ope
   assert.equal(opened.length, set.scenes.length + 1, 'the row button opens its scene');
   assert.equal(el('status').textContent.startsWith('opened: '), true);
 });
+
+// Saturday brief task 2: one input label for every scene. set.html?in=<label> fills the "Input" field, the field wins
+// over set.json's defaults.in (and a scene's own in=) in every URL it opens; empty: set.json's. The page's inline
+// script runs with a fake window (as above), location.search included.
+test('set.html: the input label (field or ?in=) goes to every scene as in=<label>, over set.json; empty: set.json\'s', async () => {
+  const set = { version: 1, defaults: { clock: 'shared', audio: 'line', in: 'BlackHole', capture: '1' },
+    scenes: [{ page: '16-hodge-kaleidoscope.html' }, { page: '12-mass-gap.html', query: { in: 'Loopback' } }, { page: '06-lenia-effects.html' }] };
+  assert.equal(SetLib.buildUrl(set, set.scenes[0], { in: 'USB Audio' }), '16-hodge-kaleidoscope.html?clock=shared&audio=line&in=USB%20Audio&capture=1');
+  assert.equal(SetLib.buildUrl(set, set.scenes[1], { in: 'USB Audio' }), '12-mass-gap.html?clock=shared&audio=line&in=USB%20Audio&capture=1', 'over the scene\'s own in=');
+  assert.equal(SetLib.buildUrl(set, set.scenes[1], null), '12-mass-gap.html?clock=shared&audio=line&in=Loopback&capture=1');
+  assert.equal(SetLib.queryIn('?in=USB%20Audio&x=1'), 'USB Audio');
+  assert.equal(SetLib.queryIn('?x=1&in=Scarlett+2i2'), 'Scarlett 2i2');
+  assert.equal(SetLib.queryIn('?pin=1'), '');
+  assert.equal(SetLib.queryIn(''), '');
+  assert.equal(SetLib.queryIn(undefined), '');
+
+  const html = fs.readFileSync(path.join(EX, 'set.html'), 'utf8');
+  assert.match(html, /<input id="inLabel" type="text"/);
+  assert.ok(/^[\x00-\x7f]*$/.test(html), 'ASCII only');
+  const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+  assert.equal(inline.length, 1);
+  const page = search => {
+    const els = {}, el = id => (els[id] ||= { id, value: undefined, textContent: '', onclick: null, oninput: null, children: [], appendChild(c) { this.children.push(c); }, append(...c) { this.children.push(...c); } });
+    const opened = [];
+    const win = {
+      document: { getElementById: el, createElement: tag => ({ tag, textContent: '', className: '', onclick: null, children: [], appendChild(c) { this.children.push(c); }, append(...c) { this.children.push(...c); } }) },
+      fetch: async () => ({ ok: true, json: async () => set }),
+      open: (url, name) => { opened.push({ url, name }); return {}; },
+      location: { search },
+    };
+    win.window = win; win.globalThis = win;
+    const ctx = vm.createContext(win);
+    vm.runInContext(fs.readFileSync(path.join(EX, 'set.js'), 'utf8'), ctx);
+    vm.runInContext(inline[0], ctx);
+    return { win, el, opened };
+  };
+  // ?in= on set.html
+  const a = page('?in=USB%20Audio');
+  await new Promise(r => setImmediate(r));
+  assert.equal(a.el('inLabel').value, 'USB Audio', 'the field shows ?in=');
+  a.el('openAll').onclick();
+  assert.equal(a.opened.length, 3);
+  for (const o of a.opened) assert.match(o.url, /[?&]in=USB%20Audio(&|$)/, o.url);
+  assert.ok(a.opened.every(o => !/BlackHole|Loopback/.test(o.url)), 'set.json\'s in= is replaced in every URL');
+  assert.equal(a.win.__qa.set.inLabel, 'USB Audio');
+  // typing in the field: the URLs follow; empty: set.json's
+  a.el('inLabel').value = 'Scarlett 2i2'; a.el('inLabel').oninput();
+  a.el('openAll').onclick();
+  assert.deepEqual(a.opened.slice(3).map(o => o.url), set.scenes.map(s => SetLib.buildUrl(set, s, { in: 'Scarlett 2i2' })));
+  a.el('inLabel').value = '  '; a.el('inLabel').oninput();
+  a.el('openAll').onclick();
+  assert.deepEqual(a.opened.slice(6).map(o => o.url), set.scenes.map(s => SetLib.buildUrl(set, s)), 'empty field: set.json as it is');
+  assert.equal(a.win.__qa.set.inLabel, null);
+  // no ?in=: set.json as it is
+  const b = page('');
+  await new Promise(r => setImmediate(r));
+  assert.equal(b.el('inLabel').value, '');
+  b.el('openAll').onclick();
+  assert.deepEqual(b.opened.map(o => o.url), set.scenes.map(s => SetLib.buildUrl(set, s)));
+});

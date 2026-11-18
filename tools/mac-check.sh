@@ -125,6 +125,14 @@ case "$defout" in
   '') report WARN "Default output" "not found" "Open System Settings, Sound, Output. Select the Multi-Output Device" ;;
   *) report WARN "Default output" "$defout is the default output, not the Multi-Output Device" "Open System Settings, Sound, Output. Select the Multi-Output Device" ;;
 esac
+# A line input for a guest DJ (Saturday brief task 4): every device with input channels, minus BlackHole and the
+# Mac's own microphone. PASS names them (the conductor's in=<label> is a part of one of these names)
+ins=$(printf '%s\n' "$audio" | awk '/^        [^ ].*:$/ { n = $0; sub(/^ +/, "", n); sub(/:$/, "", n) } /^ +Input Channels: *[1-9]/ { if (n != "") print n; n = "" }')
+linein=$(printf '%s\n' "$ins" | grep -v -i -E 'blackhole' | grep -v -i -E '^(macbook|imac|mac mini|mac studio|mac pro|built-in).*(microphone|input)$' | grep . | awk '{ printf "%s%s", (n++ ? ", " : ""), $0 }')
+nin=$(printf '%s\n' "$ins" | grep -c .)
+if [ -n "$linein" ]; then report PASS "Line input" "$linein"
+elif [ "$nin" -eq 0 ]; then report WARN "Line input" "no audio input found" "Connect the USB audio interface. Then run this tool again. Fallback: the built-in microphone"
+else report WARN "Line input" "only $(printf '%s\n' "$ins" | awk 'NF { printf "%s%s", (n++ ? ", " : ""), $0 }')" "Connect the USB audio interface. Then run this tool again. Fallback: the built-in microphone"; fi
 
 # ---- 4. The Launch Control XL 3 on USB
 usb=$(out sp_usb system_profiler SPUSBDataType)
