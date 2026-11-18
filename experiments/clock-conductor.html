@@ -296,8 +296,9 @@ clock.onTrackerFrame(f => { shadow.push(f); onFrame(f); });
 // the corrections panel (17 Nov): display only, from the clock's state and these fix results (corrections.mjs)
 const corr = createCorrections();
 let corrAt = -1;
-// track time (ms) of the LIVE deck at a clock time, or null when nothing plays
-const trackAt = t => { const dl = decks[live]; return dl.track && dl.playing ? Math.max(0, posMs(dl, t)) : null; };
+// track time (ms) of the LIVE deck at a clock time; guest mode (?clock=line, no track playing, Saturday brief task 1):
+// the clock's own time since Start audio, the log's ctx time; else null when nothing plays
+const trackAt = t => { const dl = decks[live]; return dl.track && dl.playing ? Math.max(0, posMs(dl, t)) : inputMode === 'line' ? Math.max(0, t * 1000) : null; };
 const outBpm = () => { const s = clock.playing ? clock.trackerState : null; return s ? s.bpm : 0; };
 const fix0 = clock.fix.bind(clock);
 clock.fix = (kind, arg, o) => {
