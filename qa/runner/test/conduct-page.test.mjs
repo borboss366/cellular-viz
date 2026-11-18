@@ -117,7 +117,7 @@ test('clock-conductor.html: its module imports are files the server serves, the 
   const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
   const mod = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
   const imports = [...mod.matchAll(/from '([^']+)'/g)].map(m => m[1]);
-  assert.deepEqual(imports.sort(), ['../qa/conduct-log.mjs', '../qa/marks.mjs', './conductor.mjs', './corrections.mjs']);
+  assert.deepEqual(imports.sort(), ['../qa/conduct-log.mjs', '../qa/conduct-rec.mjs', '../qa/marks.mjs', './conductor.mjs', './corrections.mjs']);
   for (const i of imports) {
     if (i.startsWith('../qa/')) assert.ok(S.BROWSER_MODULES.includes(path.basename(i)), `${i} is served`);
     assert.ok(fs.existsSync(path.join(REPO, 'experiments', i)), `${i} exists`);

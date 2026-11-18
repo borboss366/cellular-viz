@@ -1126,6 +1126,9 @@
         return { octaveHold: line.hold ? { ...line.hold } : null, holdRelease: line.holdRelease ? { ...line.holdRelease } : null,
           flipDue: !!(sc && sc.kind === 'flip'), oneAt: this.oneAt, taps: this.taps.length };
       },
+      // read-only (Saturday brief task 3): the node the line clock listens to, for the conductor's recording; null off
+      // line or before the input is open
+      get lineInputNode() { return line ? line.input || null : null; },
       get trackerState() {
         if (!line) return null;
         const s = line.tracker && line.tracker.snapshot ? line.tracker.snapshot() : { state: 'acquire', confidence: 0, octaveLock: null, bpm: 0, tapped: false, lastJump: null };

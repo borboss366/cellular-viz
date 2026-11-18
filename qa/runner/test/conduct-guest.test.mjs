@@ -7,7 +7,8 @@
 //   2. the shared clock is published (clock and jump messages on the 'cellular-viz-clock' channel);
 //   3. every hand fix and hold act with no track: tap x4, x2 and its release, nudge, flip, set 1, reset, hold on and
 //      off, restart; "Corrections now" shows the clock time (no "--:--");
-//   4. the log the server keeps parses as schema v1 with those fixes, the hold presses and the clock's beats.
+//   4. the log the server keeps parses as schema v1 with those fixes, the hold presses and the clock's beats;
+//   5. the page's recording of that input (task 3): <session>.wav and .wav.json, sample 0 before the first clock beat.
 //   node --test qa/runner/test/conduct-guest.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -165,6 +166,22 @@ test('guest mode: ?clock=line&in=<label>, no playlist, no track: the matching in
     assert.equal(n('holdPress', r => r.kind === 'hold'), 2, 'hold on and off logged as holdPress');
     assert.ok(n('beat', r => r.src === 'clock') >= 8, `the clock's beats: ${n('beat', r => r.src === 'clock')}`);
     assert.ok(n('state', r => r.to === 'locked') >= 1, 'the lock is logged');
+
+    // 5. the recording of the input next to the log (Saturday brief task 3): <session>.wav, sample 0 at startCtx
+    const recNow = await page.evaluate(() => window.__qa.conductor.rec());
+    t.diagnostic(`corpus: report: guest mode rec ${JSON.stringify(recNow)}`);
+    assert.ok(recNow && recNow.ready && !recNow.error && recNow.gaps === 0 && recNow.skipped === 0, `recording: ${JSON.stringify(recNow)}`);
+    const side = JSON.parse(fs.readFileSync(path.join(sessions, `${id}.wav.json`), 'utf8'));
+    assert.deepEqual([side.sampleRate, side.channels, side.format], [recNow.sampleRate, 2, 's16le']);
+    assert.equal(side.startCtx, recNow.startCtx, 'the box and the page agree on sample 0');
+    const firstBeat = recs.find(r => r.type === 'beat' && r.src === 'clock');
+    assert.ok(side.startCtx > 0 && side.startCtx < firstBeat.ctx, `the file starts before the first clock beat: ${side.startCtx} < ${firstBeat.ctx}`);
+    const wav = fs.readFileSync(path.join(sessions, `${id}.wav`)), dataBytes = wav.length - 44;
+    assert.equal(wav.readUInt32LE(40), dataBytes, 'the header holds the data size');
+    assert.ok(dataBytes >= 4 * side.sampleRate * 5, `at least 5 s recorded: ${(dataBytes / (4 * side.sampleRate)).toFixed(1)} s`);
+    let peak = 0;
+    for (let o = 44; o + 1 < wav.length; o += 2) peak = Math.max(peak, Math.abs(wav.readInt16LE(o)));
+    assert.ok(peak > 3000, `the clicks are in the file: peak ${peak}`);
     assert.deepEqual(errors, [], 'no page errors');
   } finally {
     if (browser) await browser.close().catch(() => {});
