@@ -5,6 +5,28 @@ on the Mac. Until Sunday this brief comes before
 `docs/CELLULAR_VIZ_BRIEF_OWNER.md`. Your role's standing rules still
 apply (`docs/AGENT_PUGGIE.md`, `docs/AGENT_CC_MAC.md`).
 
+## Change of date (the user, 19 Nov): the DJ comes on Sunday 22 Nov
+
+Everything below that says Saturday 21 for the visit now means Sunday
+22 (the hour is the user's to confirm). The file name, the tag names
+(`saturday-rc1`, `saturday`) and the box folder keep their names.
+
+| When | What |
+|---|---|
+| Thu 19 | Audition and tuning; the audio chain test once the USB interface is there. Box: fix list only. |
+| Fri 20 | Dress rehearsal in guest mode (music from another device into the line input), cold start from the runbook, recording on. Try OBS at 60 fps. Check the +140 ms offset on the projector with the slow-motion video again. |
+| Sat 21 | The user polishes his scenes. Box: fix list only, nothing that changes a scene's look unless he asks. Tag `saturday` at the end of the day. |
+| Sun 22 | Setup finished one hour before the DJ arrives. Served from the `saturday` tag. Nothing deployed after that. |
+| Mon 23 | Box scores the log and replays the audio. The owner's brief resumes. |
+
+Open from Mac session 2 (18 Nov), in order of risk:
+1. The line input has never been tested: no USB interface yet.
+2. The offset fix (#263) landed after `saturday-rc1` and is not yet
+   seen on the projector. Verify it, then tag `saturday-rc2`.
+3. OBS sends 30 fps. Decide on Friday with the frame rates in view.
+4. The run was played on the keyboard. Friday is played on the
+   controller.
+
 ## The goal
 
 On Saturday a DJ plays house at the user's place on a Pioneer
