@@ -264,14 +264,55 @@ export function kickMakesComb(beat, bpb, tines) {
 }
 // the snare's vortex only in the groove and the build (the breakdown is calm)
 export const snareMakesSwirl = (beat, bpb) => phaseOf(beat / bpb) !== 'breakdown';
-// the song's ops for one event (what the scene queues; the determinism truth replays it)
+// the song's ops for one event (what the scene queues; the determinism truth replays it).
+// inp.beatFx === false (?beatFx=0): the clock no longer stirs the paint: no kick combs, snare vortices, bass swirls or
+// breakdown feather combs (the 'kick', 'snare' and 'bar' events). The section's drop (with its rings and cells) and the
+// build pour stay, and so do the triggers (they don't come through here).
+export const BEAT_FX_KINDS = ['kick', 'snare', 'bar'];
 export function songOps(e, inp, pal, bpb, bpm) {
   const ev = { kind: e.kind, beat: e.beat, bpb, bpm };
+  if (inp.beatFx === false && BEAT_FX_KINDS.includes(e.kind)) return [];
   if (e.kind === 'drop' || e.kind === 'pour' || e.kind === 'bar') return opsFor(ev, inp, pal);
   if (e.kind === 'kick') return phaseOf(e.beat / bpb) !== 'breakdown' && kickMakesComb(e.beat, bpb, inp.tines) ? opsFor(ev, inp, pal) : [];
   if (e.kind === 'snare') return snareMakesSwirl(e.beat, bpb) ? opsFor(ev, inp, pal) : [];
   return [];
 }
+// ---------------------------------------------------------------- the colour pulse (?pulse=0..1)
+// The paint's colour beats with the clock: a smooth bump on every beat, 1 on the beat, 0 from a quarter beat either side
+// of the half beat, never a step (a raised cosine to the 4th: no jump between frames at any frame rate). The shader
+// lifts saturation by up to PULSE_SAT and brightness by at most PULSE_GAIN at the peak (< 10 % of the luminance: under
+// the general-flash threshold even when the whole frame pulses). It moves no paint, so it stays on with ?beatFx=0.
+export const PULSE_SAT = 0.45, PULSE_GAIN = 0.08;
+export const beatPulse = beats => { const ph = beats - Math.floor(beats); return Math.pow(0.5 + 0.5 * Math.cos(2 * Math.PI * ph), 4); };
+
+// ---------------------------------------------------------------- pour here, dragged (trigger 2 held, pointer moving)
+// A drop can't move once poured (moving its centre would move all the paint it pushed), so a dragged pour is a chain
+// of pour drops at the same area rate. While held, the live segment ends and the next starts when it has run
+// POUR_SEG_BEATS and the finger is POUR_STEP_MIN away from its centre: at most one new op per POUR_SEG_BEATS, never a
+// burst. The next centre sits at most the live segment's radius along the way to the finger, on its rim, so the new
+// drop pushes the older paint aside with no ground between them (no gaps), and the pour runs after a quick finger;
+// a finger more than POUR_JUMP ahead (a flick) starts the next segment right under it.
+export const POUR_SEG_BEATS = 0.25, POUR_STEP_MIN = 0.02, POUR_JUMP = 0.25;
+// seg: the live pour segment { cx, cy, start, pour }; target: [x, y] the finger (world) → the next centre, or null
+export function pourNext(seg, target, beats, zoom = 1) {
+  if (!seg || !target || !(beats - seg.start >= POUR_SEG_BEATS - 1e-9)) return null;
+  const dx = target[0] - seg.cx, dy = target[1] - seg.cy, d = Math.hypot(dx, dy);
+  if (!(d >= POUR_STEP_MIN * zoom)) return null;
+  if (d > POUR_JUMP * zoom) return [target[0], target[1]];
+  const r = Math.sqrt(Math.max(0, seg.pour * (beats - seg.start) / Math.PI)), step = Math.min(d, Math.max(POUR_STEP_MIN * zoom, r));
+  return [seg.cx + dx / d * step, seg.cy + dy / d * step];
+}
+// one frame of a dragged pour: ends seg (its dur and r frozen at now) and returns the next segment op, or null.
+// info: { t0 (beat the pour began), maxDur (beats, the longest hold), rate (area a beat), colour }
+export function pourDragStep(seg, target, beats, info, zoom = 1) {
+  const c = pourNext(seg, target, beats, zoom);
+  if (!c || !info) return null;
+  const remain = info.maxDur - (beats - info.t0);
+  if (remain < POUR_SEG_BEATS) return null;
+  seg.dur = Math.min(seg.dur, Math.max(0, beats - seg.start)); seg.r = Math.sqrt(seg.pour * seg.dur / Math.PI); seg.held = false;
+  return { type: DROP, start: beats, dur: remain, cx: c[0], cy: c[1], r: Math.sqrt(info.rate * remain / Math.PI), pour: info.rate, colour: info.colour, role: 'pour', held: true };
+}
+
 // the metronome's hits as beat positions, for sixteenth steps in (a, b] (pat: { kick, snare, hat } 16-step strings)
 export function patternHits(a, b, bpb, pat) {
   const out = [];
