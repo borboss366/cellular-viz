@@ -180,7 +180,8 @@ test('set.json is valid and its URLs are right: each scene with ?clock=shared&au
   // the user's Saturday set (19 Nov 22:04): Hodge, Lenia, Paint Pour without the song's stirring, Riemann's ribbon
   // (12 Mass Gap left the set; its page stays)
   assert.deepEqual(set.scenes.map(s => s.page), ['16-hodge-kaleidoscope.html', '06-lenia-effects.html', '24-paint-pour.html', '11-riemann-show.html']);
-  const extra = ['', '', '&beatFx=0', '&scene=ribbon'];
+  // the knobs (#268 clock.knob(n)): 1 = Paint Pour pulse (#269), 2 = Hodge dive, 3 = Hodge glints (#271)
+  const extra = ['&diveKnob=2&glintKnob=3', '', '&beatFx=0&pulseKnob=1', '&scene=ribbon'];
   const urls = set.scenes.map(s => SetLib.buildUrl(set, s));
   for (const [i, u] of urls.entries()) {
     assert.equal(u, `${set.scenes[i].page}?clock=shared&audio=line&in=BlackHole&capture=1${extra[i]}`);
@@ -193,6 +194,8 @@ test('set.json is valid and its URLs are right: each scene with ?clock=shared&au
   // the scenes' own switches exist on their pages
   const pour = fs.readFileSync(path.join(EX, '24-paint-pour.html'), 'utf8'), riemann = fs.readFileSync(path.join(EX, '11-riemann-show.html'), 'utf8');
   assert.match(pour, /params\.beatFx = q\('beatFx'\) !== '0'/, '24 reads ?beatFx=0');
+  assert.match(pour, /params\.pulseKnob = .*q\('pulseKnob'\)/, '24 reads ?pulseKnob= (#269)');
+  // 16's diveKnob / glintKnob come with #271 (VIZ pages); until then the page ignores them
   assert.match(riemann, /const SCENES = \[[^\]]*'ribbon'/, '11 has the ribbon scene');
   assert.match(riemann, /if \(q\('scene'\) && \(q\('scene'\) === 'auto' \|\| SCENES\.includes\(q\('scene'\)\)\)\) params\.scene = q\('scene'\);/, '11 reads ?scene=');
   assert.deepEqual(set.window, { width: 960, height: 540, bar: 63 }, 'content 960x540 pt + the 63 pt Chrome bar (mac session 18 Nov)');

@@ -17,8 +17,10 @@
 // performance.now() clock, as a key's). Upper row (hand-held mode, docs/CELLULAR_VIZ_BRIEF_HOLD.md), ch1 CC 37 and 38:
 // button 1 = hold (clock.fix('hold'), a toggle; LED green while held, amber while held and holdSuspect, dark when not
 // held), button 2 = auto-hold (opts.toggleAutoHold(origin) when the page keeps the choice, else
-// clock.fix('autoHold'); LED green when on, dark when off). Upper buttons 3–8 and Shift are not used yet; the faders
-// and pot rows 2–3 go to the bridge.
+// clock.fix('autoHold'); LED green when on, dark when off). Upper buttons 5–8 (CC 41–44; the two slot windows, 19 Nov):
+// 5 / 6 = slot A previous / next, 7 / 8 = slot B previous / next, each press opts.onSlot('A' | 'B', -1 | 1) (the
+// conductor sends it on the shared clock's channel, Clock.publish slot()); no clock fix, no LED. Upper buttons 3–4
+// (CC 39–40) and Shift are not used yet; the faders and pot rows 2–3 go to the bridge.
 // Pot row 1 (ch16 CC 13–20, absolute 0–127; the fix list, 19 Nov 22:00): the page's own knobs, never bridged. Each
 // value is kept in ctl.knobs (8 entries, 0..1 = value / 127, null until that pot moves) and handed to
 // opts.onKnob(n 1–8, value, all 8); the conductor publishes them to the scenes on the shared clock (clock.js
@@ -51,6 +53,8 @@
   const LOWER = [45, 46, 47, 48, 49, 50, 51, 52];
   // the upper row's used buttons (hand-held mode): hold, auto-hold; CC 39-44 stay free
   const UPPER = [37, 38], HOLD_CC = 37, AUTO_HOLD_CC = 38;
+  // the slot windows' buttons (upper 5–8): CC → [slot, dir]
+  const SLOT_CCS = { 41: ['A', -1], 42: ['A', 1], 43: ['B', -1], 44: ['B', 1] };
   const COLOUR = { off: 0, red: 5, amber: 9, green: 21 };
   const POT_CH = 0xBF, BRIDGE_CCS = [[5, 12], [21, 36]], BRIDGE_DEFAULT = /IAC/, DEVICE_PORT = /LCXL3/;
   const KNOB_CCS = [13, 20], KNOBS = 8;   // pot row 1: the page's knobs (not bridged)
@@ -84,6 +88,7 @@
     if (st === POT_CH && cc >= KNOB_CCS[0] && cc <= KNOB_CCS[1]) return { type: 'knob', index: cc - KNOB_CCS[0], value: Math.max(0, Math.min(127, v)) / 127 };
     if (st === BUTTON_CH && LOWER.includes(cc)) return { type: 'button', index: LOWER.indexOf(cc), down: v > 0 };
     if (st === BUTTON_CH && UPPER.includes(cc)) return { type: 'upper', which: cc === HOLD_CC ? 'hold' : 'autoHold', down: v > 0 };
+    if (st === BUTTON_CH && SLOT_CCS[cc]) return { type: 'slot', slot: SLOT_CCS[cc][0], dir: SLOT_CCS[cc][1], down: v > 0 };
     if (st === FEATURE_CH && cc === MODE_CC) return { type: 'mode', value: v };
     return null;
   }
@@ -200,6 +205,7 @@
       if (!m) return;
       if (m.type === 'button') return onButton(m.index, m.down, e.timeStamp);
       if (m.type === 'upper') return onUpper(m.which, m.down, e.timeStamp);
+      if (m.type === 'slot') { if (m.down && o.onSlot) o.onSlot(m.slot, m.dir); return; }   // upper 5-8: the slot windows
       if (m.type === 'knob') {   // pot row 1: kept and handed to the page (the scenes' knobs), never bridged
         ctl.knobs[m.index] = m.value;
         if (o.onKnob) o.onKnob(m.index + 1, m.value, ctl.knobs.slice());
@@ -311,7 +317,7 @@
   }
 
   const api = { create, decode, forwarded, leds, displayLines,
-    MAP: { LOWER, UPPER, HOLD_CC, AUTO_HOLD_CC, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS, POT_CH, BRIDGE_CCS, BRIDGE_KEY, KNOB_CCS } };
+    MAP: { LOWER, UPPER, HOLD_CC, AUTO_HOLD_CC, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS, POT_CH, BRIDGE_CCS, BRIDGE_KEY, KNOB_CCS, SLOT_CCS } };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MidiController = api;
 })(typeof window !== 'undefined' ? window : globalThis);

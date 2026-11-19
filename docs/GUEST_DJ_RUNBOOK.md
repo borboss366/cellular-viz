@@ -29,7 +29,9 @@ Gate: no FAIL, "Line input" PASS.
 
 ## 3. Guest mode: the conductor and the scenes
 1. Quit Chrome (Cmd+Q).
-2. In Terminal, run `open -na "Google Chrome" --args --disable-backgrounding-occluded-windows`.
+2. In Terminal, run
+   `open -na "Google Chrome" --args --disable-backgrounding-occluded-windows --autoplay-policy=no-user-gesture-required`.
+   (The second flag lets each scene start its audio clock without a key press; the slot windows need it, below.)
 3. In Chrome, open http://localhost:8790/experiments/clock-conductor.html?clock=line&in=<interface>
    (a part of the name is enough, for example `in=USB`).
 4. Push "Start audio". Allow the microphone when Chrome asks.
@@ -43,6 +45,18 @@ Gate: no FAIL, "Line input" PASS.
     Paint Pour, Riemann Ribbon; experiments/set.json) at 960 x 603 pt on a diagonal. Move one only if it does not fit.
 12. In each scene window, push a key one time.
 Gate: the scenes move with the music. Shift+F on the conductor flips all of them at the same bar.
+
+The slot windows (instead of steps 10 to 12; "Open all scenes" stays the fallback):
+1. On set.html, push "Open slots". Two windows open on the diagonal: slot A (starts on scene 1) and slot B (scene 2).
+   Each shows one scene of the set at a time.
+2. Step through the set: upper buttons 5 / 6 on the controller = slot A previous / next, 7 / 8 = slot B previous /
+   next (upper 1 / 2 stay hold / auto-hold). In a slot window the left / right arrow keys do the same. A switch is
+   black for about a second, until the new scene is on the beat. A blackout stays black across a switch.
+3. OBS: two Window Capture sources, the window "slot A" and the window "slot B", with DistroAV NDI Output CV-A and
+   CV-B (hide the four scene sources).
+4. Resolume: CV-A in layer 1 (fader 1), CV-B in layer 2; map fader 5 (IAC, CC 9) to layer 2's opacity. The fallback
+   clip stays in layer 5.
+Gate: both slots move with the music; a press on upper button 6 shows the next scene in slot A within about a second.
 
 ## 4. OBS, Resolume and the recording
 1. In OBS, open each source. Select its scene window again (Chrome's window ids change). The set has four scenes:
@@ -66,6 +80,10 @@ lamp stays on the sound; its white flash bar runs early; that is expected. Type 
 `saturday`) and push Save. After a reload the slider starts at 0: pick the saved name in the list.
 Do not move it during the set. The parts of a scene that follow the sound level itself (the line-input band levels)
 stay late by the route delay; only the beat-timed parts move.
+
+The controller's top knob row (pot row 1) goes to the scenes (the conductor shows "knobs 1-8" under the profiles):
+knob 1 = Paint Pour pulse, knob 2 = Hodge dive (a fast turn down = a burst), knob 3 = Hodge glints. Until a knob is
+turned, its scene uses its own default.
 
 ## 5. Saturday: the order of steps (setup done by 16:00)
 | Time | Step |
