@@ -79,5 +79,8 @@ test('27 EQ: the page is a scene (panic.js, the shared clock, audio-in); ?captur
   assert.match(PAGE, /AudioIn\.create\(\{ clock, source: AUDIO_SRC/, '?audio=line');
   assert.match(PAGE, /labels: q\('labels'\) !== '0', kick: q\('kick'\) === '1'/, 'labels on by default, the kick square off');
   assert.match(PAGE, /<button id="play">/, 'capture presses Play');
-  assert.match(PAGE, /fakeBands: arr =>/); assert.match(PAGE, /get eq\(\)/);
+  assert.match(PAGE, /fakeBands: arr =>/);
+  // __qa.eq is a live getter (Object.assign would copy a getter's value once: {} at load; box run 20 Nov)
+  assert.match(PAGE, /Object\.defineProperty\(window\.__qa, 'eq', \{ get: \(\) => \(\{ \.\.\.view \}\)/);
+  assert.doesNotMatch(PAGE, /Object\.assign\(window\.__qa \|\| \{\}, \{\s*errors, get eq\(\)/);
 });

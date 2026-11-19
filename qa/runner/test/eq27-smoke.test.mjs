@@ -73,7 +73,7 @@ test('27 EQ calibrate on the shared clock in Chromium: no errors, locked, flashe
   await plain.goto(`${base}/27-eq-calibrate.html?clock=shared`, { timeout: 30e3 });
   await plain.waitForTimeout(1500);
   const p = await plain.evaluate(() => ({ panel: getComputedStyle(document.getElementById('panel')).display, eq: window.__qa.eq }));
-  t.diagnostic(`corpus: report: eq27 smoke ${JSON.stringify({ a: { ...a, eq: { state: a.eq.state, flashes: a.eq.flashes, bpm: a.eq.bpm, barBeat: a.eq.barBeat, offsetMs: a.eq.offsetMs } }, bars: [b.bars[3], b.bars[10]], plain: p.panel, errors }).slice(0, 900)}`);
+  t.diagnostic(`corpus: report: eq27 smoke ${JSON.stringify({ a: { ...a, eq: { state: a.eq.state, flashes: a.eq.flashes, bpm: a.eq.bpm, barBeat: a.eq.barBeat, offsetMs: a.eq.offsetMs } }, bars: [b.bars && b.bars[3], b.bars && b.bars[10]], plain: p.panel, errors }).slice(0, 900)}`);
   assert.deepEqual(errors, [], 'no page errors');
   assert.deepEqual(a.errors, [], 'no frame errors');
   assert.equal(a.capture, true);

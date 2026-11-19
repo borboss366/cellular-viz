@@ -176,9 +176,11 @@ function draw(now) {
 // ---------- QA ----------
 window.__modules = { '27-eq-calibrate': { macros: {}, triggers: [], inputs: [{ name: 'kick', type: 'bool', default: false }, { name: 'labels', type: 'bool', default: true }] } };
 window.__qa = Object.assign(window.__qa || {}, {
-  errors, get eq() { return { ...view }; },
+  errors,
   fakeBands: arr => { qaBands = Array.isArray(arr) && arr.length === EQ.N ? arr.map(Number) : null; return !!qaBands; },
 });
+// a live getter: Object.assign would read a getter once (view was still {}) and copy that empty object
+Object.defineProperty(window.__qa, 'eq', { get: () => ({ ...view }), configurable: true, enumerable: true });
 AudioIn.qa(audio, window.__qa);   // beatLog, frame, beatLanes, audioIn, beatWeight, energy, sharedClock, ...
 sync();
 requestAnimationFrame(frame);
