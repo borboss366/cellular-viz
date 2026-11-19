@@ -284,6 +284,17 @@ export function songOps(e, inp, pal, bpb, bpm) {
 // the general-flash threshold even when the whole frame pulses). It moves no paint, so it stays on with ?beatFx=0.
 export const PULSE_SAT = 0.45, PULSE_GAIN = 0.08;
 export const beatPulse = beats => { const ph = beats - Math.floor(beats); return Math.pow(0.5 + 0.5 * Math.cos(2 * Math.PI * ph), 4); };
+// ?pulseKnob=N (1..8): the pulse amount from the controller's top-row knob N, which the conductor publishes on the shared
+// clock (#268: clock.knob(n), 0..1, or null until that knob has moved). Until it moves, without that getter (before
+// #268, or another clock source), or with no pulseKnob, the amount is ?pulse (fallback) as before.
+export function pulseAmount(clock, knob, fallback = 0) {
+  const n = Math.round(+knob);
+  if (n >= 1 && n <= 8 && clock && typeof clock.knob === 'function') {
+    let v = null; try { v = clock.knob(n); } catch (e) { v = null; }
+    if (v !== null && v !== undefined && Number.isFinite(+v)) return Math.max(0, Math.min(1, +v));
+  }
+  return Number.isFinite(+fallback) ? Math.max(0, Math.min(1, +fallback)) : 0;
+}
 
 // ---------------------------------------------------------------- pour here, dragged (trigger 2 held, pointer moving)
 // A drop can't move once poured (moving its centre would move all the paint it pushed), so a dragged pour is a chain
