@@ -109,3 +109,35 @@ with run files.
 8. Task 5 changes the QA box's fixed scripts (runner.mjs, exp-run.mjs, board.mjs, post.mjs, experiment.mjs read the run files). It needs the user's OK before it starts.
 9. Corrected counts on main ea945b0: macros and triggers are in 5 scenes (15, 16b, 16-neon, 24, 26), not 8 and 4. clock.js create() is 882 lines, not 930. "#N comment M" is in 13 places in .md files (54 in all files, most of them code comments). Task 1 covers the .md files only. The suite has 498 tests on main (497 + the #253 tests). 15 of them skip without the private tracks.
 10. Order: nothing in this brief starts before the user's Mac session 2 report.
+
+## Addition, 19 Nov (the user): pointer input from a tablet
+
+Not before the DJ visit. Part of tasks 2 and 3 when this brief resumes.
+
+**What it is.** A tablet or phone opens a pad page served by
+conduct-serve. Its touches travel through the same server relay as the
+shared clock (task 3) and reach the scenes as a `pointers` input in
+the scene kit (task 2): the touches now (position, pressure if there
+is a pen), and the strokes so far, for scenes that draw. The Bolt's
+motion data later feeds the same input.
+
+**Which scene receives the touches.** Two or more scenes are blended
+in Resolume, so the pad must not drive all of them blindly.
+- Default: follow the controller's faders. A scene receives touches
+  while its layer's fader, as seen by the conductor's bridge, is above
+  a small threshold.
+- The pad has one chip per layer, lit while that scene receives
+  touches. A tap on a chip overrides the fader for that scene until
+  the next fader move.
+- No chip lit: the pad is parked.
+
+**Rule (the user, 19 Nov): nothing reads state back from Resolume.**
+The controller is the single source of truth and Resolume only
+receives. A level changed with the mouse in Resolume is not followed,
+and that is accepted. During a set, layer levels are changed on the
+controller only. Write this habit into the runbook.
+
+**Per scene.** A scene that already answers a mouse or a touch on its
+own window follows the pad with no change beyond the kit. For the
+others, what a touch means is the user's choice when he tunes his
+seven.
