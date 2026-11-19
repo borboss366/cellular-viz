@@ -22,7 +22,7 @@ changes the outline; the user finds the spot with the viewer (task 1).
 
 ### The look: why it will not all go one way
 1. **The wind is a fluid, not a push.** A 2D incompressible flow over
-   the floor plan (reuse the solver from 13 Flow Lab). A body that
+   the floor plan (the solver from 13 Flow Lab, as the module of task 0). A body that
    moves injects momentum where it is. An incompressible flow answers
    a local push with a swirl on each side and a return flow, so leaves
    near the body are carried along, leaves beside it curl back, and
@@ -154,6 +154,26 @@ measured there, not only on the box.
 
 ## Tasks, in order
 
+0. **The fluid solver becomes a module (the user, 19 Nov).** Today
+   one scene holds a Navier-Stokes solver, 13 Flow Lab, written inside
+   its page (advection, pressure projection, vorticity, obstacles,
+   forces). The leaves are its second customer, so it moves out first:
+   - `experiments/fluid/`: the solver as a module with a small API:
+     create (grid size, the GL context), step (dt), add force and add
+     dye at a point, set obstacles, read the velocity texture, and a
+     low-resolution CPU readback for scenes that need it. Shaders live
+     beside it.
+   - 13 Flow Lab is moved onto the module with its look unchanged.
+     Its own checks must pass as they are: the divergence before and
+     after projection, the dye mass, the Strouhal number at 90, 120
+     and 150 BPM, the beat-match row, and a before and after still for
+     the user.
+   - The lattice gas (26) is a different method and already has its
+     own module. It stays where it is; do not force the two under one
+     interface.
+   - Not part of this step: new solver features. Add what the leaves
+     need (a height falloff is the scene's job, not the solver's) only
+     when the leaves scene asks for it.
 1. **Lidar viewer** (`experiments/lidar-view.html` + the bridge): the
    scan as dots, the learned background, the blobs with their velocity
    arrows, the calibration. Record and replay of scans to a file
