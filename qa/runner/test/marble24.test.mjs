@@ -218,3 +218,16 @@ test('?pulse: the colour pulse peaks on every beat, is 0 at the half beat, never
   assert.ok(step < 0.3, `a step of ${step}`);
   assert.ok(K.PULSE_GAIN < 0.1, 'the brightness lift stays under the 10 % general-flash change');
 });
+
+test('?pulseKnob: the pulse follows the shared clock\'s knob N once it has moved, else ?pulse (before #268 too)', () => {
+  const knobs = { 1: null, 3: 0.25 }, clock = { knob: n => (n in knobs ? knobs[n] : null) };
+  assert.equal(K.pulseAmount(clock, 1, 0.6), 0.6, 'knob 1 not moved yet: ?pulse');
+  knobs[1] = 0.9; assert.equal(K.pulseAmount(clock, 1, 0.6), 0.9, 'knob 1 moved: its value');
+  knobs[1] = 0; assert.equal(K.pulseAmount(clock, 1, 0.6), 0, 'turned all the way down: off');
+  knobs[1] = 1.7; assert.equal(K.pulseAmount(clock, 1, 0.6), 1, 'clamped to 0..1');
+  assert.equal(K.pulseAmount(clock, 3, 0), 0.25, 'any of the 8 knobs');
+  assert.equal(K.pulseAmount(clock, 0, 0.6), 0.6, 'no pulseKnob: ?pulse as before');
+  assert.equal(K.pulseAmount({}, 1, 0.6), 0.6, 'a clock without knob() (before #268): ?pulse');
+  assert.equal(K.pulseAmount(null, 1, 0), 0, 'no clock, default pulse 0');
+  assert.equal(K.pulseAmount({ knob: () => { throw new Error('x'); } }, 1, 0.3), 0.3, 'a throwing getter falls back');
+});

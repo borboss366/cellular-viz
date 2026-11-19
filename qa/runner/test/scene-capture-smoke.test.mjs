@@ -115,5 +115,7 @@ test('?capture=1 layout and the panic over the shared clock channel, in Chromium
   assert.deepEqual(remoteOff, { mode: 'off', received: 2 });
   assert.deepEqual(set.errors, []);
   assert.equal(set.rows, want.scenes.length);
-  assert.deepEqual(set.urls, want.scenes.map(s => `${s.page}?clock=shared&audio=line&in=BlackHole&capture=1`));
+  // a scene's own query (24: beatFx=0, 11: scene=ribbon; the Saturday set, 19 Nov) comes after the defaults
+  const own = s => Object.entries(s.query || {}).map(([k, v]) => `&${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('');
+  assert.deepEqual(set.urls, want.scenes.map(s => `${s.page}?clock=shared&audio=line&in=BlackHole&capture=1${own(s)}`));
 });
