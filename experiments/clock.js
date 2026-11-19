@@ -105,9 +105,16 @@
 // conductor's Calibrate slider moves every scene (+ = visuals earlier, the conductor's meaning); ?offset=<ms> on the
 // scene's URL (or opts.offset) fixes the scene's own offset and the messages' offsetMs is then ignored. No offsetMs, or
 // 0: the scene's offset stays 0, as before.
+// The knobs (the fix list, 19 Nov 22:00): the conductor's controller pot row 1 (LCXL3 CC 13-20) as 8 values 0..1.
+// Clock.publish's setKnobs(values) sends { type: 'knobs', v: 1, t, knobs: [8 x (0..1 | null)] } on change, at most
+// 20 Hz (the last change always goes out), and once any knob is known every clock message carries the same
+// `knobs: [...]`, so a scene opened later has them with its first clock message. Older receivers ignore both (an
+// unknown type; an extra field). A scene reads clock.knobs (a copy: 8 entries, null until known) or clock.knob(n),
+// n 1-8 (null until known; null for n out of range). Only ?clock=shared receives them (other sources: all null); they
+// arrive before Play too, and they never touch the clock.
 // Hand fixes do nothing on a scene (the conductor owns them). The page shows a small "shared" badge (opts.badge false:
 // none). clock.sharedState = { state: waiting|locked|free-run, msgs, jumpsIn, lastErrMs, lost, skipped, offsetMs, offsetFrom: url|publisher }.
-//   Clock.publish(clock, { timers, post, epochNow }) → { tick(), panic(mode), stop(), sent }: the conductor side;
+//   Clock.publish(clock, { timers, post, epochNow }) → { tick(), panic(mode), setKnobs(values), stop(), sent }: the conductor side;
 //   panic(mode) sends { type: 'panic', v: 1, t, mode: blackout|calm|clear } on the same channel (panic.js in every scene)
 //
 // Booking under long frames (#95, 31 Oct): read() and hitsDue() call schedule() first, at most once per frame, so a
@@ -144,6 +151,9 @@
   // ?clock=shared: the channel, the publisher's interval (20 Hz at most), the receiver's slew rate, the gap that
   // counts as lost, and the largest error that slews instead of jumping
   const SHARED_CHANNEL = 'cellular-viz-clock', SHARED_PUBLISH_MS = 50, SHARED_SLEW = 0.05, SHARED_LOST_MS = 2000, SHARED_SLEW_MAX = 0.25;
+  const KNOBS = 8;
+  // 8 knob values (numbers clamped to 0..1, anything else null), or null when it isn't a list of 8
+  const knobList = a => (Array.isArray(a) && a.length === KNOBS ? a.map(x => (typeof x === 'number' && Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : null)) : null);
   const epochNowDefault = () => (root.performance ? (root.performance.timeOrigin || 0) + root.performance.now() : Date.now());
 
   // the tracker library (clock-tracker.js): already on the page, required in node, or loaded next to this file
@@ -308,7 +318,7 @@
       step: null, lastBooked: -Infinity, seenJumps: 0, stateLog: [], rises: [], taps: [] } : null;
     // shared: the flywheel from the conductor's messages (see the header)
     const shared = source === 'shared' ? { state: 'waiting', model: null, pending: 0, slewAt: null, lastMsg: null, msgs: 0, jumpsIn: 0,
-      lastErrMs: null, lost: false, step: null, lastBooked: -Infinity, skipped: 0, channel: null, badge: null, stateLog: [], fixedOffset: null } : null;
+      lastErrMs: null, lost: false, step: null, lastBooked: -Infinity, skipped: 0, channel: null, badge: null, stateLog: [], fixedOffset: null, knobs: new Array(KNOBS).fill(null), knobMsgs: 0 } : null;
     if (shared) {   // ?offset=<ms> on a scene's URL (or opts.offset) wins over the publisher's offsetMs
       const v = parseFloat(opts.offset !== undefined ? opts.offset : queryParam('offset'));
       if (Number.isFinite(v)) shared.fixedOffset = v;
@@ -750,7 +760,10 @@
       sharedHeard(te) { return this.now({ raw: true }) - (epochNow() - te) / 1000; },
       // one message from the conductor (BroadcastChannel, or a test)
       sharedMessage(msg) {
-        if (!shared || !msg || typeof msg !== 'object' || !this.ctx) return;
+        if (!shared || !msg || typeof msg !== 'object') return;
+        // the conductor's knobs: their own message, or riding on a clock message; stored even before Play
+        if (msg.type === 'knobs' || msg.type === 'clock') { const k = knobList(msg.knobs); if (k) { shared.knobs = k; shared.knobMsgs++; } }
+        if (!this.ctx) return;
         if (msg.type === 'jump') return this.sharedJump(msg);
         if (msg.type !== 'clock' || !(msg.bpm > 0) || !Number.isFinite(msg.beats) || !Number.isFinite(msg.t)) return;
         if (shared.fixedOffset === null && Number.isFinite(msg.offsetMs)) this.setVisualOffset(msg.offsetMs);   // the conductor's Calibrate
@@ -840,6 +853,9 @@
         shared.step = s;
         this.schedule();
       },
+      // the conductor's pot row 1 (see the header): 8 values 0..1, null until known; knob(n) for n 1-8
+      get knobs() { return shared ? shared.knobs.slice() : new Array(KNOBS).fill(null); },
+      knob(n) { return shared && Number.isInteger(n) && n >= 1 && n <= KNOBS ? shared.knobs[n - 1] : null; },
       get sharedState() {
         if (!shared) return null;
         return { state: shared.state, msgs: shared.msgs, jumpsIn: shared.jumpsIn, lost: shared.lost, skipped: shared.skipped,
@@ -1182,7 +1198,24 @@
     const now = opts.epochNow || epochNowDefault;
     const pub = {
       sent: 0, events: 0, last: -Infinity, timer: 0, seenJumps: clock.jumps ? clock.jumps.length : 0,
+      knobs: null, knobsSent: 0, knobsDirty: false, knobsLast: -Infinity,
+      // the controller's pot row 1: 8 values (0..1 or null); a change goes out at once, or within 50 ms (20 Hz)
+      setKnobs(values) {
+        const k = knobList(values);
+        if (!k || (this.knobs && k.every((x, i) => x === this.knobs[i]))) return false;
+        this.knobs = k; this.knobsDirty = true;
+        this.sendKnobs();
+        return true;
+      },
+      sendKnobs() {
+        const e = now();
+        if (!this.knobsDirty || e - this.knobsLast < SHARED_PUBLISH_MS - 1) return null;
+        const m = { type: 'knobs', v: 1, t: e, knobs: this.knobs.slice() };
+        post(m); this.knobsSent++; this.knobsLast = e; this.knobsDirty = false;
+        return m;
+      },
       tick() {
+        if (this.knobsDirty) this.sendKnobs();   // a change held back by the 20 Hz limit (also before Play)
         if (!clock.ctx || !clock.playing) return null;
         const e = now(), h = clock.now({ raw: true });
         for (; this.seenJumps < clock.jumps.length; this.seenJumps++) {   // every jump and hand fix, as it lands
@@ -1196,6 +1229,7 @@
         const ts = clock.trackerState;
         const m = { type: 'clock', v: 1, t: e, beats: r.beats, bpm: r.bpm, phase: r.phase, bar: r.bar, beatInBar: r.beatInBar,
           bpb: clock.settings ? clock.settings.bpb : 4, confidence: r.confidence, state: ts && ts.state ? ts.state : 'locked', offsetMs: clock.visualOffsetMs || 0 };
+        if (this.knobs) m.knobs = this.knobs.slice();   // a scene opened later gets them at once
         post(m); this.sent++; this.last = e;
         return m;
       },
@@ -1213,7 +1247,7 @@
     return pub;
   }
 
-  const api = { create, publish, pickInput, qaEvents, parseGrid, makeWarp, TAU, LANES, BANDS, OFFSET_MIN, OFFSET_MAX, SHARED_CHANNEL, SHARED_LOST_MS };
+  const api = { create, publish, pickInput, qaEvents, parseGrid, makeWarp, TAU, LANES, BANDS, OFFSET_MIN, OFFSET_MAX, SHARED_CHANNEL, SHARED_LOST_MS, KNOBS };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.Clock = api;
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this));   // node's `this` is module.exports
