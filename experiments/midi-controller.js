@@ -17,8 +17,13 @@
 // performance.now() clock, as a key's). Upper row (hand-held mode, docs/CELLULAR_VIZ_BRIEF_HOLD.md), ch1 CC 37 and 38:
 // button 1 = hold (clock.fix('hold'), a toggle; LED green while held, amber while held and holdSuspect, dark when not
 // held), button 2 = auto-hold (opts.toggleAutoHold(origin) when the page keeps the choice, else
-// clock.fix('autoHold'); LED green when on, dark when off). Upper buttons 3–8, pot row 1 and Shift are not used yet;
-// the faders and pot rows 2–3 go to the bridge.
+// clock.fix('autoHold'); LED green when on, dark when off). Upper buttons 3–8 and Shift are not used yet; the faders
+// and pot rows 2–3 go to the bridge.
+// Pot row 1 (ch16 CC 13–20, absolute 0–127; the fix list, 19 Nov 22:00): the page's own knobs, never bridged. Each
+// value is kept in ctl.knobs (8 entries, 0..1 = value / 127, null until that pot moves) and handed to
+// opts.onKnob(n 1–8, value, all 8); the conductor publishes them to the scenes on the shared clock (clock.js
+// Clock.publish setKnobs, a scene reads clock.knob(n)). Absolute is the device's default for row 1 (hardware check);
+// nothing here switches it.
 // LEDs (D3), from the page's own read() and trackerState, diffed, at most 20 Hz: the tap button lights in the first
 // quarter of each beat, green locked / amber acquiring / red free-run (steady before the first lock: no beats to
 // flash on), dark with no tracker. The beat flashes are booked ahead with MIDIOutput.send(bytes, timestamp): Chrome
@@ -48,6 +53,7 @@
   const UPPER = [37, 38], HOLD_CC = 37, AUTO_HOLD_CC = 38;
   const COLOUR = { off: 0, red: 5, amber: 9, green: 21 };
   const POT_CH = 0xBF, BRIDGE_CCS = [[5, 12], [21, 36]], BRIDGE_DEFAULT = /IAC/, DEVICE_PORT = /LCXL3/;
+  const KNOB_CCS = [13, 20], KNOBS = 8;   // pot row 1: the page's knobs (not bridged)
   const BRIDGE_KEY = 'cellular-viz.lcxl3.bridgePort';
   const DAW_ON = [0x9F, 0x0C, 0x7F], DAW_OFF = [0x9F, 0x0C, 0x00];
   const MODE_CC = 30, MODE_MIXER = 1, MODE_CONTROL = 2;
@@ -70,10 +76,12 @@
   /** the faders and pot rows 2–3, the controls the bridge passes to Resolume */
   const forwarded = data => !!data && data.length === 3 && data[0] === POT_CH && BRIDGE_CCS.some(([a, b]) => data[1] >= a && data[1] <= b);
 
-  /** one inbound message → { type: 'button', index (0–7 lower row), down } | { type: 'mode', value } | null */
+  /** one inbound message → { type: 'button', index (0–7 lower row), down } | { type: 'upper', which, down } |
+   *  { type: 'knob', index (0–7, pot row 1), value (0..1) } | { type: 'mode', value } | null */
   function decode(data) {
     if (!data || data.length < 3) return null;
     const [st, cc, v] = data;
+    if (st === POT_CH && cc >= KNOB_CCS[0] && cc <= KNOB_CCS[1]) return { type: 'knob', index: cc - KNOB_CCS[0], value: Math.max(0, Math.min(127, v)) / 127 };
     if (st === BUTTON_CH && LOWER.includes(cc)) return { type: 'button', index: LOWER.indexOf(cc), down: v > 0 };
     if (st === BUTTON_CH && UPPER.includes(cc)) return { type: 'upper', which: cc === HOLD_CC ? 'hold' : 'autoHold', down: v > 0 };
     if (st === FEATURE_CH && cc === MODE_CC) return { type: 'mode', value: v };
@@ -118,7 +126,8 @@
     try { bridgeWant = storage ? storage.getItem(BRIDGE_KEY) : null; } catch (e) { /* storage blocked: the default bus */ }
     let access = null, input = null, output = null, timer = null, holdTimer = null, stopped = false;
     let ledSent = {}, linesSent = [], bookedBeat = null, lastTickAt = null, gaps = [], lastDisplayAt = -1e9, rejectUntil = -1e9, modeSelectUntil = -1e9, restartHeld = false;
-    const ctl = { status: 'off', sysex: false, sent: 0, bridge: 'off', bridgePort: null, forwarded: 0, start, stop, tick, bridgePorts, setBridgePort };
+    const ctl = { status: 'off', sysex: false, sent: 0, bridge: 'off', bridgePort: null, forwarded: 0, start, stop, tick, bridgePorts, setBridgePort,
+      knobs: new Array(KNOBS).fill(null) };
 
     function setStatus(s) {
       if (ctl.status === s) return;
@@ -191,6 +200,11 @@
       if (!m) return;
       if (m.type === 'button') return onButton(m.index, m.down, e.timeStamp);
       if (m.type === 'upper') return onUpper(m.which, m.down, e.timeStamp);
+      if (m.type === 'knob') {   // pot row 1: kept and handed to the page (the scenes' knobs), never bridged
+        ctl.knobs[m.index] = m.value;
+        if (o.onKnob) o.onKnob(m.index + 1, m.value, ctl.knobs.slice());
+        return;
+      }
       // the Mode Select page (or a Custom Mode) took the surface: set DAW Mixer back; the user has to close the page
       if (m.value !== MODE_MIXER && m.value !== MODE_CONTROL) {
         modeSelectUntil = perfNow() + MODE_SELECT_MS;
@@ -297,7 +311,7 @@
   }
 
   const api = { create, decode, forwarded, leds, displayLines,
-    MAP: { LOWER, UPPER, HOLD_CC, AUTO_HOLD_CC, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS, POT_CH, BRIDGE_CCS, BRIDGE_KEY } };
+    MAP: { LOWER, UPPER, HOLD_CC, AUTO_HOLD_CC, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS, POT_CH, BRIDGE_CCS, BRIDGE_KEY, KNOB_CCS } };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MidiController = api;
 })(typeof window !== 'undefined' ? window : globalThis);

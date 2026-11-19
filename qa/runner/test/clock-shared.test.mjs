@@ -270,3 +270,85 @@ test('shared offset: ?offset= on the scene URL (or opts.offset) wins over the pu
   const N = world();
   assert.equal(N.recv.visualOffsetMs, 0); assert.equal(N.recv.sharedState.offsetFrom, 'publisher');
 });
+
+// ---------- the knobs (the fix list, 19 Nov 22:00): the controller's pot row 1 → the scenes ----------
+// The conductor hands pot row 1 (8 values 0..1) to publisher.setKnobs; a scene on ?clock=shared reads clock.knob(n).
+test('shared knobs: the conductor\'s pot row 1 reaches a scene (own message on change, 20 Hz at most, and in every clock message)', () => {
+  const W = world(), P = metronomePublisher(W.w, 128);
+  run(W, P, 1000);
+  const NONE = [null, null, null, null, null, null, null, null];
+  assert.deepEqual(W.recv.knobs, NONE, 'null until known');
+  assert.equal(W.recv.knob(1), null);
+  assert.ok(P.sent.filter(m => m.type === 'clock').every(m => !('knobs' in m)), 'no knobs field before any knob moved');
+  // knob 1 moves: its own message goes out at once
+  const k1 = [0.5, null, null, null, null, null, null, null];
+  assert.equal(P.pub.setKnobs(k1), true);
+  const first = P.sent[P.sent.length - 1];
+  assert.deepEqual(first, { type: 'knobs', v: 1, t: W.w.ms, knobs: k1 });
+  W.recv.sharedMessage(first);
+  assert.equal(W.recv.knob(1), 0.5);
+  assert.equal(W.recv.knob(2), null);
+  assert.equal(P.pub.setKnobs(k1), false, 'the same values again: nothing sent');
+  // a fast turn: 10 changes within the same 50 ms send nothing more until the tick; the last value wins
+  const before = P.sent.length;
+  for (let i = 1; i <= 10; i++) P.pub.setKnobs([0.5, i / 10, null, null, null, null, null, 0.25]);
+  assert.equal(P.sent.length, before, 'held back by the 20 Hz limit');
+  run(W, P, 200);
+  const knobMsgs = P.sent.filter(m => m.type === 'knobs');
+  for (let i = 1; i < knobMsgs.length; i++) assert.ok(knobMsgs[i].t - knobMsgs[i - 1].t >= 49, 'at most 20 Hz');
+  assert.equal(knobMsgs.length, 2, 'the held-back change went out once');
+  assert.deepEqual(W.recv.knobs, [0.5, 1, null, null, null, null, null, 0.25]);
+  assert.equal(W.recv.knob(8), 0.25);
+  assert.equal(W.recv.knob(0), null); assert.equal(W.recv.knob(9), null); assert.equal(W.recv.knob(1.5), null);
+  // every clock message carries them: a scene opened later gets them with its first clock message
+  const lastClock = P.sent.filter(m => m.type === 'clock').pop();
+  assert.deepEqual(lastClock.knobs, [0.5, 1, null, null, null, null, null, 0.25]);
+  const late = world();
+  late.recv.sharedMessage({ ...lastClock, t: late.w.ms });
+  assert.deepEqual(late.recv.knobs, lastClock.knobs, 'from one clock message');
+  // the knobs never touch the clock
+  assert.equal(W.recv.jumps.length, 0);
+  assert.equal(W.recv.sharedState.state, 'locked');
+  // before Play (no AudioContext yet) they are kept too; bad values are cleaned, a wrong length ignored
+  const idle = Clock.create({ source: 'shared', settings: SETTINGS(120), audioContext: () => fakeContext(), timers: false, sharedFeed: true, keys: false, badge: false });
+  idle.sharedMessage({ type: 'knobs', v: 1, t: 1, knobs: [1.7, -0.2, 'x', NaN, 0.3, null, undefined, 1] });
+  assert.deepEqual(idle.knobs, [1, 0, null, null, 0.3, null, null, 1]);
+  idle.sharedMessage({ type: 'knobs', v: 1, t: 2, knobs: [0.1, 0.2] });
+  assert.equal(idle.knob(5), 0.3, 'a list that is not 8 long is ignored');
+  idle.knobs[0] = 0.9;
+  assert.equal(idle.knob(1), 1, 'clock.knobs is a copy');
+  assert.equal(idle.sharedState.msgs, 0, 'a knobs message is not a clock message');
+  // other sources: all null
+  const m = Clock.create({ source: 'metronome', settings: SETTINGS(120), audioContext: () => fakeContext(), timers: false, keys: false });
+  assert.deepEqual(m.knobs, NONE); assert.equal(m.knob(1), null);
+  assert.equal(Clock.KNOBS, 8);
+});
+
+test('shared knobs: without a controller nothing changes (clock messages as before, receiver knobs null, beats on time); old receivers are safe', () => {
+  const W = world(), P = metronomePublisher(W.w, 128);
+  let worst = 0;
+  run(W, P, 4000, { each: () => {
+    if (W.w.ms < 1e6 + 2000) return;
+    const pb = P.pc.read({ raw: true }).beats, rb = W.recv.baseBeats(W.hNow());
+    if (pb >= 0 && rb >= 0) worst = Math.max(worst, Math.abs(pb - rb) * 60 / 128 * 1000);
+  } });
+  const clocks = P.sent.filter(m => m.type === 'clock');
+  assert.ok(clocks.length > 50);
+  for (const m of clocks) assert.deepEqual(Object.keys(m), ['type', 'v', 't', 'beats', 'bpm', 'phase', 'bar', 'beatInBar', 'bpb', 'confidence', 'state', 'offsetMs'], 'the clock message as before');
+  assert.equal(P.sent.filter(m => m.type === 'knobs').length, 0);
+  assert.deepEqual(W.recv.knobs, [null, null, null, null, null, null, null, null]);
+  assert.ok(worst < 1, `beats within 1 ms: ${worst.toFixed(3)}`);
+  assert.equal(W.recv.jumps.length, 0);
+  // a knobs message on the channel: panic.js ignores it, setup-check counts only clock messages
+  const panicLib = require('../../../experiments/panic.js');
+  assert.equal(panicLib.panicMode({ type: 'knobs', v: 1, t: 1, knobs: [0, 0, 0, 0, 0, 0, 0, 0] }), null);
+  // the receiver's clock is the same with or without a knobs message in between
+  const A = world(), PA = metronomePublisher(A.w, 128), B = world(), PB = metronomePublisher(B.w, 128);
+  const k = { type: 'knobs', v: 1, t: 0, knobs: [0.2, 0.4, 0.6, 0.8, 1, 0, 0.1, 0.3] };
+  run(A, PA, 2000);
+  run(B, PB, 2000, { deliver: m => { B.recv.sharedMessage({ ...k, t: m.t }); return m; } });
+  assert.deepEqual(A.recv.hitLog.map(h => h.time), B.recv.hitLog.map(h => h.time));
+  assert.equal(A.recv.read({ raw: true }).beats, B.recv.read({ raw: true }).beats);
+  assert.deepEqual(A.recv.sharedState.msgs, B.recv.sharedState.msgs);
+  assert.deepEqual(B.recv.knobs, k.knobs);
+});

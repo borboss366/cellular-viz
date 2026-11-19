@@ -41,7 +41,7 @@ async function rig(o = {}) {
   let now = 1000;
   const nav = o.noMidi ? {} : { requestMIDIAccess: async q => { if (o.deny) throw new Error('denied'); if (o.denySysex && q && q.sysex) throw new Error('no sysex'); return access; } };
   const bridges = [];
-  const ctl = M.create({ clock, navigator: nav, perfNow: () => now, lastFix: () => o.lastFix || '', storage: o.storage, onBridge: (b, n) => bridges.push([b, n]), toggleAutoHold: o.toggleAutoHold,
+  const ctl = M.create({ clock, navigator: nav, perfNow: () => now, lastFix: () => o.lastFix || '', storage: o.storage, onBridge: (b, n) => bridges.push([b, n]), toggleAutoHold: o.toggleAutoHold, onKnob: o.onKnob,
     setInterval: () => 1, clearInterval: () => {}, setTimeout: (f, ms) => { timers.push({ f, at: now + ms }); return timers.length; },
     clearTimeout: h => { timers[h - 1] = null; }, onStatus: s => statuses.push(s) });
   clock.nowRef = () => now;
@@ -377,4 +377,39 @@ test('bridge: degraded while the device is missing or on the Mode Select page; m
   assert.deepEqual(bridges.map(b => b[0]), ['on', 'degraded', 'on', 'degraded']);
   ctl.stop();
   assert.equal(ctl.bridge, 'off');
+});
+
+// ---------- pot row 1 (the fix list, 19 Nov 22:00): the page's knobs for the scenes, never bridged ----------
+test('knobs: pot row 1 (CC 13-20) → ctl.knobs and onKnob (0..1); never on the IAC bus; the faders and rows 2-3 still are', async () => {
+  assert.deepEqual(M.MAP.KNOB_CCS, MAP.encoders.absolute.row1, 'row 1 as in the hardware-checked map');
+  const calls = [];
+  const { ctl, inp, access, clock, out, clear } = await rig({ iac: true, onKnob: (n, v, all) => calls.push([n, v, all]) });
+  const iac = access.outputs.get('out-iac');
+  clear();
+  assert.deepEqual(ctl.knobs, [null, null, null, null, null, null, null, null], 'null until a pot moves');
+  inp().onmidimessage({ data: Uint8Array.from([0xBF, 13, 127]), timeStamp: 1 });
+  inp().onmidimessage({ data: Uint8Array.from([0xBF, 20, 0]), timeStamp: 2 });
+  inp().onmidimessage({ data: Uint8Array.from([0xBF, 15, 64]), timeStamp: 3 });
+  assert.deepEqual(ctl.knobs, [1, null, 64 / 127, null, null, null, null, 0]);
+  assert.deepEqual(calls.map(c => [c[0], c[1]]), [[1, 1], [8, 0], [3, 64 / 127]], 'onKnob(n 1-8, value)');
+  assert.deepEqual(calls[2][2], ctl.knobs, 'with all 8');
+  calls[2][2][0] = 0.5;
+  assert.equal(ctl.knobs[0], 1, 'onKnob gets a copy');
+  assert.deepEqual(M.decode([0xBF, 17, 32]), { type: 'knob', index: 4, value: 32 / 127 });
+  // the bridge: row 1 never, the faders and rows 2-3 unchanged
+  const bridged = [];
+  for (let cc = 5; cc <= 12; cc++) bridged.push([0xBF, cc, cc]);
+  for (let cc = 21; cc <= 36; cc++) bridged.push([0xBF, cc, cc]);
+  for (const d of bridged) inp().onmidimessage({ data: Uint8Array.from(d), timeStamp: 4 });
+  for (let cc = 13; cc <= 20; cc++) inp().onmidimessage({ data: Uint8Array.from([0xBF, cc, 100]), timeStamp: 5 });
+  assert.deepEqual(iac.sent, bridged, 'only the faders and pot rows 2-3 on the IAC bus, no row-1 CC');
+  assert.ok(!iac.sent.some(d => d[1] >= 13 && d[1] <= 20), 'no CC 13-20 on the bus');
+  for (let cc = 13; cc <= 20; cc++) assert.equal(M.forwarded([0xBF, cc, 100]), false);
+  assert.deepEqual(ctl.knobs, new Array(8).fill(100 / 127));
+  assert.equal(clock.fixes.length, 0, 'the knobs move no clock fix');
+  assert.deepEqual(out().sent, [], 'nothing goes back to the device');
+  // without onKnob (an older page) the values are still kept
+  const plain = await rig();
+  plain.inp().onmidimessage({ data: [0xBF, 14, 127], timeStamp: 1 });
+  assert.equal(plain.ctl.knobs[1], 1);
 });
