@@ -137,12 +137,12 @@ test('mac-check.sh: sh -n passes; with a fake Mac --json parses, every row has a
     assert.equal(r.status, 0, 'no FAIL: exit code 0');
     assert.equal(j.browserCheck, 'http://localhost:8790/experiments/setup-check.html');
   } finally { fs.rmSync(a.d, { recursive: true, force: true }); }
-  const b = fakeMac({ noBlackHole: true, pages404: ['/experiments/12-mass-gap.html'] });
+  const b = fakeMac({ noBlackHole: true, pages404: ['/experiments/06-lenia-effects.html'] });   // a page of set.json (12 left the set, 19 Nov)
   try {
     const r = spawnSync('sh', [SCRIPT, '--no-open'], { encoding: 'utf8', env: b.env });
     assert.equal(r.status, 1, 'a FAIL: exit code 1');
     assert.match(r.stdout, /^FAIL BlackHole 2ch: not found\. Install BlackHole 2ch from existential\.audio$/m);
-    assert.match(r.stdout, /^FAIL Page 12-mass-gap\.html: HTTP 404\. /m);
+    assert.match(r.stdout, /^FAIL Page 06-lenia-effects\.html: HTTP 404\. /m);
     assert.match(r.stdout, /^Summary: \d+ PASS, 0 WARN, 2 FAIL$/m);
     assert.match(r.stdout, /^Browser check: http:\/\/localhost:8790\/experiments\/setup-check\.html$/m);
   } finally { fs.rmSync(b.d, { recursive: true, force: true }); }

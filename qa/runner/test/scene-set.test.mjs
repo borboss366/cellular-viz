@@ -177,9 +177,10 @@ test('every numbered scene loads panic.js and takes ?clock= (so the set\'s query
 test('set.json is valid and its URLs are right: each scene with ?clock=shared&audio=line&in=BlackHole&capture=1', () => {
   const set = JSON.parse(fs.readFileSync(path.join(EX, 'set.json'), 'utf8'));
   assert.deepEqual(SetLib.validate(set), []);
-  // the user's Saturday set (19 Nov 22:00): the first three, then Paint Pour without the song's stirring and Riemann's ribbon
-  assert.deepEqual(set.scenes.map(s => s.page), ['16-hodge-kaleidoscope.html', '12-mass-gap.html', '06-lenia-effects.html', '24-paint-pour.html', '11-riemann-show.html']);
-  const extra = ['', '', '', '&beatFx=0', '&scene=ribbon'];
+  // the user's Saturday set (19 Nov 22:04): Hodge, Lenia, Paint Pour without the song's stirring, Riemann's ribbon
+  // (12 Mass Gap left the set; its page stays)
+  assert.deepEqual(set.scenes.map(s => s.page), ['16-hodge-kaleidoscope.html', '06-lenia-effects.html', '24-paint-pour.html', '11-riemann-show.html']);
+  const extra = ['', '', '&beatFx=0', '&scene=ribbon'];
   const urls = set.scenes.map(s => SetLib.buildUrl(set, s));
   for (const [i, u] of urls.entries()) {
     assert.equal(u, `${set.scenes[i].page}?clock=shared&audio=line&in=BlackHole&capture=1${extra[i]}`);
@@ -275,7 +276,7 @@ test('set.html: "Open all scenes" and each "Open" call the browser\'s window.ope
   assert.equal(win.__qa.set.urls.length, set.scenes.length, 'set.json loaded');
   el('openAll').onclick();
   assert.equal(opened.length, set.scenes.length, 'one window.open per scene');
-  const n = set.scenes.length;   // the diagonal from the page's screen, for however many scenes the set has (5 since 19 Nov)
+  const n = set.scenes.length;   // the diagonal from the page's screen, for however many scenes the set has (4 since 19 Nov)
   assert.deepEqual(opened.map(o => o.features.replace(/^.*left=/, 'left=')),
     set.scenes.map((s, i) => `left=${Math.round(i * (1728 - 960) / (n - 1))},top=${Math.round(38 + i * (1079 - 603) / (n - 1))}`), 'the diagonal from the page\'s screen');
   assert.equal(opened[0].features.replace(/^.*left=/, 'left='), 'left=0,top=38');
