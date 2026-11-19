@@ -81,6 +81,10 @@ lamp stays on the sound; its white flash bar runs early; that is expected. Type 
 Do not move it during the set. The parts of a scene that follow the sound level itself (the line-input band levels)
 stay late by the route delay; only the beat-timed parts move.
 
+The controller's top knob row (pot row 1) goes to the scenes (the conductor shows "knobs 1-8" under the profiles):
+knob 1 = Paint Pour pulse, knob 2 = Hodge dive (a fast turn down = a burst), knob 3 = Hodge glints. Until a knob is
+turned, its scene uses its own default.
+
 ## 5. Saturday: the order of steps (setup done by 16:00)
 | Time | Step |
 |---|---|
