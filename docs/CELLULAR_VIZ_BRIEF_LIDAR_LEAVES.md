@@ -101,6 +101,39 @@ small, some more yellow, some more green.**
 - The user grades stills: one backlit, one front-lit, one with the
   light low. He picks the default.
 
+### GPU budget (the user, 19 Nov): the scene must not be heavy
+The scene never runs alone. On the show Mac (M3 Pro) it shares the
+GPU with two other scenes, OBS and Resolume. So the budget is set and
+measured there, not only on the box.
+- **Budget.** With the full set running on the Mac, the route holds
+  its frame rate with this scene on screen at its default leaf count.
+  Alone at 1080p the scene uses at most a third of a 60 fps frame
+  (about 5 ms) at the default count. If the first build cannot meet
+  that, the count comes down before anything else is added.
+- **Cheap by design.**
+  - The wind grid is small (128 or 256 across). Wind is smooth; a fine
+    grid buys nothing.
+  - Leaf flight is a few thousand leaves: do it on the CPU in typed
+    arrays, or in one GPU pass. No per-leaf readback.
+  - One instanced draw for all leaves. Leaf textures in one atlas.
+  - Haze and any blur at half resolution, and optional.
+- **A quality dial.** Three levels (low, default, high) set the leaf
+  count, the grid size and the optional passes together. macro1 moves
+  the count inside the level's range.
+- **A guard.** If the frame time stays over budget for 2 s, the scene
+  steps the leaf count down smoothly (leaves fade out, none pop), and
+  steps back up when there is room. It reports its level in `__qa`.
+- **Measure, in the repo.** A bench mode (`?bench=1`) steps the leaf
+  count and prints frame time per step: GPU time where the timer query
+  is available, frame intervals otherwise. Two tables go in the
+  scene's report:
+  - the box at 1080p, alone;
+  - the Mac, alone and with the set running. Claude Code on the Mac
+    runs the bench and writes the numbers in the session notes.
+- **Check.** The scene's check fails if the default level is over
+  budget on the box, and the Mac table is required before the user's
+  gate.
+
 ### The input path (no new kind of thing)
 - `tools/lidar-bridge`: reads the scans; learns the empty room for
   10 s at start (button to relearn); what is not background is grouped
