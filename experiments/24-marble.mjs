@@ -277,6 +277,14 @@ export function songOps(e, inp, pal, bpb, bpm) {
   if (e.kind === 'snare') return snareMakesSwirl(e.beat, bpb) ? opsFor(ev, inp, pal) : [];
   return [];
 }
+// ---------------------------------------------------------------- the colour pulse (?pulse=0..1)
+// The paint's colour beats with the clock: a smooth bump on every beat, 1 on the beat, 0 from a quarter beat either side
+// of the half beat, never a step (a raised cosine to the 4th: no jump between frames at any frame rate). The shader
+// lifts saturation by up to PULSE_SAT and brightness by at most PULSE_GAIN at the peak (< 10 % of the luminance: under
+// the general-flash threshold even when the whole frame pulses). It moves no paint, so it stays on with ?beatFx=0.
+export const PULSE_SAT = 0.45, PULSE_GAIN = 0.08;
+export const beatPulse = beats => { const ph = beats - Math.floor(beats); return Math.pow(0.5 + 0.5 * Math.cos(2 * Math.PI * ph), 4); };
+
 // ---------------------------------------------------------------- pour here, dragged (trigger 2 held, pointer moving)
 // A drop can't move once poured (moving its centre would move all the paint it pushed), so a dragged pour is a chain
 // of pour drops at the same area rate. While held, the live segment ends and the next starts when it has run

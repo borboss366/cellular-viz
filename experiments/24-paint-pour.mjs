@@ -86,6 +86,7 @@ vec3 colourOf(vec2 q) {
 const RENDER_FS = TRACE + `
 uniform vec2 uRes; uniform vec3 uCam;            // camera x, y (world), zoom (world units per screen height)
 uniform float uFlat, uVeinOn, uVeinW, uBevel, uHeight, uGloss, uKick, uV0, uV1;
+uniform float uPulse;   // the colour pulse: ?pulse × K.beatPulse(beats), 0 = off (the colour exactly as before)
 uniform vec3 uVein;
 uniform vec4 uStr[2]; uniform vec3 uStrCol; uniform float uStrOn;   // strings: pour point (px), top x (px), sag (px)
 uniform sampler2D uRip; uniform float uRipple;   // ripples: a tiling gradient field (RG) in paint coordinates
@@ -94,6 +95,8 @@ void main() {
   vec2 Q = uCam.xy + (gl_FragCoord.xy - 0.5 * uRes) / uRes.y * uCam.z;
   vec2 q = traceOps(Q);
   vec3 col = colourOf(q);
+  // the colour beats with the clock: more saturated and a little brighter on the beat (K.PULSE_SAT, K.PULSE_GAIN)
+  if (uPulse > 0.0) { float l = dot(col, vec3(0.2126, 0.7152, 0.0722)); col = clamp(mix(vec3(l), col, 1.0 + ${K.PULSE_SAT.toFixed(3)} * uPulse) * (1.0 + ${K.PULSE_GAIN.toFixed(3)} * uPulse), 0.0, 1.0); }
   float d = gD;
   vec2 g = vec2(dFdx(d), dFdy(d)); float gn = max(length(g), 1e-12);
   float dpx = abs(d) / gn;                     // distance to the nearest boundary, in screen pixels
@@ -467,6 +470,7 @@ export function createScene() {
     gl.uniform3fv(u.uVein, vein >= 0 ? K.rgb(st.pal.colours[vein]).map(K.linear) : [0, 0, 0]);
     gl.uniform1f(u.uV0, 0.10); gl.uniform1f(u.uV1, 0.35);   // screen heights a second: 145 → 500 px/s at 1440p
     gl.uniform1f(u.uBevel, ctl.bevelWidth * fh / 1440); gl.uniform1f(u.uHeight, ctl.paintHeight); gl.uniform1f(u.uGloss, ctl.gloss); gl.uniform1f(u.uKick, kick);
+    const pulse = (ctl.pulse > 0 ? ctl.pulse : 0) * K.beatPulse(beats); gl.uniform1f(u.uPulse, pulse);
     gl.uniform4fv(u.uStr, str); gl.uniform3fv(u.uStrCol, strCol); gl.uniform1f(u.uStrOn, strOn);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, rip); gl.uniform1i(u.uRip, 2); gl.uniform1f(u.uRipple, ctl.ripple ?? 0.6);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -478,7 +482,7 @@ export function createScene() {
     const growing = st.live.filter(o => K.progress(o, beats) < 1).length;
     st.view = { beats, bars: beats / bpb, phase: K.phaseOf(beats / bpb), section: Math.floor(beats / bpb / K.SECTION_BARS), live: st.live.length, pending: st.pending.length,
       growing, baking: !!st.bake, bases: st.bakes.length, cam, palette: st.pal.name };
-    st.metrics = { ops: st.live.length, history: st.history.length, kick };
+    st.metrics = { ops: st.live.length, history: st.history.length, kick, pulse };
     st.triggerEnv[0] = st.live.some(o => o.trigger === 1 && K.progress(o, beats) < 1) ? 1 - K.progress(st.live.find(o => o.trigger === 1 && K.progress(o, beats) < 1), beats) : 0;
     st.triggerEnv[1] = st.userPour ? 1 : 0;
     st.triggerEnv[2] = st.live.some(o => o.trigger === 3 && K.progress(o, beats) < 1) ? 1 : 0;
@@ -638,6 +642,7 @@ export const DETAIL = [
   { name: 'ripple', type: 'float', default: 0.6, min: 0, max: 1 },
   { name: 'camDrift', type: 'float', default: 1, min: 0, max: 2 },   // was macro 4 (2 × its 0.5 default = 1)
   { name: 'bakeScale', type: 'float', default: 1, min: 0.5, max: 2 },
+  { name: 'pulse', type: 'float', default: 0, min: 0, max: 1 },   // the colour pulse on the beat (0 = off, as before)
 ];
 // macro value → inputs
 export function macroInputs(m) {

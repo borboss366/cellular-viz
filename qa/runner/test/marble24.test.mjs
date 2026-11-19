@@ -209,3 +209,12 @@ test('?beatFx=0: a 16-bar run has no comb or swirl op from the song; the drops (
   assert.ok(off.some(o => o.role === 'drop') && off.some(o => o.role === 'pour'), 'the drop and the build pour stay');
   assert.deepEqual(run(undefined).map(o => JSON.stringify(o)), on.map(o => JSON.stringify(o)), 'the default is beatFx on');
 });
+
+test('?pulse: the colour pulse peaks on every beat, is 0 at the half beat, never steps between frames, and brightens < 10 %', () => {
+  for (const b of [0, 1, 7, 63]) { assert.ok(Math.abs(K.beatPulse(b) - 1) < 1e-12, `peak on beat ${b}`); assert.ok(K.beatPulse(b + 0.5) < 1e-12, 'nothing at the half beat'); }
+  let step = 0;   // the largest change between two 60 fps frames at 180 bpm (the fastest clock)
+  for (let f = 0; f < 60 * 8; f++) step = Math.max(step, Math.abs(K.beatPulse((f + 1) / 60 * 3) - K.beatPulse(f / 60 * 3)));
+  console.log(`colour pulse: largest frame step ${step.toFixed(3)} at 180 bpm, 60 fps`);
+  assert.ok(step < 0.3, `a step of ${step}`);
+  assert.ok(K.PULSE_GAIN < 0.1, 'the brightness lift stays under the 10 % general-flash change');
+});
