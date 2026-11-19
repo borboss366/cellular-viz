@@ -9,7 +9,7 @@
 // The burst (the drop): the knob turned down fast, from above HI to under LO within WINDOW beats, books one burst on
 //   the next beat (once per turn-down: it re-arms only when the knob goes above HI again). The burst pushes the tiling
 //   outward from the centre (up to 1 + BURST_PUSH times closer) and streaks the oil trails outward, rising over
-//   BURST_ATTACK s (no strobe) and settling over BURST_BARS bars. Key B: hold = dive in (to full in 2 s), release =
+//   BURST_ATTACK s (no strobe) and settling over BURST_BARS bars. Key D: hold = dive in (to full in 2 s), release =
 //   a burst on the next beat. ?autoDrop=1: a burst when the low band comes back after QUIET_BARS or more quiet bars.
 // The glints (?glint=0..1 or ?glintKnob=N, the set: 3): on each hat a specular band sweeps across the gems' facets
 //   (SWEEP_S), on each snare a prism split (R and B offset by up to PRISM_PX px at 1080p) decays with PRISM_TAU; both
@@ -58,7 +58,7 @@
   // live this frame, or null) }
   function step(s, i) {
     const dt = clamp(Number.isFinite(i.dt) ? i.dt : 0, 0, 0.1), beats = Number.isFinite(i.beats) ? i.beats : 0, bpb = i.bpb > 0 ? i.bpb : 4;
-    // key B: hold dives in, release books a burst
+    // key D: hold dives in, release books a burst
     if (i.keyHeld) { s.keyTarget = Math.min(1, s.keyTarget + C.KEY_RATE * dt); s.keyWas = true; }
     else if (s.keyWas) { s.keyWas = false; s.keyTarget = 0; schedule(s, beats, 'key'); }
     const knob = i.knob === null || i.knob === undefined || !Number.isFinite(+i.knob) ? null : clamp01(+i.knob);
