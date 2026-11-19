@@ -78,6 +78,29 @@ small, some more yellow, some more green.**
   species, a size range of at least 4 to 1, and both green and yellow
   leaves. The user grades the still.
 
+### Light (the user, 19 Nov): lit so it looks natural
+- One low autumn sun, from one upper side, warm. Its direction is a
+  scene setting, not per leaf.
+- Each leaf is shaded by its own facing as it tumbles, so a turning
+  leaf brightens and darkens. That flicker is most of what makes a
+  falling leaf read as real.
+- Leaves let light through: a leaf between the viewer and the sun
+  glows in its own colour and shows its veins; a leaf lit from the
+  front is more matt.
+- Depth: far leaves are dimmer, cooler and softer, near leaves are
+  crisp and may blur slightly out of focus. A faint haze in the air
+  catches the sun.
+- Leaves on the ground lie in softer light, with a simple dark patch
+  under them. No full shadow maps unless the frame budget allows.
+- Music moves the light only gently: the sun's strength breathes with
+  the level, and a kick gives a small lift. No strobing; the flash
+  limiter applies.
+- Stay in budget: per-leaf shading in the vertex and fragment shader
+  of the instanced draw, no extra passes at first. Anything heavier is
+  added only if the 1080p frame time holds at the maximum leaf count.
+- The user grades stills: one backlit, one front-lit, one with the
+  light low. He picks the default.
+
 ### The input path (no new kind of thing)
 - `tools/lidar-bridge`: reads the scans; learns the empty room for
   10 s at start (button to relearn); what is not background is grouped
