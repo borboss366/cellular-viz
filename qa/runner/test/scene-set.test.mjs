@@ -177,15 +177,24 @@ test('every numbered scene loads panic.js and takes ?clock= (so the set\'s query
 test('set.json is valid and its URLs are right: each scene with ?clock=shared&audio=line&in=BlackHole&capture=1', () => {
   const set = JSON.parse(fs.readFileSync(path.join(EX, 'set.json'), 'utf8'));
   assert.deepEqual(SetLib.validate(set), []);
-  assert.equal(set.scenes.length, 3);
+  // the user's Saturday set (19 Nov 22:04): Hodge, Lenia, Paint Pour without the song's stirring, Riemann's ribbon
+  // (12 Mass Gap left the set; its page stays)
+  assert.deepEqual(set.scenes.map(s => s.page), ['16-hodge-kaleidoscope.html', '06-lenia-effects.html', '24-paint-pour.html', '11-riemann-show.html']);
+  const extra = ['', '', '&beatFx=0', '&scene=ribbon'];
   const urls = set.scenes.map(s => SetLib.buildUrl(set, s));
   for (const [i, u] of urls.entries()) {
-    assert.equal(u, `${set.scenes[i].page}?clock=shared&audio=line&in=BlackHole&capture=1`);
+    assert.equal(u, `${set.scenes[i].page}?clock=shared&audio=line&in=BlackHole&capture=1${extra[i]}`);
     assert.ok(fs.existsSync(path.join(EX, set.scenes[i].page)), `${set.scenes[i].page} exists`);
     const page = fs.readFileSync(path.join(EX, set.scenes[i].page), 'utf8');
-    assert.match(page, /Clock\.create\(\{ source: query\.get\('clock'\)/, `${set.scenes[i].page} reads ?clock=`);
-    assert.match(page, /<script src="panic\.js"><\/script>/);
+    assert.match(page, /Clock\.create\(\{ source: (query\.get|q)\('clock'\)/, `${set.scenes[i].page} reads ?clock=`);
+    assert.match(page, /<script src="panic\.js"><\/script>/, `${set.scenes[i].page} loads panic.js (?capture=1: the clean stage, blackout)`);
+    assert.match(page, /AudioIn\.create\(/, `${set.scenes[i].page} takes ?audio=line`);
   }
+  // the scenes' own switches exist on their pages
+  const pour = fs.readFileSync(path.join(EX, '24-paint-pour.html'), 'utf8'), riemann = fs.readFileSync(path.join(EX, '11-riemann-show.html'), 'utf8');
+  assert.match(pour, /params\.beatFx = q\('beatFx'\) !== '0'/, '24 reads ?beatFx=0');
+  assert.match(riemann, /const SCENES = \[[^\]]*'ribbon'/, '11 has the ribbon scene');
+  assert.match(riemann, /if \(q\('scene'\) && \(q\('scene'\) === 'auto' \|\| SCENES\.includes\(q\('scene'\)\)\)\) params\.scene = q\('scene'\);/, '11 reads ?scene=');
   assert.deepEqual(set.window, { width: 960, height: 540, bar: 63 }, 'content 960x540 pt + the 63 pt Chrome bar (mac session 18 Nov)');
   assert.notEqual(SetLib.windowName(0), SetLib.windowName(1));
 });
@@ -267,7 +276,11 @@ test('set.html: "Open all scenes" and each "Open" call the browser\'s window.ope
   assert.equal(win.__qa.set.urls.length, set.scenes.length, 'set.json loaded');
   el('openAll').onclick();
   assert.equal(opened.length, set.scenes.length, 'one window.open per scene');
-  assert.deepEqual(opened.map(o => o.features.replace(/^.*left=/, 'left=')), ['left=0,top=38', 'left=384,top=276', 'left=768,top=514'], 'the diagonal from the page\'s screen');
+  const n = set.scenes.length;   // the diagonal from the page's screen, for however many scenes the set has (4 since 19 Nov)
+  assert.deepEqual(opened.map(o => o.features.replace(/^.*left=/, 'left=')),
+    set.scenes.map((s, i) => `left=${Math.round(i * (1728 - 960) / (n - 1))},top=${Math.round(38 + i * (1079 - 603) / (n - 1))}`), 'the diagonal from the page\'s screen');
+  assert.equal(opened[0].features.replace(/^.*left=/, 'left='), 'left=0,top=38');
+  assert.equal(opened[n - 1].features.replace(/^.*left=/, 'left='), 'left=768,top=514', 'the last one in the far corner');
   assert.deepEqual(opened.map(o => o.name), set.scenes.map((s, i) => `cellular-viz-set-${i}`));
   assert.deepEqual(opened.map(o => o.url), win.__qa.set.urls);
   const openBtn = el('list').children[0].children[2].children[0];

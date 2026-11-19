@@ -5,7 +5,8 @@
   "window": { "width": 960, "height": 540, "bar": 63 },
   "scenes": [
     { "name": "Hodge Kaleidoscope", "page": "16-hodge-kaleidoscope.html" },
-    { "name": "Mass Gap", "page": "12-mass-gap.html" },
-    { "name": "Lenia Effects", "page": "06-lenia-effects.html" }
+    { "name": "Lenia Effects", "page": "06-lenia-effects.html" },
+    { "name": "Paint Pour", "page": "24-paint-pour.html", "query": { "beatFx": "0" } },
+    { "name": "Riemann Ribbon", "page": "11-riemann-show.html", "query": { "scene": "ribbon" } }
   ]
 }
