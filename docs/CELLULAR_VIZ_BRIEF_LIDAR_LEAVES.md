@@ -60,6 +60,24 @@ and softer). Shapes are generated, not photos: fractal leaf outlines
 from an iterated function system, a handful of species made at load
 time and kept as textures. The user picks the species by eye.
 
+**Variety (the user, 19 Nov): leaves of different kinds, big and
+small, some more yellow, some more green.**
+- Several species with clearly different outlines, mixed in one fall.
+- Size: a wide spread, from small to several times larger, with many
+  small leaves and few big ones. Size ties to flight: big leaves are
+  heavier, fall faster and answer a gust slowly; small ones flutter
+  and travel far.
+- Colour: each leaf has its own place between green and yellow (with
+  some orange and brown), drawn once and kept, plus a little variation
+  across the leaf itself. At any moment the picture holds a mix, never
+  one flat colour.
+- The palette control (macro4) and the drift over bars move the whole
+  mix toward greener or toward yellower. They do not make every leaf
+  the same.
+- Check: at the default settings, a still shows at least three
+  species, a size range of at least 4 to 1, and both green and yellow
+  leaves. The user grades the still.
+
 ### The input path (no new kind of thing)
 - `tools/lidar-bridge`: reads the scans; learns the empty room for
   10 s at start (button to relearn); what is not background is grouped
