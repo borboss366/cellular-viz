@@ -63,7 +63,9 @@ test('16b burst: a fast turn-down fires exactly one burst, on the next beat; a s
   assert.ok(Math.max(0, ...after) < 0.06, 'settled within 1.5 bars');
   const slow = run(12, bb => (bb < 4 ? 0.9 : bb < 12 ? 0.9 - 0.8 * (bb - 4) / 8 : 0.1));
   assert.equal(slow.s.bursts.length, 0, 'a slow turn-down is no drop');
-  // key B: hold dives in, release books one burst on the next beat
+  // key D: hold dives in, release books one burst on the next beat (not B: panic.js blacks out on B, 20 Nov)
+  assert.doesNotMatch(PAGE, /e\.key === 'b'/);
+  assert.match(PAGE, /e\.key === 'd' && !e\.shiftKey/);
   const key = run(6, null, { keyAt: bb => bb > 1 && bb < 5.5 });
   assert.equal(key.s.bursts.length, 1); assert.equal(key.s.bursts[0].cause, 'key'); assert.equal(key.s.bursts[0].beat, 6);
   assert.ok(Math.max(...key.out.map(o => o.depth)) > 0.8, 'held 2.25 s: deep');
