@@ -4,9 +4,9 @@
   "defaults": { "clock": "shared", "audio": "line", "in": "BlackHole", "capture": "1" },
   "window": { "width": 960, "height": 540, "bar": 63 },
   "scenes": [
-    { "name": "Hodge Kaleidoscope", "page": "16-hodge-kaleidoscope.html" },
+    { "name": "Hodge Kaleidoscope", "page": "16-hodge-kaleidoscope.html", "query": { "diveKnob": "2", "glintKnob": "3" } },
     { "name": "Lenia Effects", "page": "06-lenia-effects.html" },
-    { "name": "Paint Pour", "page": "24-paint-pour.html", "query": { "beatFx": "0" } },
+    { "name": "Paint Pour", "page": "24-paint-pour.html", "query": { "beatFx": "0", "pulseKnob": "1" } },
     { "name": "Riemann Ribbon", "page": "11-riemann-show.html", "query": { "scene": "ribbon" } }
   ]
 }
