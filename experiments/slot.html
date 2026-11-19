@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>slot</title>
+<!--
+  A slot window (the user, 19 Nov: two windows for the set). slot.html?slot=A or ?slot=B shows one scene of set.json
+  at full window and steps through the set: the controller's upper buttons 5/6 (slot A) and 7/8 (slot B) through the
+  conductor, or the left / right arrow keys (Page Up / Page Down) in this window. A black cover hides each switch
+  until the new scene's shared clock is locked. Open both from set.html ("Open slots"). ?in=<label>: the audio input
+  for every scene, as on set.html; ?scene=N (1-based): start on scene N. Logic: slot.js (SlotLib).
+  __qa.slot = { slot, index, scene, url, n, loading, coverOn, panicMode, loads, lost, frames, switches }.
+  Plain ASCII only (#205).
+-->
+<style>
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; cursor: none; }
+#stage { position: fixed; inset: 0; background: #000; }
+#stage iframe.scene { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; display: block; }
+#cover { position: fixed; inset: 0; background: #000; z-index: 2147483646; display: none; }
+#cover.on { display: block; }
+#msg { position: fixed; left: 8px; bottom: 6px; z-index: 2147483647; font: 12px ui-monospace, Menlo, monospace; color: #888; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="cover" class="on"></div>
+<div id="msg"></div>
+<script src="set.js"></script>
+<script src="slot.js"></script>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const search = window.location && window.location.search;
+  const slotName = SlotLib.parseSlot(search), inLabel = SetLib.queryIn(search);
+  const qa = { slot: null, error: null };
+  window.__qa = Object.assign(window.__qa || {}, {});
+  Object.defineProperty(window.__qa, 'slot', { get: () => (qa.slot ? qa.slot.qa : { slot: slotName, error: qa.error }), configurable: true, enumerable: true });
+  document.title = `slot ${slotName}`;
+  const ascii = s => String(s).replace(/[^\x20-\x7e]/g, '?');
+  fetch('set.json', { cache: 'no-store' }).then(r => {
+    if (!r.ok) throw new Error(`set.json: HTTP ${r.status}`);
+    return r.json();
+  }).then(set => {
+    const errs = SetLib.validate(set);
+    if (errs.length) throw new Error('set.json has problems:\n' + errs.join('\n'));
+    let channel = null;
+    try { if (typeof BroadcastChannel === 'function') channel = new BroadcastChannel('cellular-viz-clock'); } catch (e) { channel = null; }
+    qa.slot = SlotLib.create({ doc: document, win: window, set, slot: slotName, start: SlotLib.startIndex(slotName, search, set.scenes.length),
+      inLabel, channel });
+    qa.slot.show(qa.slot.qa.index);
+    window.__slot = qa.slot;
+  }).catch(e => { qa.error = ascii((e && e.message) || e); $('msg').textContent = `slot ${slotName}: ${qa.error}`; });
+})();
+</script>
+</body>
+</html>
