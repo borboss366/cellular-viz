@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "id": "16-hodge-kaleidoscope",
+  "note": "#271 16b dive, burst and glints (all off by default): stills at rest, mid-dive, burst and snare prism for the user's pick",
+  "params": { "labels": "0" },
+  "resolutions": ["1080p"],
+  "warmup": 4,
+  "seconds": 8,
+  "variants": [
+    { "name": "rest", "params": {} },
+    { "name": "dive", "params": { "dive": 0.6 } },
+    { "name": "burst", "params": { "burstEvery": 1 } },
+    { "name": "prism", "params": { "glint": 1, "prismHold": 1 } }
+  ],
+  "values": { "tableOk": "__qa.check().tableOk", "symmetric": "__qa.check().symmetric", "depth": "__qa.dive.depth", "bursts": "__qa.dive.bursts.length", "prism": "__qa.dive.prism" },
+  "gates": [
+    { "metric": "errors", "max": 0 },
+    { "metric": "value.tableOk", "equals": true, "name": "truths hold: the Hodge table" },
+    { "metric": "value.symmetric", "equals": true, "name": "truths hold: Hodge and Serre symmetry" },
+    { "metric": "value.depth", "max": 0, "variant": ["rest", "prism"], "name": "no dive unless asked" },
+    { "metric": "value.depth", "min": 0.55, "variant": "dive", "name": "the fixed dive depth is reached" },
+    { "metric": "value.bursts", "min": 2, "variant": "burst", "name": "a burst every bar" },
+    { "metric": "value.bursts", "max": 0, "variant": ["rest", "dive", "prism"], "name": "no burst unless asked" }
+  ],
+  "record": { "stills": 2 },
+  "debug": { "console": true }
+}
