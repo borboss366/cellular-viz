@@ -116,6 +116,7 @@
 // none). clock.sharedState = { state: waiting|locked|free-run, msgs, jumpsIn, lastErrMs, lost, skipped, offsetMs, offsetFrom: url|publisher }.
 //   Clock.publish(clock, { timers, post, epochNow }) → { tick(), panic(mode), setKnobs(values), stop(), sent }: the conductor side;
 //   panic(mode) sends { type: 'panic', v: 1, t, mode: blackout|calm|clear } on the same channel (panic.js in every scene)
+//   slot(slot, dir) sends { type: 'slot', v: 1, t, slot: 'A'|'B', dir: -1|1 } for the slot windows (slot.html); scenes ignore it
 //
 // Booking under long frames (#95, 31 Oct): read() and hitsDue() call schedule() first, at most once per frame, so a
 // frame longer than the 25 ms timer can't push the booking past its look-ahead; the look-ahead is
@@ -1241,6 +1242,14 @@
         return m;
       },
       panics: 0,
+      // the slot windows (slot.html, 19 Nov): slot 'A' | 'B' steps its scene by dir (-1 previous, +1 next); scenes ignore it
+      slot(slot, dir) {
+        if ((slot !== 'A' && slot !== 'B') || (dir !== 1 && dir !== -1)) return null;
+        const m = { type: 'slot', v: 1, t: now(), slot, dir };
+        post(m); this.slots++;
+        return m;
+      },
+      slots: 0,
       stop() { clearInterval(this.timer); this.timer = 0; if (ch) { try { ch.close(); } catch (err) {} ch = null; } },
     };
     if (opts.timers !== false) pub.timer = setInterval(() => pub.tick(), SHARED_PUBLISH_MS / 2);

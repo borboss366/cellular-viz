@@ -25,6 +25,8 @@
   Bridge: the faders and pot rows 2-3 go out unchanged on the IAC bus (the "bridge" lamp) for Resolume.
   Knobs: pot row 1 (CC 13-20) is not bridged; its 8 values (0..1) go to the scenes on the shared clock (publisher.setKnobs;
   a scene reads clock.knob(1..8)) and show 0-100 in the "knobs 1-8" line under the calibrate profiles.
+  Slots: upper buttons 5/6 (CC 41/42) = slot A previous/next, 7/8 (CC 43/44) = slot B previous/next, sent as
+  publisher.slot(slot, dir) on the same channel to the two slot windows (slot.html); the last one shows in the knobs line.
   Shared clock: the output clock is published for ?clock=shared scenes (clock.js Clock.publish, BroadcastChannel
   'cellular-viz-clock'): beats, bpm, bar at most 20 Hz, every jump and hand fix as an event.
 -->
@@ -385,8 +387,15 @@ if (C.autoHoldStored(autoHoldSaved)) setAutoHold(true, 'fix:key', true);   // lo
 $('autoHold').onclick = () => toggleAutoHold();
 // pot row 1: the scenes' knobs over the shared clock, and one line here (plain ASCII, #205)
 const knobsText = all => 'knobs 1-8: ' + all.map(v => (v === null ? '-' : String(Math.round(v * 100)))).join(' ');
-function onKnob(n, v, all) { publisher.setKnobs(all); $('knobs').textContent = knobsText(all); }
-const controller = MidiController.create({ clock, lastFix: () => lastFixShort, storage: pageStorage, toggleAutoHold, onKnob,
+let lastSlotText = '';
+function onKnob(n, v, all) { publisher.setKnobs(all); $('knobs').textContent = knobsText(all) + lastSlotText; }
+// upper buttons 5-8: the slot windows step their scene (slot.html); the last press shows after the knobs
+function onSlot(slot, dir) {
+  publisher.slot(slot, dir);
+  lastSlotText = ` . slot ${slot} ${dir > 0 ? 'next' : 'prev'}`;
+  $('knobs').textContent = knobsText(controller ? controller.knobs : []) + lastSlotText;
+}
+const controller = MidiController.create({ clock, lastFix: () => lastFixShort, storage: pageStorage, toggleAutoHold, onKnob, onSlot,
   onBridge: (b, name) => { $('bridge').textContent = BRIDGE_TEXT[b] || `bridge: ${b}`; $('bridge').title = name || 'no IAC bus: turn on the IAC Driver (Help)'; $('bridge').classList.toggle('unscored', b !== 'on'); showBridgePorts(); },
   onStatus: s => { $('ctl').textContent = CTL_TEXT[s] || `controller: ${s}`; $('ctl').classList.toggle('unscored', s !== 'connected'); } });
 controller.start().then(() => { if (controller.status === 'connected' && !controller.sysex) $('ctl').title = 'no SysEx permission: LEDs only, no display'; });

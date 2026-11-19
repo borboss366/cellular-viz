@@ -30,7 +30,7 @@ small{color:#8a96ad}
 <h1>Set launcher</h1>
 <p><label>Input <input id="inLabel" type="text" size="28" placeholder="from set.json"></label>
   <small>part of the audio input's name for every scene, as on the conductor (for example USB Audio). Empty: set.json's.</small></p>
-<p><button id="openAll">Open all scenes</button> <small id="status">loading set.json</small></p>
+<p><button id="openAll">Open all scenes</button> <button id="openSlots" title="two windows, slot A and slot B; each shows one scene of the set and steps through them">Open slots</button> <small id="status">loading set.json</small></p>
 <div id="errors"></div>
 <table id="list"></table>
 <h2>Steps</h2>
@@ -39,6 +39,9 @@ small{color:#8a96ad}
   <li>Push "Open" for each scene (or "Open all scenes"). Each scene opens in its own window.</li>
   <li>In each scene window, push a key or click one time. This starts the audio of that window.</li>
   <li>In Resolume, capture each scene window.</li>
+  <li>Or push "Open slots": two windows, slot A and slot B, each one scene of the set at a time. Upper buttons 5/6
+    (slot A) and 7/8 (slot B) on the controller, or the left / right arrow keys in a slot window, step to the previous /
+    next scene.</li>
 </ol>
 <p><small>If only one window opens with "Open all scenes", let this site open pop-ups (the browser blocks the others), or push "Open" for each scene.</small></p>
 <script src="set.js"></script>
@@ -90,6 +93,16 @@ async function load() {
   }
 }
 $('openAll').onclick = () => { if (qa.set) qa.set.scenes.forEach((s, i) => openScene(i)); };
+// the two slot windows (slot.html): A starts on scene 1, B on scene 2; the controller's upper buttons 5-8 (or the
+// arrow keys in a slot window) step them; same diagonal layout, for two windows
+function openSlot(k) {
+  const slot = SetLib.SLOTS[k], url = SetLib.slotUrl(slot, qa.inLabel);
+  const w = window.open(url, SetLib.slotWindowName(slot), SetLib.windowFeatures(qa.set, k, SetLib.SLOTS.length, window.screen));
+  qa.opened.push({ slot, url, ok: !!w });
+  $('status').textContent = w ? `opened: slot ${slot}` : 'the browser blocked the window: let this site open pop-ups';
+  return w;
+}
+$('openSlots').onclick = () => { if (qa.set) SetLib.SLOTS.forEach((s, k) => openSlot(k)); };
 load();
 </script>
 </body>

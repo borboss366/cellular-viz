@@ -41,7 +41,7 @@ async function rig(o = {}) {
   let now = 1000;
   const nav = o.noMidi ? {} : { requestMIDIAccess: async q => { if (o.deny) throw new Error('denied'); if (o.denySysex && q && q.sysex) throw new Error('no sysex'); return access; } };
   const bridges = [];
-  const ctl = M.create({ clock, navigator: nav, perfNow: () => now, lastFix: () => o.lastFix || '', storage: o.storage, onBridge: (b, n) => bridges.push([b, n]), toggleAutoHold: o.toggleAutoHold, onKnob: o.onKnob,
+  const ctl = M.create({ clock, navigator: nav, perfNow: () => now, lastFix: () => o.lastFix || '', storage: o.storage, onBridge: (b, n) => bridges.push([b, n]), toggleAutoHold: o.toggleAutoHold, onKnob: o.onKnob, onSlot: o.onSlot,
     setInterval: () => 1, clearInterval: () => {}, setTimeout: (f, ms) => { timers.push({ f, at: now + ms }); return timers.length; },
     clearTimeout: h => { timers[h - 1] = null; }, onStatus: s => statuses.push(s) });
   clock.nowRef = () => now;
@@ -412,4 +412,30 @@ test('knobs: pot row 1 (CC 13-20) → ctl.knobs and onKnob (0..1); never on the 
   const plain = await rig();
   plain.inp().onmidimessage({ data: [0xBF, 14, 127], timeStamp: 1 });
   assert.equal(plain.ctl.knobs[1], 1);
+});
+
+// ---------- the slot windows (19 Nov): upper buttons 5-8 step slot A / slot B ----------
+test('slots: upper buttons 5/6 (CC 41/42) = slot A prev/next, 7/8 (CC 43/44) = slot B; presses only, no clock fix, never on the bus', async () => {
+  assert.deepEqual(M.MAP.SLOT_CCS, { 41: ['A', -1], 42: ['A', 1], 43: ['B', -1], 44: ['B', 1] });
+  for (const cc of [41, 42, 43, 44]) assert.match(MAP.buttons.upperRow.use[String(cc)], /^slot [AB] (previous|next)/, `map: ${cc}`);
+  assert.equal(MAP.buttons.upperRow.use['39-40'], 'free');
+  assert.deepEqual(M.MAP.UPPER, [37, 38], 'hold and auto-hold stay on 37 / 38');
+  const calls = [];
+  const { inp, clock, access, out, clear } = await rig({ iac: true, onSlot: (s, d) => calls.push([s, d]) });
+  const iac = access.outputs.get('out-iac');
+  clear();
+  for (const cc of [41, 42, 43, 44]) { inp().onmidimessage({ data: [0xB0, cc, 127], timeStamp: 1 }); inp().onmidimessage({ data: [0xB0, cc, 0], timeStamp: 2 }); }
+  assert.deepEqual(calls, [['A', -1], ['A', 1], ['B', -1], ['B', 1]], 'one call per press, none on release');
+  assert.equal(clock.fixes.length, 0, 'no clock fix');
+  assert.deepEqual(iac.sent, [], 'not bridged');
+  assert.deepEqual(out().sent, [], 'no LED or display bytes');
+  for (const cc of [39, 40]) inp().onmidimessage({ data: [0xB0, cc, 127], timeStamp: 3 });
+  assert.equal(calls.length, 4, 'CC 39 / 40 stay free');
+  inp().onmidimessage({ data: [0xB0, 37, 127], timeStamp: 4 });
+  assert.deepEqual(clock.fixes.map(f => f.kind), ['hold'], 'upper 1 is still hold');
+  assert.deepEqual(M.decode([0xB0, 43, 127]), { type: 'slot', slot: 'B', dir: -1, down: true });
+  // without onSlot (an older page) nothing happens and nothing breaks
+  const plain = await rig();
+  plain.inp().onmidimessage({ data: [0xB0, 42, 127], timeStamp: 1 });
+  assert.equal(plain.clock.fixes.length, 0);
 });

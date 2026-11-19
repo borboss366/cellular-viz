@@ -16,6 +16,8 @@
 //                            On the show Mac (1728x1079 from y 38, 960x540 + 63, 3 scenes): {0,38} {384,276} {768,514}
 //                            (mac session 18 Nov). Without n and screen: the old 40 px cascade from 0,0.
 //   windowName(i)            -> a fixed name per slot, so opening a scene again reuses its window
+//   SLOTS, slotUrl(slot, inLabel), slotWindowName(slot) -> the two slot windows (slot.html, 19 Nov): 'A' starts on
+//                            scene 1, 'B' on scene 2; 'slot.html?slot=A' (+ '&in=<label>' from set.html's field)
 (function (root) {
   const PAGE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.html$/;   // a page next to set.html: no folders, no other sites
   const KEY = /^[A-Za-z][A-Za-z0-9_-]*$/;
@@ -76,13 +78,16 @@
     return `popup=yes,width=${w},height=${h},left=${left},top=${top}`;
   }
   const windowName = i => `cellular-viz-set-${i}`;
+  const SLOTS = ['A', 'B'];
+  const slotUrl = (slot, inLabel) => `slot.html?slot=${slot}` + (inLabel ? `&in=${encodeURIComponent(String(inLabel))}` : '');
+  const slotWindowName = slot => `cellular-viz-slot-${slot}`;
   function queryIn(search) {
     const m = /[?&]in=([^&#]*)/.exec(String(search || ''));
     if (!m) return '';
     try { return decodeURIComponent(m[1].replace(/\+/g, ' ')).trim(); } catch (e) { return ''; }
   }
 
-  const api = { validate, buildUrl, windowFeatures, windowName, queryIn, PAGE };
+  const api = { validate, buildUrl, windowFeatures, windowName, queryIn, PAGE, SLOTS, slotUrl, slotWindowName };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.SetLib = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
