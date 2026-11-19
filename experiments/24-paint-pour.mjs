@@ -86,6 +86,7 @@ vec3 colourOf(vec2 q) {
 const RENDER_FS = TRACE + `
 uniform vec2 uRes; uniform vec3 uCam;            // camera x, y (world), zoom (world units per screen height)
 uniform float uFlat, uVeinOn, uVeinW, uBevel, uHeight, uGloss, uKick, uV0, uV1;
+uniform float uPulse;   // the colour pulse: ?pulse × K.beatPulse(beats), 0 = off (the colour exactly as before)
 uniform vec3 uVein;
 uniform vec4 uStr[2]; uniform vec3 uStrCol; uniform float uStrOn;   // strings: pour point (px), top x (px), sag (px)
 uniform sampler2D uRip; uniform float uRipple;   // ripples: a tiling gradient field (RG) in paint coordinates
@@ -94,6 +95,8 @@ void main() {
   vec2 Q = uCam.xy + (gl_FragCoord.xy - 0.5 * uRes) / uRes.y * uCam.z;
   vec2 q = traceOps(Q);
   vec3 col = colourOf(q);
+  // the colour beats with the clock: more saturated and a little brighter on the beat (K.PULSE_SAT, K.PULSE_GAIN)
+  if (uPulse > 0.0) { float l = dot(col, vec3(0.2126, 0.7152, 0.0722)); col = clamp(mix(vec3(l), col, 1.0 + ${K.PULSE_SAT.toFixed(3)} * uPulse) * (1.0 + ${K.PULSE_GAIN.toFixed(3)} * uPulse), 0.0, 1.0); }
   float d = gD;
   vec2 g = vec2(dFdx(d), dFdy(d)); float gn = max(length(g), 1e-12);
   float dpx = abs(d) / gn;                     // distance to the nearest boundary, in screen pixels
@@ -255,7 +258,8 @@ export function createScene() {
 
   // ---------------------------------------------------------------- ops
   const inputsOf = ctl => ({ seed: ctl.seed ?? st.seed, dropScale: ctl.dropScale, cellsPerDrop: ctl.cellsPerDrop, blackShare: ctl.blackShare, tines: ctl.tines,
-    tineDepth: ctl.tineDepth, tineSharp: ctl.tineSharp, vortexOn: ctl.vortexOn, pourRate: ctl.pourRate, bassSwirl: ctl.bassSwirl, camDrift: ctl.camDrift });
+    tineDepth: ctl.tineDepth, tineSharp: ctl.tineSharp, vortexOn: ctl.vortexOn, pourRate: ctl.pourRate, bassSwirl: ctl.bassSwirl, camDrift: ctl.camDrift,
+    beatFx: ctl.beatFx !== false });   // ?beatFx=0: the clock no longer stirs the paint (K.songOps)
   function queue(ops, now, cause) { for (const op of ops) { op.cause = cause; op.created = now; st.pending.push(op); } st.pending.sort((a, b) => a.start - b.start); }
   // move ops whose start has come into the live list (newest last; during a pour, below the pour so it stays on top)
   function admit(beats, now, msPerBeat) {
@@ -295,7 +299,7 @@ export function createScene() {
 
   // a fresh canvas: no paint, no ops (the page calls it on Play, so the song starts from the ground)
   function reset() {
-    Object.assign(st, { live: [], pending: [], history: [], opLog: [], lastBeat: null, bake: null, bakes: [], pour: null, trig: [], lastTrigDrop: -1e9, kickBeat: undefined, lastDropColour: undefined, lastBakeEnd: undefined, userPour: null, pourRelease: false });
+    Object.assign(st, { live: [], pending: [], history: [], opLog: [], lastBeat: null, bake: null, bakes: [], pour: null, trig: [], lastTrigDrop: -1e9, kickBeat: undefined, lastDropColour: undefined, lastBakeEnd: undefined, userPour: null, pourRelease: false, pourAt: null, pourInfo: null });
     base.cur = -1;
   }
   // at (page extra, trigger 2 only): where to pour, as screen fractions { x, y } (0–1, y up); none = a seeded point.
@@ -304,11 +308,13 @@ export function createScene() {
     const e = { t: now, slot: `trigger${slot}`, holdMs, firedAt: null, quantisedTo: null, fired: null, at };
     st.triggerLog.push(e); if (st.triggerLog.length > 256) st.triggerLog.shift();
     st.trig.push({ slot, e });
+    if (slot === 2) st.pourAt = null;   // a new press: moves from here on follow it
     return true;
   }
-  function endUserPour(beats, tRelease) {
+  // minBeats: the shortest pour (a tap), counted from the pour's first segment (a dragged pour is a chain of segments)
+  function endUserPour(beats, tRelease, minBeats = POUR_MIN_BEATS) {
     const o = st.userPour; if (!o) return;
-    const d = Math.min(o.dur, Math.max(POUR_MIN_BEATS, beats - o.start));
+    const d = Math.min(o.dur, Math.max(minBeats, beats - o.start));
     o.dur = d; o.r = Math.sqrt(o.pour * d / Math.PI); o.held = false;   // the same object is live and in the history
     if (st.userPourEvent && tRelease !== undefined) st.userPourEvent.holdMs = tRelease - st.userPourEvent.t;
     st.userPour = null;
@@ -316,6 +322,13 @@ export function createScene() {
   function release(slot, now = performance.now()) {
     if (slot !== 2) return false;
     st.pourRelease = true; st.pourReleaseT = now;
+    return true;
+  }
+  // the finger moved while pour here is held: at = screen fractions { x, y } (y up). The frame turns the latest one into
+  // the next pour segment (K.pourDragStep: one at most every K.POUR_SEG_BEATS), so many move events make no burst.
+  function move(slot, at) {
+    if (slot !== 2 || !at || !Number.isFinite(at.x) || !Number.isFinite(at.y)) return false;
+    st.pourAt = { x: Math.max(0, Math.min(1, at.x)), y: Math.max(0, Math.min(1, at.y)) };
     return true;
   }
 
@@ -370,7 +383,8 @@ export function createScene() {
         const maxDur = POUR_MAX_S / beatSec, dur = e.holdMs > 0 ? Math.min(maxDur, Math.max(POUR_MIN_BEATS, e.holdMs / 1000 / beatSec)) : maxDur;
         if (st.userPour) endUserPour(beats);   // one pour at a time: a new press ends the last
         ops = [{ type: K.DROP, start: at, dur, cx, cy, r: Math.sqrt(rate * dur / Math.PI), pour: rate, colour, role: 'pour', held: !(e.holdMs > 0) }];
-        st.userPour = ops[0]; st.userPourEvent = e;
+        st.userPour = ops[0]; st.userPourEvent = e; e.moves = [];
+        st.pourInfo = { t0: at, maxDur, rate, colour };
       }
       else if (slot === 3) ops = K.opsFor({ ...ev, kind: 'snare', beat: at }, { ...inp, vortexOn: true }, st.pal).map(o => ({ ...o, r0: o.r0 * 2, z: o.z * 2, lam: o.lam * 2, hmin: o.hmin * 2, dur: 0.5 }));
       else if (slot === 4) ops = K.opsFor({ ...ev, kind: 'kick', beat: at }, { ...inp, tines: 1 }, st.pal);
@@ -378,8 +392,22 @@ export function createScene() {
       for (const o of ops) o.trigger = slot;
       queue(ops, now, `trigger${slot}`);
     }
-    // the pour ends at release (at least POUR_MIN_BEATS), or on its own at POUR_MAX_S
-    if (st.pourRelease) { if (st.userPour && st.userPour.held) endUserPour(beats, st.pourReleaseT); st.pourRelease = false; }
+    // a held pour follows the finger: the latest move becomes the next segment (logged with the press, cause trigger2)
+    if (st.userPour && st.userPour.held && st.pourAt && st.pourInfo) {
+      const cam = K.cameraAt(beats, bpb, inp.camDrift), a = st.pourAt;
+      const tx = cam.x + (a.x - 0.5) * (fw / fh) * cam.zoom, ty = cam.y + (a.y - 0.5) * cam.zoom;
+      const nx = K.pourDragStep(st.userPour, [tx, ty], beats, st.pourInfo, cam.zoom);
+      if (nx) {
+        nx.trigger = 2; nx.segment = (st.userPour.segment || 0) + 1; st.userPour = nx;
+        queue([nx], now, 'trigger2');
+        const pe = st.userPourEvent; if (pe && pe.moves) { pe.moves.push({ t: now, at: { ...a }, beat: beats, cx: nx.cx, cy: nx.cy }); if (pe.moves.length > 256) pe.moves.shift(); }
+      }
+    }
+    // the pour ends at release (at least POUR_MIN_BEATS from its first segment), or on its own at POUR_MAX_S
+    if (st.pourRelease) {
+      if (st.userPour && st.userPour.held) endUserPour(beats, st.pourReleaseT, st.pourInfo ? Math.max(0, POUR_MIN_BEATS - (st.userPour.start - st.pourInfo.t0)) : POUR_MIN_BEATS);
+      st.pourRelease = false; st.pourAt = null;
+    }
     if (st.userPour && beats >= st.userPour.start + st.userPour.dur) st.userPour = null;
     admit(beats, now, msPerBeat);
     for (const e of st.triggerLog) if (e.fired && e.firedAt === null && e.target !== undefined && beats >= e.target) e.firedAt = now;
@@ -442,6 +470,7 @@ export function createScene() {
     gl.uniform3fv(u.uVein, vein >= 0 ? K.rgb(st.pal.colours[vein]).map(K.linear) : [0, 0, 0]);
     gl.uniform1f(u.uV0, 0.10); gl.uniform1f(u.uV1, 0.35);   // screen heights a second: 145 → 500 px/s at 1440p
     gl.uniform1f(u.uBevel, ctl.bevelWidth * fh / 1440); gl.uniform1f(u.uHeight, ctl.paintHeight); gl.uniform1f(u.uGloss, ctl.gloss); gl.uniform1f(u.uKick, kick);
+    const pulse = (ctl.pulse > 0 ? ctl.pulse : 0) * K.beatPulse(beats); gl.uniform1f(u.uPulse, pulse);
     gl.uniform4fv(u.uStr, str); gl.uniform3fv(u.uStrCol, strCol); gl.uniform1f(u.uStrOn, strOn);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, rip); gl.uniform1i(u.uRip, 2); gl.uniform1f(u.uRipple, ctl.ripple ?? 0.6);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -453,7 +482,7 @@ export function createScene() {
     const growing = st.live.filter(o => K.progress(o, beats) < 1).length;
     st.view = { beats, bars: beats / bpb, phase: K.phaseOf(beats / bpb), section: Math.floor(beats / bpb / K.SECTION_BARS), live: st.live.length, pending: st.pending.length,
       growing, baking: !!st.bake, bases: st.bakes.length, cam, palette: st.pal.name };
-    st.metrics = { ops: st.live.length, history: st.history.length, kick };
+    st.metrics = { ops: st.live.length, history: st.history.length, kick, pulse };
     st.triggerEnv[0] = st.live.some(o => o.trigger === 1 && K.progress(o, beats) < 1) ? 1 - K.progress(st.live.find(o => o.trigger === 1 && K.progress(o, beats) < 1), beats) : 0;
     st.triggerEnv[1] = st.userPour ? 1 : 0;
     st.triggerEnv[2] = st.live.some(o => o.trigger === 3 && K.progress(o, beats) < 1) ? 1 : 0;
@@ -571,7 +600,7 @@ export function createScene() {
 
   return {
     id: '24-paint-pour', title: '24 · Paint Pour',
-    init, resize, frame, dispose, press, reset,
+    init, resize, frame, dispose, press, reset, move,
     release, trigger(name) { const i = ['drop', 'pour', 'vortex', 'comb'].indexOf(name); return i >= 0 ? press(i + 1) : false; },
     qa: { get view() { return st.view; }, get metrics() { return st.metrics; }, get ops() { return opsView(); }, get opLog() { return st.opLog; },
       get bakes() { return st.bakes; }, get bakeFrames() { return st.bakeFrames || []; }, get pour() { return pourView(); }, get palette() { return st.pal; },
@@ -613,6 +642,7 @@ export const DETAIL = [
   { name: 'ripple', type: 'float', default: 0.6, min: 0, max: 1 },
   { name: 'camDrift', type: 'float', default: 1, min: 0, max: 2 },   // was macro 4 (2 × its 0.5 default = 1)
   { name: 'bakeScale', type: 'float', default: 1, min: 0.5, max: 2 },
+  { name: 'pulse', type: 'float', default: 0, min: 0, max: 1 },   // the colour pulse on the beat (0 = off, as before)
 ];
 // macro value → inputs
 export function macroInputs(m) {
