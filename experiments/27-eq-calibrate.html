@@ -1,0 +1,188 @@
+<!doctype html>
+<!--
+  27 · EQ calibrate: one plain scene for setting up the room (the user, 19 Nov 23:54: "one simple equalizer scene for
+  calibration"; the Sunday set). High contrast, Canvas2D, readable on a projector across a room. The arithmetic is
+  27-eq.js (tested in node).
+
+    1. The equalizer: 16 log-spaced bars (30 Hz - 16 kHz) from the audio input (audio-in's analyser; ?audio=line in
+       the set), on a dB scale (0 to -72), peak caps held 1 s, and a red CLIP marker when the input's sample peak
+       reaches -1 dBFS (held 1.5 s). Set the interface gain so the loud parts stay out of the red.
+    2. The beat flash: a big square flashes white on every beat of the clock, strongest on the 1 (other beats at 55 %),
+       crisp: about 90 ms. The clock applies the conductor's visual offset (clock.js, #263), so line this flash up
+       against the kick you hear to set the offset slider (start at +140 ms). Flash safety: never more than 3 a second
+       (above 180 bpm only every other beat flashes; the 1 always does).
+    3. Readouts: BPM, bar.beat, the visual offset in ms, the input level in dBFS (RMS and peak), the clock state
+       (shared: waiting / locked / free-run). ?labels=0 hides them (and the scale text).
+    4. ?kick=1: a second square, lit by the kick the audio itself has (audio-in's low-band onsets, not the clock), next to
+       the clock's flash. With the offset right, the two land together.
+  No knobs, no triggers. ?clock=shared|metronome (default metronome), ?audio=line|mic|clock (default clock), ?in=,
+  ?bpm=, ?muted=1, ?capture=1 (panic.js: the clean 1920x1080 stage, Play pressed by itself), ?labels=0, ?kick=1.
+  window.__qa: eq { bars, peaks, levelDb, peakDb, clip, flash, strong, beat, flashes, kick, bpm, barBeat, offsetMs,
+  state, playing }, fakeBands(dB[16] | null) (stand-in bands for tests), errors; beatLog, frame, audioIn, energy (audio-in).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>27 · EQ calibrate</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #000; color: #f2f2f2; font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc((100vh - 120px) * 16 / 9)); aspect-ratio: 16 / 9; margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #panel { padding: 8px 12px 16px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #333; border-radius: 8px; background: #111; color: inherit; font: inherit; }
+  button.on { background: #234; border-color: #4af; }
+  p { color: #aaa; margin: 4px 0; }
+  a { color: #7fb4e6; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="labelsBtn">Labels</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <p>Gain: keep the loud parts out of the red CLIP. Offset: move the conductor's Calibrate slider until the white flash lands on the kick you hear (start +140 ms). ?kick=1 shows the heard kick next to it.</p>
+  <a href="../index.html">← all experiments</a>
+</div>
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
+<script src="27-eq.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const query = new URLSearchParams(location.search), q = k => query.get(k);
+const params = { bpm: 120, bpb: 4, muted: q('muted') === '1', labels: q('labels') !== '0', kick: q('kick') === '1',
+  kickPattern: 'x...x...x...x...' };
+{ const v = parseFloat(q('bpm')); if (v >= 60 && v <= 180) params.bpm = v; }
+// the clock reads bpm, bpb, muted and the drum patterns from its settings object
+const settings = { bpm: params.bpm, bpb: params.bpb, muted: params.muted, kick: params.kickPattern, snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+const clock = Clock.create({ source: q('clock') || 'metronome', settings });
+const AUDIO_SRC = q('audio') || 'clock';
+const audio = AudioIn.create({ clock, source: AUDIO_SRC, fftSize: 8192 }).start();   // 8192: ~6 Hz bins, so the 30-45 Hz band has bins of its own
+const BEAT_LANES = ['kick', 'snare', 'hat'];
+
+// ---------- controls ----------
+$('play').onclick = () => {
+  if (clock.playing) clock.stop(); else clock.start();
+  $('play').textContent = clock.playing ? '■ Stop' : '▶ Play'; $('play').classList.toggle('on', clock.playing);
+};
+$('mute').onclick = () => { settings.muted = params.muted = !params.muted; clock.setMuted(params.muted); sync(); };
+$('labelsBtn').onclick = () => { params.labels = !params.labels; sync(); };
+$('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen()).catch(() => {}); };
+function sync() { $('mute').classList.toggle('on', params.muted); $('labelsBtn').classList.toggle('on', params.labels); }
+
+// ---------- state ----------
+const canvas = $('c'), g = canvas.getContext('2d');
+const eqs = EQ.create(), errors = [];
+let fbuf = null, wbuf = null, qaBands = null, lastNow = 0, flashes = 0, lastFlashBeat = null, clipOn = false, view = {};
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(1920, Math.round(canvas.clientWidth * dpr)), h = Math.min(1080, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+function frame(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt (audio-in)
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } if (window.__panicError) window.__panicError(); }
+}
+const fmtDb = d => (d <= EQ.FLOOR_DB + 1 ? '-inf' : (d >= 0 ? '+' : '') + d.toFixed(1));
+const freqLabel = f => (f >= 1000 ? `${+(f / 1000).toFixed(f >= 10000 ? 0 : 1)}k` : `${Math.round(f)}`);
+
+function draw(now) {
+  resize();
+  const dt = lastNow ? Math.min(0.1, Math.max(0, (now - lastNow) / 1000)) : 0; lastNow = now;
+  const r = clock.read();
+  audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
+  // the input: the analyser's spectrum and waveform (nothing heard yet: the floor)
+  let bandsDb = new Array(EQ.N).fill(EQ.FLOOR_DB), lvl = { rmsDb: EQ.FLOOR_DB, peakDb: EQ.FLOOR_DB };
+  const A = audio.attach() ? audio.analyser : null;
+  if (A && (clock.playing || AUDIO_SRC !== 'clock')) {
+    if (!fbuf || fbuf.length !== A.frequencyBinCount) fbuf = new Float32Array(A.frequencyBinCount);
+    if (!wbuf || wbuf.length !== A.fftSize) wbuf = new Float32Array(A.fftSize);
+    A.getFloatFrequencyData(fbuf); A.getFloatTimeDomainData(wbuf);
+    bandsDb = EQ.bands(fbuf, audio.ctx.sampleRate); lvl = EQ.levelOf(wbuf);
+  }
+  if (qaBands) bandsDb = qaBands.slice();
+  EQ.follow(eqs, bandsDb, dt);
+  clipOn = EQ.clipStep(eqs, lvl.peakDb, now / 1000);
+  const E = params.kick ? audio.readEnergy() : null, kick = E ? Math.max(0, Math.min(1, E.kick)) : 0;
+  // the beat flash from the clock (the conductor's visual offset is in r.beats)
+  const F = EQ.flashOf(r);
+  if (F.beat !== null && F.env > 0 && F.beat !== lastFlashBeat) { flashes++; lastFlashBeat = F.beat; }
+  const sh = clock.sharedState, state = sh ? sh.state : (clock.playing ? `${clock.source || 'metronome'} playing` : `${clock.source || 'metronome'} stopped`);
+  const offsetMs = Number.isFinite(clock.visualOffsetMs) ? clock.visualOffsetMs : 0;
+  const barBeat = r.beats >= 0 && r.bar >= 0 ? `${r.bar + 1}.${r.beatInBar}` : '-';
+
+  // ---------- paint ----------
+  const W = canvas.width, H = canvas.height, u = H / 1080;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+  // the flash squares (and the heard kick's), left
+  const sq = params.kick ? 0.36 * H : 0.56 * H, sx = 0.05 * W, sy0 = params.kick ? 0.13 * H : 0.22 * H;
+  const square = (y, lit, label, rgb) => {
+    g.fillStyle = `rgba(${rgb},${lit.toFixed(3)})`; g.fillRect(sx, y, sq, sq);
+    g.lineWidth = 3 * u; g.strokeStyle = '#555'; g.strokeRect(sx, y, sq, sq);
+    if (params.labels) { g.fillStyle = '#bbb'; g.font = `600 ${Math.round(26 * u)}px system-ui, sans-serif`; g.textAlign = 'center'; g.fillText(label, sx + sq / 2, y + sq + 32 * u); }
+  };
+  square(sy0, F.env, F.strong ? 'BEAT · the 1' : 'BEAT (clock)', '255,255,255');
+  if (params.kick) square(sy0 + sq + 0.1 * H, kick, 'KICK (heard)', '60,220,255');
+  // the equalizer, right
+  const ex = 0.36 * W, ew = 0.56 * W, ey = 0.14 * H, eh = 0.68 * H, n = EQ.N, gap = ew / n * 0.18, bw = ew / n - gap;
+  g.lineWidth = Math.max(1, 1.5 * u); g.textAlign = 'right'; g.font = `500 ${Math.round(20 * u)}px ui-monospace, Menlo, monospace`;
+  for (let d = 0; d >= EQ.SCALE_DB; d -= 12) {
+    const y = ey + eh * (1 - EQ.heightOf(d));
+    g.strokeStyle = d === 0 ? '#664' : '#262626'; g.beginPath(); g.moveTo(ex, y); g.lineTo(ex + ew, y); g.stroke();
+    if (params.labels) { g.fillStyle = '#888'; g.fillText(`${d}`, ex - 10 * u, y + 7 * u); }
+  }
+  for (let b = 0; b < n; b++) {
+    const x = ex + b * (bw + gap) + gap / 2, lv = eqs.level[b], hgt = eh * EQ.heightOf(lv);
+    g.fillStyle = lv > -3 ? '#ff2a4a' : lv > -12 ? '#ffe23d' : '#2bff88';
+    g.fillRect(x, ey + eh - hgt, bw, hgt);
+    const py = ey + eh * (1 - EQ.heightOf(eqs.peak[b]));
+    if (eqs.peak[b] > EQ.SCALE_DB) { g.fillStyle = '#fff'; g.fillRect(x, py - 3 * u, bw, 6 * u); }
+    if (params.labels && b % 2 === 0) { g.fillStyle = '#999'; g.textAlign = 'center'; g.fillText(freqLabel(Math.sqrt(EQ.EDGES[b] * EQ.EDGES[b + 1])), x + bw / 2, ey + eh + 30 * u); }
+  }
+  // the input meter (RMS bar, sample-peak tick) and the clip marker, far right
+  const mx = 0.945 * W, mw = 0.03 * W, rmsH = eh * EQ.heightOf(lvl.rmsDb), pkY = ey + eh * (1 - EQ.heightOf(lvl.peakDb));
+  g.fillStyle = '#1a1a1a'; g.fillRect(mx, ey, mw, eh);
+  g.fillStyle = lvl.rmsDb > -6 ? '#ff2a4a' : lvl.rmsDb > -18 ? '#ffe23d' : '#2bff88'; g.fillRect(mx, ey + eh - rmsH, mw, rmsH);
+  if (lvl.peakDb > EQ.SCALE_DB) { g.fillStyle = '#fff'; g.fillRect(mx, pkY - 2 * u, mw, 4 * u); }
+  g.fillStyle = clipOn ? '#ff2a4a' : '#2a0a0e'; g.fillRect(mx - 0.03 * W, ey - 0.075 * H, mw + 0.03 * W, 0.055 * H);
+  g.fillStyle = clipOn ? '#fff' : '#5a2a30'; g.font = `800 ${Math.round(34 * u)}px system-ui, sans-serif`; g.textAlign = 'center';
+  g.fillText('CLIP', mx - 0.015 * W + mw / 2, ey - 0.033 * H);
+  // the readouts, top left
+  if (params.labels) {
+    g.textAlign = 'left'; g.fillStyle = '#f2f2f2'; g.font = `700 ${Math.round(34 * u)}px ui-monospace, Menlo, monospace`;
+    const bpm = r.bpm > 0 ? r.bpm.toFixed(1) : '-';
+    g.fillText(`${bpm} BPM   ${barBeat}   offset ${offsetMs >= 0 ? '+' : ''}${Math.round(offsetMs)} ms`, 0.05 * W, 0.075 * H);
+    g.font = `600 ${Math.round(26 * u)}px ui-monospace, Menlo, monospace`;
+    g.fillStyle = clipOn ? '#ff6a7a' : '#cfcfcf';
+    g.fillText(`in ${fmtDb(lvl.rmsDb)} dBFS rms · peak ${fmtDb(lvl.peakDb)} dBFS`, 0.05 * W, 0.93 * H);
+    g.fillStyle = state === 'locked' ? '#2bff88' : state === 'waiting' ? '#ffe23d' : '#cfcfcf';
+    g.fillText(`clock: ${state}`, 0.05 * W, 0.97 * H);
+  }
+  view = { bars: eqs.level.map(v => +v.toFixed(2)), peaks: eqs.peak.map(v => +v.toFixed(2)), levelDb: +lvl.rmsDb.toFixed(2), peakDb: +lvl.peakDb.toFixed(2),
+    clip: clipOn, flash: +F.env.toFixed(4), strong: F.strong, beat: F.beat, flashes, kick: +kick.toFixed(4), bpm: r.bpm, barBeat, offsetMs, state,
+    playing: !!clock.playing, labels: params.labels, kickOn: params.kick };
+}
+
+// ---------- QA ----------
+window.__modules = { '27-eq-calibrate': { macros: {}, triggers: [], inputs: [{ name: 'kick', type: 'bool', default: false }, { name: 'labels', type: 'bool', default: true }] } };
+window.__qa = Object.assign(window.__qa || {}, {
+  errors, get eq() { return { ...view }; },
+  fakeBands: arr => { qaBands = Array.isArray(arr) && arr.length === EQ.N ? arr.map(Number) : null; return !!qaBands; },
+});
+AudioIn.qa(audio, window.__qa);   // beatLog, frame, beatLanes, audioIn, beatWeight, energy, sharedClock, ...
+sync();
+requestAnimationFrame(frame);
+</script>
+<script src="panic.js"></script>
+</body>
+</html>
