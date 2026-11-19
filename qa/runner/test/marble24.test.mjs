@@ -155,3 +155,57 @@ test('flash-safe growth: a big drop grows at a constant area rate, slow enough f
   const d = { type: K.DROP, start: 0, dur: 4, r: 0.3 };
   for (const s of [0, 0.25, 0.5, 1]) assert.ok(Math.abs(Math.PI * K.effective(d, 4 * s).r ** 2 - Math.PI * 0.09 * s) < 1e-12, 'area ∝ s');
 });
+
+test('pour here, dragged: a drag from left to right leaves the pour colour at the end point and all along the path; one segment at most every ¼ beat; the area is the pour rate × the hold', () => {
+  // the scene's own chain (K.pourDragStep, as 24-paint-pour.mjs calls it every frame while the pour is held)
+  const fps = 60, bpm = 120, colour = 3, rate = 0.0385, maxDur = 16;   // area a beat (about the page's rate at zoom 1), 8 s
+  const info = { t0: 0, maxDur, rate, colour };
+  let seg = { type: K.DROP, start: 0, dur: maxDur, cx: -0.6, cy: 0, r: Math.sqrt(rate * maxDur / Math.PI), pour: rate, colour, role: 'pour', held: true };
+  const ops = [seg], dragBeats = 8, holdBeats = 1;   // drag 1.2 screen heights over 8 beats, then hold still for a beat
+  let last = 0;
+  for (let f = 1; f / fps * bpm / 60 <= dragBeats + holdBeats; f++) {
+    const b = f / fps * bpm / 60, x = -0.6 + 1.2 * Math.min(1, b / dragBeats);
+    const nx = K.pourDragStep(seg, [x, 0], b, info, 1);
+    if (nx) { ops.push(nx); seg = nx; }
+    last = b;
+  }
+  seg.dur = Math.min(seg.dur, last - seg.start);   // the release
+  const eff = ops.map(o => K.effective(o, last + 1)), at = (x, y) => { const t = K.trace(eff, x, y); return t.hit >= 0 ? eff[t.hit].colour : 0; };
+  assert.equal(at(0.6, 0), colour, 'the pour colour at the end point');
+  assert.equal(at(-0.6, 0), colour, 'and at the start');
+  const xs = Array.from({ length: 25 }, (_, i) => -0.6 + 0.05 * i), gaps = xs.filter(x => at(x, 0) !== colour);
+  assert.deepEqual(gaps, [], 'no gap along the path');
+  const end = ops[ops.length - 1];
+  assert.ok(Math.hypot(end.cx - 0.6, end.cy) < K.POUR_STEP_MIN + 1e-9, `the last segment sits under the finger (${end.cx.toFixed(3)})`);
+  for (let i = 1; i < ops.length; i++) assert.ok(ops[i].start - ops[i - 1].start >= K.POUR_SEG_BEATS - 1e-9, 'no burst: one segment per ¼ beat at most');
+  assert.ok(ops.length >= 10 && ops.length <= Math.floor(last / K.POUR_SEG_BEATS) + 1, `${ops.length} segments`);
+  const area = eff.reduce((s, o) => s + Math.PI * o.r * o.r, 0);
+  assert.ok(Math.abs(area - rate * last) < 1e-9, `area ${area} = rate × hold ${rate * last}`);
+  console.log(`pour drag: ${ops.length} segments over ${last.toFixed(2)} beats, area ${area.toFixed(4)}`);
+  // a still finger makes no new segment; a flick far ahead starts one right under it
+  const still = { ...ops[0], start: 0, dur: maxDur, cx: 0, cy: 0, held: true };
+  for (let b = 0.1; b < 4; b += 0.1) assert.equal(K.pourDragStep(still, [0.01, 0], b, info, 1), null);
+  const flick = K.pourDragStep({ ...still }, [0.9, 0.2], 1, info, 1);
+  assert.deepEqual([flick.cx, flick.cy], [0.9, 0.2]);
+});
+
+test('?beatFx=0: a 16-bar run has no comb or swirl op from the song; the drops (rings, cells) and the build pour stay the same', () => {
+  const pal = K.palette('canada'), inp = { seed: 7, dropScale: 1, cellsPerDrop: 0.5, blackShare: 0.3, tines: 1, tineDepth: 1, tineSharp: 0.5, vortexOn: true, pourRate: 0.006, bassSwirl: 0.5, camDrift: 1 };
+  const pat = { kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+  const run = beatFx => {
+    const out = []; let last = -1e-6;
+    for (let f = 1; f / 60 * 2 <= 16 * 4; f++) {
+      const b = f / 60 * 2;
+      for (const e of K.eventsIn(last, b, 4, K.patternHits(last, b, 4, pat))) for (const o of K.songOps(e, { ...inp, beatFx }, pal, 4, 120)) out.push(o);
+      last = b;
+    }
+    return out;
+  };
+  const off = run(false), on = run(true), stirs = ops => ops.filter(o => o.type === K.COMB || o.type === K.SWIRL);
+  assert.equal(stirs(off).length, 0, 'no kick comb, snare vortex, bass swirl or feather comb');
+  assert.ok(stirs(on).length > 20, `beatFx on still stirs (${stirs(on).length} ops)`);
+  const drops = ops => ops.filter(o => o.type === K.DROP).map(o => JSON.stringify(o));
+  assert.deepEqual(drops(off), drops(on), 'the same drops, rings, cells and pour');
+  assert.ok(off.some(o => o.role === 'drop') && off.some(o => o.role === 'pour'), 'the drop and the build pour stay');
+  assert.deepEqual(run(undefined).map(o => JSON.stringify(o)), on.map(o => JSON.stringify(o)), 'the default is beatFx on');
+});
