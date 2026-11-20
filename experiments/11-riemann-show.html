@@ -1043,6 +1043,7 @@ function resize() {
 }
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
 let lastK = -1, flash = 0, qaBeatG = null;   // qaBeatG: QA's stand-in beat gain (null: the knob)
+const clockJump = RiemannBeat.jumpState();   // 11-beat.js: a jump of the bar count (snap the camera)
 // window.__qa.events: one entry per drum hit and zero flash, on the frame it is first drawn,
 // so a sync check can time flashes instead of guessing from a camera that never stops.
 //   tBeat   when it was scheduled (AudioContext seconds)
@@ -1087,6 +1088,8 @@ function draw(now) {
   // rAF's timestamp can be a little older than clockStart on the first frame: never negative.
   const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb);
   const tc = tAtBars(bars);
+  // a clock jump (a slot switch: the page's own count, then the shared clock's): snap the chase camera, no zero flash
+  if (RiemannBeat.jumped(clockJump, bars)) { camState.eye = null; camState.at = null; lastK = lastZero(bars).k; }
   const lz = lastZero(bars);
   if (lz.k !== lastK) {   // a zero on the downbeat
     flash = 1; lastK = lz.k;
