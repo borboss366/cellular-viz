@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "id": "16-hodge-kaleidoscope",
+  "note": "#290 slot-switch catch-up: the shape schedule never runs ahead of the clock (at most one change per hold; the Mac session's switch fired one a frame). The jump itself is in switch-catchup.test.mjs (node). Stills at beat gain 0, 1, 3",
+  "params": { "labels": "0" },
+  "resolutions": ["1080p"],
+  "warmup": 2,
+  "seconds": 8,
+  "variants": [
+    { "name": "g0", "params": { "beatGain": 0 } },
+    { "name": "g1", "params": {} },
+    { "name": "g3", "params": { "beatGain": 3 } }
+  ],
+  "values": { "tableOk": "__qa.check().tableOk", "idx": "__qa.idx", "beats": "__qa.beats", "excess": "__qa.idx - __qa.beats / (__qa.hold * 4)", "rate": "__qa.rateTruths().holdOk", "trig": "__qa.rateTruths().triggerOk" },
+  "gates": [
+    { "metric": "errors", "max": 0 },
+    { "metric": "value.tableOk", "equals": true, "name": "truths hold: the Hodge table" },
+    { "metric": "value.excess", "max": 2, "name": "shape changes never run ahead of the clock (at most 1 per hold + 2)" },
+    { "metric": "value.rate", "equals": true, "name": "truths 6-10: holds on the grid" },
+    { "metric": "value.trig", "equals": true, "name": "triggers land on the next beat" }
+  ],
+  "record": { "stills": 2 },
+  "debug": { "console": true }
+}
