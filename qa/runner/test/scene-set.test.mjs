@@ -186,7 +186,7 @@ test('set.json is valid and its URLs are right: each scene with ?clock=shared&au
   // the knobs per slot (20 Nov 15:34; slot B adds 4, slot.js): 1 = the beat (defaults; clock.beatGain), then each
   // scene's own from 2: Hodge dive 2 + glints 3, Paint Pour pulse 2, Little Bang speed 2; 27 EQ has no beat knob
   assert.equal(set.defaults.beatKnob, '1');
-  const extra = ['&beatKnob=1&diveKnob=2&glintKnob=3', '&beatKnob=1', '&beatKnob=1&beatFx=0&pulseKnob=2', '&beatKnob=1&scene=ribbon', '&kick=1', '&beatKnob=1', '&beatKnob=1&scene=beamline&speedKnob=2'];
+  const extra = ['&beatKnob=1&diveKnob=2&glintKnob=3', '&beatKnob=1', '&beatKnob=1&beatFx=0&pulseKnob=2&pulse=1', '&beatKnob=1&scene=ribbon', '&kick=1', '&beatKnob=1', '&beatKnob=1&scene=beamline&speedKnob=2'];
   const urls = set.scenes.map(s => SetLib.buildUrl(set, s));
   for (const [i, u] of urls.entries()) {
     assert.equal(u, `${set.scenes[i].page}?clock=shared&audio=line&in=BlackHole&capture=1${extra[i]}`);
@@ -358,4 +358,34 @@ test('set.html: the input label (field or ?in=) goes to every scene as in=<label
   assert.equal(b.el('inLabel').value, '');
   b.el('openAll').onclick();
   assert.deepEqual(b.opened.map(o => o.url), set.scenes.map(s => SetLib.buildUrl(set, s)));
+});
+
+// Mac session 4 (20 Nov): on Paint Pour the beat knob alone showed nothing, because the colour pulse started at 0 until
+// knob 2 / 6 moved. The set now starts it at pulse=1 (the page's ?pulse, its full design amount: +8 % brightness and more
+// saturation on each beat at beat knob middle, g = 1); the pulse knob takes over once it moves.
+test('Paint Pour in the set: the pulse is on before knob 2 / 6 moves, so beat knob 1 / 5 alone shows the beat; the knob takes over once moved', async () => {
+  const set = JSON.parse(fs.readFileSync(path.join(EX, 'set.json'), 'utf8'));
+  const pour = set.scenes.find(s => s.page === '24-paint-pour.html');
+  assert.deepEqual(pour.query, { beatFx: '0', pulseKnob: '2', pulse: '1' });
+  const P = await import('../../../experiments/24-paint-pour.mjs'), K = await import('../../../experiments/24-marble.mjs');
+  const def = P.DETAIL.find(d => d.name === 'pulse');
+  assert.ok(def && def.type === 'float' && def.min === 0 && def.max === 1, 'the page reads ?pulse=0..1');
+  const page = fs.readFileSync(path.join(EX, '24-paint-pour.html'), 'utf8');
+  assert.match(page, /pulse: K\.pulseAmount\(clock, params\.pulseKnob, params\.pulse\)/, 'knob first, else ?pulse');
+  // the shared clock's knobs: pulse knob 2 untouched (null), beat knob 1 at the middle
+  const knobs = [0.5, null, null, null, null, null, null, null], clock = { knob: n => knobs[n - 1] };
+  const atBeat = (beatKnob, pulseKnob) => {
+    const amount = K.pulseAmount(clock, pulseKnob, +pour.query.pulse);
+    return P.beatTerms(Clock.beatGain(knobs[beatKnob - 1]), 0, amount * K.beatPulse(0)).pulse;   // on the beat
+  };
+  assert.equal(atBeat(1, 2), 1, 'beat knob middle, pulse knob untouched: the full pulse (+8 % on the beat)');
+  assert.equal(K.beatPulse(0.5), 0, 'off the beat: no pulse (a bump, not a constant lift)');
+  knobs[0] = 1; assert.equal(atBeat(1, 2), P.BEAT.PULSE_CAP, 'beat knob top: 3x, at its cap');
+  knobs[0] = 0; assert.equal(atBeat(1, 2), 0, 'beat knob down: no beat');
+  knobs[0] = 0.5; knobs[1] = 0.4;
+  assert.ok(Math.abs(atBeat(1, 2) - 0.4) < 1e-12, 'pulse knob moved: its value, as before');
+  knobs[1] = 0; assert.equal(atBeat(1, 2), 0, 'pulse knob down: off, as before');
+  // slot B: knobs 5 / 6 the same way (slot.js adds 4)
+  const SlotLib = require(path.join(EX, 'slot.js'));
+  assert.deepEqual(SlotLib.slotKnobs(set, pour, 'B'), { beatKnob: '5', pulseKnob: '6' });
 });

@@ -102,14 +102,16 @@ the beat off, the middle = as before, fully up = three times as strong. The next
 |---|---|---|
 | Hodge Kaleidoscope | 1 beat, 2 dive (a fast turn down = a burst), 3 glints | 5 beat, 6 dive, 7 glints |
 | Lenia Effects, Riemann Ribbon, Neon Lines | 1 beat | 5 beat |
-| Paint Pour | 1 beat, 2 pulse | 5 beat, 6 pulse |
+| Paint Pour | 1 beat, 2 pulse (full until turned) | 5 beat, 6 pulse (full until turned) |
 | EQ Calibrate | none | none |
 | Little Bang Beamline | 1 beat, 2 travel speed (down = the camera stops, up = one lap a bar) | 5 beat, 6 travel speed |
 
 The conductor shows the knob values ("knobs 1-8") and, below, each slot's buttons and knobs and what its scene does
 with them ("slot knobs: A (btn 3/4, knobs 1-4): 1 beat . 2 dive . 3 glint | B (btn 7/8, knobs 5-8): 5 beat . 6
 pulse"). Until a knob is turned, its scene uses its own default (the beat as
-before). "Open all scenes" (the fallback) uses slot A's knobs 1-4 for every scene.
+before). "Open all scenes" (the fallback) uses slot A's knobs 1-4 for every scene. Paint Pour's colour pulse starts
+full (the set's pulse=1), so beat knob 1 / 5 alone shows its beat; turning knob 2 / 6 then sets the pulse as before
+(down = no pulse).
 Before the show: set knobs 1 and 5 to the middle. The knobs are absolute: the first touch jumps to where the knob is,
 so a knob left fully down turns the beat off at the first touch.
 The beat knob works on a scene once that scene has been updated for it (the VIZ pages scene PRs); until then the
