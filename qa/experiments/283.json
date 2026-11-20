@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "id": "06-lenia-effects",
+  "note": "#283 06 beat strength: stills at beat gain 0 (no beat reaction), 1 (today) and 3 (the knob's top, 2 here) in the set's 'glow' look, for the user's pick",
+  "params": {},
+  "resolutions": ["1080p"],
+  "warmup": 4,
+  "seconds": 8,
+  "variants": [
+    { "name": "g0", "params": { "beatGain": 0 } },
+    { "name": "g1", "params": {} },
+    { "name": "g3", "params": { "beatGain": 3 } }
+  ],
+  "values": { "g": "__qa.beat ? __qa.beat.g : -1", "bloomKick": "__qa.beat ? __qa.beat.bloomKick : -1", "snare": "__qa.beat ? __qa.beat.snare : -1", "hatOk": "__qa.beat && __qa.nobeat ? __qa.beat.hat <= __qa.nobeat.hat + 1e-9 : false" },
+  "gates": [
+    { "metric": "errors", "max": 0 },
+    { "metric": "value.g", "equals": 0, "variant": "g0", "name": "?beatGain=0: g 0" },
+    { "metric": "value.g", "equals": 1, "variant": "g1", "name": "no knob: g 1 (as today)" },
+    { "metric": "value.g", "equals": 2, "variant": "g3", "name": "?beatGain=3: g 2 (the cap here)" },
+    { "metric": "value.bloomKick", "max": 0, "variant": "g0", "name": "g 0: no bloom pump" },
+    { "metric": "value.snare", "max": 0, "variant": "g0", "name": "g 0: no snare flash" },
+    { "metric": "value.snare", "max": 2, "name": "the snare flash at most 2x" },
+    { "metric": "value.hatOk", "equals": true, "name": "the hats never above today" }
+  ],
+  "record": { "stills": 2 },
+  "debug": { "console": true }
+}
