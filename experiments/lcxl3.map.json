@@ -32,7 +32,9 @@
   "encoders": {
     "channel": 16,
     "absolute": { "row1": [13, 20], "row2": [21, 28], "row3": [29, 36] },
-    "verified": "hardware 15 Nov"
+    "verified": "hardware 15 Nov",
+    "ledRgb": { "sysex": "F0 00 20 29 02 15 01 53 <cc> R G B F7", "rgb": "0-127 each", "use": "row 1: slot A's active knobs blue, slot B's orange, the rest dark (20 Nov)",
+      "source": "Programmer's Reference v1.0, as used by github.com/DiegoDimuro/launchcontrol-3-xl-leds", "verified": "unverified: the 1-minute LED check on the Mac" }
   },
   "buttons": {
     "channel": 1,

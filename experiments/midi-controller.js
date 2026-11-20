@@ -39,6 +39,12 @@
 // the display "PRESS MODE". Hot-plug: every statechange re-resolves the ports by name; a new output gets DAW mode, the mode query and
 // every LED and display line again (the device powers up in standalone mode). stop() (the page's pagehide) cancels the
 // display, darkens the LEDs and sends DAW mode off.
+// Encoder LEDs (the user, 20 Nov: "highlight the active knobs on the controller"): pot row 1's eight rings show which
+// knobs the slot windows' scenes use: slot A's active knobs blue, slot B's orange, the rest dark. ctl.setControls(bySlot)
+// takes the conductor's latest controls per slot ({ A: { controls: [{ knob, name }] }, B: ... }, slot.js's controls
+// messages); each ring is SysEx F0 00 20 29 02 15 01 53 <cc> R G B F7 (Programmer's Reference v1.0, RGB 0-127), sent
+// only when its colour changes: on setControls, on a fresh output (connect, replug) and after the Mode Select page.
+// No SysEx, or a send that throws: logged once (opts.log, else console.warn), the knobs and the clock carry on.
 //
 //   const ctl = MidiController.create({ clock, navigator, lastFix: () => 'tap', onStatus: s => ... });
 //   ctl.start()  → Promise; asks requestMIDIAccess({ sysex: true }), else without SysEx, else status 'no-midi'
@@ -78,6 +84,20 @@
   const ascii = s => [...String(s)].map(c => c.charCodeAt(0)).filter(b => b >= 0x20 && b <= 0x7E).slice(0, DISPLAY_CHARS);
   const displayConfig = cfg => [...SYSEX, 0x04, DISPLAY_TARGET, cfg, 0xF7];
   const displayText = (field, s) => [...SYSEX, 0x06, DISPLAY_TARGET, field, ...ascii(s), 0xF7];
+  // the encoder rings (see the header): RGB 0-127 per slot; blue and orange, never a red / green pair
+  const KNOB_RGB = { A: [0, 24, 127], B: [127, 40, 0], off: [0, 0, 0] };
+  const LED_RGB = 0x53;
+  const clamp7 = x => Math.max(0, Math.min(127, Math.round(Number(x) || 0)));
+  const encoderLed = (cc, rgb) => [...SYSEX, 0x01, LED_RGB, cc, clamp7(rgb[0]), clamp7(rgb[1]), clamp7(rgb[2]), 0xF7];
+  /** the conductor's controls per slot -> pot row 1's 8 colours (index 0 = knob 1): slot A's knobs blue, B's orange */
+  function knobColours(bySlot) {
+    const out = new Array(KNOBS).fill(KNOB_RGB.off);
+    for (const s of ['B', 'A']) {   // A last: a knob both claim shows A's colour
+      const c = bySlot && bySlot[s], list = Array.isArray(c) ? c : (c && Array.isArray(c.controls) ? c.controls : []);
+      for (const x of list) if (x && Number.isInteger(x.knob) && x.knob >= 1 && x.knob <= KNOBS) out[x.knob - 1] = KNOB_RGB[s];
+    }
+    return out;
+  }
 
   /** the faders and pot rows 2–3, the controls the bridge passes to Resolume */
   const forwarded = data => !!data && data.length === 3 && data[0] === POT_CH && BRIDGE_CCS.some(([a, b]) => data[1] >= a && data[1] <= b);
@@ -132,9 +152,11 @@
     let bridgeOut = null, bridgeWant = null;
     try { bridgeWant = storage ? storage.getItem(BRIDGE_KEY) : null; } catch (e) { /* storage blocked: the default bus */ }
     let access = null, input = null, output = null, timer = null, holdTimer = null, stopped = false;
+    let knobSent = {}, controls = {}, ledWarned = false;
+    const warn = msg => { if (ledWarned) return; ledWarned = true; try { (o.log || (m => root.console && root.console.warn(m)))(msg); } catch (e) { /* never in the way */ } };
     let ledSent = {}, linesSent = [], bookedBeat = null, lastTickAt = null, gaps = [], lastDisplayAt = -1e9, rejectUntil = -1e9, modeSelectUntil = -1e9, restartHeld = false;
     const ctl = { status: 'off', sysex: false, sent: 0, bridge: 'off', bridgePort: null, forwarded: 0, start, stop, tick, bridgePorts, setBridgePort,
-      knobs: new Array(KNOBS).fill(null) };
+      knobs: new Array(KNOBS).fill(null), setControls, ledBatches: 0, ledError: null };
 
     function setStatus(s) {
       if (ctl.status === s) return;
@@ -168,12 +190,33 @@
       if (bytes[0] === 0xF0 && !ctl.sysex) return;
       try { if (at === undefined) output.send(bytes); else output.send(bytes, at); ctl.sent++; } catch (e) { /* a port that vanished mid-send: the next statechange resolves it */ }
     }
+    // the encoder rings: only the rings whose colour changed; one batch, never per frame. Never throws.
+    function knobLeds() {
+      if (!output) return 0;
+      if (!ctl.sysex) { if (Object.values(controls).some(c => c)) warn('LCXL3: the encoder LEDs need SysEx (allow it for this page); the knobs work without'); return 0; }
+      const want = knobColours(controls);
+      let n = 0;
+      for (let i = 0; i < KNOBS; i++) {
+        const cc = KNOB_CCS[0] + i, key = want[i].join(',');
+        if (knobSent[cc] === key) continue;
+        try { output.send(encoderLed(cc, want[i])); ctl.sent++; knobSent[cc] = key; n++; }
+        catch (e) { ctl.ledError = String(e && e.message || e); warn(`LCXL3: encoder LED send failed (${ctl.ledError}); the knobs work without`); return n; }
+      }
+      if (n) ctl.ledBatches++;
+      return n;
+    }
+    /** the conductor's latest controls per slot ({ A, B }): the active knobs light, the rest go dark */
+    function setControls(bySlot) {
+      controls = { A: bySlot && bySlot.A ? bySlot.A : null, B: bySlot && bySlot.B ? bySlot.B : null };
+      return knobLeds();
+    }
     // a fresh output (start, replug): DAW mode, the surface mode asked for, and every LED and line sent again
     function enter() {
       send(DAW_ON);
       send([QUERY_CH, MODE_CC, 0]);
-      ledSent = {}; linesSent = []; lastDisplayAt = -1e9; bookedBeat = null;
+      ledSent = {}; linesSent = []; lastDisplayAt = -1e9; bookedBeat = null; knobSent = {}; ctl.ledError = null;
       if (ctl.sysex) send(displayConfig(0x01));
+      knobLeds();
     }
     function fix(kind, arg, eventTs) {
       const j = clock.fix(kind, arg, { origin: 'fix:controller', eventTs });
@@ -219,7 +262,7 @@
         setStatus('mode-select');
         send([FEATURE_CH, MODE_CC, MODE_MIXER]);
       }
-      ledSent = {}; linesSent = [];
+      ledSent = {}; linesSent = []; knobSent = {};   // the rings go out again on the next tick
     }
     const daw = ports => { for (const p of ports.values()) if (/DAW/.test(p.name || '') && p.state !== 'disconnected') return p; return null; };
     function resolve() {
@@ -228,7 +271,7 @@
       if (input && input !== i) input.onmidimessage = null;
       if (i && i !== input) i.onmidimessage = onMessage;
       input = i;
-      if (!out) { output = null; ledSent = {}; linesSent = []; setStatus('no-device'); return resolveBridge(); }
+      if (!out) { output = null; ledSent = {}; linesSent = []; knobSent = {}; setStatus('no-device'); return resolveBridge(); }
       if (out !== output) { output = out; enter(); }
       if (ctl.status !== 'mode-select') setStatus('connected');
       resolveBridge();
@@ -280,6 +323,7 @@
         send(m); ledSent[cc] = key;
       }
       if (!ctl.sysex) return;
+      if (!ctl.ledError && Object.keys(knobSent).length < KNOBS) knobLeds();   // only after Mode Select cleared them: nothing per frame
       const lines = displayLines(v);
       if (now - lastDisplayAt < DISPLAY_MS || (lines[0] === linesSent[0] && lines[1] === linesSent[1])) return;
       lastDisplayAt = now;
@@ -310,6 +354,7 @@
         if (ctl.sysex) send(displayConfig(0x00));
         for (const cc of LOWER) { send([FLASH_CH, cc, COLOUR.off]); send([BUTTON_CH, cc, COLOUR.off]); }
         for (const cc of UPPER) send([BUTTON_CH, cc, COLOUR.off]);
+        if (ctl.sysex) for (let i = 0; i < KNOBS; i++) send(encoderLed(KNOB_CCS[0] + i, KNOB_RGB.off));
         send(DAW_OFF);
       }
       setStatus('off');
@@ -318,8 +363,8 @@
     return ctl;
   }
 
-  const api = { create, decode, forwarded, leds, displayLines,
-    MAP: { LOWER, UPPER, HOLD_CC, AUTO_HOLD_CC, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS, POT_CH, BRIDGE_CCS, BRIDGE_KEY, KNOB_CCS, SLOT_CCS } };
+  const api = { create, decode, forwarded, leds, displayLines, encoderLed, knobColours,
+    MAP: { KNOB_RGB, LED_RGB, SYSEX, LOWER, UPPER, HOLD_CC, AUTO_HOLD_CC, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS, POT_CH, BRIDGE_CCS, BRIDGE_KEY, KNOB_CCS, SLOT_CCS } };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MidiController = api;
 })(typeof window !== 'undefined' ? window : globalThis);
