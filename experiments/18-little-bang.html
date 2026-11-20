@@ -37,6 +37,14 @@
              tube, a new palette colour every bar, a rainbow sweep on the drop; each kick fires a light
              ring that reaches the IP on the next downbeat; the bass breathes and plucks the wires,
              the hats shimmer them, the snare flashes the magnets in the complementary colour.
+    beamline travel mode (the user, 20 Nov; 18-travel.js, off unless asked for, so the beamline above is unchanged):
+             ?speedKnob=N (the set: 4) or ?travel=1 [&speed=0..1]: the camera travels along the tube at a speed the
+             controller's knob N sets (clock.knob(N), #268; 0 stops, 1 = one lap a bar, eased, never a jump; ?speed
+             until the knob moves). The bunches still cross at the IP on every downbeat, wherever the camera is (the
+             fireball dims with the camera's nearness to the IP). A target point wanders by itself over tens of bars and
+             the view bends toward it with depth (clip space, nothing near the camera moves), so the far end of the tunnel
+             drifts across the screen. A thin steady plasma ray runs along the tube's axis ahead: a kick brightens and
+             thickens it a little (at most 3 a second), the bass breathes it; it never flows or streams.
   A small strip (bottom right) keeps 12's glueball spectrum: nothing below 1730 MeV, the gap.
   Not to scale: the fireball is drawn in femtometres (×0.045), the tracks in metres, and time
   is slowed so a collision lasts about a bar. The fireball is an analytic blast wave, not a
@@ -48,7 +56,9 @@
   {cascades, totals}, events, errors, camera {u, s, pos, offAxis, pipeR} (beamline), wakes [{bar, step,
   dir, entry, fireballR, cs, v, speed, tBeat}] and dijets [{bar, step, pT1, pT2, AJ, tBeat}] (no
   half-angle: QA fits it from the picture), bunchPos(bar, tSec), ringPoint(s), camS(u), wires {baseHue,
-  pulses, pulsePhase, wobbleAmp, breath, glowPx, clearance (in tube radii)}; events pulse / pulse-arrive.
+  pulses, pulsePhase, wobbleAmp, breath, glowPx, clearance (in tube radii)}; events pulse / pulse-arrive. Travel mode:
+  camera also has travel, speed (world units a second), knob, target {x, y}; ray {env, width, kick, breath, peaks, on};
+  fakeKnob(n, v | null) stands in for the controller's knob n.
   Modules: window.__modules (ISF-style inputs).
 -->
 <html lang="en">
@@ -118,6 +128,7 @@
 
 <script src="clock.js"></script>
 <script src="audio-in.js"></script>
+<script src="18-travel.js"></script>
 <script>
 'use strict';
 
@@ -288,9 +299,18 @@ function compile(type, src) {
   if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) fail('Shader error:\n' + gl.getShaderInfoLog(sh));
   return sh;
 }
+// travel mode's bend (18-travel.js): every shader that places points through uVP bends them in clip space toward uBend,
+// more with depth, so the far end of the view drifts to uBend (NDC) and nothing near the camera moves. uBend is 0 (never
+// set, or set to 0) outside travel mode, which leaves gl_Position exactly as before.
+const BEND_GLSL = `uniform vec2 uBend;
+vec4 bendClip(vec4 c) { c.xy += uBend * c.w * (1.0 - exp(-max(c.w, 0.0) / ${Travel.C.BEND_D.toFixed(1)})); return c; }`;
+const withBend = vs => (vs.includes('uniform mat4 uVP;')
+  ? vs.replace('uniform mat4 uVP;', 'uniform mat4 uVP;\n' + BEND_GLSL).replace(/gl_Position = uVP \* (vec4\([^;]*\));/g, 'gl_Position = bendClip(uVP * $1);') : vs);
+let bendNow = [0, 0];
+const setBend = prog => { if (prog.u.uBend) gl.uniform2f(prog.u.uBend, bendNow[0], bendNow[1]); };
 function program(vs, fs) {
   const p = gl.createProgram();
-  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, withBend(vs)));
   gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
   gl.linkProgram(p);
   if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail('Link error:\n' + gl.getProgramInfoLog(p));
@@ -582,18 +602,48 @@ function wireHue(n, u) {
   return ((a + d * k) % 360 + 360) % 360;
 }
 // kick light rings: launched from the camera at kick step i of the bar (u_k = i/16), at the IP (s = C) on the next downbeat
-function pulsesAt(u) {
+function pulsesAt(u, camAt = camS(u)) {   // camAt: travel mode's camera arclength (else today's camS(u))
   const out = [];
   for (let i = 0; i < 16 && out.length < 4; i++) {
     if (params.kick[i] !== 'x') continue;
     const uk = i / 16;
     if (u < uk) continue;
     const w = Math.sqrt((u - uk) / (1 - uk));
-    out.push({ step: i, ahead: (RING_C - camS(u)) * w, a: Math.min(1, (u - uk) * 160) });   // full within ~12 ms of the kick
+    out.push({ step: i, ahead: (RING_C - camAt) * w, a: Math.min(1, (u - uk) * 160) });   // full within ~12 ms of the kick
   }
   return out;
 }
 const wakesQA = [], dijetsQA = [];
+
+// ---------- travel mode's plasma ray (18-travel.js): a thin steady beam on the tube's axis ahead of the camera ----------
+// A white-lavender core and a violet halo (offset passes, as the neon wires), the same brightness all along it (fading in
+// past the camera and out far ahead): no texture, no flow. uI = the envelope (kick, bass), uOff the layer's pixel offset.
+const rayProg = program(`#version 300 es
+precision highp float;
+uniform mat4 uVP;
+uniform vec2 uOff;
+uniform float uCamS, uC, uLen, uI, uLayer;
+layout(location = 0) in vec3 aP;
+layout(location = 1) in float aS;
+out vec4 vC;
+void main() {
+  gl_Position = uVP * vec4(aP, 1.0);
+  gl_Position.xy += uOff * gl_Position.w;
+  float ds = mod(aS - uCamS, uC);
+  float f = smoothstep(0.5, 1.5, ds) * (1.0 - smoothstep(0.55 * uLen, uLen, ds));
+  vec3 col = uLayer < 0.5 ? vec3(0.92, 0.88, 1.0) : (uLayer < 1.5 ? vec3(0.55, 0.45, 1.0) * 0.3 : vec3(0.35, 0.25, 0.9) * 0.12);
+  vC = vec4(col * uI * f, 1.0);
+}`, ADD_FS);
+const rayBuf = dynBuffer([{ loc: 0, size: 3 }, { loc: 1, size: 1 }]);
+(function buildRay() {
+  const v = [], N = 1440;
+  for (let i = 0; i < N; i++) for (const s of [i / N * RING_C, (i + 1) / N * RING_C]) { const { p } = ringPoint(s); v.push(p[0], p[1], p[2], s); }
+  gl.bindBuffer(gl.ARRAY_BUFFER, rayBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+  rayBuf.count = v.length / 4;
+})();
+// travel mode's state: the camera arclength, the eased speed, the ray, the QA's stand-in knobs
+const travel = { on: false, s: null, speed: null, ray: Travel.rayCreate(), breath: 0, rayQA: null }, qaKnobs = new Map();
+const readKnob = n => (n ? (qaKnobs.has(n) ? qaKnobs.get(n) : Travel.knobOf(metronome, n)) : null);
 
 // post: HDR accumulation with decay (motion trails), bloom at quarter size, tone map
 const decayProg = program(FULL_VS, `#version 300 es
@@ -915,12 +965,25 @@ function draw(now) {
   const beam = sec.scene === 'beamline';
   let neonDraw = null;
   let eye, vp;
+  bendNow = [0, 0];
   if (beam) {
-    const u = bars - n, s = camS(u), here = ringPoint(s), ahead = ringPoint(s + 2.5);
+    const u = bars - n;
+    let s = camS(u), tq = null;
+    if (travel.on) {   // travel mode (18-travel.js): the camera rides the axis at the knob's eased speed; the view bends to the target
+      if (!travel.speed) travel.speed = Travel.speedCreate(params.speed);
+      const knob = readKnob(params.speedKnob), v = Travel.speedStep(travel.speed, knob, dt), vMax = RING_C / barSec;
+      if (travel.s === null) travel.s = ((camS(u) % RING_C) + RING_C) % RING_C;   // start where the camera is today
+      travel.s = ((travel.s + v * vMax * dt) % RING_C + RING_C) % RING_C;
+      s = travel.s;
+      const tg = Travel.targetAt(bars, params.seed);
+      bendNow = [tg.x, tg.y];
+      tq = { travel: true, speed: v * vMax, speedFrac: v, knob, target: tg };
+    }
+    const here = ringPoint(s), ahead = ringPoint(s + 2.5);
     eye = here.p;
     vp = mul4(perspective(1.15 + 0.06 * L.kick, W / H, 0.02, 80), lookAt(eye, ahead.p, [0, 1, 0]));
     // the eye is on the beam axis, so its distance from the pipe axis is 0 (< PIPE_R) the whole way in
-    qaState.camera = { u, s: ((s + RING_C / 2) % RING_C) - RING_C / 2, pos: eye, offAxis: 0, pipeR: PIPE_R, stopAt: -CAM_STOP };
+    qaState.camera = { u, s: ((s + RING_C / 2) % RING_C) - RING_C / 2, pos: eye, offAxis: 0, pipeR: PIPE_R, stopAt: -CAM_STOP, ...(tq || {}) };
   } else {
     const al = 0.75 + 0.45 * Math.sin(bars / 32 * 2 * Math.PI), D = 5.4 - 0.1 * L.kick;
     eye = [D * Math.cos(al), D * 0.32 + 0.4 * Math.sin(bars / 16 * 2 * Math.PI), D * Math.sin(al)];
@@ -938,7 +1001,7 @@ function draw(now) {
   gl.useProgram(decayProg.p); gl.drawArrays(gl.TRIANGLES, 0, 3);
   gl.blendFunc(gl.ONE, gl.ONE);
 
-  gl.useProgram(lineProg.p); gl.uniformMatrix4fv(lineProg.u.uVP, false, vp);
+  gl.useProgram(lineProg.p); gl.uniformMatrix4fv(lineProg.u.uVP, false, vp); setBend(lineProg);
   gl.uniform4f(lineProg.u.uColor, 0.25, 0.45, 0.9, 0.12 * fg * (1 + 0.5 * L.hat));
   if (!(QA_WIRES && beam)) { gl.bindVertexArray(detBuf.vao); gl.drawArrays(gl.LINES, 0, detBuf.count - (beam ? 2 : 0)); }   // no beam line through the camera
   if (QA_WIRES && beam && hud.style.display !== 'none') hud.style.display = 'none';
@@ -951,12 +1014,13 @@ function draw(now) {
     }
     // neon pipe wires and ring magnets
     const u = bars - n, sIdx = Math.floor(n / params.bars);
-    const baseDeg = wireHue(n, u), pulses = pulsesAt(u);
+    const camNow = travel.on ? travel.s : camS(u);   // travel mode: the pulses and the hue bands follow the travelling camera
+    const baseDeg = wireHue(n, u), pulses = pulsesAt(u, camNow);
     const sc = H / 1080, breath = 1 + 0.02 * bassEnv, wob = 0.03 * bassEnv, glowPx = 2.2 * sc * (0.7 + 0.6 * bassEnv);
     const beatPh = (bars * params.bpb) % 1, shift = 0.15 + 0.08 * Math.sin(2 * Math.PI * beatPh), halo = 0.9 + 0.25 * bassEnv;
-    const sweep = (bars * params.bpb) % 1, camNow = camS(u);
+    const sweep = (bars * params.bpb) % 1;
     gl.useProgram(neonProg.p); const U = neonProg.u;
-    gl.uniformMatrix4fv(U.uVP, false, vp);
+    gl.uniformMatrix4fv(U.uVP, false, vp); setBend(neonProg);
     gl.uniform1f(U.uT, tMus); gl.uniform1f(U.uBase, baseDeg / 360); gl.uniform1f(U.uBreath, breath); gl.uniform1f(U.uWob, wob);
     gl.uniform1f(U.uHat, L.hat); gl.uniform1f(U.uKick, L.kick); gl.uniform1f(U.uSnare, L.snare); gl.uniform1f(U.uDrop, sec.drop ? 1 : 0);
     gl.uniform1f(U.uSweep, sweep); gl.uniform1f(U.uCamS, camNow); gl.uniform1f(U.uC, RING_C); gl.uniform1f(U.uFg, 1);
@@ -970,11 +1034,33 @@ function draw(now) {
     // the inner halo 8 lines at glowPx, the outer 8 at 2.3 × glowPx (both swell with the bass)
     const ring8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.707, 0.707], [-0.707, 0.707], [0.707, -0.707], [-0.707, -0.707]];
     const layers = [[0, [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]], 1.0 * sc], [1, ring8, glowPx * 1.4], [2, ring8, glowPx * 3.2]];
+    // travel mode's plasma ray: kick = a short brighten and a little thicker, bass (a 0.8 s breath of the kick envelope) =
+    // a slow swell; the same all along it. Drawn with the wires (this frame only, never into the trails: no smear, no flow)
+    let rayLayers = null;
+    if (travel.on && !QA_WIRES) {
+      travel.breath += (bassEnv - travel.breath) * (1 - Math.exp(-dt / 0.8));
+      const R = Travel.rayStep(travel.ray, L.kick, travel.breath, dt);
+      const rw = sc * R.width;
+      rayLayers = [[0, [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]], 0.8 * rw], [1, ring8, 2.4 * rw], [2, ring8, 5.0 * rw]];
+      travel.rayQA = { on: true, env: R.env, width: R.width, kick: R.kick, breath: travel.breath, peaks: travel.ray.peaks.filter(t => t > travel.ray.t - 2).length,
+        uI: 0.35 * R.env, widthPx: 0.8 * rw };
+      travel.rayI = 0.35 * R.env;   // the core's line brightness: 0.35 at the cap (the wires' core is 0.55 and up)
+    } else travel.rayQA = { on: false };
     neonDraw = () => {
       gl.useProgram(neonProg.p); gl.bindVertexArray(neonBuf.vao);
       for (const [layer, offs, r] of layers) {
         gl.uniform1f(U.uGlow, layer);
         for (const [ox, oy] of offs) { gl.uniform2f(U.uOff, ox * r * 2 / W, oy * r * 2 / H); gl.drawArrays(gl.LINES, 0, neonBuf.count); }
+      }
+      if (rayLayers) {
+        const RU = rayProg.u;
+        gl.useProgram(rayProg.p); gl.bindVertexArray(rayBuf.vao);
+        gl.uniformMatrix4fv(RU.uVP, false, vp); setBend(rayProg);
+        gl.uniform1f(RU.uCamS, camNow); gl.uniform1f(RU.uC, RING_C); gl.uniform1f(RU.uLen, Travel.C.RAY_LEN); gl.uniform1f(RU.uI, travel.rayI);
+        for (const [layer, offs, r] of rayLayers) {
+          gl.uniform1f(RU.uLayer, layer);
+          for (const [ox, oy] of offs) { gl.uniform2f(RU.uOff, ox * r * 2 / W, oy * r * 2 / H); gl.drawArrays(gl.LINES, 0, rayBuf.count); }
+        }
       }
     };
     gl.useProgram(lineProg.p);
@@ -1018,11 +1104,13 @@ function draw(now) {
       const fade = t < ev.fb.thS ? 1 : 1 - (t - ev.fb.thS) / 0.15;
       // beamline (user: "the explosion is a bit too bright and blinding"): the camera sits 0.9 from the IP, so the
       // fireball fills the view; there it is dimmer, its points smaller, it swells in over 80 ms and the flash is a quarter
-      const near = beam ? 0.3 * Math.min(1, t / 0.08) : 1;
+      // travel mode: the camera may cross the IP at any time, so the fireball dims further the closer it is (to 15 %)
+      const ipDim = beam && travel.on ? Math.max(0.15, Math.min(1, (Math.hypot(eye[0], eye[1], eye[2]) - 0.3) / 1.2)) : 1;
+      const near = beam ? 0.3 * Math.min(1, t / 0.08) * ipDim : 1;
       const glow = Math.min(60, (T / T_C) ** 4) * 0.012 * (40000 / FIRE_N) * fade * near;
-      flash = Math.max(flash, (ev.drop ? 0.3 : 0.12) * Math.min(1, (T / T_C) ** 4 / 40) * fade * Math.exp(-t / 0.12) * (beam ? 0.25 * Math.min(1, t / 0.08) : 1));
+      flash = Math.max(flash, (ev.drop ? 0.3 : 0.12) * Math.min(1, (T / T_C) ** 4 / 40) * fade * Math.exp(-t / 0.12) * (beam ? 0.25 * Math.min(1, t / 0.08) * ipDim : 1));
       gl.useProgram(fireProg.p);
-      gl.uniformMatrix4fv(fireProg.u.uVP, false, vp);
+      gl.uniformMatrix4fv(fireProg.u.uVP, false, vp); setBend(fireProg);
       gl.uniform1ui(fireProg.u.uSeed, ev.seed);
       gl.uniform3f(fireProg.u.uAxW, A.x * FBS, A.out * FBS, A.in * FBS);
       gl.uniform3fv(fireProg.u.uEin, ein); gl.uniform3fv(fireProg.u.uEout, eout);
@@ -1105,7 +1193,7 @@ function draw(now) {
   if (sprites.length) {
     for (let i = 3; i < sprites.length; i += 7) { sprites[i] *= fg * params.gain; sprites[i + 1] *= fg * params.gain; sprites[i + 2] *= fg * params.gain; }
     gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(sprites), gl.DYNAMIC_DRAW);
-    gl.useProgram(spriteProg.p); gl.uniformMatrix4fv(spriteProg.u.uVP, false, vp); gl.uniform1f(spriteProg.u.uScale, H / 160);
+    gl.useProgram(spriteProg.p); gl.uniformMatrix4fv(spriteProg.u.uVP, false, vp); setBend(spriteProg); gl.uniform1f(spriteProg.u.uScale, H / 160);
     gl.bindVertexArray(spriteBuf.vao); gl.drawArrays(gl.POINTS, 0, sprites.length / 7);
   }
   if (neonDraw) neonDraw();
@@ -1140,9 +1228,10 @@ function draw(now) {
   qaState.scene = sec.scene; qaState.bar = n; qaState.drawnTracks = drawn;
   if (QA_WIRES && beam) { if (!ov.dataset.qaw) { ov.dataset.qaw = 1; octx.clearRect(0, 0, ov.width, ov.height); } }
   else if (now - lastOv > 66) { lastOv = now; delete ov.dataset.qaw; drawOverlay(sec, L); }
-  Object.assign(window.__qa, { scene: sec.scene, bars, drop: sec.drop, energy: sec.energy, drawnTracks: drawn, render: [W, H], screen: [CW, CH],
+  // sectionEnergy, not energy: AudioIn.qa makes __qa.energy a getter (the music's energy), and assigning to it threw every frame
+  Object.assign(window.__qa, { scene: sec.scene, bars, drop: sec.drop, sectionEnergy: sec.energy, drawnTracks: drawn, render: [W, H], screen: [CW, CH],
     lastEvent: qaState.lastEvent && summary(qaState.lastEvent), lastJet: qaState.lastJet, strings: stringsQA(), latency: metronome.latency(),
-    camera: qaState.camera, wakes: wakesQA.slice(), dijets: dijetsQA.slice(), wires: wiresQA });
+    camera: qaState.camera, wakes: wakesQA.slice(), dijets: dijetsQA.slice(), wires: wiresQA, ray: beam ? travel.rayQA : { on: false } });
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
   if (now - lastHud > 200) {
@@ -1154,7 +1243,7 @@ function draw(now) {
 }
 function setTrackUniforms(vp, ev, t, mode, fg) {
   const u = trackProg.u, { ein, eout } = basis(ev.psi), A = fireballAxes(ev.fb, ev.fb.th);
-  gl.uniformMatrix4fv(u.uVP, false, vp);
+  gl.uniformMatrix4fv(u.uVP, false, vp); setBend(trackProg);
   gl.uniform1ui(u.uSeed, ev.seed);
   gl.uniform1f(u.uT, t); gl.uniform1f(u.uTrail, TRAIL_DT); gl.uniform1i(u.uK, TRAIL_K);
   gl.uniform1i(u.uMode, mode); gl.uniform1i(u.uJetN, JET_N);
@@ -1218,6 +1307,9 @@ window.__qa = {
   helix, jetSums, fireballAt: (bar, tfm) => { const ev = eventFor(bar); return ev ? { axes: fireballAxes(ev.fb, tfm), T: fireballT(ev.fb, tfm) } : null; },
   loss: () => params.loss,
   bunchPos, ringPoint, camS, ringR: RING_R, pipeR: PIPE_R, calR: CAL_R, cs: CS,
+  // travel mode: a stand-in for the controller's knob n (v null: the real one again), the target path
+  fakeKnob: (n, v) => { const k = Math.round(+n); if (!(k >= 1 && k <= 8)) return false; if (v === null || v === undefined) qaKnobs.delete(k); else qaKnobs.set(k, Math.max(0, Math.min(1, +v))); return true; },
+  targetAt: (b, seed = params.seed) => Travel.targetAt(b, seed),
 };
 // clock port: the shared hooks (beatLog, frame, beatLanes, audioIn); __qa.events stays this page's sync log
 // (perfHeard/perfDrawn, check-events) followed by the clock's hits and jumps for the shared beat-match row
@@ -1229,6 +1321,10 @@ for (const k of ['bars', 'bpm', 'n', 'gain', 'tau', 'loss', 'lead', 'seed']) { c
 if (q('res') === 'native') params.res = 'native';
 params.n = Math.max(1000, Math.min(1000000, Math.round(params.n)));
 params.muted = q('muted') === '1';
+// travel mode (beamline): ?speedKnob=1..8 or ?travel=1, ?speed=0..1 (the speed until the knob moves; default 0.5)
+params.speedKnob = (() => { const k = parseInt(q('speedKnob'), 10); return k >= 1 && k <= 8 ? k : 0; })();
+params.speed = (() => { const v = parseFloat(q('speed')); return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : Travel.C.SPEED_DEFAULT; })();
+travel.on = params.speedKnob > 0 || q('travel') === '1';
 sync();
 requestAnimationFrame(frame);
 </script>

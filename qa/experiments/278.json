@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "id": "18-little-bang",
+  "note": "18 beamline travel mode (speed knob, wandering target, plasma ray): stills of today's beamline and travel at speed 0, 0.4 and 1 for the user's pick",
+  "params": { "scene": "beamline" },
+  "resolutions": ["1080p"],
+  "warmup": 4,
+  "seconds": 8,
+  "variants": [
+    { "name": "today", "params": {} },
+    { "name": "travel-stop", "params": { "travel": "1", "speed": 0 } },
+    { "name": "travel-slow", "params": { "travel": "1", "speed": 0.4 } },
+    { "name": "travel-fast", "params": { "travel": "1", "speed": 1 } }
+  ],
+  "values": { "travel": "__qa.camera && __qa.camera.travel === true", "speed": "__qa.camera ? (__qa.camera.speed || 0) : 0", "rayEnv": "__qa.ray ? (__qa.ray.env || 0) : 0", "targetX": "__qa.camera && __qa.camera.target ? __qa.camera.target.x : 0" },
+  "gates": [
+    { "metric": "errors", "max": 0 },
+    { "metric": "value.travel", "equals": false, "variant": "today", "name": "without travel the beamline is today's" },
+    { "metric": "value.travel", "equals": true, "variant": ["travel-stop", "travel-slow", "travel-fast"], "name": "travel mode on" },
+    { "metric": "value.speed", "max": 0.001, "variant": "travel-stop", "name": "speed 0: the camera stands" },
+    { "metric": "value.speed", "min": 30, "variant": "travel-fast", "name": "speed 1: about a lap a bar" },
+    { "metric": "value.rayEnv", "max": 1, "variant": ["travel-stop", "travel-slow", "travel-fast"], "name": "the ray under its cap" },
+    { "metric": "clip", "max": 1, "name": "no white blow-out (the fireball dims near the camera)" }
+  ],
+  "record": { "stills": 2 },
+  "debug": { "console": true }
+}
