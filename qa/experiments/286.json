@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "id": "18-little-bang",
+  "note": "#286 18 beat strength: stills of the set's beamline (travel mode, as set.json plays it) at beat gain 0 (no beat reaction), 1 (today) and 3 (the knob's top, 2 here), for the user's pick",
+  "params": { "scene": "beamline", "travel": 1 },
+  "resolutions": ["1080p"],
+  "warmup": 4,
+  "seconds": 8,
+  "variants": [
+    { "name": "g0", "params": { "beatGain": 0 } },
+    { "name": "g1", "params": {} },
+    { "name": "g3", "params": { "beatGain": 3 } }
+  ],
+  "values": { "g": "__qa.beat ? __qa.beat.g : -1", "kick": "__qa.beat ? __qa.beat.kick : -1", "snare": "__qa.beat ? __qa.beat.snare : -1", "hat": "__qa.beat ? __qa.beat.hat : -1", "scene": "__qa.scene", "rayOn": "__qa.ray && __qa.ray.on ? 1 : 0" },
+  "gates": [
+    { "metric": "errors", "max": 0 },
+    { "metric": "value.scene", "equals": "beamline", "name": "the set's beamline scene" },
+    { "metric": "value.rayOn", "equals": 1, "name": "travel mode (the ray) on" },
+    { "metric": "value.g", "equals": 0, "variant": "g0", "name": "?beatGain=0: g 0" },
+    { "metric": "value.g", "equals": 1, "variant": "g1", "name": "no knob: g 1 (as today)" },
+    { "metric": "value.g", "equals": 2, "variant": "g3", "name": "?beatGain=3: g 2 (the cap here)" },
+    { "metric": "value.kick", "max": 0, "variant": "g0", "name": "g 0: no kick in the pictures" },
+    { "metric": "value.kick", "max": 2, "name": "the kick at most 2x" },
+    { "metric": "value.snare", "max": 1, "name": "the snare never above today" },
+    { "metric": "value.hat", "max": 1, "name": "the hats never above today" }
+  ],
+  "record": { "stills": 2 },
+  "debug": { "console": true }
+}

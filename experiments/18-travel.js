@@ -13,6 +13,15 @@
 // ray: a thin steady beam on the tube's axis ahead of the camera. Its brightness env = BASE + BASS·breath + KICK·k, never
 //   over CAP; k jumps to 1 on a kick (a rising edge of the kick envelope past 0.5) at most once every MIN_GAP s (<= 3
 //   peaks a second) and decays with TAU_K; the width swells with k and the breath. No flow, no texture along it.
+// beat strength (the user, 20 Nov: "all scenes react too weakly to the beat"; VIZ research's shared beat gain): g from
+//   clock.beatGain(?beatKnob, default 1) (untouched or no getter = 1, today), or ?beatGain fixed, at most BEAT_G_MAX
+//   (2: the wires' kick glow 0.55(1 + 0.5 kick) then peaks at 2x, the FOV kick at 0.12 under its 0.15 cap). The page
+//   draws from beatLanes(g, L): kick x g; snare and hat x min(g, 1) (the dipoles' snare light 0.8 + 2.4 snare is
+//   already 4x today, and hats come 4 a second: turning up never flashes harder than today). The 0.6-a-kick glows (string
+//   sprites, the wires' glow width) scale by lightScale(g) = min(1, BEAT_LIGHT_MAX / g) (at most 2x), the halo width by
+//   1 / max(1, g) (at most today's +0.25): scaled, never clamped, so they peak with the kick and have no flat top. The
+//   travel speed (its knob), the clock, audio-in's lanes, the bunch crossings and the sync log are untouched. At g = 1
+//   every level is today's.
 (function (root) {
   'use strict';
   const C = {
@@ -20,6 +29,7 @@
     TARGET_X: 0.3, TARGET_Y: 0.2, PERIODS: [23, 37, 29, 41], BEND_D: 6,
     RAY_BASE: 0.45, RAY_BASS: 0.2, RAY_KICK: 0.35, RAY_CAP: 1.0, RAY_TAU_K: 0.12, RAY_MIN_GAP: 1 / 3,
     RAY_W_KICK: 0.35, RAY_W_BASS: 0.1, RAY_LEN: 45,
+    BEAT_G_MAX: 2, BEAT_HAT_G_MAX: 1, BEAT_SNARE_G_MAX: 1, BEAT_LIGHT_MAX: 1 / 0.6,
   };
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x)), clamp01 = x => clamp(x, 0, 1);
   // the page's PCG (the same hash the shaders use)
@@ -63,7 +73,28 @@
     const env = Math.min(C.RAY_CAP, C.RAY_BASE + C.RAY_BASS * b + C.RAY_KICK * s.k);
     return { env, width: 1 + C.RAY_W_KICK * s.k + C.RAY_W_BASS * b, kick: s.k, peak };
   }
-  const api = { C, pcg, knobOf, speedCreate, speedStep, targetAt, rayCreate, rayStep };
+  // the beat gain g: fixed (?beatGain, a number) wins, else clock.beatGain(n) (VIZ dev's PR A), else 1
+  function beatGainOf(clock, n, fixed) {
+    if (fixed !== null && fixed !== undefined && fixed !== '' && Number.isFinite(+fixed)) return clamp(+fixed, 0, C.BEAT_G_MAX);
+    if (!clock || typeof clock.beatGain !== 'function') return 1;
+    let g = null; try { g = clock.beatGain(n); } catch (e) { g = null; }
+    return g === null || g === undefined || !Number.isFinite(+g) ? 1 : clamp(+g, 0, C.BEAT_G_MAX);
+  }
+  // the lanes the page draws from at gain g: a copy of L with kick x g, snare and hat x min(g, 1) (L itself untouched)
+  function beatLanes(g, L) {
+    const gg = Number.isFinite(g) ? clamp(g, 0, C.BEAT_G_MAX) : 1, hg = Math.min(C.BEAT_HAT_G_MAX, gg), sg = Math.min(C.BEAT_SNARE_G_MAX, gg);
+    const v = x => (Number.isFinite(x) ? x : 0), out = Object.assign({}, L);
+    out.kick = v(L && L.kick) * gg; out.snare = v(L && L.snare) * sg; out.hat = v(L && L.hat) * hg;
+    out.beat = { g: gg, kick: out.kick, snare: out.snare, hat: out.hat };
+    return out;
+  }
+  // the glow caps at gain g (scaled, not clamped: the shape of the envelope and its peak frame stay the kick's; at g <= 1
+  // every value is today's bit for bit): lightScale for the 0.6-a-kick glows, haloOf / glowOf the wires' bass terms
+  const gOf = g => (Number.isFinite(g) ? clamp(g, 0, C.BEAT_G_MAX) : 1);
+  const lightScale = g => Math.min(1, C.BEAT_LIGHT_MAX / gOf(g));
+  const haloOf = (bass, g) => 0.9 + 0.25 * bass / Math.max(1, gOf(g));
+  const glowOf = (bass, g) => 0.7 + 0.6 * bass * lightScale(g);
+  const api = { C, pcg, knobOf, speedCreate, speedStep, targetAt, rayCreate, rayStep, beatGainOf, beatLanes, lightScale, haloOf, glowOf };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.Travel = api;
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this));
