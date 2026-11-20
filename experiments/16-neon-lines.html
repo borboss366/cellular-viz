@@ -21,6 +21,10 @@
   forceDrop() (panic.js; the drop is bar 24 of each 32-bar section).
   ?macro1..4=0..1, ?variant=auto|manual, ?u=a,b,c (fixed build-up), ?chart=affine|allFinite, ?startBar=, ?glides=0,
   ?seed=, ?bpm=, ?film=, ?filmThickness=, ?clipRadius=, ?diamondSize=, ?tails=, ?labels=0, ?muted=1.
+  Beat strength (the user, 20 Nov): ?beatKnob=N (default 1) reads clock.beatGain(N): untouched = 1 (as before), bottom
+  = 0 (no beat pulse), centre 1, top 3; ?beatGain=0..3 fixes g (stills). g scales only the beat pulse (beam width, halo
+  and intensity, diamond size and glow), capped; not the flare, the gold flashes or the flash guards (pulseK, speed
+  fade). __qa.beat, __qa.fakeBeatGain(g | null).
 -->
 <html lang="en">
 <head>
@@ -102,7 +106,7 @@
 <script src="clock.js"></script>
 <script src="audio-in.js"></script>
 <script type="module">
-import scene, { MACROS, TRIGGERS, holdOf, LEVELS, levelOf } from './16-neon-lines.mjs';
+import scene, { MACROS, TRIGGERS, holdOf, LEVELS, levelOf, beatGainOf } from './16-neon-lines.mjs';
 const $ = id => document.getElementById(id);
 const query = new URLSearchParams(location.search);
 const params = { bpm: 120, bpb: 4, muted: false, seed: 1, variant: 'auto', u: null, chart: 'affine', startBar: 0, glides: true, labels: true,
@@ -174,7 +178,12 @@ const controls = () => ({
   macro: params.macro, intensity: params.intensity, speed: params.speed, speedMul: Math.pow(4, params.speed - 0.5), hue: params.hue, opacity: params.opacity,
   colourSpeed: 1, variant: params.variant, u: params.u, chart: params.chart, film: params.film, thickness: params.filmThickness,
   clipRadius: params.clipRadius, diamondSize: params.diamondSize, tails: params.tails, glides: params.glides,
+  beatGain: qaBeatG !== null ? qaBeatG : beatGainOf(metronome, params.beatKnob, params.beatGain),
 });
+// the beat gain: ?beatKnob=N (default 1) for clock.beatGain(N), ?beatGain=0..3 a fixed g (stills), QA's stand-in g
+let qaBeatG = null;
+{ const n = parseInt(query.get('beatKnob'), 10), g = parseFloat(query.get('beatGain'));
+  params.beatKnob = n >= 1 && n <= 8 ? n : 1; params.beatGain = Number.isFinite(g) ? Math.max(0, Math.min(3, g)) : null; }
 window.__modules = { '16-neon-lines': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
 
 // ---------- canvas, scene ----------
@@ -229,7 +238,8 @@ function draw(now) {
   const gl_ = scene.qa.glides;
   while (glidesSeen < gl_.length) { const g = gl_[glidesSeen++]; logEvent({ type: g.cause === 'drop' ? 'drop' : 'glide', beat: g.beat, cycle: g.type, tBeat: stepTime(Math.round(g.beat * 4 - stepOffset)) }, now); }
   labels(v);
-  Object.assign(window.__qa, { beats, bars: beats / bpb, bpm: params.bpm, view: v, live: scene.qa.live, metrics: scene.qa.metrics });
+  Object.assign(window.__qa, { beats, bars: beats / bpb, bpm: params.bpm, view: v, live: scene.qa.live, metrics: scene.qa.metrics,
+    beat: { ...(scene.qa.metrics.beat || {}), knob: params.beatKnob, fixed: params.beatGain, fake: qaBeatG } });
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
   if (now - lastHud > 200) {
@@ -244,6 +254,8 @@ function draw(now) {
 const expose = o => { for (const [k, d] of Object.entries(Object.getOwnPropertyDescriptors(o))) Object.defineProperty(window.__qa, k, { ...d, configurable: true, enumerable: true }); };
 expose({
   errors, events, setMacro, pressTrigger, triggers: TRIGGERS,
+  // the beat gain: a stand-in g for tests (null: clock.beatGain(?beatKnob) again)
+  fakeBeatGain: g => { qaBeatG = g === null || g === undefined || !Number.isFinite(+g) ? null : Math.max(0, Math.min(3, +g)); return qaBeatG; },
   get macros() { return MACROS.map((m, i) => ({ slot: m.slot, name: m.name, label: m.label, value: params.macro[i], default: m.default, shown: macroText(i) })); },
   get triggerLog() { return scene.qa.triggerLog; }, triggerEnv: scene.qa.triggerEnv,
   check: () => scene.qa.truths(), truths: () => scene.qa.truths(),
