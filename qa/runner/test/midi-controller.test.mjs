@@ -469,7 +469,7 @@ test('encoder LEDs: the SysEx bytes, the colours, and which knobs light per slot
   const SET = JSON.parse(fs.readFileSync(path.join(REPO, 'experiments/set.json'), 'utf8'));
   const by = page => SET.scenes.find(s => s.page === page);
   const lit = M.knobColours({ A: { controls: SlotLib.controls(SET, by('16-hodge-kaleidoscope.html'), 'A') }, B: { controls: SlotLib.controls(SET, by('24-paint-pour.html'), 'B') } });
-  assert.deepEqual(lit, [A, A, A, off, B, B, off, off]);
+  assert.deepEqual(lit, [A, A, A, off, B, B, B, off], 'Paint Pour in B: beat 5, pulse 6, tilt 7');
   assert.ok(SetLib.buildUrl(SET, by('24-paint-pour.html')).includes('pulseKnob=2'));
 });
 
