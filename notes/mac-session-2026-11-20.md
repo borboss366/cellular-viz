@@ -45,6 +45,8 @@ which is after bd886e6. Background: notes/mac-session-2026-11-18.md, notes/mac-s
 ## Problems
 - **Hodge stuck after switching slot B to it:** right after the switch the hexagons did not travel, they shook on the spot (not a full freeze). It came back to normal once a knob was moved. Looks like a maths glitch (perhaps a knob value / state not set until the first knob message). Not fixed; for the box.
 
+- **The conductor shows the wrong track (part 2, evening):** the conductor's track label named one track while a different track was playing (names left out, rule R9). Not investigated; for the box: where the conductor's label comes from and when it updates.
+
 ## Requests from the user (for the box)
 - LCXL3: light the scene-change buttons (3/4 slot A, 7/8 slot B) purple, so the active buttons stand out like the knob rings.
 - Hodge beat strength: the reaction is only more or less visible at knob 100; make it about 4x stronger.
@@ -58,3 +60,27 @@ which is after bd886e6. Background: notes/mac-session-2026-11-18.md, notes/mac-s
 - Little Bang beat strength (#286 merged on main 3be539d; not tried tonight).
 - The rest of the user's steps (the paste was cut off in Part 3 step 6): OBS/Resolume slots (CV-A / CV-B), EQ
   calibration, video A (route delay at +140), video B (kick vs flash).
+
+## Part 2 (evening)
+
+### Part 1: start
+| Step | Result |
+|---|---|
+| 1 Reload conductor, profile "home" | PASS: "home" survives the reload; it shows **+143 ms** (the user had set 143, not 140, in part 1) |
+| 2 Reload both slots | PASS: both back on the beat (A Hodge, B Lenia) |
+| 3 Knobs 1 and 5 to the middle | PASS: `knobs 1-8: 50 - - - 50 - - -`; `slot knobs: A (btn 3/4, knobs 1-4): 1 beat . 2 dive . 3 glint \| B (btn 7/8, knobs 5-8): 5 beat` |
+
+### Part 2: Hodge stuck after a switch
+| Step | Result |
+|---|---|
+| B: Lenia -> Hodge with button 8 (3 or 4 presses), no knob touched (steps 1-4) | **Glitch seen, short:** for a fraction of a second right after the switch. The user's impression: "the beats accumulate and then get processed all at once" (a burst of catch-up, not a long shake this time) |
+| B: Console after the switch (step 5) | empty (no errors, no warnings) |
+| B: state after the switch, before any knob (step 6) | `metronome` is not a global in Hodge (module const), so the brief's knobs command gives "n/a". Output: `{"beat":{"g":1.008688014075748,"knob":5,"fixed":null,"fake":null,"kickSize":0.0026252633254184622,"pop":0.004409270862107646,"breath":0.02017376028151496,"glow":0.030628072129882056,"hueG":1.008688014075748},"knobs":["n/a","n/a","n/a","n/a","n/a","n/a","n/a","n/a"]}`. So beatKnob = 5 (slot B) and g = 1.009 (knob 5 = 50, about the middle): the beat gain looks right. Object.keys(__qa) has 66 keys, among them: beat, dive, knobs, nobeat, clockLate, beatLog, sharedClock, beatWeight, fakeKnob, fakeBeatGain |
+| B: after a knob move (step 7) | Output (the brief's command again): `{"beat":{"g":3,"knob":5,"fixed":null,"fake":null,"kickSize":0.03700832930511042,"pop":0.06946437239674451,"breath":0.06,"glow":0.43176384189295486,"hueG":2},"knobs":["n/a",...]}`. g = 3 means knob 5 was at the top at that moment (the user asked "knob 5?" just before) |
+| B: Hodge after the knob moves | Normal; knob 6 (dive in slot B) "dives quite nicely". The glitch had already passed (it lasted a fraction of a second), so this run can't show whether a knob move is what ends it |
+| A: Lenia -> Hodge with button 4 (step 8) | **Glitch seen, and the user found a pattern: the more scenes pass before Hodge, the longer the glitch.** slot.js removes the old scene's frame on a switch (each scene loads fresh), so this is not a hidden frame piling up beats. A guess for the box: the fresh Hodge catches up on something that grows with time since the slot opened or the clock started (e.g. stepping through all missed beats or morphs from 0, a little per frame) |
+| A: Hodge state during the glitch | `{"beats":1889.6086124482235,"bars":472.4021531120559,"morph":1,"morphBeats":1,"idx":198,"pop":1,"clockLate":{"late":0,"lateMaxMs":0,"maxGapMs":19.3,"lookAheadMs":100}}`. **idx = 198 on a page that loaded seconds before**: Hodge had stepped through 198 shape changes. Likely cause (read from the code, not changed): 16-hodge-kaleidoscope.html schedStep() returns at most one change per frame and sets s.next only on the first frame. If that first frame sees a small `beats` (before the shared clock's beat count arrives) and the next frames see ~1890, the clock did not jump *back*, so there is no reset, and the scene then fires one shape change per frame until s.next catches up with ~1890 beats. A new shape every frame = the shake. The catch-up takes about (beats since the clock started) / (hold beats) frames, so it grows the longer the set runs, which matches the user's "the more scenes pass, the longer the glitch". A change of hold (shapeRate) re-aligns s.next to now, which may be why a knob move seemed to end it on 20 Nov. Fix idea for the box: also reset the schedule when the clock jumps *forward* by more than a hold |
+| A: Hodge state after the glitch, calm | `{"beats":2043.2498629021482,"bars":510.81246572553704,"morph":1,"morphBeats":1,"idx":920,"pop":0.02985423505169318,"clockLate":{"late":0,"lateMaxMs":0,"maxGapMs":19.3,"lookAheadMs":100}}`. idx went from 198 to 920 while beats went from 1890 to 2043 (+153). So about 720 shape changes in about 150 beats: the page kept firing changes far faster than one per hold, which fits the catch-up |
+| A: Hodge state ~30 s later, no switch | `{"beats":2117.6256960184032,"bars":529.4064240046008,"morph":1,"morphBeats":1,"idx":955,"pop":0.00857172987554947,"clockLate":{"late":0,"lateMaxMs":0,"maxGapMs":19.3,"lookAheadMs":100}}`. +35 changes in +74 beats = one change per ~2 beats: the normal rate once caught up. **Summary of the three readings:** the catch-up ran at hundreds of changes per 150 beats, then the normal rate. Total changes ≈ beats / 2 (955 vs 2118 / 2 = 1059; the gap fits a first frame at a small, non-zero beat count). clockLate stayed 0 throughout: the clock was fine, the scene's own schedule was not |
+| B: knob 5 moved before the switch to Hodge (step 9) | **Shakes anyway.** Moving the beat knob first does not prevent it (as expected from the cause above). The user took a screenshot (Desktop, 19:52, kept on the Mac, not in git): octagons with stacked, ghosted outlines and smeared trails, as if many shapes were drawn over each other in quick succession |
+| Other scenes | The user: **all scenes seem to have this switch glitch; Hodge shows it most. Riemann Ribbon also shook quite intensely after a switch.** The same one-change-per-frame schedule (`next === null` set only on the first frame) is in 16-neon-lines.mjs (and 17-bsd-skater, 19-skate-park, not in the set). Riemann and the others don't use it, so their shake may have a related but different catch-up: for the box to check every scene for work that grows with the clock's beat count at load |

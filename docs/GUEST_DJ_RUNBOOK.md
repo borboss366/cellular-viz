@@ -114,6 +114,7 @@ full (the set's pulse=1), so beat knob 1 / 5 alone shows its beat; turning knob 
 (down = no pulse).
 Before the show: set knobs 1 and 5 to the middle. The knobs are absolute: the first touch jumps to where the knob is,
 so a knob left fully down turns the beat off at the first touch.
+After a scene switch, a scene knob acts only after you touch it (the dive, glint, pulse and speed knobs; not the beat knob).
 The beat knob works on a scene once that scene has been updated for it (the VIZ pages scene PRs); until then the
 scene ignores it.
 The knob rings show the same: slot A's active knobs light blue, slot B's orange, unused knobs stay dark (the conductor

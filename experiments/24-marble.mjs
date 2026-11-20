@@ -287,10 +287,49 @@ export const beatPulse = beats => { const ph = beats - Math.floor(beats); return
 // ?pulseKnob=N (1..8): the pulse amount from the controller's top-row knob N, which the conductor publishes on the shared
 // clock (#268: clock.knob(n), 0..1, or null until that knob has moved). Until it moves, without that getter (before
 // #268, or another clock source), or with no pulseKnob, the amount is ?pulse (fallback) as before.
+// Pick-up (the user's Mac session, 20 Nov: a knob left by the last scene in the slot acted at once on the next one):
+// with a clock that has its knobs list, the knob reads through pickup(), as 16-dive.js: a value already there when the
+// first knob values reached the page counts as not moved (?pulse) until the knob moves by more than PICK_EPS, so knob 2
+// left at 0 by Hodge's dive does not switch the pulse off on arrival. QA: ?qaClockKnobs=2:0 stands in for the stored knobs.
+export const PICK_EPS = 0.02;
+export const pickupCreate = () => ({ snap: null, live: {} });
+const picks = new WeakMap(), clampU = x => Math.max(0, Math.min(1, x));
+const QA_KNOBS = (() => {
+  try {
+    const m = /[?&]qaClockKnobs=([^&#]*)/.exec(String((globalThis.location && globalThis.location.search) || ''));
+    if (!m) return null;
+    const a = new Array(8).fill(null);
+    for (const kv of decodeURIComponent(m[1]).split(',')) { const [n, v] = kv.split(':').map(Number); if (n >= 1 && n <= 8 && Number.isFinite(v)) a[n - 1] = clampU(v); }
+    return a;
+  } catch (e) { return null; }
+})();
+export function pickup(p, n, knobs) {
+  const k = Math.round(+n);
+  if (!p || !(k >= 1 && k <= 8) || !Array.isArray(knobs)) return null;
+  const val = x => (x !== null && x !== undefined && Number.isFinite(+x) ? clampU(+x) : null);
+  if (p.snap === null) {   // the values the page found on arrival: the last scene's knobs
+    if (!knobs.some(x => val(x) !== null)) return null;
+    p.snap = Array.from({ length: 8 }, (_, i) => val(knobs[i]));
+  }
+  const v = val(knobs[k - 1]);
+  if (p.live[k]) return v;
+  if (v === null) return null;
+  const v0 = p.snap[k - 1];
+  if (v0 === null || Math.abs(v - v0) > PICK_EPS) { p.live[k] = true; return v; }
+  return null;
+}
+export const pickupState = clock => { const p = clock && picks.get(clock); return p ? { snap: p.snap ? p.snap.slice() : null, live: Object.keys(p.live).map(Number) } : null; };
 export function pulseAmount(clock, knob, fallback = 0) {
   const n = Math.round(+knob);
   if (n >= 1 && n <= 8 && clock && typeof clock.knob === 'function') {
-    let v = null; try { v = clock.knob(n); } catch (e) { v = null; }
+    let all = QA_KNOBS;
+    if (!all) { try { all = Array.isArray(clock.knobs) ? clock.knobs : null; } catch (e) { all = null; } }
+    let v = null;
+    if (all) {   // through the pick-up
+      let p = picks.get(clock);
+      if (!p) { p = pickupCreate(); picks.set(clock, p); }
+      v = pickup(p, n, all);
+    } else { try { v = clock.knob(n); } catch (e) { v = null; } }
     if (v !== null && v !== undefined && Number.isFinite(+v)) return Math.max(0, Math.min(1, +v));
   }
   return Number.isFinite(+fallback) ? Math.max(0, Math.min(1, +fallback)) : 0;
