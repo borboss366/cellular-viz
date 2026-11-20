@@ -115,11 +115,12 @@ so a knob left fully down turns the beat off at the first touch.
 The beat knob works on a scene once that scene has been updated for it (the VIZ pages scene PRs); until then the
 scene ignores it.
 The knob rings show the same: slot A's active knobs light blue, slot B's orange, unused knobs stay dark (the conductor
-needs the SysEx permission; without it the knobs still work, only the rings stay dark).
+needs the SysEx permission; without it the knobs still work, only the rings stay dark). The scene-change buttons (upper
+3 / 4 for slot A, 7 / 8 for slot B) light a steady purple whenever the conductor has the controller.
 1-minute LED check on the Mac: with the LCXL3 connected and the conductor and both slot windows open, look at the top
 knob row. Slot A starts on Hodge: knobs 1-3 blue; press upper button 4 (Lenia): only knob 1 stays blue. Slot B starts
 on Lenia: knob 5 orange; press upper button 8 (Paint Pour): knobs 5-6 orange; press 8 twice more (EQ Calibrate): knobs
-5-8 dark. If no ring lights at all, allow SysEx for the conductor (the lock icon in Chrome's address bar), reload it,
+5-8 dark. Upper buttons 3, 4, 7 and 8 are purple the whole time (1, 2, 5 and 6 are not). If no ring lights at all, allow SysEx for the conductor (the lock icon in Chrome's address bar), reload it,
 and tell Dev; the show works without the rings.
 
 ## 5. Saturday: the order of steps (setup done by 16:00)
