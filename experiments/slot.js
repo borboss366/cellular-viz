@@ -3,7 +3,7 @@
 // of set.json at full window in an iframe (the scene's own URL: set.json's defaults, then the scene's query, then
 // in=<label>; so capture=1 and the knob links stay) and steps through the set on a command:
 //   - { type: 'slot', v: 1, slot: 'A' | 'B', dir: -1 | 1 } on the shared clock's channel (the conductor's
-//     Clock.publish slot(); the controller's upper buttons 5/6 = slot A previous/next, 7/8 = slot B)
+//     Clock.publish slot(); the controller's upper buttons 3/4 = slot A previous/next, 7/8 = slot B)
 //   - the left / right arrow keys (or Page Up / Page Down) in the slot window, also while the scene has the focus;
 //     no scene in the set uses them (checked 19 Nov)
 // On a switch a black cover goes up at once, the old scene's frame is removed (its WebGL context lost first, so many

@@ -93,7 +93,7 @@ async function load() {
   }
 }
 $('openAll').onclick = () => { if (qa.set) qa.set.scenes.forEach((s, i) => openScene(i)); };
-// the two slot windows (slot.html): A starts on scene 1, B on scene 2; the controller's upper buttons 5-8 (or the
+// the two slot windows (slot.html): A starts on scene 1, B on scene 2; the controller's upper buttons 3/4 and 7/8 (or the
 // arrow keys in a slot window) step them; same diagonal layout, for two windows
 function openSlot(k) {
   const slot = SetLib.SLOTS[k], url = SetLib.slotUrl(slot, qa.inLabel);

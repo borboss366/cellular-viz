@@ -25,11 +25,13 @@
   Bridge: the faders and pot rows 2-3 go out unchanged on the IAC bus (the "bridge" lamp) for Resolume.
   Knobs: pot row 1 (CC 13-20) is not bridged; its 8 values (0..1) go to the scenes on the shared clock (publisher.setKnobs;
   a scene reads clock.knob(1..8)) and show 0-100 in the "knobs 1-8" line under the calibrate profiles.
-  Slots: upper buttons 5/6 (CC 41/42) = slot A previous/next, 7/8 (CC 43/44) = slot B previous/next, sent as
+  Slots (one half of the device per slot, 20 Nov): upper buttons 3/4 (CC 39/40) = slot A previous/next, 7/8 (CC 43/44)
+  = slot B previous/next (5/6 are the audition page's), sent as
   publisher.slot(slot, dir) on the same channel to the two slot windows (slot.html); the last one shows in the knobs line.
   Knobs per slot (20 Nov): knobs 1-4 belong to slot A, 5-8 to slot B (slot.js adds 4 to the scene's *Knob params in slot
-  B); knob 1 / 5 is the beat. Each slot sends its scene's knobs ({ type: 'controls' }); the "slot knobs" line shows the
-  latest per slot, e.g. "A: 1 beat . 2 dive . 3 glint | B: 5 beat . 6 pulse". On load the page asks the slots once.
+  B); knob 1 / 5 is the beat. Each slot sends its scene's knobs ({ type: 'controls' }); the "slot knobs" line shows each
+  slot's buttons and knobs and the latest controls, e.g. "A (btn 3/4, knobs 1-4): 1 beat . 2 dive . 3 glint | B (btn
+  7/8, knobs 5-8): 5 beat . 6 pulse" (buttons from MidiController.MAP.SLOT_CCS). On load the page asks the slots once.
   Shared clock: the output clock is published for ?clock=shared scenes (clock.js Clock.publish, BroadcastChannel
   'cellular-viz-clock'): beats, bpm, bar at most 20 Hz, every jump and hand fix as an event.
 -->
@@ -168,7 +170,7 @@ button.reject{background:#c0182b !important;color:#fff}
     <div class="row"><select id="profiles"></select><input id="profileName" placeholder="venue" style="width:9em"><button id="saveProfile">Save</button>
       <button id="exportProfiles">Export</button><label><button id="importBtn" type="button">Import</button><input id="importFile" type="file" accept="application/json" hidden></label></div>
     <div class="row"><small id="knobs" title="controller pot row 1 (CC 13-20), 0-100, to the scenes on the shared clock: clock.knob(1..8)">knobs 1-8: - - - - - - - -</small></div>
-    <div class="row"><small id="controls" title="what each slot's scene does with its knobs: slot A = knobs 1-4, slot B = knobs 5-8 (from the slot windows)">slot knobs: A: - | B: -</small></div>
+    <div class="row"><small id="controls" title="each slot's buttons and knobs, and what its scene does with them (from the slot windows)">slot knobs: A (btn 3/4, knobs 1-4): - | B (btn 7/8, knobs 5-8): -</small></div>
   </section>
   <section>
     <h2>Session</h2>
@@ -393,7 +395,7 @@ $('autoHold').onclick = () => toggleAutoHold();
 const knobsText = all => 'knobs 1-8: ' + all.map(v => (v === null ? '-' : String(Math.round(v * 100)))).join(' ');
 let lastSlotText = '';
 function onKnob(n, v, all) { publisher.setKnobs(all); $('knobs').textContent = knobsText(all) + lastSlotText; }
-// upper buttons 5-8: the slot windows step their scene (slot.html); the last press shows after the knobs
+// upper buttons 3/4 (slot A) and 7/8 (slot B): the slot windows step their scene (slot.html); the last press shows after the knobs
 function onSlot(slot, dir) {
   publisher.slot(slot, dir);
   lastSlotText = ` . slot ${slot} ${dir > 0 ? 'next' : 'prev'}`;
@@ -403,12 +405,15 @@ function onSlot(slot, dir) {
 const slotControls = {};
 let controlsChannel = null;
 try { if (typeof BroadcastChannel === 'function') controlsChannel = new BroadcastChannel(Clock.SHARED_CHANNEL); } catch (e) { controlsChannel = null; }
+const slotLayout = C.slotLayout(typeof MidiController === 'object' && MidiController.MAP ? MidiController.MAP.SLOT_CCS : null);
+const showControls = () => { $('controls').textContent = 'slot knobs: ' + C.controlsLine(slotControls, slotLayout); };
 function onControls(msg) {
   const c = C.controlsFrom(msg);
   if (!c) return;
   slotControls[c.slot] = c;
-  $('controls').textContent = 'slot knobs: ' + C.controlsLine(slotControls);
+  showControls();
 }
+showControls();
 if (controlsChannel) {
   controlsChannel.onmessage = e => onControls(e && e.data);
   try { controlsChannel.postMessage(C.CONTROLS_ASK); } catch (e) { /* no slot window yet: it sends on its first scene */ }

@@ -58,14 +58,16 @@ test('audition: check.md rows -> beat match and frame time; a missing row is nul
   assert.equal(A.beatMatchOf([]), null);
 });
 
-test('audition: scene URL with the set defaults, controller buttons 3 and 4, stepping, verdict file rules, keeps', () => {
+test('audition: scene URL with the set defaults, controller buttons 5 and 6, stepping, verdict file rules, keeps', () => {
   assert.equal(A.sceneUrl('12-mass-gap.html'), '12-mass-gap.html?clock=shared&audio=line&in=BlackHole');
   assert.throws(() => A.sceneUrl('../x.html'));
-  assert.equal(A.midiStep([0xB0, 40, 127]), 1);
-  assert.equal(A.midiStep([0xB0, 39, 127]), -1);
-  assert.equal(A.midiStep([0xB0, 40, 0]), 0, 'the release does nothing');
-  for (const cc of [37, 38, 41, 45]) assert.equal(A.midiStep([0xB0, cc, 127]), 0, `CC ${cc} is not ours`);
-  assert.equal(A.midiStep([0xB1, 40, 127]), 0);
+  // top buttons 5 / 6 (CC 41 / 42; 20 Nov: 3 / 4 and 7 / 8 are the slot windows')
+  assert.deepEqual([A.PREV_CC, A.NEXT_CC], [41, 42]);
+  assert.equal(A.midiStep([0xB0, 42, 127]), 1);
+  assert.equal(A.midiStep([0xB0, 41, 127]), -1);
+  assert.equal(A.midiStep([0xB0, 42, 0]), 0, 'the release does nothing');
+  for (const cc of [37, 38, 39, 40, 43, 44, 45]) assert.equal(A.midiStep([0xB0, cc, 127]), 0, `CC ${cc} is not ours`);
+  assert.equal(A.midiStep([0xB1, 42, 127]), 0);
   assert.deepEqual([A.stepIndex(0, 5, -1), A.stepIndex(4, 5, 1), A.stepIndex(2, 5, 1), A.stepIndex(0, 0, 1)], [4, 0, 3, -1]);
   const good = { version: 1, stamp: 'audition-20261116-181500', verdicts: { '12-mass-gap.html': { verdict: 'keep', note: 'yes' }, '06-lenia-effects.html': { verdict: null } } };
   assert.deepEqual(A.checkVerdicts(good), []);
@@ -117,7 +119,7 @@ test('audition: conduct-serve GET /api/audition (facts from the newest checks, e
   } finally { await new Promise(r => srv.close(r)); fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test('audition.html: plain ASCII, imports qa/audition.mjs, buttons on CC 39 / 40 through midiStep, no scene file changed by it', () => {
+test('audition.html: plain ASCII, imports qa/audition.mjs, buttons on CC 41 / 42 through midiStep, no scene file changed by it', () => {
   const html = src('audition.html');
   assert.ok(/^[\x09\x0a\x0d\x20-\x7e]*$/.test(html), 'plain ASCII (#205)');
   assert.ok(/^[\x09\x0a\x0d\x20-\x7e]*$/.test(fs.readFileSync(path.join(REPO, 'qa', 'audition.mjs'), 'utf8')), 'qa/audition.mjs plain ASCII');

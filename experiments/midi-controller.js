@@ -17,10 +17,11 @@
 // performance.now() clock, as a key's). Upper row (hand-held mode, docs/CELLULAR_VIZ_BRIEF_HOLD.md), ch1 CC 37 and 38:
 // button 1 = hold (clock.fix('hold'), a toggle; LED green while held, amber while held and holdSuspect, dark when not
 // held), button 2 = auto-hold (opts.toggleAutoHold(origin) when the page keeps the choice, else
-// clock.fix('autoHold'); LED green when on, dark when off). Upper buttons 5–8 (CC 41–44; the two slot windows, 19 Nov):
-// 5 / 6 = slot A previous / next, 7 / 8 = slot B previous / next, each press opts.onSlot('A' | 'B', -1 | 1) (the
-// conductor sends it on the shared clock's channel, Clock.publish slot()); no clock fix, no LED. Upper buttons 3–4
-// (CC 39–40) and Shift are not used yet; the faders and pot rows 2–3 go to the bridge.
+// clock.fix('autoHold'); LED green when on, dark when off). The two slot windows (19 Nov; one half of the device per
+// slot, the user 20 Nov 15:47): upper buttons 3 / 4 (CC 39 / 40) = slot A previous / next, 7 / 8 (CC 43 / 44) = slot
+// B previous / next, each press opts.onSlot('A' | 'B', -1 | 1) (the conductor sends it on the shared clock's channel,
+// Clock.publish slot()); no clock fix, no LED. Upper buttons 5 / 6 (CC 41 / 42) are the audition page's previous /
+// next (qa/audition.mjs), nothing here; Shift is not used yet; the faders and pot rows 2–3 go to the bridge.
 // Pot row 1 (ch16 CC 13–20, absolute 0–127; the fix list, 19 Nov 22:00): the page's own knobs, never bridged. Each
 // value is kept in ctl.knobs (8 entries, 0..1 = value / 127, null until that pot moves) and handed to
 // opts.onKnob(n 1–8, value, all 8); the conductor publishes them to the scenes on the shared clock (clock.js
@@ -51,10 +52,11 @@
 
   const BUTTON_CH = 0xB0, FLASH_CH = 0xB1, FEATURE_CH = 0xB6, QUERY_CH = 0xB7;
   const LOWER = [45, 46, 47, 48, 49, 50, 51, 52];
-  // the upper row's used buttons (hand-held mode): hold, auto-hold; CC 39-44 stay free
+  // the upper row's used buttons (hand-held mode): hold, auto-hold
   const UPPER = [37, 38], HOLD_CC = 37, AUTO_HOLD_CC = 38;
-  // the slot windows' buttons (upper 5–8): CC → [slot, dir]
-  const SLOT_CCS = { 41: ['A', -1], 42: ['A', 1], 43: ['B', -1], 44: ['B', 1] };
+  // the slot windows' buttons, one half of the device per slot (20 Nov): CC -> [slot, dir]; upper 3 / 4 = slot A,
+  // 7 / 8 = slot B (upper 5 / 6, CC 41 / 42: the audition page's, not here)
+  const SLOT_CCS = { 39: ['A', -1], 40: ['A', 1], 43: ['B', -1], 44: ['B', 1] };
   const COLOUR = { off: 0, red: 5, amber: 9, green: 21 };
   const POT_CH = 0xBF, BRIDGE_CCS = [[5, 12], [21, 36]], BRIDGE_DEFAULT = /IAC/, DEVICE_PORT = /LCXL3/;
   const KNOB_CCS = [13, 20], KNOBS = 8;   // pot row 1: the page's knobs (not bridged)

@@ -13,8 +13,9 @@
 //   beatMatchOf(rows)          the shared check's beat-match row -> { value: 'pass' | 'fail' | 'not measured', detail }
 //   frameOf(rows, size)        a frame-time row for that size ('1080p', '1440p', p95) -> { value, gate, detail } or null
 //   sceneUrl(page)             the scene with the set defaults (clock=shared, audio=line, in=BlackHole)
-//   midiStep(data)             a controller message -> +1 (next, top button 4, CC 40), -1 (previous, top button 3,
-//                              CC 39), 0 (anything else). Top buttons 1 and 2 (CC 37, 38) are hold and auto-hold (#239)
+//   midiStep(data)             a controller message -> +1 (next, top button 6, CC 42), -1 (previous, top button 5,
+//                              CC 41), 0 (anything else). Top buttons 1 and 2 (CC 37, 38) are hold and auto-hold
+//                              (#239); 3 / 4 and 7 / 8 step the slot windows (20 Nov: one half of the device per slot)
 //   checkVerdicts(obj)         the saved file's problems ([] when it is good)
 //   keepCount / keepOnly       the count of keeps (target AUDITION_TARGET) and the keep filter
 export const AUDITION_TARGET = 7;
@@ -22,7 +23,7 @@ export const VERDICTS = ['keep', 'maybe', 'drop'];
 export const AUDITION_RE = /^audition-\d{8}-\d{6}$/;
 export const SCENE_FILE = /^\d{2}-[a-z0-9-]+\.html$/;
 export const SET_DEFAULTS = { clock: 'shared', audio: 'line', in: 'BlackHole' };
-export const BUTTON_STATUS = 0xB0, PREV_CC = 39, NEXT_CC = 40;
+export const BUTTON_STATUS = 0xB0, PREV_CC = 41, NEXT_CC = 42;
 export const NOTE_MAX = 500;
 
 export const isScenePage = (file, src) => SCENE_FILE.test(String(file)) && /<script src="panic\.js"><\/script>/.test(String(src || ''));

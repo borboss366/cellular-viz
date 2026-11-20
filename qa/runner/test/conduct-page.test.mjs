@@ -518,10 +518,19 @@ test('conductor: the knobs per slot (20 Nov): controls messages from the slot wi
     assert.equal(C.controlsFrom(m), null, JSON.stringify(m));
   assert.ok(/^[\x20-\x7e]+$/.test(C.controlsLine({ A: C.controlsFrom({ type: 'controls', slot: 'A', controls: [{ knob: 1, name: 'b\u00e9at' }] }) })), 'ASCII only (#205)');
   assert.deepEqual(C.CONTROLS_ASK, { type: 'controls-ask', v: 1 });
+  // one half of the device per slot (20 Nov 15:47): the buttons from the controller's map, the knobs as slot.js numbers them
+  const M = require('../../../experiments/midi-controller.js'), SlotLib = require('../../../experiments/slot.js');
+  const lay = C.slotLayout(M.MAP.SLOT_CCS);
+  assert.deepEqual(lay, { A: { buttons: [3, 4], knobs: [1, 4] }, B: { buttons: [7, 8], knobs: [5, 8] } });
+  for (const s of ['A', 'B']) assert.deepEqual(lay[s].knobs, [1 + SlotLib.KNOB_OFFSET[s], SlotLib.SLOT_KNOBS + SlotLib.KNOB_OFFSET[s]], `${s}: the knobs slot.js uses`);
+  assert.equal(C.controlsLine({}, lay), 'A (btn 3/4, knobs 1-4): - | B (btn 7/8, knobs 5-8): -');
+  assert.equal(C.controlsLine({ A: a, B: b }, lay), 'A (btn 3/4, knobs 1-4): 1 beat . 2 dive . 3 glint | B (btn 7/8, knobs 5-8): 5 beat . 6 pulse');
+  assert.equal(C.controlsLine({}, C.slotLayout(null)), 'A (knobs 1-4): - | B (knobs 5-8): -', 'no controller map: knobs only');
   const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
-  assert.match(html, /<small id="controls"[^>]*>slot knobs: A: - \| B: -<\/small>/, 'the line under the knobs');
+  assert.match(html, /<small id="controls"[^>]*>slot knobs: A \(btn 3\/4, knobs 1-4\): - \| B \(btn 7\/8, knobs 5-8\): -<\/small>/, 'the line under the knobs');
   assert.match(html, /new BroadcastChannel\(Clock\.SHARED_CHANNEL\)/);
   assert.match(html, /const c = C\.controlsFrom\(msg\);/);
-  assert.match(html, /\$\('controls'\)\.textContent = 'slot knobs: ' \+ C\.controlsLine\(slotControls\)/);
+  assert.match(html, /const slotLayout = C\.slotLayout\(typeof MidiController === 'object' && MidiController\.MAP \? MidiController\.MAP\.SLOT_CCS : null\);/);
+  assert.match(html, /\$\('controls'\)\.textContent = 'slot knobs: ' \+ C\.controlsLine\(slotControls, slotLayout\)/);
   assert.match(html, /controlsChannel\.postMessage\(C\.CONTROLS_ASK\)/, 'asks the slot windows once on load');
 });
