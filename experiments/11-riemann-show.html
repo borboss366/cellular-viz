@@ -31,6 +31,10 @@
   (128 terms, functional equation in logs). li(y^ρ) by the asymptotic series of Ei.
   window.__qa: zeros, ribbon minima of |ζ| from the drawn samples, scope crossings from
   the drawn samples, the prime steps, approxPi(x, K).
+  Beat strength (the user, 20 Nov; 11-beat.js): ?beatKnob=N (default 1) reads clock.beatGain(N): untouched = 1
+  (as before), bottom = 0 (no beat reaction), top = 2 here; ?beatGain=0..2 fixes g (stills). The scenes draw from
+  the drum levels × g (kick, snare; the hat × min(g, 1)): the ribbon's shake and roll, the light, pits, rings and
+  dots. Not the zero flash, the hit log or the motion. __qa.beat, __qa.fakeBeatGain(g | null).
 -->
 <html lang="en">
 <head>
@@ -93,6 +97,7 @@
 
 <script src="clock.js"></script>
 <script src="audio-in.js"></script>
+<script src="11-beat.js"></script>
 <script>
 'use strict';
 
@@ -901,7 +906,7 @@ function scenePrimes(slot, S) {
 
 function sceneCanyon(slot, S) {
   const { W, H, tc, bars, flash } = S;
-  const L = metronome.playing && params.canyonLead ? metronome.read(params.canyonLead / 1000) : S.L;
+  const L = metronome.playing && params.canyonLead ? RiemannBeat.beatLanes(S.L.beat ? S.L.beat.g : 1, metronome.read(params.canyonLead / 1000)) : S.L;   // the look-ahead read, at the same beat gain
   bakeCanyon();
   gl.bindFramebuffer(gl.FRAMEBUFFER, slot.fbo);
   gl.viewport(0, 0, W, H);
@@ -1037,7 +1042,7 @@ function resize() {
   sizeSlots(canvas.width, canvas.height);
 }
 let clockStart = performance.now(), frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
-let lastK = -1, flash = 0;
+let lastK = -1, flash = 0, qaBeatG = null;   // qaBeatG: QA's stand-in beat gain (null: the knob)
 // window.__qa.events: one entry per drum hit and zero flash, on the frame it is first drawn,
 // so a sync check can time flashes instead of guessing from a camera that never stops.
 //   tBeat   when it was scheduled (AudioContext seconds)
@@ -1105,7 +1110,11 @@ function draw(now) {
     cur = params.scene;
     sectionBars = bars % params.bars;
   }
-  const S = { W, H, tc, L, bars, flash, pad, sectionBars };
+  // the beat gain (11-beat.js): the scenes draw from the drum levels × g (g = 1: today's, bit for bit); the zero flash
+  // above and the hit log below keep the clock's own levels
+  const LB = RiemannBeat.beatLanes(qaBeatG !== null ? qaBeatG : RiemannBeat.beatGainOf(metronome, params.beatKnob || 1, params.beatGain), L);
+  window.__qa.beat = { ...LB.beat, knob: params.beatKnob, fixed: params.beatGain, fake: qaBeatG };
+  const S = { W, H, tc, L: LB, bars, flash, pad, sectionBars };
   if (metronome.playing) logHits(cur, now);
   const hasB = renderSlot(1, cur, S);
   const hasA = prev ? renderSlot(0, prev, { ...S, sectionBars: params.bars - 1 + sectionBars }) : false;
@@ -1159,6 +1168,10 @@ const q = k => query.get(k);
 if (q('scene') && (q('scene') === 'auto' || SCENES.includes(q('scene')))) params.scene = q('scene');
 for (const k of ['bars', 'bpm', 'canyonLead']) { const v = parseFloat(q(k)); if (Number.isFinite(v)) params[k] = v; }
 params.muted = q('muted') === '1';
+// the beat gain: ?beatKnob=N (default 1) for clock.beatGain(N), ?beatGain=0..2 a fixed g (stills), QA's stand-in g
+{ const n = parseInt(q('beatKnob'), 10), g = parseFloat(q('beatGain'));
+  params.beatKnob = n >= 1 && n <= 8 ? n : 1; params.beatGain = Number.isFinite(g) ? Math.max(0, Math.min(RiemannBeat.C.G_MAX, g)) : null; }
+window.__qa.fakeBeatGain = g => { qaBeatG = g === null || g === undefined || !Number.isFinite(+g) ? null : Math.max(0, Math.min(RiemannBeat.C.G_MAX, +g)); return qaBeatG; };
 sync();
 requestAnimationFrame(frame);
 </script>
