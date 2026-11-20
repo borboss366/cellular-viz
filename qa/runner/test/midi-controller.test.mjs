@@ -41,7 +41,7 @@ async function rig(o = {}) {
   let now = 1000;
   const nav = o.noMidi ? {} : { requestMIDIAccess: async q => { if (o.deny) throw new Error('denied'); if (o.denySysex && q && q.sysex) throw new Error('no sysex'); return access; } };
   const bridges = [];
-  const ctl = M.create({ clock, navigator: nav, perfNow: () => now, lastFix: () => o.lastFix || '', storage: o.storage, onBridge: (b, n) => bridges.push([b, n]), toggleAutoHold: o.toggleAutoHold, onKnob: o.onKnob, onSlot: o.onSlot,
+  const ctl = M.create({ clock, navigator: nav, perfNow: () => now, lastFix: () => o.lastFix || '', storage: o.storage, onBridge: (b, n) => bridges.push([b, n]), toggleAutoHold: o.toggleAutoHold, onKnob: o.onKnob, onSlot: o.onSlot, log: o.log,
     setInterval: () => 1, clearInterval: () => {}, setTimeout: (f, ms) => { timers.push({ f, at: now + ms }); return timers.length; },
     clearTimeout: h => { timers[h - 1] = null; }, onStatus: s => statuses.push(s) });
   clock.nowRef = () => now;
@@ -441,4 +441,102 @@ test('slots: upper buttons 3/4 (CC 39/40) = slot A prev/next, 7/8 (CC 43/44) = s
   const plain = await rig();
   plain.inp().onmidimessage({ data: [0xB0, 40, 127], timeStamp: 1 });
   assert.equal(plain.clock.fixes.length, 0);
+});
+
+// ---------- the encoder LEDs (the user, 20 Nov: highlight the active knobs): slot A blue, slot B orange ----------
+const ring = (cc, rgb) => hex(M.encoderLed(cc, rgb));
+const encSx = sent => sent.filter(b => b[0] === 0xF0 && b[6] === 0x01 && b[7] === 0x53);
+test('encoder LEDs: the SysEx bytes, the colours, and which knobs light per slot (from slot.js controls)', () => {
+  assert.equal(hex(M.encoderLed(13, [0, 24, 127])), 'f0 00 20 29 02 15 01 53 0d 00 18 7f f7');
+  assert.equal(hex(M.encoderLed(20, [200, -3, 64.4])), 'f0 00 20 29 02 15 01 53 14 7f 00 40 f7', 'clamped to 0-127, whole numbers');
+  assert.deepEqual(M.MAP.SYSEX, [0xF0, 0x00, 0x20, 0x29, 0x02, 0x15]);
+  const { A, B, off } = M.MAP.KNOB_RGB;
+  assert.ok(A[2] === 127 && A[0] === 0 && A[1] < 64, 'slot A blue');
+  assert.ok(B[0] === 127 && B[2] === 0 && B[1] > 0 && B[1] < 64, 'slot B orange');
+  assert.deepEqual(off, [0, 0, 0]);
+  assert.equal(MAP.encoders.ledRgb.sysex, 'F0 00 20 29 02 15 01 53 <cc> R G B F7');
+  // the conductor's controls per slot -> the 8 rings of pot row 1
+  const both = { A: { slot: 'A', controls: [{ knob: 1, name: 'beat' }, { knob: 2, name: 'dive' }, { knob: 3, name: 'glint' }] },
+    B: { slot: 'B', controls: [{ knob: 5, name: 'beat' }, { knob: 6, name: 'pulse' }] } };
+  assert.deepEqual(M.knobColours(both), [A, A, A, off, B, B, off, off]);
+  assert.deepEqual(M.knobColours({}), new Array(8).fill(off), 'nothing heard: all dark');
+  assert.deepEqual(M.knobColours(null), new Array(8).fill(off));
+  assert.deepEqual(M.knobColours({ B: { controls: [] } }), new Array(8).fill(off), '27 EQ: no knobs');
+  assert.deepEqual(M.knobColours({ A: [{ knob: 1 }, { knob: 9 }, null, { knob: '2' }] }), [A, off, off, off, off, off, off, off], 'bad entries ignored');
+  // end to end with the set: Hodge in slot A, Paint Pour in slot B (slot.js numbers them, slot B + 4)
+  const SetLib = require('../../../experiments/set.js'), SlotLib = require('../../../experiments/slot.js');
+  const SET = JSON.parse(fs.readFileSync(path.join(REPO, 'experiments/set.json'), 'utf8'));
+  const by = page => SET.scenes.find(s => s.page === page);
+  const lit = M.knobColours({ A: { controls: SlotLib.controls(SET, by('16-hodge-kaleidoscope.html'), 'A') }, B: { controls: SlotLib.controls(SET, by('24-paint-pour.html'), 'B') } });
+  assert.deepEqual(lit, [A, A, A, off, B, B, off, off]);
+  assert.ok(SetLib.buildUrl(SET, by('24-paint-pour.html')).includes('pulseKnob=2'));
+});
+
+test('encoder LEDs on the device: dark on connect, one batch per controls change (only the changed rings), again on replug and after Mode Select, dark on stop', async () => {
+  const access = fakeAccess();
+  const { ctl, out, clear, inp, advance } = await rig({ access });
+  const start = encSx(out().sent).map(hex);
+  assert.deepEqual(start, [13, 14, 15, 16, 17, 18, 19, 20].map(cc => ring(cc, [0, 0, 0])), 'connect: all 8 rings dark, after DAW mode');
+  assert.deepEqual(out().sent.slice(0, 3).map(hex), ['9f 0c 7f', 'b7 1e 00', 'f0 00 20 29 02 15 04 35 01 f7'], 'DAW mode and the display first');
+  const { A, B, off } = M.MAP.KNOB_RGB;
+  const both = { A: { controls: [{ knob: 1, name: 'beat' }, { knob: 2, name: 'dive' }, { knob: 3, name: 'glint' }] }, B: { controls: [{ knob: 5, name: 'beat' }, { knob: 6, name: 'pulse' }] } };
+  clear();
+  assert.equal(ctl.setControls(both), 5);
+  assert.deepEqual(encSx(out().sent).map(hex), [ring(13, A), ring(14, A), ring(15, A), ring(17, B), ring(18, B)], 'only the 5 rings that changed');
+  assert.equal(ctl.ledBatches, 2, 'one batch on connect, one for this change');
+  clear();
+  assert.equal(ctl.setControls(both), 0, 'the same controls again: nothing');
+  for (let i = 0; i < 10; i++) { advance(50); ctl.tick(); }
+  assert.deepEqual(encSx(out().sent), [], 'nothing per frame');
+  // slot B goes to EQ Calibrate (no knobs): its two rings go dark
+  clear();
+  assert.equal(ctl.setControls({ A: both.A, B: { controls: [] } }), 2);
+  assert.deepEqual(encSx(out().sent).map(hex), [ring(17, off), ring(18, off)]);
+  // replug: DAW mode again and every ring with the current colours
+  unplug(access); plug(access);
+  assert.deepEqual(encSx(out().sent).map(hex), [A, A, A, off, off, off, off, off].map((c, i) => ring(13 + i, c)));
+  // the Mode Select page: the next tick sends the rings again (once)
+  clear(); inp().onmidimessage({ data: [0xB6, 30, 0x16] }); ctl.tick();
+  assert.equal(encSx(out().sent).length, 8);
+  clear(); ctl.tick();
+  assert.equal(encSx(out().sent).length, 0);
+  // stop: the rings dark, DAW mode off last
+  clear(); ctl.stop();
+  const s = out().sent.map(hex);
+  for (let cc = 13; cc <= 20; cc++) assert.ok(s.includes(ring(cc, off)), `ring ${cc} dark`);
+  assert.equal(s[s.length - 1], '9f 0c 00');
+});
+
+test('encoder LEDs never block: no SysEx or a send that throws is logged once; the knobs, the buttons and the clock carry on', async () => {
+  const logs = [], knobs = [];
+  const plain = await rig({ sysex: false, log: m => logs.push(m), onKnob: (n, v) => knobs.push([n, v]) });
+  const both = { A: { controls: [{ knob: 1, name: 'beat' }] }, B: { controls: [{ knob: 5, name: 'beat' }] } };
+  assert.equal(plain.ctl.setControls(both), 0);
+  plain.ctl.setControls(both); plain.ctl.tick();
+  assert.equal(plain.out().sent.filter(b => b[0] === 0xF0).length, 0, 'no SysEx bytes');
+  assert.equal(logs.length, 1, 'logged once'); assert.match(logs[0], /SysEx/);
+  plain.inp().onmidimessage({ data: [0xBF, 13, 127] });
+  assert.deepEqual(knobs, [[1, 1]], 'the knob still reaches the page');
+  // a port whose SysEx send throws
+  const logs2 = [];
+  const r = await rig({ log: m => logs2.push(m) });
+  const port = r.out(), real = port.send.bind(port);
+  let throws = 0;
+  port.send = (b, at) => { if (b[0] === 0xF0) { throws++; throw new Error('port gone'); } return real(b, at); };
+  assert.doesNotThrow(() => r.ctl.setControls(both));
+  assert.equal(r.ctl.ledError, 'port gone');
+  for (let i = 0; i < 5; i++) { r.advance(50); r.ctl.tick(); }
+  r.ctl.setControls({ A: { controls: [] } });
+  assert.equal(logs2.length, 1, 'logged once');
+  assert.ok(throws <= 2 + 5 * 2, `no LED retry per frame (${throws} SysEx attempts, the display's included)`);
+  r.press(45, 127, 9); r.press(45, 0, 10);
+  assert.deepEqual(r.clock.fixes.map(f => f.kind), ['tap'], 'the buttons still fix the clock');
+});
+
+test('the conductor hands the controls to the controller: on each controls message and once the controller exists', () => {
+  const html = fs.readFileSync(path.join(REPO, 'experiments/clock-conductor.html'), 'utf8');
+  assert.match(html, /const pushLeds = \(\) => \{ if \(!ledsOn\) return; try \{ controller\.setControls\(slotControls\); \} catch \(e\)/);
+  assert.match(html, /slotControls\[c\.slot\] = c;\s*showControls\(\);\s*pushLeds\(\);/);
+  assert.match(html, /ledsOn = true; pushLeds\(\);[^\n]*\ncontroller\.start\(\)/);
+  assert.ok(html.indexOf('ledsOn = true; pushLeds();') > html.indexOf('const controller = MidiController.create('), 'after the controller exists');
 });

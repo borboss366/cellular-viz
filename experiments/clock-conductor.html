@@ -32,6 +32,8 @@
   B); knob 1 / 5 is the beat. Each slot sends its scene's knobs ({ type: 'controls' }); the "slot knobs" line shows each
   slot's buttons and knobs and the latest controls, e.g. "A (btn 3/4, knobs 1-4): 1 beat . 2 dive . 3 glint | B (btn
   7/8, knobs 5-8): 5 beat . 6 pulse" (buttons from MidiController.MAP.SLOT_CCS). On load the page asks the slots once.
+  Encoder LEDs (20 Nov): the same controls light pot row 1 on the controller (controller.setControls): slot A's active
+  knobs blue, slot B's orange, the rest dark; on each controls message and on connect. Needs SysEx (else knobs only).
   Shared clock: the output clock is published for ?clock=shared scenes (clock.js Clock.publish, BroadcastChannel
   'cellular-viz-clock'): beats, bpm, bar at most 20 Hz, every jump and hand fix as an event.
 -->
@@ -407,11 +409,15 @@ let controlsChannel = null;
 try { if (typeof BroadcastChannel === 'function') controlsChannel = new BroadcastChannel(Clock.SHARED_CHANNEL); } catch (e) { controlsChannel = null; }
 const slotLayout = C.slotLayout(typeof MidiController === 'object' && MidiController.MAP ? MidiController.MAP.SLOT_CCS : null);
 const showControls = () => { $('controls').textContent = 'slot knobs: ' + C.controlsLine(slotControls, slotLayout); };
+// the encoder LEDs (midi-controller.js setControls): slot A's active knobs blue, B's orange; once the controller exists
+let ledsOn = false;
+const pushLeds = () => { if (!ledsOn) return; try { controller.setControls(slotControls); } catch (e) { /* the LEDs never block the page */ } };
 function onControls(msg) {
   const c = C.controlsFrom(msg);
   if (!c) return;
   slotControls[c.slot] = c;
   showControls();
+  pushLeds();
 }
 showControls();
 if (controlsChannel) {
@@ -421,6 +427,7 @@ if (controlsChannel) {
 const controller = MidiController.create({ clock, lastFix: () => lastFixShort, storage: pageStorage, toggleAutoHold, onKnob, onSlot,
   onBridge: (b, name) => { $('bridge').textContent = BRIDGE_TEXT[b] || `bridge: ${b}`; $('bridge').title = name || 'no IAC bus: turn on the IAC Driver (Help)'; $('bridge').classList.toggle('unscored', b !== 'on'); showBridgePorts(); },
   onStatus: s => { $('ctl').textContent = CTL_TEXT[s] || `controller: ${s}`; $('ctl').classList.toggle('unscored', s !== 'connected'); } });
+ledsOn = true; pushLeds();   // the controls known so far; the controller sends them on connect (and on every replug)
 controller.start().then(() => { if (controller.status === 'connected' && !controller.sysex) $('ctl').title = 'no SysEx permission: LEDs only, no display'; });
 $('bridgePort').onchange = e => controller.setBridgePort(e.target.value);
 addEventListener('pagehide', () => controller.stop());
