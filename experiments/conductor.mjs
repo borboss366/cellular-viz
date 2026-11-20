@@ -239,3 +239,27 @@ export function wheelHintLog(holdS = WHEEL_HOLD_S) {
     return { ctx: since, kind, hint, medianMs: w ? w.medianMs : null, sixShare: w ? w.sixShare : null, driftDegPerBar: w ? w.driftDegPerBar : null };
   };
 }
+
+// ---------- the knobs per slot (the user, 20 Nov 15:34) ----------
+// Each slot window (slot.js) sends { type: 'controls', v: 1, slot, scene, controls: [{ knob, name }] } on the shared
+// clock's channel when its scene changes; the conductor keeps the latest per slot and shows one line (plain ASCII, #205).
+export const CONTROL_SLOTS = ['A', 'B'];
+export const CONTROLS_ASK = { type: 'controls-ask', v: 1 };
+/** a channel message -> { slot, scene, controls } when it is a well-formed controls message, else null */
+export function controlsFrom(msg) {
+  if (!msg || typeof msg !== 'object' || msg.type !== 'controls' || !CONTROL_SLOTS.includes(msg.slot) || !Array.isArray(msg.controls)) return null;
+  const controls = msg.controls
+    .filter(c => c && Number.isInteger(c.knob) && c.knob >= 1 && c.knob <= 8 && typeof c.name === 'string')
+    .map(c => ({ knob: c.knob, name: c.name.replace(/[^ -~]/g, '').slice(0, 16) }))
+    .sort((a, b) => a.knob - b.knob);
+  return { slot: msg.slot, scene: typeof msg.scene === 'string' ? msg.scene.replace(/[^ -~]/g, '') : '', controls };
+}
+/** the line under the knobs: "A: 1 beat . 2 dive . 3 glint | B: 5 beat . 6 pulse" (a slot not heard from: "-") */
+export function controlsLine(bySlot) {
+  return CONTROL_SLOTS.map(s => {
+    const c = bySlot && bySlot[s];
+    if (!c) return `${s}: -`;
+    const list = c.controls.length ? c.controls.map(x => `${x.knob} ${x.name}`).join(' . ') : 'no knobs';
+    return `${s}: ${list}`;
+  }).join(' | ');
+}

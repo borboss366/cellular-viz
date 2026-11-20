@@ -27,6 +27,9 @@
   a scene reads clock.knob(1..8)) and show 0-100 in the "knobs 1-8" line under the calibrate profiles.
   Slots: upper buttons 5/6 (CC 41/42) = slot A previous/next, 7/8 (CC 43/44) = slot B previous/next, sent as
   publisher.slot(slot, dir) on the same channel to the two slot windows (slot.html); the last one shows in the knobs line.
+  Knobs per slot (20 Nov): knobs 1-4 belong to slot A, 5-8 to slot B (slot.js adds 4 to the scene's *Knob params in slot
+  B); knob 1 / 5 is the beat. Each slot sends its scene's knobs ({ type: 'controls' }); the "slot knobs" line shows the
+  latest per slot, e.g. "A: 1 beat . 2 dive . 3 glint | B: 5 beat . 6 pulse". On load the page asks the slots once.
   Shared clock: the output clock is published for ?clock=shared scenes (clock.js Clock.publish, BroadcastChannel
   'cellular-viz-clock'): beats, bpm, bar at most 20 Hz, every jump and hand fix as an event.
 -->
@@ -165,6 +168,7 @@ button.reject{background:#c0182b !important;color:#fff}
     <div class="row"><select id="profiles"></select><input id="profileName" placeholder="venue" style="width:9em"><button id="saveProfile">Save</button>
       <button id="exportProfiles">Export</button><label><button id="importBtn" type="button">Import</button><input id="importFile" type="file" accept="application/json" hidden></label></div>
     <div class="row"><small id="knobs" title="controller pot row 1 (CC 13-20), 0-100, to the scenes on the shared clock: clock.knob(1..8)">knobs 1-8: - - - - - - - -</small></div>
+    <div class="row"><small id="controls" title="what each slot's scene does with its knobs: slot A = knobs 1-4, slot B = knobs 5-8 (from the slot windows)">slot knobs: A: - | B: -</small></div>
   </section>
   <section>
     <h2>Session</h2>
@@ -394,6 +398,20 @@ function onSlot(slot, dir) {
   publisher.slot(slot, dir);
   lastSlotText = ` . slot ${slot} ${dir > 0 ? 'next' : 'prev'}`;
   $('knobs').textContent = knobsText(controller ? controller.knobs : []) + lastSlotText;
+}
+// the knobs per slot: each slot window sends its scene's knobs (slot.js); the latest per slot, one line (plain ASCII)
+const slotControls = {};
+let controlsChannel = null;
+try { if (typeof BroadcastChannel === 'function') controlsChannel = new BroadcastChannel(Clock.SHARED_CHANNEL); } catch (e) { controlsChannel = null; }
+function onControls(msg) {
+  const c = C.controlsFrom(msg);
+  if (!c) return;
+  slotControls[c.slot] = c;
+  $('controls').textContent = 'slot knobs: ' + C.controlsLine(slotControls);
+}
+if (controlsChannel) {
+  controlsChannel.onmessage = e => onControls(e && e.data);
+  try { controlsChannel.postMessage(C.CONTROLS_ASK); } catch (e) { /* no slot window yet: it sends on its first scene */ }
 }
 const controller = MidiController.create({ clock, lastFix: () => lastFixShort, storage: pageStorage, toggleAutoHold, onKnob, onSlot,
   onBridge: (b, name) => { $('bridge').textContent = BRIDGE_TEXT[b] || `bridge: ${b}`; $('bridge').title = name || 'no IAC bus: turn on the IAC Driver (Help)'; $('bridge').classList.toggle('unscored', b !== 'on'); showBridgePorts(); },
@@ -655,6 +673,7 @@ await loadTracks();
 window.__qa = Object.assign(window.__qa || {}, { conductor: {
   log, clock, shadow, publisher, controller, decks, get tracks() { return tracks; }, start, load, play: playPause, next, mark, step, barOk,
   setOffset, toggleKey, panic, get panicSent() { return panicSent; }, setAutoHold, toggleAutoHold,   // hand-held mode (#239)
+  slotControls: () => JSON.parse(JSON.stringify(slotControls)), onControls,   // the knobs per slot (20 Nov)
   // the recording (Saturday brief task 3)
   rec: () => recorder && { started: recorder.state.started, ready: recorder.state.ready, bytes: recorder.state.bytes, startCtx: recorder.state.startCtx,
     sampleRate: recorder.state.sampleRate, gaps: recorder.state.gaps, skipped: recorder.state.skipped, waiting: recorder.state.queue.length, error: recorder.state.error, text: recorder.text() },

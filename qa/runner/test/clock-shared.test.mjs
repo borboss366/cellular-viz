@@ -324,6 +324,32 @@ test('shared knobs: the conductor\'s pot row 1 reaches a scene (own message on c
   assert.equal(Clock.KNOBS, 8);
 });
 
+// ---------- the beat knob (the user, 20 Nov 15:34): one knob per slot scales every scene's kick/snare/hat terms ----------
+test('beat knob: Clock.beatGain(k): null -> 1 (as before), the dead zone -> 0 (beat off), centre 1, top 3; clock.beatGain(n) reads knob n', () => {
+  assert.equal(Clock.BEAT_DEAD_ZONE, 0.05); assert.equal(Clock.BEAT_GAIN_MAX, 3);
+  assert.equal(Clock.beatGain(null), 1, 'not moved yet: the scene looks as today');
+  assert.equal(Clock.beatGain(undefined), 1); assert.equal(Clock.beatGain(NaN), 1); assert.equal(Clock.beatGain('0.5'), 1);
+  assert.equal(Clock.beatGain(0), 0, 'fully down: beat off');
+  assert.equal(Clock.beatGain(0.05), 0, 'the dead zone\'s edge is still off');
+  assert.equal(Clock.beatGain(-1), 0);
+  assert.ok(Math.abs(Clock.beatGain(0.5) - 1) < 1e-12, 'centre = 1');
+  assert.ok(Math.abs(Clock.beatGain(1) - 3) < 1e-12, 'top = 3');
+  assert.equal(Clock.beatGain(7), 3, 'clamped');
+  const g06 = Clock.beatGain(0.06);
+  assert.ok(g06 > 0.3 && g06 < 0.4, `just above the dead zone: about 1/3 (${g06})`);
+  let last = 0;
+  for (let k = 0.06; k <= 1; k += 0.01) { const g = Clock.beatGain(k); assert.ok(g >= last && g <= 3, `rising at ${k}`); last = g; }
+  // on a scene: knob n over the shared clock; before any knob message, and on other sources, always 1
+  const idle = Clock.create({ source: 'shared', settings: SETTINGS(120), audioContext: () => fakeContext(), timers: false, sharedFeed: true, keys: false, badge: false });
+  assert.equal(idle.beatGain(1), 1, 'no knob message yet');
+  idle.sharedMessage({ type: 'knobs', v: 1, t: 1, knobs: [0, 0.5, null, null, 1, null, null, 0.03] });
+  assert.deepEqual([idle.beatGain(1), idle.beatGain(5), idle.beatGain(3), idle.beatGain(8)], [0, 3, 1, 0]);
+  assert.ok(Math.abs(idle.beatGain(2) - 1) < 1e-12);
+  assert.deepEqual([idle.beatGain(0), idle.beatGain(9), idle.beatGain(undefined), idle.beatGain('1')], [1, 1, 1, 1], 'no such knob: 1');
+  const m = Clock.create({ source: 'metronome', settings: SETTINGS(120), audioContext: () => fakeContext(), timers: false, keys: false });
+  assert.equal(m.beatGain(1), 1, 'other sources: 1');
+});
+
 test('shared knobs: without a controller nothing changes (clock messages as before, receiver knobs null, beats on time); old receivers are safe', () => {
   const W = world(), P = metronomePublisher(W.w, 128);
   let worst = 0;

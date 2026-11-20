@@ -12,8 +12,16 @@
 // a blackout or calm gets it at once (its __panic.set), and a blackout keeps the cover black.
 // The iframe has allow="autoplay; microphone": the scene's AudioContext (its clock) may start without a key press when
 // Chrome runs with --autoplay-policy=no-user-gesture-required (the runbook's start command).
+// The knobs per slot (the user, 20 Nov 15:34: "lock the knobs per slot and the scene decides what to do with them"):
+// set.json numbers every *Knob param (beatKnob, diveKnob, pulseKnob, ...) 1-4, the slot's own four knobs. Slot A uses
+// them as written (the controller's top-row knobs 1-4, above fader 1); slot B adds 4 (knobs 5-8, above fader 5).
+// "Open all scenes" and a scene opened alone use the numbers as written. On every switch (and when the conductor asks
+// with { type: 'controls-ask', v: 1 }) the slot sends { type: 'controls', v: 1, slot, scene, controls: [{ knob, name }] }
+// on the channel: the scene's knobs, named after the param (beatKnob -> beat), for the conductor's line and LEDs.
 //   SlotLib.parseSlot(search) -> 'A' | 'B' (default 'A'); startIndex(slot, search, n) -> A: 0, B: 1, ?scene=N (1-based)
 //   SlotLib.step(i, dir, n), slotCommand(msg, slot) -> -1 | 1 | 0, keyDir(e) -> -1 | 1 | 0
+//   SlotLib.slotKnobs(set, scene, slot) -> { [param]: 'N' } (the *Knob params, slot B + 4); controls(set, scene, slot)
+//     -> [{ knob, name }] by knob
 //   SlotLib.create({ doc, win, set, slot, start, inLabel, channel, now, setTimeout, clearTimeout, setInterval, clearInterval })
 //     -> { show(i), step(dir), onMessage(msg), onKey(e), qa, stop() }
 // Include after set.js (SetLib). Node's tests require it with SetLib passed in.
@@ -22,6 +30,8 @@
   const SLOT_NAMES = ['A', 'B'];
   const READY_MS = 2500, POLL_MS = 50, SWITCHES_KEPT = 64;
   const KEYS = { ArrowLeft: -1, ArrowRight: 1, PageUp: -1, PageDown: 1 };
+  // the knobs per slot (see the header): a *Knob param, the slot's four knobs, and where each slot's knobs start
+  const KNOB_PARAM = /^([a-z][A-Za-z0-9]*)Knob$/, SLOT_KNOBS = 4, KNOB_OFFSET = { A: 0, B: 4 };
 
   function param(search, name) {
     const m = new RegExp(`[?&]${name}=([^&#]*)`).exec(String(search || ''));
@@ -49,6 +59,27 @@
   }
   const PANIC = { blackout: 'blackout', calm: 'calm', clear: 'off' };
 
+  /** the scene's *Knob params (set.json's defaults, then the scene's query) as this slot's knob numbers */
+  function slotKnobs(set, scene, slot) {
+    const q = Object.assign({}, (set && set.defaults) || {}, (scene && scene.query) || {}), out = {};
+    const off = KNOB_OFFSET[slot] || 0;
+    for (const [k, v] of Object.entries(q)) {
+      if (!KNOB_PARAM.test(k) || v === null || v === undefined) continue;
+      const n = parseInt(v, 10);
+      out[k] = Number.isInteger(n) && n >= 1 && n <= SLOT_KNOBS ? String(n + off) : String(v);
+    }
+    return out;
+  }
+  /** the scene's knobs in this slot: [{ knob (1-8), name }] by knob (names from the params: beatKnob -> beat) */
+  function controls(set, scene, slot) {
+    const out = [];
+    for (const [k, v] of Object.entries(slotKnobs(set, scene, slot))) {
+      const n = parseInt(v, 10);
+      if (Number.isInteger(n) && n >= 1 && n <= 8) out.push({ knob: n, name: KNOB_PARAM.exec(k)[1] });
+    }
+    return out.sort((a, b) => a.knob - b.knob);
+  }
+
   function create(o) {
     const SetLib = o.SetLib || root.SetLib;
     const doc = o.doc, set = o.set, slot = o.slot === 'B' ? 'B' : 'A', n = set.scenes.length;
@@ -60,7 +91,15 @@
     let index = step(Number.isInteger(o.start) ? o.start : SLOT_NAMES.indexOf(slot), 0, n);
     let frame = null, token = 0, poll = null, deadline = null, loading = false, panicMode = 'off', loads = 0, lost = 0;
     const switches = [];
-    const url = i => SetLib.buildUrl(set, set.scenes[i], o.inLabel ? { in: o.inLabel } : null);
+    const url = i => SetLib.buildUrl(set, set.scenes[i], Object.assign(slotKnobs(set, set.scenes[i], slot), o.inLabel ? { in: o.inLabel } : {}));
+    let controlsSent = 0;
+    // the scene's knobs to the conductor (its controls line, the LEDs)
+    function sendControls() {
+      if (!o.channel || typeof o.channel.postMessage !== 'function') return null;
+      const sc = set.scenes[index], m = { type: 'controls', v: 1, slot, scene: sc.name || sc.page, controls: controls(set, sc, slot) };
+      try { o.channel.postMessage(m); controlsSent++; } catch (e) { return null; }
+      return m;
+    }
     const setCover = on => { if (cover && cover.classList) cover.classList.toggle('on', !!on); };
     const coverOn = () => !!(cover && cover.classList && cover.classList.contains('on'));
     if (doc.title !== undefined) doc.title = `slot ${slot}`;
@@ -134,11 +173,13 @@
       f.src = sw.url;
       stage.appendChild(f);
       frame = f;
+      sendControls();
       return sw;
     }
     function onMessage(msg) {
       const d = slotCommand(msg, slot);
       if (d) { api.step(d); return; }
+      if (msg && msg.type === 'controls-ask') { sendControls(); return; }
       if (msg && msg.type === 'panic' && PANIC[msg.mode]) {
         panicMode = PANIC[msg.mode];
         if (panicMode === 'blackout') setCover(true);
@@ -151,7 +192,7 @@
       get frame() { return frame; },
       get qa() {
         return { slot, index, scene: set.scenes[index].name || set.scenes[index].page, url: url(index), n, loading, coverOn: coverOn(),
-          panicMode, loads, lost, frames: stage && stage.querySelectorAll ? stage.querySelectorAll('iframe').length : null,
+          panicMode, loads, lost, controls: controls(set, set.scenes[index], slot), controlsSent, frames: stage && stage.querySelectorAll ? stage.querySelectorAll('iframe').length : null,
           switches: switches.map(s => ({ ...s })) };
       },
       stop() { stopWaiting(); token++; teardown(frame); frame = null; },
@@ -161,7 +202,7 @@
     return api;
   }
 
-  const api = { SLOT_NAMES, READY_MS, KEYS, parseSlot, startIndex, step, slotCommand, keyDir, create };
+  const api = { SLOT_NAMES, READY_MS, KEYS, KNOB_OFFSET, SLOT_KNOBS, parseSlot, startIndex, step, slotCommand, keyDir, slotKnobs, controls, create };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.SlotLib = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

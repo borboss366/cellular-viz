@@ -505,3 +505,23 @@ test('conductor load() by name (14 Nov: hc-09 logged while another track played)
   assert.match(html, /log\.add\('track', \{ idx: t\.idx, event: 'load', file: t\.label/, 'the load record names the track found by stem');
   assert.match(html, /if \(k\) \$\('tracks'\)\.value = String\(k\.idx\);/, 'the selection stays on the same track');
 });
+
+test('conductor: the knobs per slot (20 Nov): controls messages from the slot windows -> one plain ASCII line per slot; the page asks once and keeps the latest', () => {
+  assert.equal(C.controlsLine({}), 'A: - | B: -');
+  const a = C.controlsFrom({ type: 'controls', v: 1, slot: 'A', scene: 'Hodge Kaleidoscope', controls: [{ knob: 3, name: 'glint' }, { knob: 1, name: 'beat' }, { knob: 2, name: 'dive' }] });
+  assert.deepEqual(a, { slot: 'A', scene: 'Hodge Kaleidoscope', controls: [{ knob: 1, name: 'beat' }, { knob: 2, name: 'dive' }, { knob: 3, name: 'glint' }] });
+  const b = C.controlsFrom({ type: 'controls', v: 1, slot: 'B', scene: 'Paint Pour', controls: [{ knob: 5, name: 'beat' }, { knob: 6, name: 'pulse' }, { knob: 9, name: 'bad' }, null, { knob: 7 }] });
+  assert.deepEqual(b.controls, [{ knob: 5, name: 'beat' }, { knob: 6, name: 'pulse' }], 'bad entries dropped');
+  assert.equal(C.controlsLine({ A: a, B: b }), 'A: 1 beat . 2 dive . 3 glint | B: 5 beat . 6 pulse');
+  assert.equal(C.controlsLine({ B: { slot: 'B', scene: 'EQ', controls: [] } }), 'A: - | B: no knobs');
+  for (const m of [null, 'x', { type: 'clock' }, { type: 'controls', slot: 'C', controls: [] }, { type: 'controls', slot: 'A' }, { type: 'controls-ask', v: 1 }])
+    assert.equal(C.controlsFrom(m), null, JSON.stringify(m));
+  assert.ok(/^[\x20-\x7e]+$/.test(C.controlsLine({ A: C.controlsFrom({ type: 'controls', slot: 'A', controls: [{ knob: 1, name: 'b\u00e9at' }] }) })), 'ASCII only (#205)');
+  assert.deepEqual(C.CONTROLS_ASK, { type: 'controls-ask', v: 1 });
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  assert.match(html, /<small id="controls"[^>]*>slot knobs: A: - \| B: -<\/small>/, 'the line under the knobs');
+  assert.match(html, /new BroadcastChannel\(Clock\.SHARED_CHANNEL\)/);
+  assert.match(html, /const c = C\.controlsFrom\(msg\);/);
+  assert.match(html, /\$\('controls'\)\.textContent = 'slot knobs: ' \+ C\.controlsLine\(slotControls\)/);
+  assert.match(html, /controlsChannel\.postMessage\(C\.CONTROLS_ASK\)/, 'asks the slot windows once on load');
+});

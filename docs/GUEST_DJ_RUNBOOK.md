@@ -92,10 +92,25 @@ lamp stays on the sound; its white flash bar runs early; that is expected. Type 
 Do not move it during the set. The parts of a scene that follow the sound level itself (the line-input band levels)
 stay late by the route delay; only the beat-timed parts move.
 
-The controller's top knob row (pot row 1) goes to the scenes (the conductor shows "knobs 1-8" under the profiles):
-knob 1 = Paint Pour pulse, knob 2 = Hodge dive (a fast turn down = a burst), knob 3 = Hodge glints, knob 4 = Little
-Bang Beamline travel speed (down = the camera stops, up = one lap a bar). Until a knob is turned, its scene uses its
-own default.
+The controller's top knob row (pot row 1) goes to the scenes, four knobs per slot: knobs 1-4 (above fader 1) belong to
+slot A's scene, knobs 5-8 (above fader 5) to slot B's. The first knob of each slot (1 or 5) is the beat: fully down =
+the beat off, the middle = as before, fully up = three times as strong. The next knobs depend on the scene:
+
+| Scene | Slot A knobs | Slot B knobs |
+|---|---|---|
+| Hodge Kaleidoscope | 1 beat, 2 dive (a fast turn down = a burst), 3 glints | 5 beat, 6 dive, 7 glints |
+| Lenia Effects, Riemann Ribbon, Neon Lines | 1 beat | 5 beat |
+| Paint Pour | 1 beat, 2 pulse | 5 beat, 6 pulse |
+| EQ Calibrate | none | none |
+| Little Bang Beamline | 1 beat, 2 travel speed (down = the camera stops, up = one lap a bar) | 5 beat, 6 travel speed |
+
+The conductor shows the knob values ("knobs 1-8") and, below, what each slot's scene does with them ("slot knobs: A: 1
+beat . 2 dive . 3 glint | B: 5 beat . 6 pulse"). Until a knob is turned, its scene uses its own default (the beat as
+before). "Open all scenes" (the fallback) uses slot A's knobs 1-4 for every scene.
+Before the show: set knobs 1 and 5 to the middle. The knobs are absolute: the first touch jumps to where the knob is,
+so a knob left fully down turns the beat off at the first touch.
+The beat knob works on a scene once that scene has been updated for it (the VIZ pages scene PRs); until then the
+scene ignores it.
 
 ## 5. Saturday: the order of steps (setup done by 16:00)
 | Time | Step |

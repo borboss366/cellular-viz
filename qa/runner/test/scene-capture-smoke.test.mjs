@@ -115,7 +115,10 @@ test('?capture=1 layout and the panic over the shared clock channel, in Chromium
   assert.deepEqual(remoteOff, { mode: 'off', received: 2 });
   assert.deepEqual(set.errors, []);
   assert.equal(set.rows, want.scenes.length);
-  // a scene's own query (24: beatFx=0, 11: scene=ribbon; the Saturday set, 19 Nov) comes after the defaults
-  const own = s => Object.entries(s.query || {}).map(([k, v]) => `&${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('');
-  assert.deepEqual(set.urls, want.scenes.map(s => `${s.page}?clock=shared&audio=line&in=BlackHole&capture=1${own(s)}`));
+  // a scene's own query (24: beatFx=0, 11: scene=ribbon; the Saturday set, 19 Nov) comes after the defaults; null
+  // removes a default (27: no beat knob, 20 Nov)
+  const own = s => Object.entries(Object.assign({}, want.defaults, s.query || {})).filter(([, v]) => v !== null && v !== undefined)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&');
+  assert.deepEqual(set.urls, want.scenes.map(s => `${s.page}?${own(s)}`));
+  assert.ok(set.urls[0].startsWith('16-hodge-kaleidoscope.html?clock=shared&audio=line&in=BlackHole&capture=1&beatKnob=1&'), set.urls[0]);
 });
