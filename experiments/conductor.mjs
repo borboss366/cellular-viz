@@ -239,3 +239,41 @@ export function wheelHintLog(holdS = WHEEL_HOLD_S) {
     return { ctx: since, kind, hint, medianMs: w ? w.medianMs : null, sixShare: w ? w.sixShare : null, driftDegPerBar: w ? w.driftDegPerBar : null };
   };
 }
+
+// ---------- the knobs per slot (the user, 20 Nov 15:34) ----------
+// Each slot window (slot.js) sends { type: 'controls', v: 1, slot, scene, controls: [{ knob, name }] } on the shared
+// clock's channel when its scene changes; the conductor keeps the latest per slot and shows one line (plain ASCII, #205).
+export const CONTROL_SLOTS = ['A', 'B'];
+export const CONTROLS_ASK = { type: 'controls-ask', v: 1 };
+/** a channel message -> { slot, scene, controls } when it is a well-formed controls message, else null */
+export function controlsFrom(msg) {
+  if (!msg || typeof msg !== 'object' || msg.type !== 'controls' || !CONTROL_SLOTS.includes(msg.slot) || !Array.isArray(msg.controls)) return null;
+  const controls = msg.controls
+    .filter(c => c && Number.isInteger(c.knob) && c.knob >= 1 && c.knob <= 8 && typeof c.name === 'string')
+    .map(c => ({ knob: c.knob, name: c.name.replace(/[^ -~]/g, '').slice(0, 16) }))
+    .sort((a, b) => a.knob - b.knob);
+  return { slot: msg.slot, scene: typeof msg.scene === 'string' ? msg.scene.replace(/[^ -~]/g, '') : '', controls };
+}
+// one half of the controller per slot (the user, 20 Nov 15:47): the top-row knobs (slot.js adds 4 in slot B)
+export const SLOT_KNOB_RANGE = { A: [1, 4], B: [5, 8] };
+export const UPPER_FIRST_CC = 37;   // the upper row: button 1 = CC 37 ... button 8 = CC 44
+/** the controller's slot buttons (MidiController.MAP.SLOT_CCS: { cc: [slot, dir] }) -> { A: { buttons: [prev, next], knobs: [1, 4] }, B } */
+export function slotLayout(slotCcs) {
+  const out = {};
+  for (const s of CONTROL_SLOTS) {
+    const mine = Object.entries(slotCcs || {}).filter(([, v]) => Array.isArray(v) && v[0] === s).sort((a, b) => a[1][1] - b[1][1]);
+    out[s] = { buttons: mine.map(([cc]) => Number(cc) - UPPER_FIRST_CC + 1), knobs: SLOT_KNOB_RANGE[s] };
+  }
+  return out;
+}
+/** the line under the knobs: "A (btn 3/4, knobs 1-4): 1 beat . 2 dive . 3 glint | B (btn 7/8, knobs 5-8): 5 beat . 6 pulse"
+ *  (a slot not heard from: "-"; without a layout just "A: ...") */
+export function controlsLine(bySlot, layout) {
+  return CONTROL_SLOTS.map(s => {
+    const c = bySlot && bySlot[s], l = layout && layout[s];
+    const head = l ? `${s} (${l.buttons.length ? `btn ${l.buttons.join('/')}, ` : ''}knobs ${l.knobs.join('-')})` : s;
+    if (!c) return `${head}: -`;
+    const list = c.controls.length ? c.controls.map(x => `${x.knob} ${x.name}`).join(' . ') : 'no knobs';
+    return `${head}: ${list}`;
+  }).join(' | ');
+}

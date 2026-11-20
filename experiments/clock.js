@@ -112,6 +112,12 @@
 // unknown type; an extra field). A scene reads clock.knobs (a copy: 8 entries, null until known) or clock.knob(n),
 // n 1-8 (null until known; null for n out of range). Only ?clock=shared receives them (other sources: all null); they
 // arrive before Play too, and they never touch the clock.
+// The beat knob (the user, 20 Nov 15:34: "all the scenes react not very noticeably to the beat"): each scene reads
+// ?beatKnob=N (set.json's defaults: 1; slot B adds 4, slot.js) and calls clock.beatGain(params.beatKnob) every frame,
+// then multiplies the gain only into its kick/snare/hat terms, each with its own cap. Clock.beatGain(k): k null (the
+// knob not moved yet) -> 1, exactly as before; k <= BEAT_DEAD_ZONE -> 0 (the knob fully down = beat off); else
+// 3^(2k-1) clamped to [0, BEAT_GAIN_MAX] (centre 0.5 = 1, full = 3). clock.beatGain(n) = Clock.beatGain(clock.knob(n)),
+// so a scene on any other clock source, or with no beat knob, always gets 1.
 // Hand fixes do nothing on a scene (the conductor owns them). The page shows a small "shared" badge (opts.badge false:
 // none). clock.sharedState = { state: waiting|locked|free-run, msgs, jumpsIn, lastErrMs, lost, skipped, offsetMs, offsetFrom: url|publisher }.
 //   Clock.publish(clock, { timers, post, epochNow }) → { tick(), panic(mode), setKnobs(values), stop(), sent }: the conductor side;
@@ -153,6 +159,13 @@
   // counts as lost, and the largest error that slews instead of jumping
   const SHARED_CHANNEL = 'cellular-viz-clock', SHARED_PUBLISH_MS = 50, SHARED_SLEW = 0.05, SHARED_LOST_MS = 2000, SHARED_SLEW_MAX = 0.25;
   const KNOBS = 8;
+  // the beat knob (see the header): below this the beat is off; the gain at the knob's top
+  const BEAT_DEAD_ZONE = 0.05, BEAT_GAIN_MAX = 3;
+  function beatGain(k) {
+    if (typeof k !== 'number' || !Number.isFinite(k)) return 1;
+    if (k <= BEAT_DEAD_ZONE) return 0;
+    return Math.max(0, Math.min(BEAT_GAIN_MAX, Math.pow(3, 2 * Math.min(1, k) - 1)));
+  }
   // 8 knob values (numbers clamped to 0..1, anything else null), or null when it isn't a list of 8
   const knobList = a => (Array.isArray(a) && a.length === KNOBS ? a.map(x => (typeof x === 'number' && Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : null)) : null);
   const epochNowDefault = () => (root.performance ? (root.performance.timeOrigin || 0) + root.performance.now() : Date.now());
@@ -857,6 +870,8 @@
       // the conductor's pot row 1 (see the header): 8 values 0..1, null until known; knob(n) for n 1-8
       get knobs() { return shared ? shared.knobs.slice() : new Array(KNOBS).fill(null); },
       knob(n) { return shared && Number.isInteger(n) && n >= 1 && n <= KNOBS ? shared.knobs[n - 1] : null; },
+      // the beat knob's gain (see the header): 1 until knob n is known, 0 at the bottom, 3 at the top
+      beatGain(n) { return beatGain(shared && Number.isInteger(n) && n >= 1 && n <= KNOBS ? shared.knobs[n - 1] : null); },
       get sharedState() {
         if (!shared) return null;
         return { state: shared.state, msgs: shared.msgs, jumpsIn: shared.jumpsIn, lost: shared.lost, skipped: shared.skipped,
@@ -1256,7 +1271,7 @@
     return pub;
   }
 
-  const api = { create, publish, pickInput, qaEvents, parseGrid, makeWarp, TAU, LANES, BANDS, OFFSET_MIN, OFFSET_MAX, SHARED_CHANNEL, SHARED_LOST_MS, KNOBS };
+  const api = { create, publish, pickInput, qaEvents, parseGrid, makeWarp, TAU, LANES, BANDS, OFFSET_MIN, OFFSET_MAX, SHARED_CHANNEL, SHARED_LOST_MS, KNOBS, beatGain, BEAT_DEAD_ZONE, BEAT_GAIN_MAX };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.Clock = api;
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this));   // node's `this` is module.exports

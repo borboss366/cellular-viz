@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "about": "The set for set.html (the apartment MVP). Edit freely: scenes are pages in this folder; query adds to or overrides defaults (null removes a key). window: each scene's content size (pt) and Chrome's bar height; Open all scenes places them on an even diagonal of the screen.",
-  "defaults": { "clock": "shared", "audio": "line", "in": "BlackHole", "capture": "1" },
+  "about": "The set for set.html (the apartment MVP). Edit freely: scenes are pages in this folder; query adds to or overrides defaults (null removes a key). Knobs: every *Knob param is one of the slot's four top-row knobs, 1-4 (slot B adds 4, slot.js); beatKnob 1 is the beat (clock.beatGain). window: each scene's content size (pt) and Chrome's bar height; Open all scenes places them on an even diagonal of the screen.",
+  "defaults": { "clock": "shared", "audio": "line", "in": "BlackHole", "capture": "1", "beatKnob": "1" },
   "window": { "width": 960, "height": 540, "bar": 63 },
   "scenes": [
     { "name": "Hodge Kaleidoscope", "page": "16-hodge-kaleidoscope.html", "query": { "diveKnob": "2", "glintKnob": "3" } },
     { "name": "Lenia Effects", "page": "06-lenia-effects.html" },
-    { "name": "Paint Pour", "page": "24-paint-pour.html", "query": { "beatFx": "0", "pulseKnob": "1" } },
+    { "name": "Paint Pour", "page": "24-paint-pour.html", "query": { "beatFx": "0", "pulseKnob": "2" } },
     { "name": "Riemann Ribbon", "page": "11-riemann-show.html", "query": { "scene": "ribbon" } },
-    { "name": "EQ Calibrate", "page": "27-eq-calibrate.html", "query": { "kick": "1" } },
+    { "name": "EQ Calibrate", "page": "27-eq-calibrate.html", "query": { "kick": "1", "beatKnob": null } },
     { "name": "Neon Lines", "page": "16-neon-lines.html" },
-    { "name": "Little Bang Beamline", "page": "18-little-bang.html", "query": { "scene": "beamline", "speedKnob": "4" } }
+    { "name": "Little Bang Beamline", "page": "18-little-bang.html", "query": { "scene": "beamline", "speedKnob": "2" } }
   ]
 }

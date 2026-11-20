@@ -46,7 +46,8 @@ function world(o = {}) {
     t = end;
   };
   const win = el('window');
-  const channel = { onmessage: null };
+  const posted = [];
+  const channel = { onmessage: null, postMessage: m => posted.push(m) };
   const s = SlotLib.create({ SetLib, doc, win, set: o.set || SET, slot: o.slot || 'A', start: o.start, inLabel: o.inLabel, channel,
     now: () => t, setTimeout: (f, ms) => add(f, ms, false), clearTimeout: id => timers.delete(id),
     setInterval: (f, ms) => add(f, ms, true), clearInterval: id => timers.delete(id) });
@@ -63,7 +64,7 @@ function world(o = {}) {
     return w;
   };
   const send = msg => channel.onmessage({ data: msg });
-  return { s, stage, cover, doc, win, load, send, advance, now: () => t };
+  return { s, stage, cover, doc, win, load, send, advance, posted, now: () => t };
 }
 const coverOn = W => W.cover.classes.has('on');
 
@@ -208,6 +209,63 @@ test('slot: a scene that never locks shows after 2.5 s (timeout logged); a late 
   W.load('locked');
   assert.ok(!coverOn(W));
   assert.equal(W.s.qa.loads, 2);
+});
+
+// the knobs per slot (the user, 20 Nov 15:34): set.json numbers each scene's knobs 1-4; slot B adds 4
+test('slot.js knobs per slot: the *Knob params as this slot\'s knob numbers (A as written, B + 4) and the controls list', () => {
+  const by = page => SET.scenes.find(s => s.page === page);
+  const hodge = by('16-hodge-kaleidoscope.html'), pour = by('24-paint-pour.html'), eq = by('27-eq-calibrate.html'), bang = by('18-little-bang.html');
+  assert.deepEqual(SlotLib.KNOB_OFFSET, { A: 0, B: 4 }); assert.equal(SlotLib.SLOT_KNOBS, 4);
+  assert.deepEqual(SlotLib.slotKnobs(SET, hodge, 'A'), { beatKnob: '1', diveKnob: '2', glintKnob: '3' });
+  assert.deepEqual(SlotLib.slotKnobs(SET, hodge, 'B'), { beatKnob: '5', diveKnob: '6', glintKnob: '7' });
+  assert.deepEqual(SlotLib.controls(SET, hodge, 'A'), [{ knob: 1, name: 'beat' }, { knob: 2, name: 'dive' }, { knob: 3, name: 'glint' }]);
+  assert.deepEqual(SlotLib.controls(SET, pour, 'B'), [{ knob: 5, name: 'beat' }, { knob: 6, name: 'pulse' }], 'beatFx is not a knob');
+  assert.deepEqual(SlotLib.controls(SET, bang, 'B'), [{ knob: 5, name: 'beat' }, { knob: 6, name: 'speed' }]);
+  assert.deepEqual(SlotLib.controls(SET, eq, 'A'), [], '27 EQ: no beat knob (null removes the default)');
+  // every scene of the set: slot A's knobs are 1-4, slot B's 5-8, and each scene has the beat on the first (but 27)
+  for (const sc of SET.scenes) {
+    const a = SlotLib.controls(SET, sc, 'A'), b = SlotLib.controls(SET, sc, 'B');
+    assert.ok(a.every(c => c.knob >= 1 && c.knob <= 4) && b.every(c => c.knob >= 5 && c.knob <= 8), sc.page);
+    assert.deepEqual(b, a.map(c => ({ knob: c.knob + 4, name: c.name })), sc.page);
+    if (sc !== eq) assert.deepEqual(a[0], { knob: 1, name: 'beat' }, sc.page);
+  }
+  // a number outside 1-4 is kept as written; other params are not knobs
+  const odd = { version: 1, scenes: [{ page: '13-flow-lab.html', query: { fooKnob: '7', Knob: '1', speed: '2', barKnob: 'x' } }] };
+  assert.deepEqual(SlotLib.slotKnobs(odd, odd.scenes[0], 'B'), { fooKnob: '7', barKnob: 'x' });
+  assert.deepEqual(SlotLib.controls(odd, odd.scenes[0], 'B'), [{ knob: 7, name: 'foo' }]);
+});
+
+test('slot B\'s scene gets knobs 5-8 in its URL (slot A and "Open all scenes" as written); each switch and a controls-ask send the scene\'s controls', () => {
+  const hodge = SET.scenes.findIndex(s => s.page === '16-hodge-kaleidoscope.html');
+  const A = world();
+  A.s.show(hodge);
+  assert.equal(A.stage.children[0].src, SetLib.buildUrl(SET, SET.scenes[hodge]), 'slot A: the URL as set.html builds it');
+  assert.match(A.stage.children[0].src, /[?&]beatKnob=1&diveKnob=2&glintKnob=3(&|$)/);
+  assert.deepEqual(A.posted, [{ type: 'controls', v: 1, slot: 'A', scene: 'Hodge Kaleidoscope', controls: [{ knob: 1, name: 'beat' }, { knob: 2, name: 'dive' }, { knob: 3, name: 'glint' }] }]);
+  const B = world({ slot: 'B', inLabel: 'USB Audio' });
+  B.s.show(hodge);
+  const src = B.stage.children[0].src;
+  assert.match(src, /[?&]beatKnob=5&diveKnob=6&glintKnob=7(&|$)/, src);
+  assert.match(src, /[?&]in=USB%20Audio(&|$)/); assert.match(src, /[?&]capture=1(&|$)/);
+  assert.equal(src, SetLib.buildUrl(SET, SET.scenes[hodge], { beatKnob: '5', diveKnob: '6', glintKnob: '7', in: 'USB Audio' }));
+  assert.deepEqual(B.posted[0].controls, [{ knob: 5, name: 'beat' }, { knob: 6, name: 'dive' }, { knob: 7, name: 'glint' }]);
+  assert.equal(B.posted[0].slot, 'B');
+  // a switch sends the new scene's controls; the conductor's ask gets them again; other messages send nothing
+  B.send({ type: 'slot', v: 1, slot: 'B', dir: 1 });
+  assert.equal(B.posted.length, 2);
+  assert.equal(B.posted[1].scene, SET.scenes[(hodge + 1) % SET.scenes.length].name);
+  B.send({ type: 'controls-ask', v: 1 });
+  assert.equal(B.posted.length, 3); assert.deepEqual(B.posted[2], B.posted[1]);
+  B.send({ type: 'clock', v: 1 }); B.send({ type: 'controls', v: 1, slot: 'A', controls: [] });
+  assert.equal(B.posted.length, 3, 'its own kind of message is not answered');
+  assert.equal(B.s.qa.controlsSent, 3);
+  assert.deepEqual(B.s.qa.controls, B.posted[2].controls);
+  // a channel without postMessage (or none): nothing breaks
+  const quiet = SlotLib.create({ SetLib, doc: { title: '', body: { appendChild() {}, querySelectorAll: () => [] }, getElementById: () => null,
+    createElement: () => ({ setAttribute() {}, addEventListener() {} }) }, set: SET, slot: 'B', channel: { onmessage: null },
+    setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {} });
+  quiet.show(0);
+  assert.equal(quiet.qa.controlsSent, 0);
 });
 
 test('slot.html, the conductor and the controller wiring; plain ASCII (#205)', () => {
