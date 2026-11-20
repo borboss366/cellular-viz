@@ -22,6 +22,11 @@
 //   1 / max(1, g) (at most today's +0.25): scaled, never clamped, so they peak with the kick and have no flat top. The
 //   travel speed (its knob), the clock, audio-in's lanes, the bunch crossings and the sync log are untouched. At g = 1
 //   every level is today's.
+// pick-up (the user's Mac session, 20 Nov: a knob left up by the last scene in the slot acted at once on the next one):
+//   knobOf(clock, n) reads through pickup(p, n, clock.knobs), as 16-dive.js: a knob whose value was already there when
+//   the first knob values reached the page is ignored until it moves by more than PICK_EPS (so knob 2 left at 0 by
+//   Hodge's dive does not stop the camera on arrival); a knob unknown then is live once it gets a value. A clock without
+//   a knobs list (tests, older clocks) reads as before. QA: ?qaClockKnobs=2:0 stands in for the stored knobs.
 (function (root) {
   'use strict';
   const C = {
@@ -30,8 +35,36 @@
     RAY_BASE: 0.45, RAY_BASS: 0.2, RAY_KICK: 0.35, RAY_CAP: 1.0, RAY_TAU_K: 0.12, RAY_MIN_GAP: 1 / 3,
     RAY_W_KICK: 0.35, RAY_W_BASS: 0.1, RAY_LEN: 45,
     BEAT_G_MAX: 2, BEAT_HAT_G_MAX: 1, BEAT_SNARE_G_MAX: 1, BEAT_LIGHT_MAX: 1 / 0.6,
+    PICK_EPS: 0.02,
   };
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x)), clamp01 = x => clamp(x, 0, 1);
+  // pick-up (see the header): one state per clock (= per page load); QA's stand-in for the stored knobs
+  const pickupCreate = () => ({ snap: null, live: {} }), picks = new WeakMap();
+  const QA_KNOBS = (() => {
+    try {
+      const m = /[?&]qaClockKnobs=([^&#]*)/.exec(String((root.location && root.location.search) || ''));
+      if (!m) return null;
+      const a = new Array(8).fill(null);
+      for (const kv of decodeURIComponent(m[1]).split(',')) { const [n, v] = kv.split(':').map(Number); if (n >= 1 && n <= 8 && Number.isFinite(v)) a[n - 1] = clamp01(v); }
+      return a;
+    } catch (e) { return null; }
+  })();
+  function pickup(p, n, knobs) {
+    const k = Math.round(+n);
+    if (!p || !(k >= 1 && k <= 8) || !Array.isArray(knobs)) return null;
+    const val = x => (x !== null && x !== undefined && Number.isFinite(+x) ? clamp01(+x) : null);
+    if (p.snap === null) {   // the values the page found on arrival: the last scene's knobs
+      if (!knobs.some(x => val(x) !== null)) return null;
+      p.snap = Array.from({ length: 8 }, (_, i) => val(knobs[i]));
+    }
+    const v = val(knobs[k - 1]);
+    if (p.live[k]) return v;
+    if (v === null) return null;
+    const v0 = p.snap[k - 1];
+    if (v0 === null || Math.abs(v - v0) > C.PICK_EPS) { p.live[k] = true; return v; }
+    return null;
+  }
+  const pickupState = clock => { const p = clock && picks.get(clock); return p ? { snap: p.snap ? p.snap.slice() : null, live: Object.keys(p.live).map(Number) } : null; };
   // the page's PCG (the same hash the shaders use)
   function pcg(v) {
     const s = (Math.imul(v >>> 0, 747796405) + 2891336453) >>> 0;
@@ -42,6 +75,13 @@
   function knobOf(clock, n) {
     const k = Math.round(+n);
     if (!(k >= 1 && k <= 8) || !clock || typeof clock.knob !== 'function') return null;
+    let all = QA_KNOBS;
+    if (!all) { try { all = Array.isArray(clock.knobs) ? clock.knobs : null; } catch (e) { all = null; } }
+    if (all) {   // through the pick-up
+      let p = picks.get(clock);
+      if (!p) { p = pickupCreate(); picks.set(clock, p); }
+      return pickup(p, k, all);
+    }
     let v = null; try { v = clock.knob(k); } catch (e) { v = null; }
     return v !== null && v !== undefined && Number.isFinite(+v) ? clamp01(+v) : null;
   }
@@ -94,7 +134,7 @@
   const lightScale = g => Math.min(1, C.BEAT_LIGHT_MAX / gOf(g));
   const haloOf = (bass, g) => 0.9 + 0.25 * bass / Math.max(1, gOf(g));
   const glowOf = (bass, g) => 0.7 + 0.6 * bass * lightScale(g);
-  const api = { C, pcg, knobOf, speedCreate, speedStep, targetAt, rayCreate, rayStep, beatGainOf, beatLanes, lightScale, haloOf, glowOf };
+  const api = { C, pcg, knobOf, speedCreate, speedStep, targetAt, rayCreate, rayStep, beatGainOf, beatLanes, lightScale, haloOf, glowOf, pickupCreate, pickup, pickupState };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.Travel = api;
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this));
