@@ -60,23 +60,27 @@ test('18 beamline travel in Chromium: knob 0 stops the camera, knob 1 moves it, 
   const errors = [];
   page.on('pageerror', e => errors.push(String(e && e.message || e)));
   await page.goto(`http://127.0.0.1:${srv.address().port}/experiments/18-little-bang.html?scene=beamline&capture=1&speedKnob=4&n=10000`, { timeout: 30e3 });
+  // Page time, not wall time: under test-pr load the page can run at 1-2 fps and its dt is capped at 0.1 s a frame, so a
+  // fixed 4 s wait can end before the eased stop has had its ~1.5 s of page time (that run saw speed 11.6 still).
+  await page.waitForFunction(() => window.__qa && window.__qa.camera && window.__qa.camera.travel === true, null, { timeout: 60e3 });
   await page.evaluate(() => window.__qa.fakeKnob(4, 0));
-  await page.waitForTimeout(4000);   // the speed eases to 0 (under 2 s of page time)
+  await page.waitForFunction(() => window.__qa.camera.speed < 1e-3, null, { timeout: 120e3, polling: 100 });
   const res = await page.evaluate(async () => {
-    const q = window.__qa, wait = ms => new Promise(r => setTimeout(r, ms)), C = 2 * Math.PI * q.ringR;
+    const q = window.__qa, C = 2 * Math.PI * q.ringR;
+    const frames = n => new Promise(r => { let k = 0; const f = () => (++k >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
     const cam = () => ({ ...q.camera, target: { ...q.camera.target } });
-    const a = cam(); await wait(1500); const b = cam();
+    const a = cam(); await frames(30); const b = cam();
     q.fakeKnob(4, 1);
     let travelled = 0, prev = cam().s, rays = [], targets = [];
-    for (let i = 0; i < 60; i++) {   // 3 s at knob 1: unwrap the camera arclength, sample the ray
-      await wait(50);
+    for (let i = 0; i < 120; i++) {   // 120 frames at knob 1 (2 s at 60 fps): unwrap the camera arclength, sample the ray
+      await frames(1);
       const c = cam(); let d = c.s - prev; if (d < -C / 2) d += C; if (d > C / 2) d -= C; travelled += d; prev = c.s;
       rays.push({ ...q.ray }); targets.push(c.target);
     }
     return { a, b, end: cam(), travelled, rays, targets, errors: q.errors.slice() };
   });
   const envs = res.rays.map(r => r.env), still = Math.abs(res.b.s - res.a.s);
-  t.diagnostic(`corpus: report: travel18 smoke: stopped moved ${still.toFixed(4)}, travelled ${res.travelled.toFixed(2)} in 3 s at knob 1 (speed ${res.end.speed}), ray env ${Math.min(...envs).toFixed(3)}..${Math.max(...envs).toFixed(3)}, target ${JSON.stringify(res.end.target)}`);
+  t.diagnostic(`corpus: report: travel18 smoke: stopped moved ${still.toFixed(4)}, travelled ${res.travelled.toFixed(2)} in 120 frames at knob 1 (speed ${res.end.speed}), ray env ${Math.min(...envs).toFixed(3)}..${Math.max(...envs).toFixed(3)}, target ${JSON.stringify(res.end.target)}`);
   await page.screenshot({ path: path.join(root, 'travel.png') }).catch(() => {});
   assert.deepEqual(errors, [], 'no page errors'); assert.deepEqual(res.errors, [], 'no frame errors');
   assert.equal(res.a.travel, true, 'travel mode on'); assert.equal(res.a.knob, 0);
