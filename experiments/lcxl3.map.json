@@ -34,7 +34,8 @@
     "absolute": { "row1": [13, 20], "row2": [21, 28], "row3": [29, 36] },
     "verified": "hardware 15 Nov",
     "ledRgb": { "sysex": "F0 00 20 29 02 15 01 53 <cc> R G B F7", "rgb": "0-127 each", "use": "row 1: slot A's active knobs blue, slot B's orange, the rest dark (20 Nov)",
-      "source": "Programmer's Reference v1.0, as used by github.com/DiegoDimuro/launchcontrol-3-xl-leds", "verified": "unverified: the 1-minute LED check on the Mac" }
+      "source": "Programmer's Reference v1.0, as used by github.com/DiegoDimuro/launchcontrol-3-xl-leds", "verified": "hardware 20 Nov (Mac session 4: knobs 1-3 blue, 5 orange, the rest dark)",
+      "slotButtons": "upper 3 / 4 / 7 / 8 (CC 39 / 40 / 43 / 44) steady purple R100 G0 B127 with the same SysEx (20 Nov; the upper row takes it per the same source)" }
   },
   "buttons": {
     "channel": 1,

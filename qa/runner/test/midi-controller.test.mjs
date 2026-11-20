@@ -446,6 +446,7 @@ test('slots: upper buttons 3/4 (CC 39/40) = slot A prev/next, 7/8 (CC 43/44) = s
 // ---------- the encoder LEDs (the user, 20 Nov: highlight the active knobs): slot A blue, slot B orange ----------
 const ring = (cc, rgb) => hex(M.encoderLed(cc, rgb));
 const encSx = sent => sent.filter(b => b[0] === 0xF0 && b[6] === 0x01 && b[7] === 0x53);
+const ringSx = sent => encSx(sent).filter(b => b[8] >= 13 && b[8] <= 20);   // the rings only (not the purple buttons)
 test('encoder LEDs: the SysEx bytes, the colours, and which knobs light per slot (from slot.js controls)', () => {
   assert.equal(hex(M.encoderLed(13, [0, 24, 127])), 'f0 00 20 29 02 15 01 53 0d 00 18 7f f7');
   assert.equal(hex(M.encoderLed(20, [200, -3, 64.4])), 'f0 00 20 29 02 15 01 53 14 7f 00 40 f7', 'clamped to 0-127, whole numbers');
@@ -475,7 +476,7 @@ test('encoder LEDs: the SysEx bytes, the colours, and which knobs light per slot
 test('encoder LEDs on the device: dark on connect, one batch per controls change (only the changed rings), again on replug and after Mode Select, dark on stop', async () => {
   const access = fakeAccess();
   const { ctl, out, clear, inp, advance } = await rig({ access });
-  const start = encSx(out().sent).map(hex);
+  const start = ringSx(out().sent).map(hex);
   assert.deepEqual(start, [13, 14, 15, 16, 17, 18, 19, 20].map(cc => ring(cc, [0, 0, 0])), 'connect: all 8 rings dark, after DAW mode');
   assert.deepEqual(out().sent.slice(0, 3).map(hex), ['9f 0c 7f', 'b7 1e 00', 'f0 00 20 29 02 15 04 35 01 f7'], 'DAW mode and the display first');
   const { A, B, off } = M.MAP.KNOB_RGB;
@@ -494,10 +495,10 @@ test('encoder LEDs on the device: dark on connect, one batch per controls change
   assert.deepEqual(encSx(out().sent).map(hex), [ring(17, off), ring(18, off)]);
   // replug: DAW mode again and every ring with the current colours
   unplug(access); plug(access);
-  assert.deepEqual(encSx(out().sent).map(hex), [A, A, A, off, off, off, off, off].map((c, i) => ring(13 + i, c)));
+  assert.deepEqual(ringSx(out().sent).map(hex), [A, A, A, off, off, off, off, off].map((c, i) => ring(13 + i, c)));
   // the Mode Select page: the next tick sends the rings again (once)
   clear(); inp().onmidimessage({ data: [0xB6, 30, 0x16] }); ctl.tick();
-  assert.equal(encSx(out().sent).length, 8);
+  assert.equal(ringSx(out().sent).length, 8);
   clear(); ctl.tick();
   assert.equal(encSx(out().sent).length, 0);
   // stop: the rings dark, DAW mode off last
@@ -505,6 +506,46 @@ test('encoder LEDs on the device: dark on connect, one batch per controls change
   const s = out().sent.map(hex);
   for (let cc = 13; cc <= 20; cc++) assert.ok(s.includes(ring(cc, off)), `ring ${cc} dark`);
   assert.equal(s[s.length - 1], '9f 0c 00');
+});
+
+test('scene-change buttons purple: upper 3/4/7/8 (CC 39/40/43/44) with the ring SysEx, in the rings\' batch (connect, replug, Mode Select), never per frame, dark on stop', async () => {
+  assert.deepEqual(M.MAP.SLOT_BUTTON_CCS, [39, 40, 43, 44]);
+  assert.deepEqual(M.MAP.SLOT_BUTTON_CCS, Object.keys(M.MAP.SLOT_CCS).map(Number).sort((a, b) => a - b), 'the slot buttons, from SLOT_CCS');
+  assert.deepEqual(M.MAP.SLOT_BUTTON_RGB, [100, 0, 127]);
+  assert.equal(hex(M.encoderLed(39, M.MAP.SLOT_BUTTON_RGB)), 'f0 00 20 29 02 15 01 53 27 64 00 7f f7');
+  assert.equal(MAP.encoders.ledRgb.verified.startsWith('hardware 20 Nov'), true, 'the rings, checked on the Mac');
+  const purple = cc => ring(cc, M.MAP.SLOT_BUTTON_RGB);
+  const btnSx = sent => encSx(sent).filter(b => [39, 40, 43, 44].includes(b[8])).map(hex);
+  const access = fakeAccess();
+  const { ctl, out, clear, inp, advance } = await rig({ access });
+  assert.deepEqual(btnSx(out().sent), [39, 40, 43, 44].map(purple), 'connect: the 4 buttons purple, after the 8 rings');
+  const sx = encSx(out().sent).map(b => b[8]);
+  assert.deepEqual(sx, [13, 14, 15, 16, 17, 18, 19, 20, 39, 40, 43, 44], 'one batch: rings, then buttons');
+  // controls changes and frames: the buttons are not sent again
+  clear();
+  ctl.setControls({ A: { controls: [{ knob: 1, name: 'beat' }] } });
+  for (let i = 0; i < 10; i++) { advance(50); ctl.tick(); }
+  assert.deepEqual(btnSx(out().sent), [], 'not per change, not per frame');
+  // no other upper-row LED is touched: hold / auto-hold keep their palette CCs, 41 / 42 stay dark
+  assert.ok(!out().sent.some(b => b[0] === 0xB0 && [39, 40, 41, 42, 43, 44].includes(b[1])), 'no palette CC on the slot or audition buttons');
+  // replug and Mode Select: purple again, once
+  unplug(access); plug(access);
+  assert.deepEqual(btnSx(out().sent), [39, 40, 43, 44].map(purple));
+  clear(); inp().onmidimessage({ data: [0xB6, 30, 0x16] }); ctl.tick();
+  assert.deepEqual(btnSx(out().sent), [39, 40, 43, 44].map(purple));
+  clear(); ctl.tick();
+  assert.deepEqual(btnSx(out().sent), []);
+  // stop: dark, DAW mode off last
+  clear(); ctl.stop();
+  const s = out().sent.map(hex);
+  for (const cc of [39, 40, 43, 44]) assert.ok(s.includes(ring(cc, [0, 0, 0])), `button ${cc} dark`);
+  assert.equal(s[s.length - 1], '9f 0c 00');
+  // no SysEx: no purple bytes, the slot buttons still step the slots
+  const calls = [];
+  const plain = await rig({ sysex: false, onSlot: (sl, d) => calls.push([sl, d]), log: () => {} });
+  assert.deepEqual(encSx(plain.out().sent), []);
+  plain.inp().onmidimessage({ data: [0xB0, 40, 127], timeStamp: 1 });
+  assert.deepEqual(calls, [['A', 1]]);
 });
 
 test('encoder LEDs never block: no SysEx or a send that throws is logged once; the knobs, the buttons and the clock carry on', async () => {

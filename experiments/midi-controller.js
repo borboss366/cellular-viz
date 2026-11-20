@@ -45,6 +45,9 @@
 // messages); each ring is SysEx F0 00 20 29 02 15 01 53 <cc> R G B F7 (Programmer's Reference v1.0, RGB 0-127), sent
 // only when its colour changes: on setControls, on a fresh output (connect, replug) and after the Mode Select page.
 // No SysEx, or a send that throws: logged once (opts.log, else console.warn), the knobs and the clock carry on.
+// The scene-change buttons (the user, 20 Nov Mac session): upper 3 / 4 and 7 / 8 (SLOT_CCS, CC 39 / 40 / 43 / 44) are a
+// steady purple (SLOT_BUTTON_RGB) with the same SysEx, in the same batch as the rings; dark on stop. Rings verified on
+// the LCXL3 on 20 Nov (Mac session 4: knobs 1-3 blue, 5 orange, the rest dark).
 //
 //   const ctl = MidiController.create({ clock, navigator, lastFix: () => 'tap', onStatus: s => ... });
 //   ctl.start()  → Promise; asks requestMIDIAccess({ sysex: true }), else without SysEx, else status 'no-midi'
@@ -86,6 +89,9 @@
   const displayText = (field, s) => [...SYSEX, 0x06, DISPLAY_TARGET, field, ...ascii(s), 0xF7];
   // the encoder rings (see the header): RGB 0-127 per slot; blue and orange, never a red / green pair
   const KNOB_RGB = { A: [0, 24, 127], B: [127, 40, 0], off: [0, 0, 0] };
+  // the scene-change buttons (see the header): a magenta-leaning purple, apart from the blue rings
+  const SLOT_BUTTON_RGB = [100, 0, 127];
+  const SLOT_BUTTON_CCS = Object.keys(SLOT_CCS).map(Number).sort((a, b) => a - b);
   const LED_RGB = 0x53;
   const clamp7 = x => Math.max(0, Math.min(127, Math.round(Number(x) || 0)));
   const encoderLed = (cc, rgb) => [...SYSEX, 0x01, LED_RGB, cc, clamp7(rgb[0]), clamp7(rgb[1]), clamp7(rgb[2]), 0xF7];
@@ -190,16 +196,18 @@
       if (bytes[0] === 0xF0 && !ctl.sysex) return;
       try { if (at === undefined) output.send(bytes); else output.send(bytes, at); ctl.sent++; } catch (e) { /* a port that vanished mid-send: the next statechange resolves it */ }
     }
-    // the encoder rings: only the rings whose colour changed; one batch, never per frame. Never throws.
+    // the encoder rings and the purple scene-change buttons: only those whose colour changed; one batch, never per
+    // frame. Never throws.
     function knobLeds() {
       if (!output) return 0;
       if (!ctl.sysex) { if (Object.values(controls).some(c => c)) warn('LCXL3: the encoder LEDs need SysEx (allow it for this page); the knobs work without'); return 0; }
-      const want = knobColours(controls);
+      const rings = knobColours(controls);
+      const want = [...rings.map((rgb, i) => [KNOB_CCS[0] + i, rgb]), ...SLOT_BUTTON_CCS.map(cc => [cc, SLOT_BUTTON_RGB])];
       let n = 0;
-      for (let i = 0; i < KNOBS; i++) {
-        const cc = KNOB_CCS[0] + i, key = want[i].join(',');
+      for (const [cc, rgb] of want) {
+        const key = rgb.join(',');
         if (knobSent[cc] === key) continue;
-        try { output.send(encoderLed(cc, want[i])); ctl.sent++; knobSent[cc] = key; n++; }
+        try { output.send(encoderLed(cc, rgb)); ctl.sent++; knobSent[cc] = key; n++; }
         catch (e) { ctl.ledError = String(e && e.message || e); warn(`LCXL3: encoder LED send failed (${ctl.ledError}); the knobs work without`); return n; }
       }
       if (n) ctl.ledBatches++;
@@ -323,7 +331,7 @@
         send(m); ledSent[cc] = key;
       }
       if (!ctl.sysex) return;
-      if (!ctl.ledError && Object.keys(knobSent).length < KNOBS) knobLeds();   // only after Mode Select cleared them: nothing per frame
+      if (!ctl.ledError && Object.keys(knobSent).length < KNOBS + SLOT_BUTTON_CCS.length) knobLeds();   // only after Mode Select cleared them: nothing per frame
       const lines = displayLines(v);
       if (now - lastDisplayAt < DISPLAY_MS || (lines[0] === linesSent[0] && lines[1] === linesSent[1])) return;
       lastDisplayAt = now;
@@ -354,7 +362,7 @@
         if (ctl.sysex) send(displayConfig(0x00));
         for (const cc of LOWER) { send([FLASH_CH, cc, COLOUR.off]); send([BUTTON_CH, cc, COLOUR.off]); }
         for (const cc of UPPER) send([BUTTON_CH, cc, COLOUR.off]);
-        if (ctl.sysex) for (let i = 0; i < KNOBS; i++) send(encoderLed(KNOB_CCS[0] + i, KNOB_RGB.off));
+        if (ctl.sysex) for (const cc of [...Array.from({ length: KNOBS }, (_, i) => KNOB_CCS[0] + i), ...SLOT_BUTTON_CCS]) send(encoderLed(cc, KNOB_RGB.off));
         send(DAW_OFF);
       }
       setStatus('off');
@@ -364,7 +372,7 @@
   }
 
   const api = { create, decode, forwarded, leds, displayLines, encoderLed, knobColours,
-    MAP: { KNOB_RGB, LED_RGB, SYSEX, LOWER, UPPER, HOLD_CC, AUTO_HOLD_CC, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS, POT_CH, BRIDGE_CCS, BRIDGE_KEY, KNOB_CCS, SLOT_CCS } };
+    MAP: { KNOB_RGB, LED_RGB, SYSEX, SLOT_BUTTON_RGB, SLOT_BUTTON_CCS, LOWER, UPPER, HOLD_CC, AUTO_HOLD_CC, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS, POT_CH, BRIDGE_CCS, BRIDGE_KEY, KNOB_CCS, SLOT_CCS } };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MidiController = api;
 })(typeof window !== 'undefined' ? window : globalThis);
