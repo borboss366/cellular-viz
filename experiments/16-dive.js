@@ -22,6 +22,14 @@
 //   (0.06), the breath (0.02, its amplitude), the kick's gem glow (0.35, in the shader) and the snare's film hue (90, g
 //   at most 2 there). Size terms are capped at +0.25, the glow at +1.0 (2x luminance). Not the spin, the morph, the
 //   shape hold, the dive or the glints (they have their own knob). At g = 1 every term is bit-for-bit today's.
+// Pick-up (the user's Mac session, 20 Nov: slot B switched to Hodge, the hexagons shook on the spot until a knob moved):
+//   the controller's knobs are absolute and the shared clock keeps their last values, so a knob another scene used
+//   (knob 6 = Paint Pour's pulse at 100) became this scene's dive at full depth the moment it loaded. knobOf(clock, n)
+//   now reads through pickup(p, n, clock.knobs): a knob whose value was already there when the first knob values reached
+//   the page is ignored until it moves by more than PICK_EPS; a knob still unknown then (null) is live as soon as it gets
+//   a value. The page's dive and glint knobs read knobOf; the beat knob (the same meaning in every scene, beatGainOf)
+//   does not, nor do QA's stand-in knobs (fakeKnob). A clock without a knobs list (older clocks, tests) reads as before.
+//   QA: ?qaClockKnobs=6:1,7:0.5 stands in for the clock's stored knobs from load; Dive.pickupState(clock) for checks.
 (function (root) {
   'use strict';
   const C = {
@@ -31,10 +39,23 @@
     KEY_RATE: 0.5,
     QUIET_BARS: 4, QUIET_REL: 0.4, LOW_REF_TAU: 20,
     HAT_TAU: 0.14, SWEEP_S: 0.2, PRISM_TAU: 0.18, PRISM_PX: 4,
+    PICK_EPS: 0.02,
     G_MAX: 3, KICK_SIZE: 0.03, POP: 0.06, BREATH: 0.02, KICK_GLOW: 0.35, SNARE_HUE: 90, HUE_G_MAX: 2, SIZE_CAP: 0.25, GLOW_CAP: 1.0,
   };
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x)), clamp01 = x => clamp(x, 0, 1);
   const smooth = x => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+  // the pick-up's state per clock (one per page load), and QA's stand-in for the clock's stored knobs (?qaClockKnobs)
+  const pickupCreate = () => ({ snap: null, live: {} });
+  const picks = new WeakMap();
+  const QA_KNOBS = (() => {
+    try {
+      const m = /[?&]qaClockKnobs=([^&#]*)/.exec(String((root.location && root.location.search) || ''));
+      if (!m) return null;
+      const a = new Array(8).fill(null);
+      for (const kv of decodeURIComponent(m[1]).split(',')) { const [n, v] = kv.split(':').map(Number); if (n >= 1 && n <= 8 && Number.isFinite(v)) a[n - 1] = clamp01(v); }
+      return a;
+    } catch (e) { return null; }
+  })();
   // depth 0..1 → the zoom multiplier (1 at rest, 1 / DIVE_MAX at full depth)
   const zoomOf = depth => Math.exp(-Math.log(C.DIVE_MAX) * smooth(clamp01(depth)));
   // the burst's envelope, s after it fired: a smoothstep rise over BURST_ATTACK, then e^-3 over BURST_BARS bars
@@ -43,10 +64,18 @@
     const tau = Math.max(0.05, C.BURST_BARS * (barS > 0 ? barS : 2) / 3);
     return smooth(sinceS / C.BURST_ATTACK) * Math.exp(-Math.max(0, sinceS - C.BURST_ATTACK) / tau);
   }
-  // the controller's knob n (1..8) on the shared clock (#268: clock.knob(n), 0..1, or null until it moves), or null
+  // the controller's knob n (1..8) on the shared clock (#268: clock.knob(n), 0..1, or null until it moves), or null;
+  // through the pick-up (see the header) when the clock has its knobs list
   function knobOf(clock, n) {
     const k = Math.round(+n);
     if (!(k >= 1 && k <= 8) || !clock || typeof clock.knob !== 'function') return null;
+    let all = QA_KNOBS;
+    if (!all) { try { all = Array.isArray(clock.knobs) ? clock.knobs : null; } catch (e) { all = null; } }
+    if (all) {
+      let p = picks.get(clock);
+      if (!p) { p = pickupCreate(); picks.set(clock, p); }
+      return pickup(p, k, all);
+    }
     let v = null; try { v = clock.knob(k); } catch (e) { v = null; }
     return v !== null && v !== undefined && Number.isFinite(+v) ? clamp01(+v) : null;
   }
@@ -131,7 +160,25 @@
       snare: Number.isFinite(snare) ? snare : 0,
     };
   }
-  const api = { C, create, step, schedule, zoomOf, burstEnv, knobOf, glints, smooth, beatGainOf, beatTerms };
+  // pick-up (see the header): p = pickupCreate() once per page load; knobs = the clock's 8 knob values this frame
+  // (clock.knobs: 0..1 or null). Returns knob n's value once it is live, else null (the scene's own default).
+  function pickup(p, n, knobs) {
+    const k = Math.round(+n);
+    if (!p || !(k >= 1 && k <= 8) || !Array.isArray(knobs)) return null;
+    const val = x => (x !== null && x !== undefined && Number.isFinite(+x) ? clamp01(+x) : null);
+    if (p.snap === null) {   // the values the page found on arrival: the last scene's knobs
+      if (!knobs.some(x => val(x) !== null)) return null;
+      p.snap = Array.from({ length: 8 }, (_, i) => val(knobs[i]));
+    }
+    const v = val(knobs[k - 1]);
+    if (p.live[k]) return v;
+    if (v === null) return null;
+    const v0 = p.snap[k - 1];
+    if (v0 === null || Math.abs(v - v0) > C.PICK_EPS) { p.live[k] = true; return v; }
+    return null;
+  }
+  const pickupState = clock => { const p = clock && picks.get(clock); return p ? { snap: p.snap ? p.snap.slice() : null, live: Object.keys(p.live).map(Number) } : null; };
+  const api = { C, create, step, schedule, zoomOf, burstEnv, knobOf, glints, smooth, beatGainOf, beatTerms, pickupCreate, pickup, pickupState };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.Dive = api;
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this));
