@@ -9,6 +9,7 @@
     { "name": "Paint Pour", "page": "24-paint-pour.html", "query": { "beatFx": "0", "pulseKnob": "1" } },
     { "name": "Riemann Ribbon", "page": "11-riemann-show.html", "query": { "scene": "ribbon" } },
     { "name": "EQ Calibrate", "page": "27-eq-calibrate.html", "query": { "kick": "1" } },
-    { "name": "Neon Lines", "page": "16-neon-lines.html" }
+    { "name": "Neon Lines", "page": "16-neon-lines.html" },
+    { "name": "Little Bang Beamline", "page": "18-little-bang.html", "query": { "scene": "beamline", "speedKnob": "4" } }
   ]
 }

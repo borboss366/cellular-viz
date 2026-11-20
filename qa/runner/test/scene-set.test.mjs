@@ -181,9 +181,10 @@ test('set.json is valid and its URLs are right: each scene with ?clock=shared&au
   // (12 Mass Gap left the set; its page stays)
   // scene 5 (20 Nov): 27 EQ calibrate with the kick square on, for setting the mixer's EQ at the venue
   // scene 6 (20 Nov): 16c Neon Lines, no query of its own (the set's defaults)
-  assert.deepEqual(set.scenes.map(s => s.page), ['16-hodge-kaleidoscope.html', '06-lenia-effects.html', '24-paint-pour.html', '11-riemann-show.html', '27-eq-calibrate.html', '16-neon-lines.html']);
+  // scene 7 (20 Nov): 18 Little Bang's beamline, travel speed on knob 4 (#278)
+  assert.deepEqual(set.scenes.map(s => s.page), ['16-hodge-kaleidoscope.html', '06-lenia-effects.html', '24-paint-pour.html', '11-riemann-show.html', '27-eq-calibrate.html', '16-neon-lines.html', '18-little-bang.html']);
   // the knobs (#268 clock.knob(n)): 1 = Paint Pour pulse (#269), 2 = Hodge dive, 3 = Hodge glints (#271)
-  const extra = ['&diveKnob=2&glintKnob=3', '', '&beatFx=0&pulseKnob=1', '&scene=ribbon', '&kick=1', ''];
+  const extra = ['&diveKnob=2&glintKnob=3', '', '&beatFx=0&pulseKnob=1', '&scene=ribbon', '&kick=1', '', '&scene=beamline&speedKnob=4'];
   const urls = set.scenes.map(s => SetLib.buildUrl(set, s));
   for (const [i, u] of urls.entries()) {
     assert.equal(u, `${set.scenes[i].page}?clock=shared&audio=line&in=BlackHole&capture=1${extra[i]}`);
@@ -199,6 +200,9 @@ test('set.json is valid and its URLs are right: each scene with ?clock=shared&au
   assert.match(pour, /params\.pulseKnob = .*q\('pulseKnob'\)/, '24 reads ?pulseKnob= (#269)');
   // 16's diveKnob / glintKnob come with #271 (VIZ pages); until then the page ignores them
   assert.match(riemann, /const SCENES = \[[^\]]*'ribbon'/, '11 has the ribbon scene');
+  const bang = fs.readFileSync(path.join(EX, '18-little-bang.html'), 'utf8');
+  assert.match(bang, /const SCENES = \[[^\]]*'beamline'/, '18 has the beamline scene');
+  assert.match(bang, /params\.speedKnob = .*q\('speedKnob'\)/, '18 reads ?speedKnob= (#278)');
   assert.match(riemann, /if \(q\('scene'\) && \(q\('scene'\) === 'auto' \|\| SCENES\.includes\(q\('scene'\)\)\)\) params\.scene = q\('scene'\);/, '11 reads ?scene=');
   assert.deepEqual(set.window, { width: 960, height: 540, bar: 63 }, 'content 960x540 pt + the 63 pt Chrome bar (mac session 18 Nov)');
   assert.notEqual(SetLib.windowName(0), SetLib.windowName(1));

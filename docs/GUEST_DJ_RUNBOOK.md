@@ -41,20 +41,27 @@ Gate: no FAIL, "Line input" PASS.
 8. In a new tab, open http://localhost:8790/experiments/set.html?in=<interface>
 9. Check that the "Input" field shows `<interface>`.
 10. Push "Open all scenes".
-11. Check the scene windows: "Open all scenes" opens the set's six scenes (Hodge Kaleidoscope, Lenia Effects,
-    Paint Pour, Riemann Ribbon, EQ Calibrate, Neon Lines; experiments/set.json) at 960 x 603 pt on a diagonal. Move one
-    only if it does not fit. EQ Calibrate (scene 5, the kick square on) is for setting the mixer's EQ; it needs no OBS
-    source. Neon Lines (scene 6) is shown through the slot windows below; this fallback path has no OBS source for it.
+11. Check the scene windows: "Open all scenes" opens the set's seven scenes (Hodge Kaleidoscope, Lenia Effects,
+    Paint Pour, Riemann Ribbon, EQ Calibrate, Neon Lines, Little Bang Beamline; experiments/set.json) at 960 x 603 pt
+    on a diagonal. Move one only if it does not fit. EQ Calibrate (scene 5, the kick square on) is for setting the
+    mixer's EQ; it needs no OBS source. Neon Lines (scene 6) and Little Bang Beamline (scene 7) are shown through the
+    slot windows below; this fallback path has no OBS source for them.
 12. In each scene window, push a key one time.
 Gate: the scenes move with the music. Shift+F on the conductor flips all of them at the same bar.
 
 The slot windows (instead of steps 10 to 12; "Open all scenes" stays the fallback):
 1. On set.html, push "Open slots". Two windows open on the diagonal: slot A (starts on scene 1) and slot B (scene 2).
    Each shows one scene of the set at a time.
-2. Step through the set (six scenes; the ends wrap around): upper buttons 5 / 6 on the controller = slot A previous /
-   next, 7 / 8 = slot B previous / next (upper 1 / 2 stay hold / auto-hold). EQ Calibrate is scene 5: from slot B's
-   start (scene 2), three presses of 8, or three of 7. Neon Lines is scene 6: from slot A's start (scene 1), one
-   press of 5, or five of 6; from slot B's start (scene 2), two presses of 7, or four of 8. In a slot window the left / right arrow keys do the same. A switch is
+2. Step through the set (seven scenes; the ends wrap around): upper buttons 5 / 6 on the controller = slot A previous
+   / next, 7 / 8 = slot B previous / next (upper 1 / 2 stay hold / auto-hold). Presses from each slot's start:
+
+   | Scene | Slot A (starts on 1) | Slot B (starts on 2) |
+   |---|---|---|
+   | 5 EQ Calibrate | 3 x button 5, or 4 x 6 | 3 x button 8, or 4 x 7 |
+   | 6 Neon Lines | 2 x button 5, or 5 x 6 | 3 x button 7, or 4 x 8 |
+   | 7 Little Bang Beamline | 1 x button 5, or 6 x 6 | 2 x button 7, or 5 x 8 |
+
+   In a slot window the left / right arrow keys do the same. A switch is
    black for about a second, until the new scene is on the beat. A blackout stays black across a switch.
 3. OBS: two Window Capture sources, the window "slot A" and the window "slot B", with DistroAV NDI Output CV-A and
    CV-B (hide the four scene sources).
@@ -86,8 +93,9 @@ Do not move it during the set. The parts of a scene that follow the sound level 
 stay late by the route delay; only the beat-timed parts move.
 
 The controller's top knob row (pot row 1) goes to the scenes (the conductor shows "knobs 1-8" under the profiles):
-knob 1 = Paint Pour pulse, knob 2 = Hodge dive (a fast turn down = a burst), knob 3 = Hodge glints. Until a knob is
-turned, its scene uses its own default.
+knob 1 = Paint Pour pulse, knob 2 = Hodge dive (a fast turn down = a burst), knob 3 = Hodge glints, knob 4 = Little
+Bang Beamline travel speed (down = the camera stops, up = one lap a bar). Until a knob is turned, its scene uses its
+own default.
 
 ## 5. Saturday: the order of steps (setup done by 16:00)
 | Time | Step |
