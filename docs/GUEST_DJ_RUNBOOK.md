@@ -41,16 +41,18 @@ Gate: no FAIL, "Line input" PASS.
 8. In a new tab, open http://localhost:8790/experiments/set.html?in=<interface>
 9. Check that the "Input" field shows `<interface>`.
 10. Push "Open all scenes".
-11. Check the scene windows: "Open all scenes" opens the set's four scenes (Hodge Kaleidoscope, Lenia Effects,
-    Paint Pour, Riemann Ribbon; experiments/set.json) at 960 x 603 pt on a diagonal. Move one only if it does not fit.
+11. Check the scene windows: "Open all scenes" opens the set's five scenes (Hodge Kaleidoscope, Lenia Effects,
+    Paint Pour, Riemann Ribbon, EQ Calibrate; experiments/set.json) at 960 x 603 pt on a diagonal. Move one only if it
+    does not fit. EQ Calibrate (scene 5, the kick square on) is for setting the mixer's EQ; it needs no OBS source.
 12. In each scene window, push a key one time.
 Gate: the scenes move with the music. Shift+F on the conductor flips all of them at the same bar.
 
 The slot windows (instead of steps 10 to 12; "Open all scenes" stays the fallback):
 1. On set.html, push "Open slots". Two windows open on the diagonal: slot A (starts on scene 1) and slot B (scene 2).
    Each shows one scene of the set at a time.
-2. Step through the set: upper buttons 5 / 6 on the controller = slot A previous / next, 7 / 8 = slot B previous /
-   next (upper 1 / 2 stay hold / auto-hold). In a slot window the left / right arrow keys do the same. A switch is
+2. Step through the set (five scenes): upper buttons 5 / 6 on the controller = slot A previous / next, 7 / 8 = slot B
+   previous / next (upper 1 / 2 stay hold / auto-hold). EQ Calibrate is scene 5: from slot B's start (scene 2), three
+   presses of 8, or two of 7. In a slot window the left / right arrow keys do the same. A switch is
    black for about a second, until the new scene is on the beat. A blackout stays black across a switch.
 3. OBS: two Window Capture sources, the window "slot A" and the window "slot B", with DistroAV NDI Output CV-A and
    CV-B (hide the four scene sources).
