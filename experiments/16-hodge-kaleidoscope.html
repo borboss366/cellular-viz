@@ -52,6 +52,8 @@
   clock.beatGain(N): untouched = 1 (as before), bottom = 0 (no beat reaction), centre 1, top 3. ?beatGain=0..3 fixes g
   (stills). g scales only the kick/snare terms (the kick's swell and gem glow, the morph pop, the breath, the snare's film
   hue), capped (sizes +0.25, glow +1.0); not the spin, morph, hold, dive or glints. __qa.beat, __qa.fakeBeatGain(g | null).
+  4x (the user's Mac session, 20 Nov, the middle too): the terms are 4x the first beat-gain's (16-dive.js), the caps scaled
+  not clamped (glow +1.0 and snare hue 180 degrees already at the middle; above it the knob adds swell and breath).
 -->
 <html lang="en">
 <head>
@@ -304,7 +306,7 @@ void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position
 const SCENE_FS = `#version 300 es
 precision highp float;
 uniform vec2 uRes; uniform float uZoom, uAng, uBreath, uTime, uMode, uGold, uKick, uSnare, uLabels;
-uniform float uBeatG;   // the beat gain g (1 = as before): scales the kick's glow (at most +1.0) and the snare's hue (g at most 2)
+uniform float uBeatG;   // the beat gain g: scales the kick's glow (coefficient at most 1.0) and the snare's hue (at most 180 degrees)
 uniform float uGlint, uSweep;   // the hat's glint: its amount (0 = off) and where the band is across the gem (0..1)
 uniform float uNA, uNB, uAA, uAB; uniform float uRA[16], uRB[16], uWA[16], uWB[16];
 out vec4 o;
@@ -337,11 +339,11 @@ void diamond(vec2 loc, float n, float R[16], float W[16], float alpha, inout vec
     float sd = sdOct(d, rad);
     if (sd < 0.0) {
       float a = atan(d.y, d.x), facet = floor(a / (2.0 * PI) * 8.0 + 0.5), rr = r / rad;
-      float th = 320.0 + 220.0 * sin(facet * 1.7 + uTime * 0.3 + p * 1.3 + q * 0.7) + 260.0 * rr + 90.0 * min(uBeatG, 2.0) * uSnare;
+      float th = 320.0 + 220.0 * sin(facet * 1.7 + uTime * 0.3 + p * 1.3 + q * 0.7) + 260.0 * rr + min(180.0, 360.0 * uBeatG) * uSnare;
       float table = smoothstep(0.42, 0.38, rr);
       vec3 f = film(th);
       float light = mix(0.55 + 0.45 * cos(facet * 0.785 - uTime * 0.2), 0.95, table);
-      vec3 g = base * (0.30 + 0.70 * f) * light * (1.0 + min(1.0, 0.35 * uBeatG * uKick));
+      vec3 g = base * (0.30 + 0.70 * f) * light * (1.0 + min(1.0, 1.4 * uBeatG) * uKick);
       if (uGlint > 0.0) {   // the hat's glint: a bright band sweeping across the facets, top left to bottom right
         float sx = (d.x - d.y) * 0.70710678 / max(rad, 1e-3);
         float band = exp(-pow((sx - (2.6 * uSweep - 1.3)) / 0.18, 2.0));
@@ -792,7 +794,7 @@ function draw(now) {
     settledSeen.add(`${st.cur.name}:${st.cur.genus}`); st.prev = null;
   }
   st.morph = m;
-  // the beat gain: g into the kick/snare terms only (g = 1: today's 0.03 kick, 0.06 pop, 0.02 breath, bit for bit)
+  // the beat gain: g into the kick/snare terms only (4x since 20 Nov: g = 1 is 0.12 kick swell, 0.24 pop, 0.08 breath)
   const BT = beatNow = Dive.beatTerms(qaBeatG !== null ? qaBeatG : Dive.beatGainOf(metronome, params.beatKnob, params.beatGain), kick, snare, st.popEnv);
   const pop = 1 + BT.pop;
   const flat = params.bands === 'flat';

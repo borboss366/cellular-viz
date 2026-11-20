@@ -18,10 +18,15 @@
 // glint 0, prism 0, so the look and the truths are unchanged.
 // The beat gain (the user, 20 Nov: "all scenes react too weakly to the beat"; VIZ research's shared beat gain): g from
 //   clock.beatGain(?beatKnob, default 1) (null/untouched or no getter = 1, today; bottom = 0, top = 3), or ?beatGain=0..3
-//   fixed (stills). g scales only the kick/snare terms where they are used: the kick's cell swell (0.03), the morph pop
-//   (0.06), the breath (0.02, its amplitude), the kick's gem glow (0.35, in the shader) and the snare's film hue (90, g
-//   at most 2 there). Size terms are capped at +0.25, the glow at +1.0 (2x luminance). Not the spin, the morph, the
-//   shape hold, the dive or the glints (they have their own knob). At g = 1 every term is bit-for-bit today's.
+//   fixed (stills). g scales only the kick/snare terms where they are used: the kick's cell swell, the morph pop, the
+//   breath (its amplitude), the kick's gem glow (in the shader) and the snare's film hue. Not the spin, the morph, the
+//   shape hold, the dive or the glints (they have their own knob).
+// 4x (the user's Mac session, 20 Nov: "make Hodge's beat effect about 4x stronger", the middle too): the coefficients are
+//   4x the first beat-gain's (swell 0.03 -> 0.12, pop 0.06 -> 0.24, breath 0.02 -> 0.08, kick glow 0.35 -> 1.4, snare
+//   hue 90 -> 360 degrees). The caps are unchanged (sizes +0.25, glow +1.0 = 2x the gem's luminance, hue 180 degrees)
+//   and scaled, not clamped: a cap limits the coefficient, never the envelope, so every term still peaks on its hit and
+//   decays with it (no flat top). At g = 1 the glow and the hue are at their caps, so above the middle the knob adds
+//   motion (swell up to +0.25, breath up to 0.24), not light.
 // Pick-up (the user's Mac session, 20 Nov: slot B switched to Hodge, the hexagons shook on the spot until a knob moved):
 //   the controller's knobs are absolute and the shared clock keeps their last values, so a knob another scene used
 //   (knob 6 = Paint Pour's pulse at 100) became this scene's dive at full depth the moment it loaded. knobOf(clock, n)
@@ -40,7 +45,7 @@
     QUIET_BARS: 4, QUIET_REL: 0.4, LOW_REF_TAU: 20,
     HAT_TAU: 0.14, SWEEP_S: 0.2, PRISM_TAU: 0.18, PRISM_PX: 4,
     PICK_EPS: 0.02,
-    G_MAX: 3, KICK_SIZE: 0.03, POP: 0.06, BREATH: 0.02, KICK_GLOW: 0.35, SNARE_HUE: 90, HUE_G_MAX: 2, SIZE_CAP: 0.25, GLOW_CAP: 1.0,
+    G_MAX: 3, KICK_SIZE: 0.12, POP: 0.24, BREATH: 0.08, KICK_GLOW: 1.4, SNARE_HUE: 360, HUE_CAP: 180, SIZE_CAP: 0.25, GLOW_CAP: 1.0,
   };
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x)), clamp01 = x => clamp(x, 0, 1);
   const smooth = x => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
@@ -146,17 +151,19 @@
     let g = null; try { g = clock.beatGain(n); } catch (e) { g = null; }
     return g === null || g === undefined || !Number.isFinite(+g) ? 1 : clamp(+g, 0, C.G_MAX);
   }
-  // the beat terms at gain g (kick, snare, pop: the page's envelopes, 0..1). Written as today's products with g in the
-  // middle (0.03 * g * kick), so at g = 1 each is bit-for-bit today's 0.03 * kick; the caps never bind at g <= 1
+  // the beat terms at gain g (kick, snare, pop: the page's envelopes, 0..1): each a capped coefficient times its envelope
+  // (scaled, not clamped: the cap never flattens the hit's peak)
   function beatTerms(g, kick, snare, pop) {
     const gg = Number.isFinite(g) ? clamp(g, 0, C.G_MAX) : 1, k = Number.isFinite(kick) ? kick : 0, p = Number.isFinite(pop) ? pop : 0;
+    const hue = Math.min(C.HUE_CAP, C.SNARE_HUE * gg);
     return {
       g: gg,
-      kickSize: Math.min(C.SIZE_CAP, C.KICK_SIZE * gg * k),   // cells: x (1 + kickSize)
-      pop: Math.min(C.SIZE_CAP, C.POP * gg * p),              // cells: x (1 + pop)
+      kickSize: Math.min(C.SIZE_CAP, C.KICK_SIZE * gg) * k,   // cells: x (1 + kickSize)
+      pop: Math.min(C.SIZE_CAP, C.POP * gg) * p,              // cells: x (1 + pop)
       breath: Math.min(C.SIZE_CAP, C.BREATH * gg),            // the breath's amplitude: 1 + breath * sin(...)
-      glow: Math.min(C.GLOW_CAP, C.KICK_GLOW * gg * k),       // the shader's (1 + min(1, 0.35 * uBeatG * uKick)), here for QA
-      hueG: Math.min(C.HUE_G_MAX, gg),                        // the shader's 90 * min(uBeatG, 2) * uSnare
+      glow: Math.min(C.GLOW_CAP, C.KICK_GLOW * gg) * k,       // the shader's (1 + min(1.0, 1.4 * uBeatG) * uKick), here for QA
+      hue,                                                    // the shader's min(180, 360 * uBeatG) * uSnare (degrees)
+      hueG: hue / 90,                                         // the same in the first beat-gain's units (90 degrees = 1)
       snare: Number.isFinite(snare) ? snare : 0,
     };
   }
