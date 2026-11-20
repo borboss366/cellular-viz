@@ -16,7 +16,7 @@
 (function (root) {
   'use strict';
   const C = {
-    TAU: 0.5, ACCEL: 1.0, MIN_RATE: 0.1, SPEED_POW: 1.5, SPEED_DEFAULT: 0.5,
+    TAU: 0.5, ACCEL: 1.0, MIN_RATE: 0.3, SPEED_POW: 1.5, SPEED_DEFAULT: 0.5,
     TARGET_X: 0.3, TARGET_Y: 0.2, PERIODS: [23, 37, 29, 41], BEND_D: 6,
     RAY_BASE: 0.45, RAY_BASS: 0.2, RAY_KICK: 0.35, RAY_CAP: 1.0, RAY_TAU_K: 0.12, RAY_MIN_GAP: 1 / 3,
     RAY_W_KICK: 0.35, RAY_W_BASS: 0.1, RAY_LEN: 45,
@@ -40,7 +40,7 @@
   function speedStep(s, knob, dt) {
     const d = clamp(Number.isFinite(dt) ? dt : 0, 0, 0.1);
     if (knob !== null && knob !== undefined && Number.isFinite(+knob)) { s.knob = clamp01(+knob); s.target = Math.pow(s.knob, C.SPEED_POW); }
-    // a low-pass, but never slower than MIN_RATE (so 0 really stops, in under 2 s) nor faster than ACCEL
+    // a low-pass, but never slower than MIN_RATE (so 0 really stops: from full speed in about 1.5 s) nor faster than ACCEL
     const gap = s.target - s.v, lp = Math.abs(gap) * (1 - Math.exp(-d / C.TAU));
     s.v = clamp(s.v + Math.sign(gap) * Math.min(Math.abs(gap), Math.max(lp, C.MIN_RATE * d), C.ACCEL * d), 0, 1);
     return s.v;

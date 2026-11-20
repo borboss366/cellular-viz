@@ -1228,7 +1228,8 @@ function draw(now) {
   qaState.scene = sec.scene; qaState.bar = n; qaState.drawnTracks = drawn;
   if (QA_WIRES && beam) { if (!ov.dataset.qaw) { ov.dataset.qaw = 1; octx.clearRect(0, 0, ov.width, ov.height); } }
   else if (now - lastOv > 66) { lastOv = now; delete ov.dataset.qaw; drawOverlay(sec, L); }
-  Object.assign(window.__qa, { scene: sec.scene, bars, drop: sec.drop, energy: sec.energy, drawnTracks: drawn, render: [W, H], screen: [CW, CH],
+  // sectionEnergy, not energy: AudioIn.qa makes __qa.energy a getter (the music's energy), and assigning to it threw every frame
+  Object.assign(window.__qa, { scene: sec.scene, bars, drop: sec.drop, sectionEnergy: sec.energy, drawnTracks: drawn, render: [W, H], screen: [CW, CH],
     lastEvent: qaState.lastEvent && summary(qaState.lastEvent), lastJet: qaState.lastJet, strings: stringsQA(), latency: metronome.latency(),
     camera: qaState.camera, wakes: wakesQA.slice(), dijets: dijetsQA.slice(), wires: wiresQA, ray: beam ? travel.rayQA : { on: false } });
   frames++;
