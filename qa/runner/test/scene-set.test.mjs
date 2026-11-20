@@ -184,9 +184,9 @@ test('set.json is valid and its URLs are right: each scene with ?clock=shared&au
   // scene 7 (20 Nov): 18 Little Bang's beamline, travel speed on knob 4 (#278)
   assert.deepEqual(set.scenes.map(s => s.page), ['16-hodge-kaleidoscope.html', '06-lenia-effects.html', '24-paint-pour.html', '11-riemann-show.html', '27-eq-calibrate.html', '16-neon-lines.html', '18-little-bang.html']);
   // the knobs per slot (20 Nov 15:34; slot B adds 4, slot.js): 1 = the beat (defaults; clock.beatGain), then each
-  // scene's own from 2: Hodge dive 2 + glints 3, Paint Pour pulse 2, Little Bang speed 2; 27 EQ has no beat knob
+  // scene's own from 2: Hodge dive 2 + glints 3, Paint Pour pulse 2 + tilt 3 (21 Nov), Little Bang speed 2; 27 EQ has no beat knob
   assert.equal(set.defaults.beatKnob, '1');
-  const extra = ['&beatKnob=1&diveKnob=2&glintKnob=3', '&beatKnob=1', '&beatKnob=1&beatFx=0&pulseKnob=2&pulse=1', '&beatKnob=1&scene=ribbon', '&kick=1', '&beatKnob=1', '&beatKnob=1&scene=beamline&speedKnob=2'];
+  const extra = ['&beatKnob=1&diveKnob=2&glintKnob=3', '&beatKnob=1', '&beatKnob=1&beatFx=0&pulseKnob=2&pulse=1&tilt=0&tiltKnob=3', '&beatKnob=1&scene=ribbon', '&kick=1', '&beatKnob=1', '&beatKnob=1&scene=beamline&speedKnob=2'];
   const urls = set.scenes.map(s => SetLib.buildUrl(set, s));
   for (const [i, u] of urls.entries()) {
     assert.equal(u, `${set.scenes[i].page}?clock=shared&audio=line&in=BlackHole&capture=1${extra[i]}`);
@@ -366,7 +366,7 @@ test('set.html: the input label (field or ?in=) goes to every scene as in=<label
 test('Paint Pour in the set: the pulse is on before knob 2 / 6 moves, so beat knob 1 / 5 alone shows the beat; the knob takes over once moved', async () => {
   const set = JSON.parse(fs.readFileSync(path.join(EX, 'set.json'), 'utf8'));
   const pour = set.scenes.find(s => s.page === '24-paint-pour.html');
-  assert.deepEqual(pour.query, { beatFx: '0', pulseKnob: '2', pulse: '1' });
+  assert.deepEqual(pour.query, { beatFx: '0', pulseKnob: '2', pulse: '1', tilt: '0', tiltKnob: '3' });
   const P = await import('../../../experiments/24-paint-pour.mjs'), K = await import('../../../experiments/24-marble.mjs');
   const def = P.DETAIL.find(d => d.name === 'pulse');
   assert.ok(def && def.type === 'float' && def.min === 0 && def.max === 1, 'the page reads ?pulse=0..1');
@@ -387,5 +387,36 @@ test('Paint Pour in the set: the pulse is on before knob 2 / 6 moves, so beat kn
   knobs[1] = 0; assert.equal(atBeat(1, 2), 0, 'pulse knob down: off, as before');
   // slot B: knobs 5 / 6 the same way (slot.js adds 4)
   const SlotLib = require(path.join(EX, 'slot.js'));
-  assert.deepEqual(SlotLib.slotKnobs(set, pour, 'B'), { beatKnob: '5', pulseKnob: '6' });
+  assert.deepEqual(SlotLib.slotKnobs(set, pour, 'B'), { beatKnob: '5', pulseKnob: '6', tiltKnob: '7' });
+});
+
+// the tilted plane (the user, 20 Nov 22:21): knob 3 / 7 tips Paint Pour's plane and the paint runs downhill. The set starts
+// flat (tilt=0), so Sunday's Paint Pour looks as on main until knob 3 / 7 is turned; the standalone page's default is 35
+test('Paint Pour in the set: loads at tilt 0 (flat, as before) with knob 3 / 7 mapped to 0-60 degrees through the pick-up', async () => {
+  const set = JSON.parse(fs.readFileSync(path.join(EX, 'set.json'), 'utf8'));
+  const pour = set.scenes.find(s => s.page === '24-paint-pour.html');
+  assert.equal(pour.query.tilt, '0', 'the set plays Paint Pour flat');
+  assert.equal(pour.query.tiltKnob, '3', 'the tilt on the slot\'s knob 3');
+  const P = await import('../../../experiments/24-paint-pour.mjs'), K = await import('../../../experiments/24-marble.mjs');
+  const def = P.DETAIL.find(d => d.name === 'tilt');
+  assert.ok(def && def.type === 'float' && def.min === 0 && def.max === 60 && def.default === 35, 'the page reads ?tilt=0..60, 35 standalone');
+  const page = fs.readFileSync(path.join(EX, '24-paint-pour.html'), 'utf8');
+  assert.match(page, /params\.tiltKnob = .*q\('tiltKnob'\)/, '24 reads ?tiltKnob=');
+  assert.match(page, /return 60 \* K\.pulseAmount\(clock, params\.tiltKnob, params\.tilt \/ 60\);/, 'the knob once moved (pick-up), else ?tilt');
+  assert.match(page, /tilt: tiltTarget\(\),/, 'the scene gets the target angle');
+  // the set's values through the page's own arithmetic: knob 3 untouched -> ?tilt=0 -> flat, nothing moves
+  const knobs = [0.5, 0.3, null, null, null, null, null, null], clock = { knob: n => knobs[n - 1] };
+  const target = () => 60 * K.pulseAmount(clock, +pour.query.tiltKnob, +pour.query.tilt / 60);
+  assert.equal(target(), 0, 'knob 3 untouched: tilt 0');
+  assert.equal(P.tiltEffective(target(), 0.05, 3), 0, 'tilt 0: no kick breath either (it fades in over 0-10 degrees)');
+  assert.equal(P.downhillSpeed(1, P.tiltEffective(target(), 0.05, 1)), 0, 'tilt 0: nothing slides');
+  assert.equal(P.scrollSpeed(target(), 2), 0, 'tilt 0: the camera stays put');
+  knobs[2] = 1; assert.equal(target(), 60, 'knob 3 up: 60 degrees');
+  knobs[2] = 0.5; assert.equal(target(), 30, 'linear in the angle');
+  // the angle follows the knob at <= 60 degrees a second (not beat-quantised)
+  let d = P.slewTilt(null, 0, 0); for (let f = 0; f < 30; f++) d = P.slewTilt(d, 60, 1 / 60);
+  assert.ok(Math.abs(d - 30) < 1e-9, `half a second after a slam to 60: 30 degrees (${d})`);
+  const SlotLib = require(path.join(EX, 'slot.js'));
+  assert.equal(SlotLib.slotKnobs(set, pour, 'A').tiltKnob, '3');
+  assert.equal(SlotLib.slotKnobs(set, pour, 'B').tiltKnob, '7', 'slot B: knob 7');
 });

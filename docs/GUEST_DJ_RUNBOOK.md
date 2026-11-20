@@ -102,7 +102,7 @@ the beat off, the middle = as before, fully up = three times as strong. The next
 |---|---|---|
 | Hodge Kaleidoscope | 1 beat, 2 dive (a fast turn down = a burst), 3 glints | 5 beat, 6 dive, 7 glints |
 | Lenia Effects, Riemann Ribbon, Neon Lines | 1 beat | 5 beat |
-| Paint Pour | 1 beat, 2 pulse (full until turned) | 5 beat, 6 pulse (full until turned) |
+| Paint Pour | 1 beat, 2 pulse (full until turned), 3 tilt (flat until turned; up tips the plane to 60 degrees, the paint runs downhill and the view follows it) | 5 beat, 6 pulse (full until turned), 7 tilt |
 | EQ Calibrate | none | none |
 | Little Bang Beamline | 1 beat, 2 travel speed (down = the camera stops, up = one lap a bar) | 5 beat, 6 travel speed |
 
@@ -122,7 +122,7 @@ needs the SysEx permission; without it the knobs still work, only the rings stay
 3 / 4 for slot A, 7 / 8 for slot B) light a steady purple whenever the conductor has the controller.
 1-minute LED check on the Mac: with the LCXL3 connected and the conductor and both slot windows open, look at the top
 knob row. Slot A starts on Hodge: knobs 1-3 blue; press upper button 4 (Lenia): only knob 1 stays blue. Slot B starts
-on Lenia: knob 5 orange; press upper button 8 (Paint Pour): knobs 5-6 orange; press 8 twice more (EQ Calibrate): knobs
+on Lenia: knob 5 orange; press upper button 8 (Paint Pour): knobs 5-7 orange; press 8 twice more (EQ Calibrate): knobs
 5-8 dark. Upper buttons 3, 4, 7 and 8 are purple the whole time (1, 2, 5 and 6 are not). If no ring lights at all, allow SysEx for the conductor (the lock icon in Chrome's address bar), reload it,
 and tell Dev; the show works without the rings.
 

@@ -219,7 +219,7 @@ test('slot.js knobs per slot: the *Knob params as this slot\'s knob numbers (A a
   assert.deepEqual(SlotLib.slotKnobs(SET, hodge, 'A'), { beatKnob: '1', diveKnob: '2', glintKnob: '3' });
   assert.deepEqual(SlotLib.slotKnobs(SET, hodge, 'B'), { beatKnob: '5', diveKnob: '6', glintKnob: '7' });
   assert.deepEqual(SlotLib.controls(SET, hodge, 'A'), [{ knob: 1, name: 'beat' }, { knob: 2, name: 'dive' }, { knob: 3, name: 'glint' }]);
-  assert.deepEqual(SlotLib.controls(SET, pour, 'B'), [{ knob: 5, name: 'beat' }, { knob: 6, name: 'pulse' }], 'beatFx is not a knob');
+  assert.deepEqual(SlotLib.controls(SET, pour, 'B'), [{ knob: 5, name: 'beat' }, { knob: 6, name: 'pulse' }, { knob: 7, name: 'tilt' }], 'beatFx and tilt=0 are not knobs; tiltKnob is');
   assert.deepEqual(SlotLib.controls(SET, bang, 'B'), [{ knob: 5, name: 'beat' }, { knob: 6, name: 'speed' }]);
   assert.deepEqual(SlotLib.controls(SET, eq, 'A'), [], '27 EQ: no beat knob (null removes the default)');
   // every scene of the set: slot A's knobs are 1-4, slot B's 5-8, and each scene has the beat on the first (but 27)

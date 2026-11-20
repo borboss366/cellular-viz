@@ -6,7 +6,7 @@
   "scenes": [
     { "name": "Hodge Kaleidoscope", "page": "16-hodge-kaleidoscope.html", "query": { "diveKnob": "2", "glintKnob": "3" } },
     { "name": "Lenia Effects", "page": "06-lenia-effects.html" },
-    { "name": "Paint Pour", "page": "24-paint-pour.html", "query": { "beatFx": "0", "pulseKnob": "2", "pulse": "1" } },
+    { "name": "Paint Pour", "page": "24-paint-pour.html", "query": { "beatFx": "0", "pulseKnob": "2", "pulse": "1", "tilt": "0", "tiltKnob": "3" } },
     { "name": "Riemann Ribbon", "page": "11-riemann-show.html", "query": { "scene": "ribbon" } },
     { "name": "EQ Calibrate", "page": "27-eq-calibrate.html", "query": { "kick": "1", "beatKnob": null } },
     { "name": "Neon Lines", "page": "16-neon-lines.html" },

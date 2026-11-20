@@ -34,6 +34,67 @@ export function beatTerms(g, kick, pulse) {
   return { g: gg, kick: (Number.isFinite(kick) ? kick : 0) * gg, pulse: Math.min(BEAT.PULSE_CAP, (Number.isFinite(pulse) ? pulse : 0) * gg) };
 }
 
+// The tilted plane (the user, 20 Nov 22:12-22:21; VIZ research, #87 comments 7049587530 and 7049690373). The plane tips by
+// tilt degrees (0-60; ?tilt=, default 35 on the standalone page; the set plays 0 with knob 3 / 7, ?tiltKnob=N, 0 -> 1 = 0 ->
+// 60 degrees, linear in the angle, through the knob pick-up; the angle slews to the knob at <= 60 degrees a second, never
+// beat-quantised). Paint runs downhill by the thin-film (lubrication) law u = K sin(theta) h^2: a thick blob outruns a
+// thin sheet. h is a drop group's thickness: h0 while the paint is still being poured (growing), then it thins to 0 over
+// SET_S s (set paint stops). Ops can't hold a velocity field (closed-form marbling), so each group of ops (one event's
+// drop, rings and cells; one pour; one feed drop) is moved as a whole: its accumulated downhill drift is added to its
+// ops' centres when they are packed and traced, so the paint it pushed moves with it. The camera scrolls with the flow
+// (the user's pick: an endless drip): the plane moves up the screen at SCROLL x the speed of h = 1 paint, so clean
+// plane comes in at the bottom and set paint leaves at the top; SCROLL 0 would be a fixed camera (the one place to
+// change it). The pour feeds paint near the top when the view's dark share (the ground and black paint, estimated on
+// the CPU from the same trace) is over FEED_DARK, and the scroll speeds up when it is under DARK_LO, so the dark
+// coverage stays near 25-60 %. The kick breathes the angle up to +3 degrees x the beat gain (a 30 ms rise, a 150 ms tail,
+// faded in over the first 10 degrees so tilt 0 stays flat). At tilt 0 nothing moves: every shift is exactly 0, the
+// base rect is BASE_RECT and the bakes are as before, so the page is main's (TT1). No random numbers: the feed drops come
+// from the seed and the beat (K.rngAt).
+export const TILT = {
+  MAX: 60, DEFAULT: 35, SLEW: 60,                       // degrees; the slew limit in degrees a second
+  BREATH: 3, BREATH_RISE: 0.03, BREATH_TAU: 0.15, BREATH_FULL: 10,
+  K: 0.11,                                               // screen heights a second at h = 1 and sin = 1 (0.095 at 60 degrees)
+  SET_S: 6,                                              // seconds for poured paint to thin to 0 once it stops growing
+  SCROLL: 0.3,                                           // camera speed / the speed of h = 1 paint (0 = a fixed camera)
+  TRIM_TAU: 2, DARK_LO: 0.3, DARK_HI: 0.5, FEED_DARK: 0.45, FEED_BEATS: 1,
+  LIFT: 0.3,                                             // the section drop pours this far above the view's centre (heights)
+  GRID: [24, 14], EST_FRAMES: 12, BASE_GRID: [64, 42],   // the coverage estimate and the CPU copy of the base
+};
+const clampN = (x, a, b) => Math.max(a, Math.min(b, x));
+export const tiltOfKnob = v => TILT.MAX * clampN(Number.isFinite(+v) ? +v : 0, 0, 1);
+// one frame of the slew: from cur toward target by at most SLEW·dt degrees (the first frame takes the target)
+export function slewTilt(cur, target, dt) {
+  const t = clampN(Number.isFinite(target) ? target : 0, 0, TILT.MAX);
+  if (cur === null || !Number.isFinite(cur)) return t;
+  const m = TILT.SLEW * Math.max(0, dt);
+  return cur + clampN(t - cur, -m, m);
+}
+// the kick's breath: 0 at the hit, a 30 ms rise to 1, a 150 ms exponential tail (no step at any frame rate)
+const BREATH_PEAK = (() => { const t = TILT.BREATH_RISE * Math.log(1 + TILT.BREATH_TAU / TILT.BREATH_RISE); return (1 - Math.exp(-t / TILT.BREATH_RISE)) * Math.exp(-t / TILT.BREATH_TAU); })();
+export const breathEnv = ageS => (ageS >= 0 && Number.isFinite(ageS) ? (1 - Math.exp(-ageS / TILT.BREATH_RISE)) * Math.exp(-ageS / TILT.BREATH_TAU) / BREATH_PEAK : 0);
+// the angle the paint feels: the slewed knob angle + the kick's breath (× the beat gain g, faded in over 0-10 degrees), 0-60
+export function tiltEffective(deg, kickAgeS, g = 1) {
+  const d = clampN(Number.isFinite(deg) ? deg : 0, 0, TILT.MAX), gg = clampN(Number.isFinite(g) ? g : 1, 0, BEAT.G_MAX);
+  return clampN(d + TILT.BREATH * gg * breathEnv(kickAgeS) * K.smooth(d / TILT.BREATH_FULL), 0, TILT.MAX);
+}
+// the thin-film law: downhill speed (screen heights a second at zoom 1) of paint h thick on a plane tipped deg degrees
+export const downhillSpeed = (h, deg) => TILT.K * Math.sin(clampN(deg, 0, 90) * Math.PI / 180) * h * h;
+// a group's thickness: h0 while poured, then a smooth fall to 0 over SET_S s
+export const thicknessAt = (h0, sinceEndS) => (!(sinceEndS > 0) ? h0 : h0 * (1 - K.smooth(sinceEndS / TILT.SET_S)));
+// the camera's speed down the plane: SCROLL × the speed of h = 1 paint × the coverage trim
+export const scrollSpeed = (deg, trim = 1) => TILT.SCROLL * downhillSpeed(1, deg) * trim;
+// the coverage trim's target: faster when the view is too covered (more clean plane), slower when it is too dark
+export const trimTarget = dark => (!Number.isFinite(dark) ? 1 : dark < TILT.DARK_LO ? 1 + 3 * (TILT.DARK_LO - dark) / TILT.DARK_LO : dark > TILT.DARK_HI ? Math.max(0.4, 1 - 2 * (dark - TILT.DARK_HI)) : 1);
+// one frame of a group's drift (g: accumulated downhill drift, heights): the same step the scene takes
+export function driftStep(grp, deg, dt, sinceEndS) {
+  if (grp.frozen) return 0;
+  const v = downhillSpeed(thicknessAt(grp.h0, sinceEndS), deg);
+  grp.g += v * dt;
+  return v;
+}
+// the thickness of the paint each event lays (0: strokes, they move paint but are not paint)
+export const H0 = { drop: 1, pour: 1, trigger1: 1, trigger2: 1, 'tilt-feed': 1 };
+
 // 16 bake tiles (was 8) and a bake at opsMax − 16 live ops, opsMax 64 (was 96): the GPU p95 grew with the live op
 // count (viz-134-2: p95 8.72 ms at 1440p, limit 7), and each bake frame costs 1/16 of a base pass
 // viz-134-4: still p95 9.5 ms. Now 32 tiles a bake and opsMax 40 (bake from 24 live ops): fewer ops per frame on
@@ -197,12 +258,30 @@ void main() {
 export function createScene() {
   let gl = null, W = 0, H = 0, progs = null, vao = null, ubo = null, rip = null;
   const opData = new Float32Array(MAXOPS * 12);
-  const base = { tex: [null, null], fbo: [null, null], cur: -1, tw: 0, th: 0 };
+  const base = { tex: [null, null], fbo: [null, null], cur: -1, tw: 0, th: 0, s0: 0 };
   const st = {
     pal: K.palette('canada'), palKey: '', live: [], pending: [], history: [], opLog: [], lastBeat: null, frames: 0,
     bake: null, bakes: [], forceBake: false, pour: null, view: null, metrics: {},
     triggerLog: [], triggerEnv: [0, 0, 0, 0], trig: [], lastTrigDrop: -1e9, kickEnv: 0, seed: 1,
   };
+  // the tilted plane: deg the slewed knob angle, eff with the kick's breath, S the plane's scroll (heights, up the screen),
+  // c its speed, trim the coverage trim, dark the view's estimated dark share, ever: the plane has been tipped
+  const newTilt = () => ({ deg: null, target: 0, eff: 0, S: 0, c: 0, trim: 1, ever: false, dark: null, darkLog: [], lastNow: null,
+    feedNext: -1e9, feeds: 0, speed: 0, speedNorm: 0, moving: false, slewMax: 0, lifts: 0 });
+  st.tilt = newTilt();
+  // each op's group (WeakMap: never in the op's own fields, so the op log and truth 9 are as before):
+  // { h0, s0 (S when its first op went live), g (downhill drift), lift, endBeat, frozen (baked: no more drift) }
+  const grp = new WeakMap();
+  let cpuBase = null;   // the base's colours on a BASE_GRID over BASE_RECT (built with the bake), for the coverage estimate
+  // an op's shift up the screen now (heights): the scroll since it went live, minus its drift, plus its lift. 0 at tilt 0.
+  const shiftOf = op => { const G = grp.get(op); return !G || G.s0 === null ? 0 : st.tilt.S - G.s0 - G.g + G.lift; };
+  // an op at beat b as it is drawn: K.effective with its group's shift on its centre
+  function shifted(op, b, dy = shiftOf(op)) {
+    const e = K.effective(op, b);
+    if (dy !== 0) { if (e.type === K.COMB) e.by += dy; else e.cy += dy; }
+    return e;
+  }
+  const baseOff = () => st.tilt.S - (base.s0 || 0);   // how far the base has scrolled up since it was baked
 
   function compile(fs) {
     const p = gl.createProgram();
@@ -236,7 +315,7 @@ export function createScene() {
     for (let i = 0; i < 2; i++) [base.tex[i], base.fbo[i]] = baseTex(tw, th);
     base.tw = tw; base.th = th; base.cur = -1;
   }
-  function freeBase() { for (let i = 0; i < 2; i++) { if (base.tex[i]) { gl.deleteTexture(base.tex[i]); gl.deleteFramebuffer(base.fbo[i]); } base.tex[i] = base.fbo[i] = null; } base.tw = base.th = 0; base.cur = -1; }
+  function freeBase() { for (let i = 0; i < 2; i++) { if (base.tex[i]) { gl.deleteTexture(base.tex[i]); gl.deleteFramebuffer(base.fbo[i]); } base.tex[i] = base.fbo[i] = null; } base.tw = base.th = 0; base.cur = -1; cpuBase = null; }
   // the ripple field: 24 waves with integer wave vectors (3–7 cycles a tile, so it tiles), its gradient in RG
   // (±1 = the largest), mipmapped so stretched paint averages it away instead of aliasing. The same field every run.
   function rippleTex() {
@@ -278,11 +357,18 @@ export function createScene() {
   const inputsOf = ctl => ({ seed: ctl.seed ?? st.seed, dropScale: ctl.dropScale, cellsPerDrop: ctl.cellsPerDrop, blackShare: ctl.blackShare, tines: ctl.tines,
     tineDepth: ctl.tineDepth, tineSharp: ctl.tineSharp, vortexOn: ctl.vortexOn, pourRate: ctl.pourRate, bassSwirl: ctl.bassSwirl, camDrift: ctl.camDrift,
     beatFx: ctl.beatFx !== false });   // ?beatFx=0: the clock no longer stirs the paint (K.songOps)
-  function queue(ops, now, cause) { for (const op of ops) { op.cause = cause; op.created = now; st.pending.push(op); } st.pending.sort((a, b) => a.start - b.start); }
+  // group: the group these ops join (a dragged pour's segments); none = a new group for this event (H0[cause] thick)
+  function queue(ops, now, cause, group = null) {
+    const G = group || { h0: H0[cause] || 0, s0: null, g: 0, lift: 0, endBeat: -Infinity, frozen: false, v: 0 };
+    for (const op of ops) { op.cause = cause; op.created = now; st.pending.push(op); grp.set(op, G); G.endBeat = Math.max(G.endBeat, op.start + (op.dur > 0 ? op.dur : 0)); }
+    st.pending.sort((a, b) => a.start - b.start);
+    return G;
+  }
   // move ops whose start has come into the live list (newest last; during a pour, below the pour so it stays on top)
   function admit(beats, now, msPerBeat) {
     while (st.pending.length && st.pending[0].start <= beats + 1e-9 && st.live.length < MAXOPS) {
       const op = st.pending.shift();
+      const G = grp.get(op); if (G && G.s0 === null) G.s0 = st.tilt.S;   // its group rides the plane from here
       op.perfStart = now; op.syncMs = (beats - op.start) * msPerBeat;   // how late after its beat it went live (ms)
       const pi = st.live.findIndex(o => o.role === 'pour' && beats < o.start + o.dur);
       if (pi >= 0 && op.role !== 'pour') st.live.splice(pi, 0, op); else st.live.push(op);
@@ -296,29 +382,32 @@ export function createScene() {
     while (st.pending.length > 512) st.pending.shift();
   }
   const paramsOf = op => { const p = {}; for (const [k, v] of Object.entries(op)) if (!['cause', 'created', 'perfStart', 'syncMs', 'role'].includes(k)) p[k] = typeof v === 'number' ? +v.toPrecision(12) : v; return p; };
-  function pack(ops, beats, bpm = st.bpm || 120) {
+  // dyOf(op, i): the op's shift up the screen (the tilted plane; 0 at tilt 0, so every value is main's)
+  function pack(ops, beats, bpm = st.bpm || 120, dyOf = shiftOf) {
     opData.fill(0);
     ops.forEach((op, i) => {
-      const e = K.effective(op, beats), o = i * 12, v = K.rateOf(op, beats, bpm);
-      if (e.type === K.DROP) opData.set([1, e.cx, e.cy, e.r, e.colour, v, 0, 0], o);
-      else if (e.type === K.COMB) opData.set([2, e.bx, e.by, e.mx, e.my, e.z, e.u, e.lam, e.sp, e.n, v, 0], o);
-      else opData.set([3, e.cx, e.cy, e.z, e.u, e.r0, e.lam, e.hmin, e.ring, K.swirlReach(e), v, 0], o);
+      const e = K.effective(op, beats), o = i * 12, v = K.rateOf(op, beats, bpm), dy = dyOf(op, i);
+      if (e.type === K.DROP) opData.set([1, e.cx, e.cy + dy, e.r, e.colour, v, 0, 0], o);
+      else if (e.type === K.COMB) opData.set([2, e.bx, e.by + dy, e.mx, e.my, e.z, e.u, e.lam, e.sp, e.n, v, 0], o);
+      else opData.set([3, e.cx, e.cy + dy, e.z, e.u, e.r0, e.lam, e.hmin, e.ring, K.swirlReach(e), v, 0], o);
     });
     gl.bindBuffer(gl.UNIFORM_BUFFER, ubo); gl.bufferSubData(gl.UNIFORM_BUFFER, 0, opData); gl.bindBuffer(gl.UNIFORM_BUFFER, null);
   }
-  function setTrace(pr, n) {
+  // off: how far the base has scrolled up the screen since it was baked (0 at tilt 0: BASE_RECT as before)
+  function setTrace(pr, n, off = baseOff()) {
     const u = pr.u; gl.uniform1i(u.uN, n);
     const cols = new Float32Array(48); st.pal.colours.forEach((h, i) => { if (i < 16) cols.set(K.rgb(h).map(K.linear), i * 3); });
     gl.uniform3fv(u.uPal, cols);
-    gl.uniform4fv(u.uBaseRect, BASE_RECT); gl.uniform1f(u.uBaseOn, base.cur >= 0 ? 1 : 0);
+    gl.uniform4fv(u.uBaseRect, [BASE_RECT[0], BASE_RECT[1] + off, BASE_RECT[2], BASE_RECT[3]]); gl.uniform1f(u.uBaseOn, base.cur >= 0 ? 1 : 0);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, base.cur >= 0 ? base.tex[base.cur] : null); gl.uniform1i(u.uBase, 0);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ubo);
   }
 
   // a fresh canvas: no paint, no ops (the page calls it on Play, so the song starts from the ground)
   function reset() {
-    Object.assign(st, { live: [], pending: [], history: [], opLog: [], lastBeat: null, bake: null, bakes: [], pour: null, trig: [], lastTrigDrop: -1e9, kickBeat: undefined, lastDropColour: undefined, lastBakeEnd: undefined, userPour: null, pourRelease: false, pourAt: null, pourInfo: null });
+    Object.assign(st, { live: [], pending: [], history: [], opLog: [], lastBeat: null, bake: null, bakes: [], pour: null, trig: [], lastTrigDrop: -1e9, kickBeat: undefined, lastDropColour: undefined, lastBakeEnd: undefined, userPour: null, pourRelease: false, pourAt: null, pourInfo: null, userGroup: null });
     base.cur = -1;
+    const deg = st.tilt.deg; st.tilt = newTilt(); st.tilt.deg = deg; base.s0 = 0; cpuBase = null;   // the plane back at 0, the angle kept
   }
   // at (page extra, trigger 2 only): where to pour, as screen fractions { x, y } (0–1, y up); none = a seeded point.
   // Trigger 2 is a hold: holdMs > 0 pours for that long; 0 pours until release(2) (or POUR_MAX_S).
@@ -334,6 +423,7 @@ export function createScene() {
     const o = st.userPour; if (!o) return;
     const d = Math.min(o.dur, Math.max(minBeats, beats - o.start));
     o.dur = d; o.r = Math.sqrt(o.pour * d / Math.PI); o.held = false;   // the same object is live and in the history
+    const G = grp.get(o); if (G) G.endBeat = o.start + d;   // the pour stops feeding: its paint starts to set
     if (st.userPourEvent && tRelease !== undefined) st.userPourEvent.holdMs = tRelease - st.userPourEvent.t;
     st.userPour = null;
   }
@@ -348,6 +438,101 @@ export function createScene() {
     if (slot !== 2 || !at || !Number.isFinite(at.x) || !Number.isFinite(at.y)) return false;
     st.pourAt = { x: Math.max(0, Math.min(1, at.x)), y: Math.max(0, Math.min(1, at.y)) };
     return true;
+  }
+
+  // ---------------------------------------------------------------- the tilted plane (see TILT)
+  const sinceEndS = (G, beats, bpm) => (beats - G.endBeat) * 60 / bpm;
+  // an op's paint has set: its group no longer slides (baked, never thick, or thinned to 0)
+  function isSet(op, beats, bpm) { const G = grp.get(op); return !G || G.frozen || G.h0 <= 0 || thicknessAt(G.h0, sinceEndS(G, beats, bpm)) <= 0; }
+  // the CPU copy of the base: colour indices on BASE_GRID over BASE_RECT
+  function gridAt(g, x, y) {
+    if (!g) return 0;
+    const [GW, GH] = TILT.BASE_GRID, i = Math.floor((x - BASE_RECT[0]) / BASE_RECT[2] * GW), j = Math.floor((y - BASE_RECT[1]) / BASE_RECT[3] * GH);
+    return i >= 0 && j >= 0 && i < GW && j < GH ? g[j * GW + i] : 0;
+  }
+  // the rows of the bake's tile on the CPU: the baked ops (as the GPU bakes them), else the old copy where the old base was
+  function bakeGridRows(b, tile) {
+    const [GW, GH] = TILT.BASE_GRID, rows = Math.ceil(GH / BAKE_TILES);
+    for (let j = tile * rows; j < Math.min(GH, (tile + 1) * rows); j++) for (let i = 0; i < GW; i++) {
+      const t = K.trace(b.eff, BASE_RECT[0] + BASE_RECT[2] * (i + 0.5) / GW, BASE_RECT[1] + BASE_RECT[3] * (j + 0.5) / GH);
+      b.grid[j * GW + i] = t.hit >= 0 ? b.eff[t.hit].colour : base.cur >= 0 ? gridAt(b.oldGrid, t.x, t.y - b.off) : 0;
+    }
+  }
+  // the view's dark share (the ground and black paint) on a GRID of points, traced as the shader does
+  function estimateDark(beats, cam, aspect) {
+    const [nx, ny] = TILT.GRID, eff = st.live.map(o => shifted(o, beats)), off = baseOff();
+    let dark = 0;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const t = K.trace(eff, cam.x + ((i + 0.5) / nx - 0.5) * aspect * cam.zoom, cam.y + ((j + 0.5) / ny - 0.5) * cam.zoom);
+      const c = t.hit >= 0 ? eff[t.hit].colour : base.cur >= 0 ? gridAt(cpuBase, t.x, t.y - off) : 0;
+      if (c === 0 || !(st.pal.L[c] >= 0.03)) dark++;
+    }
+    return dark / (nx * ny);
+  }
+  function stepTilt(ctl, inp, beats, bpb, bpm, now, kickAge, aspect) {
+    const T = st.tilt, dt = T.lastNow === null ? 0 : Math.max(0, Math.min(0.1, (now - T.lastNow) / 1000));
+    T.lastNow = now;
+    // the angle: the knob's target, slewed (≤ 60 degrees a second), plus the kick's breath
+    T.target = clampN(Number.isFinite(+ctl.tilt) ? +ctl.tilt : 0, 0, TILT.MAX);
+    const prev = T.deg; T.deg = slewTilt(T.deg, T.target, dt);
+    if (prev !== null && dt > 0) T.slewMax = Math.max(T.slewMax, Math.abs(T.deg - prev) / dt);
+    T.eff = tiltEffective(T.deg, kickAge, ctl.beatGain);
+    if (T.eff > 0) T.ever = true;
+    // every live group slides by the thin-film law; the measured speed: thick paint's area-weighted downhill speed
+    const seen = new Set(); let w = 0, wv = 0, wh2 = 0;
+    for (const op of st.live) {
+      const G = grp.get(op); if (!G) continue;
+      if (!seen.has(G)) { seen.add(G); G.v = driftStep(G, T.eff, dt, sinceEndS(G, beats, bpm)); }
+      if (op.type !== K.DROP || G.frozen) continue;
+      const h = thicknessAt(G.h0, sinceEndS(G, beats, bpm)); if (!(h > 0)) continue;
+      const r = K.effective(op, beats).r, a = Math.PI * r * r * h;
+      w += a; wv += a * G.v; wh2 += a * h * h;
+    }
+    T.moving = w > 0;
+    if (dt > 0) {
+      const k = 1 - Math.exp(-dt / 1), inst = w > 0 ? wv / w : 0, norm = wh2 > 0 ? wv / wh2 : 0;
+      T.speed += (inst - T.speed) * k; T.speedMax = Math.max(T.speedMax || 0, inst);
+      if (wh2 > 0) { T.speedNorm = norm; T.speedNormMax = Math.max(T.speedNormMax || 0, norm); }
+    }
+    // the camera follows the flow: the plane scrolls up the screen (0 at tilt 0), trimmed by the coverage
+    T.trim += (trimTarget(T.dark) - T.trim) * (1 - Math.exp(-dt / TILT.TRIM_TAU));
+    T.c = scrollSpeed(T.eff, T.trim);
+    T.S += T.c * dt;
+    // the coverage, every EST_FRAMES frames (CPU, from the same trace)
+    if (st.frames % TILT.EST_FRAMES === 0) {
+      T.dark = estimateDark(beats, K.cameraAt(beats, bpb, inp.camDrift), aspect);
+      T.darkLog.push({ t: now, dark: T.dark, deg: T.deg }); if (T.darkLog.length > 2000) T.darkLog.shift();
+    }
+    // the pour feeds near the top while the view is too dark: one drop at a time (each grows flash-safe, K.growSeconds),
+    // on a beat, at most one every FEED_BEATS
+    if (T.eff >= 1 && T.dark !== null && T.dark > TILT.FEED_DARK && !ctl.freeze) {
+      const at = Math.floor(beats + 1e-6) + 1;
+      const busy = st.pending.some(o => o.cause === 'tilt-feed') || st.live.some(o => o.cause === 'tilt-feed' && K.progress(o, beats) < 1);
+      if (at >= T.feedNext && !busy) {
+        const cam = K.cameraAt(at, bpb, inp.camDrift), r = K.rngAt(inp.seed, 9, at);
+        const big = st.pal.big.filter(c => c !== 0 && c !== st.lastDropColour), colour = big.length ? big[Math.floor(r() * big.length)] : st.pal.big[0];
+        const R = (0.12 + 0.08 * r()) * cam.zoom, cx = cam.x + (r() - 0.5) * 0.8 * aspect * cam.zoom, cy = cam.y + (0.1 + 0.25 * r()) * cam.zoom;
+        const dur = K.growSeconds(R / cam.zoom, st.pal.L[colour] - st.pal.L[0], 60 / bpm) * bpm / 60;
+        queue([{ type: K.DROP, start: at, dur, cx, cy, r: R, colour, role: 'feed' }], now, 'tilt-feed');
+        T.feedNext = at + TILT.FEED_BEATS; T.feeds++;
+      }
+    }
+  }
+  // TT3 on the scene's own step: a band twice as thick advances 4x as far (the h^2 law)
+  function lawCheck(deg = 45) {
+    const a = { h0: 1, g: 0, frozen: false }, b = { h0: 2, g: 0, frozen: false };
+    for (let f = 0; f < 60; f++) { driftStep(a, deg, 1 / 60, -1); driftStep(b, deg, 1 / 60, -1); }
+    return { deg, thin: a.g, thick: b.g, ratio: a.g > 0 ? b.g / a.g : null };
+  }
+  function tiltView() {
+    const T = st.tilt, last = T.darkLog.length ? T.darkLog[T.darkLog.length - 1].t : 0, win = T.darkLog.filter(x => x.t >= last - 8000).map(x => x.dark);
+    const shifts = st.live.map(o => Math.abs(shiftOf(o)));
+    return { deg: T.deg, target: T.target, eff: T.eff, ever: T.ever, S: T.S, scroll: T.c, trim: T.trim, baseOff: baseOff(),
+      still: T.S === 0 && baseOff() === 0 && shifts.every(s => s === 0), shiftMax: shifts.length ? Math.max(...shifts) : 0,
+      dark: T.dark, darkAvg: win.length ? win.reduce((s, x) => s + x, 0) / win.length : null, darkMax: win.length ? Math.max(...win) : null,
+      darkMin: win.length ? Math.min(...win) : null, darkSamples: win.length, darkMaxAll: T.darkLog.length ? Math.max(...T.darkLog.map(x => x.dark)) : null,
+      speed: T.speed, speedMax: T.speedMax || 0, speedNorm: T.speedNorm, speedNormMax: T.speedNormMax || 0, moving: T.moving,
+      slewMax: T.slewMax, feeds: T.feeds, lifts: T.lifts, law: lawCheck(), camera: TILT.SCROLL > 0 ? 'scroll' : 'fixed' };
   }
 
   function frame({ target = null, beats, bpb = 4, bpm = 120, hits = [], controls: ctl, now = performance.now() }) {
@@ -371,7 +556,12 @@ export function createScene() {
     for (const e of K.eventsIn(st.lastBeat, beats, bpb, hits)) {
       if (e.kind === 'kick') st.kickBeat = e.beat;
       const ops = ctl.freeze ? [] : K.songOps(e, inp, st.pal, bpb, bpm);
-      if (ops.length) queue(ops, now, e.kind);
+      if (ops.length) {
+        const G = queue(ops, now, e.kind);
+        // tipped: the section's drop pours near the top of the view and runs down from there (its rings and cells with it)
+        const d = e.kind === 'drop' && st.tilt.eff >= 1 ? ops.find(o => o.role === 'drop') : null;
+        if (d) { const c = K.cameraAt(e.beat, bpb, inp.camDrift); G.lift = c.y + TILT.LIFT * c.zoom - d.cy; st.tilt.lifts++; }
+      }
     }
     st.lastBeat = Math.max(st.lastBeat, beats);
     // --- triggers: 1 drop (beat; ignored while a trigger drop grows), 2 pour here (now, a hold), 3 vortex (beat),
@@ -403,6 +593,9 @@ export function createScene() {
         ops = [{ type: K.DROP, start: at, dur, cx, cy, r: Math.sqrt(rate * dur / Math.PI), pour: rate, colour, role: 'pour', held: !(e.holdMs > 0) }];
         st.userPour = ops[0]; st.userPourEvent = e; e.moves = [];
         st.pourInfo = { t0: at, maxDur, rate, colour };
+        st.userGroup = queue(ops, now, 'trigger2'); ops = [];   // one group for the press: its segments ride together
+        e.fired = true; e.quantisedTo = perfOf(at); e.target = at; st.userPour.trigger = 2;
+        continue;
       }
       else if (slot === 3) ops = K.opsFor({ ...ev, kind: 'snare', beat: at }, { ...inp, vortexOn: true }, st.pal).map(o => ({ ...o, r0: o.r0 * 2, z: o.z * 2, lam: o.lam * 2, hmin: o.hmin * 2, dur: 0.5 }));
       else if (slot === 4) ops = K.opsFor({ ...ev, kind: 'kick', beat: at }, { ...inp, tines: 1 }, st.pal);
@@ -413,11 +606,12 @@ export function createScene() {
     // a held pour follows the finger: the latest move becomes the next segment (logged with the press, cause trigger2)
     if (st.userPour && st.userPour.held && st.pourAt && st.pourInfo) {
       const cam = K.cameraAt(beats, bpb, inp.camDrift), a = st.pourAt;
-      const tx = cam.x + (a.x - 0.5) * (fw / fh) * cam.zoom, ty = cam.y + (a.y - 0.5) * cam.zoom;
+      // the finger in the pour's own frame (its group may have slid and scrolled since the press)
+      const tx = cam.x + (a.x - 0.5) * (fw / fh) * cam.zoom, ty = cam.y + (a.y - 0.5) * cam.zoom - shiftOf(st.userPour);
       const nx = K.pourDragStep(st.userPour, [tx, ty], beats, st.pourInfo, cam.zoom);
       if (nx) {
         nx.trigger = 2; nx.segment = (st.userPour.segment || 0) + 1; st.userPour = nx;
-        queue([nx], now, 'trigger2');
+        queue([nx], now, 'trigger2', st.userGroup || null);
         const pe = st.userPourEvent; if (pe && pe.moves) { pe.moves.push({ t: now, at: { ...a }, beat: beats, cx: nx.cx, cy: nx.cy }); if (pe.moves.length > 256) pe.moves.shift(); }
       }
     }
@@ -431,12 +625,19 @@ export function createScene() {
     for (const e of st.triggerLog) if (e.fired && e.firedAt === null && e.target !== undefined && beats >= e.target) e.firedAt = now;
     // --- bake: when the ops near opsMax (or forced), bake the finished oldest ops in 8 row tiles, then drop them
     if (!st.bake) {
-      const n0 = (() => { let n = 0; while (n < st.live.length && K.progress(st.live[n], beats) >= 1 && !(st.live[n].role === 'pour' && beats < st.live[n].start + st.live[n].dur)) n++; return n; })();
+      // tipped once: only paint that has set (stopped sliding) is baked, so the base never stops paint that still moves
+      const n0 = (() => { let n = 0; while (n < st.live.length && K.progress(st.live[n], beats) >= 1 && !(st.live[n].role === 'pour' && beats < st.live[n].start + st.live[n].dur) && (!st.tilt.ever || isSet(st.live[n], beats, bpm))) n++; return n; })();
       // a bake must take a good share of the ops and not follow the last one too closely, or a short finished prefix
       // starts bake after bake (viz-134-3: every run baked, GPU p50 5.43 → 6.05 ms)
       const due = st.live.length >= Math.min(MAXOPS, ctl.opsMax) - BAKE_HEADROOM && n0 >= Math.max(8, st.live.length / 3) && now - (st.lastBakeEnd ?? -1e9) > 4000;
       if ((due || st.forceBake) && n0 > 0) {
         st.bake = { n0, tile: 0, dst: base.cur === 0 ? 1 : 0, ops: st.live.slice(0, n0), t0: now, beat: beats, forced: st.forceBake };
+        // the plane at the bake's start, kept for all its tiles (no seam): the ops' shifts, the scroll, the old base's offset;
+        // the baked ops' groups drift no more, so after the swap they ride the plane with the new base
+        const b = st.bake;
+        b.dy = b.ops.map(o => shiftOf(o)); b.S0 = st.tilt.S; b.off = baseOff();
+        for (const o of b.ops) { const G = grp.get(o); if (G) G.frozen = true; }
+        b.eff = b.ops.map((o, i) => shifted(o, beats, b.dy[i])); b.grid = new Uint8Array(TILT.BASE_GRID[0] * TILT.BASE_GRID[1]); b.oldGrid = cpuBase;
       }
       st.forceBake = false;
     }
@@ -451,8 +652,9 @@ export function createScene() {
     }
     if (st.bake) {
       const b = st.bake, bp = progs.bake, rows = Math.ceil(base.th / BAKE_TILES);
-      pack(b.ops, beats);
-      gl.useProgram(bp.p); setTrace(bp, b.n0);
+      pack(b.ops, beats, undefined, (o, i) => b.dy[i]);
+      gl.useProgram(bp.p); setTrace(bp, b.n0, b.off);
+      bakeGridRows(b, b.tile);   // the CPU copy of the same tile's rows (the coverage estimate reads it)
       gl.uniform2f(bp.u.uBakeSize, base.tw, base.th); gl.uniform4fv(bp.u.uBakeRect, BASE_RECT);
       gl.bindFramebuffer(gl.FRAMEBUFFER, base.fbo[b.dst]); gl.viewport(0, 0, base.tw, base.th);
       gl.enable(gl.SCISSOR_TEST); gl.scissor(0, b.tile * rows, base.tw, rows);
@@ -461,7 +663,7 @@ export function createScene() {
       b.tile++;
       (st.bakeFrames = st.bakeFrames || []).push(now); if (st.bakeFrames.length > 1024) st.bakeFrames.shift();   // for splitting GPU times
       if (b.tile >= BAKE_TILES) {   // swap: the new base holds exactly what the baked ops drew
-        base.cur = b.dst; st.live.splice(0, b.n0);
+        base.cur = b.dst; base.s0 = b.S0; cpuBase = b.grid; st.live.splice(0, b.n0);
         st.bakes.push({ t: now, beat: b.beat, ops: b.n0, frames: BAKE_TILES, ms: now - b.t0, forced: b.forced }); if (st.bakes.length > 64) st.bakes.shift();
         st.bake = null; st.lastBakeEnd = now;
       }
@@ -469,10 +671,11 @@ export function createScene() {
     // --- envelopes, camera, pour, strings
     const kickAge = st.kickBeat === undefined ? 99 : (beats - st.kickBeat) * msPerBeat / 1000;
     const kick = kickAge >= 0 ? Math.exp(-kickAge / 0.15) : 0;
+    stepTilt(ctl, inp, beats, bpb, bpm, now, kickAge, fw / fh);   // the tilted plane: angle, drift, scroll, coverage, feed
     const cam = K.cameraAt(beats, bpb, inp.camDrift);
     const toPx = (x, y) => [fw / 2 + (x - cam.x) / cam.zoom * fh, fh / 2 + (y - cam.y) / cam.zoom * fh];
     let strOn = 0; const str = new Float32Array(8), strCol = [0, 0, 0];
-    const pour = st.pour && beats < st.pour.start + st.pour.dur + 0.5 && beats >= st.pour.start ? K.effective(st.pour, beats) : null;
+    const pour = st.pour && beats < st.pour.start + st.pour.dur + 0.5 && beats >= st.pour.start ? shifted(st.pour, beats) : null;
     if (pour && ctl.strings > 0 && !ctl.flat) {
       const [px, py] = toPx(pour.cx, pour.cy), sway = Math.sin(2 * Math.PI * beats / 8);
       str.set([px, py, px + 0.06 * fh * sway, 0.04 * fh, px + 0.012 * fh, py, px + 0.12 * fh + 0.03 * fh * sway, -0.03 * fh]);
@@ -512,7 +715,7 @@ export function createScene() {
   }
 
   // ---------------------------------------------------------------- QA
-  const effAll = ops => ops.map(o => K.effective(o, st.beats ?? 0));
+  const effAll = ops => ops.map(o => shifted(o, st.beats ?? 0));   // as drawn: with each group's shift (0 at tilt 0)
   function traceGPU(points) {   // [[x, y] world] → [{ x, y, hit, d }] from the shader's own trace (live ops + base)
     if (!gl) return null;
     if (!progs.probe) progs.probe = compile(PROBE_FS);
@@ -599,7 +802,7 @@ export function createScene() {
       const a = st.epoch, b = st.lastBeat, inp = st.inp, rep = [];
       for (const e of K.eventsIn(a, b, st.bpb, K.patternHits(a, b, st.bpb, st.pat))) for (const op of K.songOps(e, inp, st.pal, st.bpb, st.bpm)) if (op.start <= b + 1e-9) rep.push(op);
       const key = o => `${o.tBeat ?? o.start}|${o.role}|${JSON.stringify(o.params ?? paramsOf(o))}`;
-      const logged = st.opLog.filter(o => o.epoch === st.epochId && !/^trigger/.test(o.cause)).map(key).sort(), replay = rep.map(o => key({ ...o, params: paramsOf(o) })).sort();
+      const logged = st.opLog.filter(o => o.epoch === st.epochId && !/^(trigger|tilt)/.test(o.cause)).map(key).sort(), replay = rep.map(o => key({ ...o, params: paramsOf(o) })).sort();
       // multiset difference (a sorted zip counted every entry after the first gap as different)
       const count = new Map(); for (const k of replay) count.set(k, (count.get(k) || 0) + 1);
       const onlyLogged = []; for (const k of logged) { const n = count.get(k) || 0; if (n > 0) count.set(k, n - 1); else onlyLogged.push(k); }
@@ -624,7 +827,7 @@ export function createScene() {
     release, trigger(name) { const i = ['drop', 'pour', 'vortex', 'comb'].indexOf(name); return i >= 0 ? press(i + 1) : false; },
     qa: { get view() { return st.view; }, get metrics() { return st.metrics; }, get ops() { return opsView(); }, get opLog() { return st.opLog; },
       get bakes() { return st.bakes; }, get bakeFrames() { return st.bakeFrames || []; }, get pour() { return pourView(); }, get palette() { return st.pal; },
-      get triggerLog() { return st.triggerLog; }, get triggerEnv() { return st.triggerEnv; },
+      get triggerLog() { return st.triggerLog; }, get triggerEnv() { return st.triggerEnv; }, get tilt() { return tiltView(); }, lawCheck,
       forceBake() { st.forceBake = true; return true; }, traceGPU, traceCPU, colourAt, colourGrid, fwd: fwdAll, inv: invAll, check },
   };
 }
@@ -663,6 +866,7 @@ export const DETAIL = [
   { name: 'camDrift', type: 'float', default: 1, min: 0, max: 2 },   // was macro 4 (2 × its 0.5 default = 1)
   { name: 'bakeScale', type: 'float', default: 1, min: 0.5, max: 2 },
   { name: 'pulse', type: 'float', default: 0, min: 0, max: 1 },   // the colour pulse on the beat (0 = off, as before)
+  { name: 'tilt', type: 'float', default: TILT.DEFAULT, min: 0, max: TILT.MAX },   // the plane's tilt, degrees (0 = flat, main's look)
 ];
 // macro value → inputs
 export function macroInputs(m) {
