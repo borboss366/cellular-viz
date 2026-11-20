@@ -16,6 +16,24 @@
 
 import * as K from './24-marble.mjs';
 
+// Beat strength (the user, 20 Nov: "all scenes react too weakly to the beat"; VIZ research's shared beat gain): the host's
+// controls.beatGain g (the page: clock.beatGain(?beatKnob), or ?beatGain; absent = 1, as before) scales the kick's gloss
+// (uKick: 1 + 0.1·kick) and the colour pulse (uPulse: ?pulse or its knob × K.beatPulse). Not the song's ops (?beatFx: kick
+// combs, vortices, swirls move paint), the drops, the pour or the triggers. At g = 1 each is today's value bit for bit.
+export const BEAT = { G_MAX: 3, PULSE_CAP: 3 };
+export function beatGainOf(clock, n, fixed) {   // fixed (?beatGain) wins, else clock.beatGain(n) (PR A), else 1
+  if (fixed !== null && fixed !== undefined && fixed !== '' && Number.isFinite(+fixed)) return Math.max(0, Math.min(BEAT.G_MAX, +fixed));
+  if (!clock || typeof clock.beatGain !== 'function') return 1;
+  let g = null; try { g = clock.beatGain(n); } catch (e) { g = null; }
+  return g === null || g === undefined || !Number.isFinite(+g) ? 1 : Math.max(0, Math.min(BEAT.G_MAX, +g));
+}
+// the shader's inputs at gain g: uKick = kick·g (gloss 1 + 0.1·uKick, at most +0.3), uPulse = pulse·g (at most 3: the
+// pulse is a smooth bump once a beat, brightness + 8 % per unit, so at most +24 %, never more than 3 a second to 180 bpm)
+export function beatTerms(g, kick, pulse) {
+  const gg = Number.isFinite(g) ? Math.max(0, Math.min(BEAT.G_MAX, g)) : 1;
+  return { g: gg, kick: (Number.isFinite(kick) ? kick : 0) * gg, pulse: Math.min(BEAT.PULSE_CAP, (Number.isFinite(pulse) ? pulse : 0) * gg) };
+}
+
 // 16 bake tiles (was 8) and a bake at opsMax − 16 live ops, opsMax 64 (was 96): the GPU p95 grew with the live op
 // count (viz-134-2: p95 8.72 ms at 1440p, limit 7), and each bake frame costs 1/16 of a base pass
 // viz-134-4: still p95 9.5 ms. Now 32 tiles a bake and opsMax 40 (bake from 24 live ops): fewer ops per frame on
@@ -469,8 +487,10 @@ export function createScene() {
     gl.uniform1f(u.uFlat, ctl.flat ? 1 : 0); gl.uniform1f(u.uVeinOn, vein >= 0 ? 1 : 0); gl.uniform1f(u.uVeinW, ctl.veinWidth * fh / 1440);
     gl.uniform3fv(u.uVein, vein >= 0 ? K.rgb(st.pal.colours[vein]).map(K.linear) : [0, 0, 0]);
     gl.uniform1f(u.uV0, 0.10); gl.uniform1f(u.uV1, 0.35);   // screen heights a second: 145 → 500 px/s at 1440p
-    gl.uniform1f(u.uBevel, ctl.bevelWidth * fh / 1440); gl.uniform1f(u.uHeight, ctl.paintHeight); gl.uniform1f(u.uGloss, ctl.gloss); gl.uniform1f(u.uKick, kick);
-    const pulse = (ctl.pulse > 0 ? ctl.pulse : 0) * K.beatPulse(beats); gl.uniform1f(u.uPulse, pulse);
+    gl.uniform1f(u.uBevel, ctl.bevelWidth * fh / 1440); gl.uniform1f(u.uHeight, ctl.paintHeight); gl.uniform1f(u.uGloss, ctl.gloss);
+    const pulse = (ctl.pulse > 0 ? ctl.pulse : 0) * K.beatPulse(beats);
+    const BT = beatTerms(ctl.beatGain, kick, pulse);   // the beat gain: g into the kick's gloss and the colour pulse only
+    gl.uniform1f(u.uKick, BT.kick); gl.uniform1f(u.uPulse, BT.pulse);
     gl.uniform4fv(u.uStr, str); gl.uniform3fv(u.uStrCol, strCol); gl.uniform1f(u.uStrOn, strOn);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, rip); gl.uniform1i(u.uRip, 2); gl.uniform1f(u.uRipple, ctl.ripple ?? 0.6);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -482,7 +502,7 @@ export function createScene() {
     const growing = st.live.filter(o => K.progress(o, beats) < 1).length;
     st.view = { beats, bars: beats / bpb, phase: K.phaseOf(beats / bpb), section: Math.floor(beats / bpb / K.SECTION_BARS), live: st.live.length, pending: st.pending.length,
       growing, baking: !!st.bake, bases: st.bakes.length, cam, palette: st.pal.name };
-    st.metrics = { ops: st.live.length, history: st.history.length, kick, pulse };
+    st.metrics = { ops: st.live.length, history: st.history.length, kick, pulse, beat: BT };
     st.triggerEnv[0] = st.live.some(o => o.trigger === 1 && K.progress(o, beats) < 1) ? 1 - K.progress(st.live.find(o => o.trigger === 1 && K.progress(o, beats) < 1), beats) : 0;
     st.triggerEnv[1] = st.userPour ? 1 : 0;
     st.triggerEnv[2] = st.live.some(o => o.trigger === 3 && K.progress(o, beats) < 1) ? 1 : 0;
