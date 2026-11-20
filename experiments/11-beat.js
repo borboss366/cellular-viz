@@ -10,7 +10,7 @@
 // each level is today's, bit for bit (level × 1).
 (function (root) {
   'use strict';
-  const C = { G_MAX: 2, HAT_G_MAX: 1 };
+  const C = { G_MAX: 2, HAT_G_MAX: 1, JUMP_BARS: 1 };
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   // g: fixed (?beatGain, a number) wins, else clock.beatGain(n) (VIZ dev's PR A), else 1
   function beatGainOf(clock, n, fixed) {
@@ -28,7 +28,19 @@
     out.beat = { g: gg, kick: out.kick, snare: out.snare, hat: out.hat };
     return out;
   }
-  const api = { C, beatGainOf, beatLanes };
+  // a clock jump (the Mac session, 20 Nov: after a slot switch the ribbon shook hard): a slot scene's first frames run on
+  // the page's own count until the shared clock's arrives (~470 bars later); the chase camera then eased from the old
+  // spot to the new one (8 % a frame) and the zero flash fired. jumped(st, bars) is true when bars moved by more than
+  // JUMP_BARS since the last frame (a seek or that switch, never 60 fps playback: 0.05 bar a frame at 180 BPM); the page
+  // then snaps the camera and takes the new zero without a flash.
+  const jumpState = () => ({ last: null, jumps: 0 });
+  function jumped(st, bars) {
+    if (!st || !Number.isFinite(bars)) return false;
+    const j = st.last !== null && Math.abs(bars - st.last) > C.JUMP_BARS;
+    st.last = bars; if (j) st.jumps++;
+    return j;
+  }
+  const api = { C, beatGainOf, beatLanes, jumpState, jumped };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.RiemannBeat = api;
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this));

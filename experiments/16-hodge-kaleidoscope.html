@@ -489,7 +489,10 @@ const alignUp = (x, g) => Math.ceil(x / g - 1e-6) * g;
 const morphLen = (holdBeats, bpb, cause) => Math.min(bpb, holdBeats / 2, cause === 'trigger' ? 1 : Infinity);
 function schedStep(s, beats, holdBeats, bpb) {
   const g = gridOf(holdBeats, bpb);
-  if (s.next === null || beats < s.last - 1e-6) {   // first frame, or the clock jumped back: a virtual change on the grid
+  // first frame, the clock jumped back, or it jumped forward by more than a hold (a slot switch: the first frames run on
+  // the page's own count until the shared clock's arrives, ~1890 beats later; without this, one change a frame caught
+  // up, the Mac session's 20 Nov shake): a virtual change on the grid
+  if (s.next === null || beats < s.last - 1e-6 || beats - s.next > holdBeats + 1e-6) {
     s.hold = holdBeats; s.cause = 'auto'; s.last = Math.floor(beats / g + 1e-6) * g; s.next = alignUp(s.last + holdBeats, g);
   }
   if (s.pending !== false) {   // trigger(): the next beat after the press
@@ -503,6 +506,7 @@ function schedStep(s, beats, holdBeats, bpb) {
   if (beats + 1e-6 < s.next) return null;
   const ev = { beat: s.next, at: beats, cause: s.cause, hold: holdBeats, morphBeats: morphLen(holdBeats, bpb, s.cause) };
   s.last = s.next; s.next = alignUp(s.last + holdBeats, g); s.cause = 'auto';
+  if (s.next <= beats + 1e-6) s.next = (Math.floor(beats / g + 1e-6) + 1) * g;   // still behind: the next grid line ahead, never a burst
   return ev;
 }
 const sched = newSched();
@@ -766,7 +770,7 @@ function draw(now) {
   // read the shape clock half a frame ahead, so a change is drawn within ±½ frame of its beat instead of 0–1 frame
   // late (a 4K frame is ~17–20 ms; QA box measured 41 ms against the 40 ms limit)
   const ahead = beats + 0.5 * Math.min(dt || 1 / 60, 1 / 30) * params.bpm / 60;
-  if (sched.next === null || ahead < sched.last - 1e-6) { liveClock.epoch++; liveClock.since = now; }   // the same test schedStep resets on
+  if (sched.next === null || ahead < sched.last - 1e-6 || ahead - sched.next > holdOf(params.shapeRate) * params.bpb + 1e-6) { liveClock.epoch++; liveClock.since = now; }   // the same test schedStep resets on
   // the beat path's shape clock steps every frame, so it is on its grid when the weight comes back
   const ev = schedStep(sched, ahead, holdOf(params.shapeRate) * params.bpb, params.bpb);
   if (esched.last === null) esched.last = now;
