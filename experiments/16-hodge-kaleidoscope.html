@@ -48,6 +48,10 @@
   ?glint=0..1 or ?glintKnob=1..8 (else ?glint): on each hat a highlight band sweeps across the gems' facets, on each snare
   a prism split (R/B offset up to 4 px at 1080p, 180 ms tail). QA: ?burstEvery=N (a burst every N bars), ?prismHold=1,
   __qa.dive, __qa.fakeKnob(n, v | null), __qa.lumaProbe(on) / __qa.lumaLog (the frame's mean linear luminance).
+  Beat strength (the user, 20 Nov: the scenes react too weakly to the beat): ?beatKnob=N (default 1) reads
+  clock.beatGain(N): untouched = 1 (as before), bottom = 0 (no beat reaction), centre 1, top 3. ?beatGain=0..3 fixes g
+  (stills). g scales only the kick/snare terms (the kick's swell and gem glow, the morph pop, the breath, the snare's film
+  hue), capped (sizes +0.25, glow +1.0); not the spin, morph, hold, dive or glints. __qa.beat, __qa.fakeBeatGain(g | null).
 -->
 <html lang="en">
 <head>
@@ -300,6 +304,7 @@ void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position
 const SCENE_FS = `#version 300 es
 precision highp float;
 uniform vec2 uRes; uniform float uZoom, uAng, uBreath, uTime, uMode, uGold, uKick, uSnare, uLabels;
+uniform float uBeatG;   // the beat gain g (1 = as before): scales the kick's glow (at most +1.0) and the snare's hue (g at most 2)
 uniform float uGlint, uSweep;   // the hat's glint: its amount (0 = off) and where the band is across the gem (0..1)
 uniform float uNA, uNB, uAA, uAB; uniform float uRA[16], uRB[16], uWA[16], uWB[16];
 out vec4 o;
@@ -332,11 +337,11 @@ void diamond(vec2 loc, float n, float R[16], float W[16], float alpha, inout vec
     float sd = sdOct(d, rad);
     if (sd < 0.0) {
       float a = atan(d.y, d.x), facet = floor(a / (2.0 * PI) * 8.0 + 0.5), rr = r / rad;
-      float th = 320.0 + 220.0 * sin(facet * 1.7 + uTime * 0.3 + p * 1.3 + q * 0.7) + 260.0 * rr + 90.0 * uSnare;
+      float th = 320.0 + 220.0 * sin(facet * 1.7 + uTime * 0.3 + p * 1.3 + q * 0.7) + 260.0 * rr + 90.0 * min(uBeatG, 2.0) * uSnare;
       float table = smoothstep(0.42, 0.38, rr);
       vec3 f = film(th);
       float light = mix(0.55 + 0.45 * cos(facet * 0.785 - uTime * 0.2), 0.95, table);
-      vec3 g = base * (0.30 + 0.70 * f) * light * (1.0 + 0.35 * uKick);
+      vec3 g = base * (0.30 + 0.70 * f) * light * (1.0 + min(1.0, 0.35 * uBeatG * uKick));
       if (uGlint > 0.0) {   // the hat's glint: a bright band sweeping across the facets, top left to bottom right
         float sx = (d.x - d.y) * 0.70710678 / max(rad, 1e-3);
         float band = exp(-pow((sx - (2.6 * uSweep - 1.3)) / 0.18, 2.0));
@@ -466,6 +471,8 @@ const esched = { last: null, pending: false };
 // the dive, the burst and the glints (16-dive.js): the dive's state, key D, the QA's stand-in knobs, the luminance probe
 const dive = Dive.create(), diveKey = { held: false }, qaKnobs = new Map(), luma = { on: false, log: [], buf: null, lut: null };
 const readKnob = n => (n ? (qaKnobs.has(n) ? qaKnobs.get(n) : Dive.knobOf(metronome, n)) : null);
+// the beat gain (16-dive.js): QA's stand-in g (null: the knob again), and this frame's terms
+let qaBeatG = null, beatNow = Dive.beatTerms(1, 0, 0, 0);
 Object.assign(st, { hatEnv: 0, hatAt: -1e9, prismEnv: 0, nbHatPrev: 0, qaBurstBar: null, diveView: null });
 function presetFor(k) {
   if (params.preset !== 'auto') return [params.preset, params.preset === 'curve' ? params.genus : 0];
@@ -585,7 +592,7 @@ function measureRowGlow(name, genus) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, t.f); gl.viewport(0, 0, N, N);
   gl.useProgram(sceneProg.p); const u = sceneProg.u;
   gl.uniform2f(u.uRes, N, N); gl.uniform1f(u.uZoom, zoom); gl.uniform1f(u.uAng, 0); gl.uniform1f(u.uBreath, 1);
-  gl.uniform1f(u.uTime, 0); gl.uniform1f(u.uMode, 1); gl.uniform1f(u.uGold, 1); gl.uniform1f(u.uKick, 0); gl.uniform1f(u.uSnare, 0); gl.uniform1f(u.uLabels, 0);
+  gl.uniform1f(u.uTime, 0); gl.uniform1f(u.uMode, 1); gl.uniform1f(u.uGold, 1); gl.uniform1f(u.uKick, 0); gl.uniform1f(u.uSnare, 0); gl.uniform1f(u.uLabels, 0); gl.uniform1f(u.uBeatG, 1);
   gl.uniform1f(u.uNA, d.n); gl.uniform1f(u.uNB, 0); gl.uniform1f(u.uAA, 1); gl.uniform1f(u.uAB, 0);
   gl.uniform1fv(u.uRA, R); gl.uniform1fv(u.uWA, W); gl.uniform1fv(u.uRB, Z); gl.uniform1fv(u.uWB, Z);
   gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -781,15 +788,17 @@ function draw(now) {
     settledSeen.add(`${st.cur.name}:${st.cur.genus}`); st.prev = null;
   }
   st.morph = m;
-  const pop = 1 + 0.06 * st.popEnv;
+  // the beat gain: g into the kick/snare terms only (g = 1: today's 0.03 kick, 0.06 pop, 0.02 breath, bit for bit)
+  const BT = beatNow = Dive.beatTerms(qaBeatG !== null ? qaBeatG : Dive.beatGainOf(metronome, params.beatKnob, params.beatGain), kick, snare, st.popEnv);
+  const pop = 1 + BT.pop;
   const flat = params.bands === 'flat';
   const levels = Array.from(bandLevel);
-  const A = cellArrays(st.cur, m * (1 + 0.03 * kick) * pop, levels, flat);
-  const B = cellArrays(st.prev, (1 - m) * (1 + 0.03 * kick) * pop, levels, flat);
+  const A = cellArrays(st.cur, m * (1 + BT.kickSize) * pop, levels, flat);
+  const B = cellArrays(st.prev, (1 - m) * (1 + BT.kickSize) * pop, levels, flat);
   // the turn: once per 32 bars on the clock; at w = 0 the same speed at the clock's tempo, × (0.5 + loudness)
   const ang = spinPhase.step(params.spin * 2 * Math.PI * bars / 32, params.spin * 2 * Math.PI / 32 * (dt / barS) * (0.5 + nb.level), w);
   // the breath: 1 ± 0.02 per bar on the clock; at w = 0 it follows the bass (sub + kick over their 1 s mean)
-  const breath = NoBeat.mix(w, 1 + 0.02 * Math.sin(2 * Math.PI * bars), 1 + 0.02 * nb.low);
+  const breath = NoBeat.mix(w, 1 + BT.breath * Math.sin(2 * Math.PI * bars), 1 + BT.breath * nb.low);
   // the dive and the burst (16-dive.js): at rest zoom × 1 and the trail zoom 1.002, as before
   if (params.burstEvery > 0) {   // QA stills: a burst every burstEvery bars
     const k = Math.floor(bars / params.burstEvery);
@@ -813,7 +822,7 @@ function draw(now) {
   gl.useProgram(sceneProg.p); const u = sceneProg.u;
   gl.uniform2f(u.uRes, W, H); gl.uniform1f(u.uZoom, zoom); gl.uniform1f(u.uAng, ang); gl.uniform1f(u.uBreath, breath);
   gl.uniform1f(u.uTime, now / 1000); gl.uniform1f(u.uMode, 0); gl.uniform1f(u.uGold, params.goldBoost);
-  gl.uniform1f(u.uKick, kick); gl.uniform1f(u.uSnare, snare); gl.uniform1f(u.uLabels, params.labels ? 1 : 0);
+  gl.uniform1f(u.uKick, kick); gl.uniform1f(u.uSnare, snare); gl.uniform1f(u.uLabels, params.labels ? 1 : 0); gl.uniform1f(u.uBeatG, BT.g);
   gl.uniform1f(u.uGlint, G.glint); gl.uniform1f(u.uSweep, G.sweep);
   gl.uniform1f(u.uNA, st.cur.n); gl.uniform1f(u.uNB, st.prev ? st.prev.n : 0); gl.uniform1f(u.uAA, m); gl.uniform1f(u.uAB, 1 - m);
   gl.uniform1fv(u.uRA, A.R); gl.uniform1fv(u.uWA, A.W); gl.uniform1fv(u.uRB, B.R); gl.uniform1fv(u.uWB, B.W);
@@ -846,7 +855,8 @@ function draw(now) {
   Object.assign(window.__qa, { preset: st.cur.name, genus: st.cur.genus, n: st.cur.n, morph: m, from: st.prev ? st.prev.name : null,
     bands: levels, flat, rowGlow, betti: rowSums(st.cur), bars, beats, floatOk, hold: holdOf(params.shapeRate), shapeRate: params.shapeRate,
     morphBeats: st.morphBeats, pop: st.popEnv, idx: st.idx,
-    nobeat: { w, path, kick, snare, low: nb.low, swell: nb.swell, kickOnset: nb.kickOnset, ang, breath } });
+    nobeat: { w, path, kick, snare, low: nb.low, swell: nb.swell, kickOnset: nb.kickOnset, ang, breath },
+    beat: { g: BT.g, knob: params.beatKnob, fixed: params.beatGain, fake: qaBeatG, kickSize: BT.kickSize, pop: BT.pop, breath: BT.breath, glow: BT.glow, hueG: BT.hueG } });
   // #141 audio checks (#159 ruling): each row's glow per unit Betti number and gain, which should follow its band lane
   // (floor + (1 − floor)·L_k); 7 entries, null where the row has no cells (b_k = 0), its gain is 0, or a morph is running
   const betti = rowSums(st.cur);
@@ -919,6 +929,8 @@ window.__qa = { errors, events, presets: PRESET_NAMES, hodge, table: TABLE, bett
   get dive() { return { ...(st.diveView || {}), bursts: dive.bursts.map(b => ({ ...b })), pending: dive.pending ? { ...dive.pending } : null, armed: dive.armed,
     diveKnob: params.diveKnob, glintKnob: params.glintKnob, glintParam: params.glint, autoDrop: params.autoDrop }; },
   fakeKnob: (n, v) => { const k = Math.round(+n); if (!(k >= 1 && k <= 8)) return false; if (v === null || v === undefined) qaKnobs.delete(k); else qaKnobs.set(k, Math.max(0, Math.min(1, +v))); return true; },
+  // the beat gain: a stand-in g for tests (null: clock.beatGain(?beatKnob) again)
+  fakeBeatGain: g => { qaBeatG = g === null || g === undefined || !Number.isFinite(+g) ? null : Math.max(0, Math.min(Dive.C.G_MAX, +g)); return qaBeatG; },
   pressDive: () => { diveKey.held = true; return true; }, releaseDive: () => { diveKey.held = false; return true; },
   lumaProbe: on => { luma.on = !!on; if (on) luma.log = []; return luma.on; }, get lumaLog() { return luma.log; } };   // row k glows with this page's band k (of its 7, not audio-in's 8)
 // clock port: the shared hooks (beatLog, frame, beatLanes, audioIn); __qa.events stays this page's sync log
@@ -941,6 +953,9 @@ params.muted = q('muted') === '1';
 const knobArg = k => { const n = parseInt(q(k), 10); return n >= 1 && n <= 8 ? n : 0; }, unit = k => { const v = parseFloat(q(k)); return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0; };
 Object.assign(params, { diveKnob: knobArg('diveKnob'), glintKnob: knobArg('glintKnob'), dive: unit('dive'), glint: unit('glint'), autoDrop: q('autoDrop') === '1',
   prismHold: q('prismHold') === '1', burstEvery: Math.max(0, parseInt(q('burstEvery'), 10) || 0) });
+// the beat gain: ?beatKnob=N (default 1) for clock.beatGain(N), ?beatGain=0..3 a fixed g (stills)
+params.beatKnob = knobArg('beatKnob') || 1;
+params.beatGain = Number.isFinite(parseFloat(q('beatGain'))) ? Math.max(0, Math.min(Dive.C.G_MAX, parseFloat(q('beatGain')))) : null;
 sync();
 requestAnimationFrame(frame);
 </script>
