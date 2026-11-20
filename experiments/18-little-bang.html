@@ -59,6 +59,10 @@
   pulses, pulsePhase, wobbleAmp, breath, glowPx, clearance (in tube radii)}; events pulse / pulse-arrive. Travel mode:
   camera also has travel, speed (world units a second), knob, target {x, y}; ray {env, width, kick, breath, peaks, on};
   fakeKnob(n, v | null) stands in for the controller's knob n.
+  Beat strength (the user, 20 Nov; 18-travel.js): ?beatKnob=N (default 1) reads clock.beatGain(N): untouched = 1 (as
+  before), bottom = 0 (no beat reaction), top = 2 here; ?beatGain=0..2 fixes g (stills). The page draws from the drum
+  levels: kick x g, snare and hat x min(g, 1) (no harder flashes than today): FOV and camera, magnets, wires, the bass
+  breath, the ray, sparks; glows and the halo width keep their caps. Not the travel speed, the crossings or the sync log. __qa.beat, __qa.fakeBeatGain(g | null).
   Modules: window.__modules (ISF-style inputs).
 -->
 <html lang="en">
@@ -643,6 +647,7 @@ const rayBuf = dynBuffer([{ loc: 0, size: 3 }, { loc: 1, size: 1 }]);
 })();
 // travel mode's state: the camera arclength, the eased speed, the ray, the QA's stand-in knobs
 const travel = { on: false, s: null, speed: null, ray: Travel.rayCreate(), breath: 0, rayQA: null }, qaKnobs = new Map();
+let qaBeatG = null;   // the beat gain: QA's stand-in g (null: the knob)
 const readKnob = n => (n ? (qaKnobs.has(n) ? qaKnobs.get(n) : Travel.knobOf(metronome, n)) : null);
 
 // post: HDR accumulation with decay (motion trails), bloom at quarter size, tone map
@@ -943,8 +948,11 @@ const qaState = { scene: null, bar: 0, lastEvent: null, lastJet: null, drawnTrac
 function draw(now) {
   resize();
   const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
-  const L = Object.assign(metronome.read(params.lead / 1000), params.lead ? {} : audio.read());   // bars from the clock; kick/snare/hat from audio-in (the clock's look-ahead read when lead is set)
+  const L0 = Object.assign(metronome.read(params.lead / 1000), params.lead ? {} : audio.read());   // bars from the clock; kick/snare/hat from audio-in (the clock's look-ahead read when lead is set)
   audio.due(BEAT_LANES);   // the hits this frame reached, logged in __qa.beatLog
+  // the beat gain (18-travel.js): the page draws from the drum levels x g (g = 1: today's, bit for bit); the travel speed,
+  // the crossings and the sync log don't read them
+  const L = Travel.beatLanes(qaBeatG !== null ? qaBeatG : Travel.beatGainOf(metronome, params.beatKnob || 1, params.beatGain), L0);
   bassEnv = Math.max(L.kick, bassEnv * Math.exp(-dt / 0.25));   // the bass: the kick's slow envelope
   const bars = Math.max(0, metronome.playing && L.bars >= 0 ? L.bars : (now - clockStart) / 1000 * params.bpm / 60 / params.bpb) + (window.__qaShift || 0);   // __qaShift: forceDrop moves the clock (QA, #88)
   window.__qaNowBars = bars;
@@ -1016,8 +1024,8 @@ function draw(now) {
     const u = bars - n, sIdx = Math.floor(n / params.bars);
     const camNow = travel.on ? travel.s : camS(u);   // travel mode: the pulses and the hue bands follow the travelling camera
     const baseDeg = wireHue(n, u), pulses = pulsesAt(u, camNow);
-    const sc = H / 1080, breath = 1 + 0.02 * bassEnv, wob = 0.03 * bassEnv, glowPx = 2.2 * sc * (0.7 + 0.6 * bassEnv);
-    const beatPh = (bars * params.bpb) % 1, shift = 0.15 + 0.08 * Math.sin(2 * Math.PI * beatPh), halo = 0.9 + 0.25 * bassEnv;
+    const sc = H / 1080, breath = 1 + 0.02 * bassEnv, wob = 0.03 * bassEnv, glowPx = 2.2 * sc * (0.7 + 0.6 * Math.min(bassEnv, Travel.C.BEAT_LIGHT_MAX));
+    const beatPh = (bars * params.bpb) % 1, shift = 0.15 + 0.08 * Math.sin(2 * Math.PI * beatPh), halo = 0.9 + 0.25 * Math.min(bassEnv, 1);
     const sweep = (bars * params.bpb) % 1;
     gl.useProgram(neonProg.p); const U = neonProg.u;
     gl.uniformMatrix4fv(U.uVP, false, vp); setBend(neonProg);
@@ -1189,7 +1197,7 @@ function draw(now) {
     }
   }
   if (logged.size > 400) logged.clear();
-  if (!(QA_WIRES && beam)) stringSprites(sprites, L.kick, L.hat);
+  if (!(QA_WIRES && beam)) stringSprites(sprites, Math.min(L.kick, Travel.C.BEAT_LIGHT_MAX), L.hat);   // glow at most 2x at any beat gain
   if (sprites.length) {
     for (let i = 3; i < sprites.length; i += 7) { sprites[i] *= fg * params.gain; sprites[i + 1] *= fg * params.gain; sprites[i + 2] *= fg * params.gain; }
     gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuf.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(sprites), gl.DYNAMIC_DRAW);
@@ -1231,7 +1239,8 @@ function draw(now) {
   // sectionEnergy, not energy: AudioIn.qa makes __qa.energy a getter (the music's energy), and assigning to it threw every frame
   Object.assign(window.__qa, { scene: sec.scene, bars, drop: sec.drop, sectionEnergy: sec.energy, drawnTracks: drawn, render: [W, H], screen: [CW, CH],
     lastEvent: qaState.lastEvent && summary(qaState.lastEvent), lastJet: qaState.lastJet, strings: stringsQA(), latency: metronome.latency(),
-    camera: qaState.camera, wakes: wakesQA.slice(), dijets: dijetsQA.slice(), wires: wiresQA, ray: beam ? travel.rayQA : { on: false } });
+    camera: qaState.camera, wakes: wakesQA.slice(), dijets: dijetsQA.slice(), wires: wiresQA, ray: beam ? travel.rayQA : { on: false },
+    beat: { ...L.beat, knob: params.beatKnob, fixed: params.beatGain, fake: qaBeatG } });
   frames++;
   if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
   if (now - lastHud > 200) {
@@ -1286,7 +1295,7 @@ function drawOverlay(sec, L) {
   c.fillStyle = 'rgba(30,20,50,0.55)'; c.fillRect(X(0), y0 - hgt, X(1730) - X(0), hgt);
   c.fillStyle = 'rgba(200,180,255,0.6)'; c.font = f(H / 60); c.textAlign = 'center';
   c.fillText('gap', (X(0) + X(1730)) / 2, y0 - hgt / 2 + H / 160);
-  const lv = [L.kick, L.snare, L.hat];
+  const lv = [L.kick, L.snare, L.hat].map(x => Math.min(1, x));   // the bars stay in the strip at any beat gain
   GLUEBALLS.forEach((g, i) => {
     const h = hgt * (0.3 + 0.7 * lv[i]);
     c.fillStyle = 'rgba(255,255,255,0.85)'; c.fillRect(X(g.mev) - W / 400, y0 - h, W / 200, h);
@@ -1310,6 +1319,8 @@ window.__qa = {
   // travel mode: a stand-in for the controller's knob n (v null: the real one again), the target path
   fakeKnob: (n, v) => { const k = Math.round(+n); if (!(k >= 1 && k <= 8)) return false; if (v === null || v === undefined) qaKnobs.delete(k); else qaKnobs.set(k, Math.max(0, Math.min(1, +v))); return true; },
   targetAt: (b, seed = params.seed) => Travel.targetAt(b, seed),
+  // the beat gain: a stand-in g for tests (null: clock.beatGain(?beatKnob) again)
+  fakeBeatGain: g => { qaBeatG = g === null || g === undefined || !Number.isFinite(+g) ? null : Math.max(0, Math.min(Travel.C.BEAT_G_MAX, +g)); return qaBeatG; },
 };
 // clock port: the shared hooks (beatLog, frame, beatLanes, audioIn); __qa.events stays this page's sync log
 // (perfHeard/perfDrawn, check-events) followed by the clock's hits and jumps for the shared beat-match row
@@ -1325,6 +1336,9 @@ params.muted = q('muted') === '1';
 params.speedKnob = (() => { const k = parseInt(q('speedKnob'), 10); return k >= 1 && k <= 8 ? k : 0; })();
 params.speed = (() => { const v = parseFloat(q('speed')); return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : Travel.C.SPEED_DEFAULT; })();
 travel.on = params.speedKnob > 0 || q('travel') === '1';
+// the beat gain: ?beatKnob=N (default 1) for clock.beatGain(N), ?beatGain=0..2 a fixed g (stills)
+{ const n = parseInt(q('beatKnob'), 10), g = parseFloat(q('beatGain'));
+  params.beatKnob = n >= 1 && n <= 8 ? n : 1; params.beatGain = Number.isFinite(g) ? Math.max(0, Math.min(Travel.C.BEAT_G_MAX, g)) : null; }
 sync();
 requestAnimationFrame(frame);
 </script>
