@@ -12,8 +12,33 @@
 // Build-up 3 → 7 → 15 → 27: the surface is P² blown up at Klein's six points in pairs c_k ± √u_k·d_k; a pair
 // crossing u_k = 0 passes a nodal surface and new lines are born as twins (a soft gold flash per wall).
 // The scene reads only beats and beats-per-bar from the clock (bpm is used for the trigger log only).
+// Beat strength (the user, 20 Nov: "all scenes react too weakly to the beat"; VIZ research's shared beat gain): the
+// host's controls.beatGain g (the page: clock.beatGain(?beatKnob), or ?beatGain; absent = 1, as before) scales only the
+// beat pulse's terms: the beams' width (0.35), halo (0.25) and intensity (0.45), the diamonds' size (0.12) and glow
+// (0.5). Not the base, the flare (trigger 4 and the drop), the gold wall flashes, pulseK or the speed fade.
 
 import * as K from './16-clebsch.mjs';
+
+// the beat gain: caps on the added terms (none binds at g <= 1, so g = 1 is today's look bit for bit): the beams' light
+// (width +0.7, halo +0.5, intensity +1.0: at most 2x the beam), the diamonds' size +0.25 and glow +1.0
+export const BEAT = { G_MAX: 3, WIDTH: 0.35, HALO: 0.25, INTEN: 0.45, DSIZE: 0.12, DGLOW: 0.5,
+  WIDTH_CAP: 0.7, HALO_CAP: 0.5, INTEN_CAP: 1.0, DSIZE_CAP: 0.25, DGLOW_CAP: 1.0 };
+const clampG = g => Math.max(0, Math.min(BEAT.G_MAX, g));
+// g: fixed (?beatGain, a number) wins, else clock.beatGain(n) (VIZ dev's PR A), else 1 (untouched, or no getter yet)
+export function beatGainOf(clock, n, fixed) {
+  if (fixed !== null && fixed !== undefined && fixed !== '' && Number.isFinite(+fixed)) return clampG(+fixed);
+  if (!clock || typeof clock.beatGain !== 'function') return 1;
+  let g = null; try { g = clock.beatGain(n); } catch (e) { g = null; }
+  return g === null || g === undefined || !Number.isFinite(+g) ? 1 : clampG(+g);
+}
+// the added beat terms at gain g, written as today's products with g second (0.35 * g * pulseK * pulse)
+export function beatTerms(g, pulse, pulseK) {
+  const gg = Number.isFinite(g) ? clampG(g) : 1, p = Number.isFinite(pulse) ? pulse : 0, k = Number.isFinite(pulseK) ? pulseK : 1;
+  return { g: gg,
+    width: Math.min(BEAT.WIDTH_CAP, BEAT.WIDTH * gg * k * p), halo: Math.min(BEAT.HALO_CAP, BEAT.HALO * gg * k * p),
+    inten: Math.min(BEAT.INTEN_CAP, BEAT.INTEN * gg * k * p),
+    dsize: Math.min(BEAT.DSIZE_CAP, BEAT.DSIZE * gg * p), dglow: Math.min(BEAT.DGLOW_CAP, BEAT.DGLOW * gg * p) };
+}
 
 export const HOLDS = [8, 4, 2, 1, 0.5];                       // bars per glide; shapeRate 0 → 8 bars … 1 → ½ bar (as 16b)
 export const holdOf = r => HOLDS[Math.max(0, Math.min(4, Math.round(r * 4)))];
@@ -456,8 +481,10 @@ export function createScene() {
     // While the shape glides fast the beat pulse leaves the beams (pulse + crossings would reach 4 flashes/s).
     // Widening the beams (df443d8) made it worse: a wider beam still more than 0.1 above the background flips more cells.
     const pulseK = st.glide && st.glide.cause === 'drop' && s > 0 ? 0 : 1 - smear;
-    const width = (1.1 + 3.2 * glowK) * sc * (1 + 0.35 * pulseK * pulse + 0.25 * flare), glow = (5 + 42 * glowK) * sc * (1 + 0.25 * pulseK * pulse);
-    const inten = (0.45 + 0.8 * ctl.intensity) * (1 + 0.45 * pulseK * pulse + 0.5 * flare);
+    // the beat gain (controls.beatGain, 1 when absent): g into the pulse's terms only, capped
+    const BT = beatTerms(ctl.beatGain, pulse, pulseK);
+    const width = (1.1 + 3.2 * glowK) * sc * (1 + BT.width + 0.25 * flare), glow = (5 + 42 * glowK) * sc * (1 + BT.halo);
+    const inten = (0.45 + 0.8 * ctl.intensity) * (1 + BT.inten + 0.5 * flare);
     // Speed fade (flash safety, #124): a beam that sweeps fast across the screen lights each cell it passes for a frame
     // or two, and many such passes a second are a flash. Each line's screen speed (its faster end, px/s at 1440p) sets a
     // fade 1/(1+(v/V)²): slow beams keep their full neon, fast ones become faint streaks. The fade drops at once and
@@ -515,7 +542,7 @@ export function createScene() {
     st.beamEnds = seenEnds;   // lines that left the view start fresh when they come back
     // --- diamonds: the Eckardt points (finite ones in perspective, the far ones at their vanishing points)
     let nD = 0;
-    const dsz = ctl.diamondSize * sc * (1 + 0.12 * pulse);
+    const dsz = ctl.diamondSize * sc * (1 + BT.dsize);
     for (const E of base.eck) {
       if (nD >= 16) break;
       const Y = K.matVec(Hc, E), w = Y[3], xyz = Y.slice(0, 3), far = Math.abs(w) < 1e-9 * K.norm(xyz) || K.norm(xyz) > 40 * Math.abs(w);
@@ -523,7 +550,7 @@ export function createScene() {
       if (far) { p = projectDir(cam, xyz); size = dsz * 1.15; }
       else { const q = project(cam, xyz.map(v => v / w)); p = q; size = q ? dsz * Math.max(0.5, Math.min(1.8, cam.D / q[2])) : 0; }
       if (!p || p[0] < -50 || p[0] > W + 50 || p[1] < -50 || p[1] > H + 50) continue;
-      diamData.set([p[0], p[1], size, 0.9 * (1 + 0.5 * pulse + 0.8 * flare + 0.6 * gold)], nD * 4); nD++;
+      diamData.set([p[0], p[1], size, 0.9 * (1 + BT.dglow + 0.8 * flare + 0.6 * gold)], nD * 4); nD++;
     }
     // --- live QA
     const lv = st.live; lv.frames++;
@@ -534,7 +561,7 @@ export function createScene() {
     if (base.pairs !== null) { lv.pairsChecked++; if (base.pairs !== { 3: 3, 7: 9, 15: 45, 27: 135 }[base.lines.length]) lv.pairsBad++; }
     lv.lastMaxRel = maxRel;
     st.view = { u, full: base.full, lines: base.lines.length, expected: base.expected, drawn: nDrawn, segments: nSeg, eckardt: base.eck.length, diamondsOnScreen: nD, glide: st.glide ? { type: K.cycleType(st.glide.sig), sig: st.glide.sig, s, cause: st.glide.cause } : null, pc: st.pc.slice(), slotOf: st.slotOf.slice(), mode: ctl.u ? 'fixed' : st.mode, level: st.man.level, hold: hb / bpb, bars, beats };
-    st.metrics = { lineCount: base.lines.length, laserEnergy: energy / (W * H), glidesStarted: st.glides.length, trail: ctl.macro[3] * 0.97, pulse, flare, gold, smear, beamFadeMin: fadeMin, beamFadeMean: fadeN ? fadeSum / fadeN : 1, beamSpeedMax: vMax };
+    st.metrics = { lineCount: base.lines.length, laserEnergy: energy / (W * H), glidesStarted: st.glides.length, trail: ctl.macro[3] * 0.97, pulse, flare, gold, smear, beamFadeMin: fadeMin, beamFadeMean: fadeN ? fadeSum / fadeN : 1, beamSpeedMax: vMax, beat: BT };
     st.triggerEnv[0] = st.glide && st.glide.cause === 'trigger' ? Math.sin(Math.PI * s) : 0;
     st.triggerEnv[1] = st.glide && st.glide.cause === 'drop' ? Math.max(Math.sin(Math.PI * s), flare) : 0;
     st.triggerEnv[2] = st.wipe ? clamp01((beats - st.wipe.start) / st.wipe.len) * (1 - clamp01((beats - st.wipe.start) / st.wipe.len)) * 4 : 0;

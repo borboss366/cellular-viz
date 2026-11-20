@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "id": "16-neon-lines",
+  "note": "#282 16c beat strength: stills at beat gain 0 (no beat pulse), 1 (today) and 3 (the knob's top), all 27 lines, for the user's pick",
+  "params": { "variant": "manual", "macro3": "1", "labels": "0" },
+  "resolutions": ["1080p"],
+  "warmup": 4,
+  "seconds": 8,
+  "variants": [
+    { "name": "g0", "params": { "beatGain": 0 } },
+    { "name": "g1", "params": {} },
+    { "name": "g3", "params": { "beatGain": 3 } }
+  ],
+  "values": { "truths": "__qa.check().ok", "g": "__qa.beat ? __qa.beat.g : -1", "inten": "__qa.beat ? __qa.beat.inten : -1", "width": "__qa.beat ? __qa.beat.width : -1", "dsize": "__qa.beat ? __qa.beat.dsize : -1" },
+  "gates": [
+    { "metric": "errors", "max": 0 },
+    { "metric": "value.truths", "equals": true, "name": "truths 1-6 hold" },
+    { "metric": "value.g", "equals": 0, "variant": "g0", "name": "?beatGain=0: g 0" },
+    { "metric": "value.g", "equals": 1, "variant": "g1", "name": "no knob: g 1 (as today)" },
+    { "metric": "value.g", "equals": 3, "variant": "g3", "name": "?beatGain=3: g 3" },
+    { "metric": "value.inten", "max": 0, "variant": "g0", "name": "g 0: no beat pulse" },
+    { "metric": "value.inten", "max": 1, "name": "the beam intensity never over +1.0" },
+    { "metric": "value.width", "max": 0.7, "name": "the beam width never over +0.7" },
+    { "metric": "value.dsize", "max": 0.25, "name": "the diamond size never over +0.25" }
+  ],
+  "record": { "stills": 2 },
+  "debug": { "console": true }
+}
