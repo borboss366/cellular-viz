@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "id": "16-hodge-kaleidoscope",
+  "note": "#292 16b Hodge beat 4x: stills at beat gain 0 (no beat reaction), 1 (the middle, now 4x) and 3 (the knob's top); caps unchanged",
+  "params": { "labels": "0" },
+  "resolutions": ["1080p"],
+  "warmup": 4,
+  "seconds": 8,
+  "variants": [
+    { "name": "g0", "params": { "beatGain": 0 } },
+    { "name": "g1", "params": {} },
+    { "name": "g3", "params": { "beatGain": 3 } }
+  ],
+  "values": { "tableOk": "__qa.check().tableOk", "symmetric": "__qa.check().symmetric", "g": "__qa.beat ? __qa.beat.g : -1", "glow": "__qa.beat ? __qa.beat.glow : -1", "kickSize": "__qa.beat ? __qa.beat.kickSize : -1", "breath": "__qa.beat ? __qa.beat.breath : -1", "hueG": "__qa.beat ? __qa.beat.hueG : -1" },
+  "gates": [
+    { "metric": "errors", "max": 0 },
+    { "metric": "value.tableOk", "equals": true, "name": "truths hold: the Hodge table" },
+    { "metric": "value.symmetric", "equals": true, "name": "truths hold: Hodge and Serre symmetry" },
+    { "metric": "value.g", "equals": 0, "variant": "g0", "name": "?beatGain=0: g 0" },
+    { "metric": "value.g", "equals": 1, "variant": "g1", "name": "no knob: g 1 (the middle)" },
+    { "metric": "value.g", "equals": 3, "variant": "g3", "name": "?beatGain=3: g 3" },
+    { "metric": "value.glow", "max": 0, "variant": "g0", "name": "g 0: no kick glow" },
+    { "metric": "value.breath", "equals": 0.08, "variant": "g1", "name": "g 1: breath 0.08 (4x 0.02)" },
+    { "metric": "value.hueG", "equals": 2, "variant": "g1", "name": "g 1: snare hue at its 180 degree cap" },
+    { "metric": "value.glow", "max": 1, "name": "the kick glow never over +1.0" },
+    { "metric": "value.kickSize", "max": 0.25, "name": "the kick swell never over +0.25" }
+  ],
+  "record": { "stills": 2 },
+  "debug": { "console": true }
+}
