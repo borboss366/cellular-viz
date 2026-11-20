@@ -18,8 +18,10 @@
 //   (2: the wires' kick glow 0.55(1 + 0.5 kick) then peaks at 2x, the FOV kick at 0.12 under its 0.15 cap). The page
 //   draws from beatLanes(g, L): kick x g; snare and hat x min(g, 1) (the dipoles' snare light 0.8 + 2.4 snare is
 //   already 4x today, and hats come 4 a second: turning up never flashes harder than today). The 0.6-a-kick glows (string
-//   sprites, the wires' glow width) take at most BEAT_LIGHT_MAX of it (2x). The travel speed (its knob), the clock,
-//   audio-in's lanes, the bunch crossings and the sync log are untouched. At g = 1 every level is today's.
+//   sprites, the wires' glow width) scale by lightScale(g) = min(1, BEAT_LIGHT_MAX / g) (at most 2x), the halo width by
+//   1 / max(1, g) (at most today's +0.25): scaled, never clamped, so they peak with the kick and have no flat top. The
+//   travel speed (its knob), the clock, audio-in's lanes, the bunch crossings and the sync log are untouched. At g = 1
+//   every level is today's.
 (function (root) {
   'use strict';
   const C = {
@@ -86,7 +88,13 @@
     out.beat = { g: gg, kick: out.kick, snare: out.snare, hat: out.hat };
     return out;
   }
-  const api = { C, pcg, knobOf, speedCreate, speedStep, targetAt, rayCreate, rayStep, beatGainOf, beatLanes };
+  // the glow caps at gain g (scaled, not clamped: the shape of the envelope and its peak frame stay the kick's; at g <= 1
+  // every value is today's bit for bit): lightScale for the 0.6-a-kick glows, haloOf / glowOf the wires' bass terms
+  const gOf = g => (Number.isFinite(g) ? clamp(g, 0, C.BEAT_G_MAX) : 1);
+  const lightScale = g => Math.min(1, C.BEAT_LIGHT_MAX / gOf(g));
+  const haloOf = (bass, g) => 0.9 + 0.25 * bass / Math.max(1, gOf(g));
+  const glowOf = (bass, g) => 0.7 + 0.6 * bass * lightScale(g);
+  const api = { C, pcg, knobOf, speedCreate, speedStep, targetAt, rayCreate, rayStep, beatGainOf, beatLanes, lightScale, haloOf, glowOf };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.Travel = api;
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this));

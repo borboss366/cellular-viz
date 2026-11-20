@@ -49,13 +49,38 @@ test('18 beat gain: the knob top (3, clamped to 2) stays under the caps; snares 
     assert.equal(LB.kick, 2 * k, 'the kick twice today');
     assert.ok(0.06 * LB.kick <= 0.15, 'the FOV kick under 0.15');
     assert.ok(0.5 * LB.kick <= 1.0, 'the wires\' kick glow at most 2x');
-    assert.ok(0.6 * Math.min(LB.kick, T.C.BEAT_LIGHT_MAX) <= 1.0 + 1e-12, 'sprites and glow width at most 2x');
-    assert.equal(Math.min(0.6 * k, 1), 0.6 * Math.min(k, T.C.BEAT_LIGHT_MAX), 'the light cap is not reached at g = 1');
+    assert.ok(0.6 * LB.kick * T.lightScale(3) <= 1.0 + 1e-12, 'sprites and glow width at most 2x');
+    assert.ok(T.glowOf(LB.kick, 3) - 0.7 <= 1.0 + 1e-12 && T.haloOf(LB.kick, 3) - 0.9 <= 0.25 + 1e-12, 'glow width +1.0, halo width +0.25 at most');
+    for (const g of [1, 0.5, 0, undefined, NaN]) {   // the scaled caps change nothing at g <= 1, bit for bit
+      assert.equal(T.glowOf(k, g), 0.7 + 0.6 * k); assert.equal(T.haloOf(k, g), 0.9 + 0.25 * k); assert.equal(k * T.lightScale(g), k);
+    }
     assert.equal(LB.snare, s, 'the dipoles\' snare light (already 4x) stays as today');
     assert.equal(LB.hat, h, 'hats (4 a second) stay as today');
   }
-  for (const cap of ['Math.min(bassEnv, Travel.C.BEAT_LIGHT_MAX)', 'stringSprites(sprites, Math.min(L.kick, Travel.C.BEAT_LIGHT_MAX), L.hat)',
-    'halo = 0.9 + 0.25 * Math.min(bassEnv, 1)', '[L.kick, L.snare, L.hat].map(x => Math.min(1, x))']) assert.ok(PAGE.includes(cap), cap);
+  for (const cap of ['glowPx = 2.2 * sc * Travel.glowOf(bassEnv, L.beat.g)', 'stringSprites(sprites, L.kick * Travel.lightScale(L.beat.g), L.hat)',
+    'halo = Travel.haloOf(bassEnv, L.beat.g)', 'const lv = [L.kick / Math.max(1, L.beat.g), L.snare, L.hat]']) assert.ok(PAGE.includes(cap), cap);
+  assert.ok(!/Math\.min\(bassEnv/.test(PAGE), 'no clamp on the bass envelope (a clamp is a flat top: the peak moves off the kick)');
+  // at g = 2 the bass-driven terms (the page's bassEnv, halo and glow width) peak in the kick's own frame, no plateau
+  {
+    const fps = 60, kickAt = [30, 60, 90, 120];   // 2 kicks a second at 120 BPM
+    let bass = 0, last = -1e9;
+    const halo = [], glow = [];
+    for (let f = 0; f < 150; f++) {
+      if (kickAt.includes(f)) last = f;
+      const kick = f >= last ? Math.exp(-(f - last) / fps / 0.15) : 0;
+      const LB = T.beatLanes(2, lanes(f >= kickAt[0] ? kick : 0, 0, 0));
+      bass = Math.max(LB.kick, bass * Math.exp(-1 / fps / 0.25));   // the page's bassEnv
+      halo.push(T.haloOf(bass, LB.beat.g)); glow.push(T.glowOf(bass, LB.beat.g));
+    }
+    for (const k of kickAt) {
+      const span = [k, k + 29];
+      for (const [name, s] of [['halo', halo], ['glow width', glow]]) {
+        const w = s.slice(span[0], span[1] + 1), peak = w.indexOf(Math.max(...w));
+        assert.equal(peak, 0, `${name} peaks ${peak} frames after the kick at frame ${k}`);
+        assert.ok(w[1] < w[0] && w[2] < w[1], `${name} falls right after the kick at frame ${k} (no flat top)`);
+      }
+    }
+  }
   // the ray at g = 2 still peaks at most 3 a second and stays under its cap (18-travel.js rayStep)
   const ray = T.rayCreate(), fps = 60, peaks = [];
   let maxEnv = 0;
