@@ -16,6 +16,12 @@
 //   scale with glint. Every envelope has a tail of 120 ms or more.
 // At rest (no knob, no key, ?dive 0, glint 0) every output is the page's old constant: zoom × 1, trail zoom 1.002,
 // glint 0, prism 0, so the look and the truths are unchanged.
+// The beat gain (the user, 20 Nov: "all scenes react too weakly to the beat"; VIZ research's shared beat gain): g from
+//   clock.beatGain(?beatKnob, default 1) (null/untouched or no getter = 1, today; bottom = 0, top = 3), or ?beatGain=0..3
+//   fixed (stills). g scales only the kick/snare terms where they are used: the kick's cell swell (0.03), the morph pop
+//   (0.06), the breath (0.02, its amplitude), the kick's gem glow (0.35, in the shader) and the snare's film hue (90, g
+//   at most 2 there). Size terms are capped at +0.25, the glow at +1.0 (2x luminance). Not the spin, the morph, the
+//   shape hold, the dive or the glints (they have their own knob). At g = 1 every term is bit-for-bit today's.
 (function (root) {
   'use strict';
   const C = {
@@ -25,6 +31,7 @@
     KEY_RATE: 0.5,
     QUIET_BARS: 4, QUIET_REL: 0.4, LOW_REF_TAU: 20,
     HAT_TAU: 0.14, SWEEP_S: 0.2, PRISM_TAU: 0.18, PRISM_PX: 4,
+    G_MAX: 3, KICK_SIZE: 0.03, POP: 0.06, BREATH: 0.02, KICK_GLOW: 0.35, SNARE_HUE: 90, HUE_G_MAX: 2, SIZE_CAP: 0.25, GLOW_CAP: 1.0,
   };
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x)), clamp01 = x => clamp(x, 0, 1);
   const smooth = x => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
@@ -103,7 +110,28 @@
     if (a <= 0) return { glint: 0, sweep: 0, prism: 0 };
     return { glint: a * clamp01(hatEnv), sweep: clamp01((Number.isFinite(sinceHatS) ? sinceHatS : 1e9) / C.SWEEP_S), prism: a * clamp01(prismEnv) };
   }
-  const api = { C, create, step, schedule, zoomOf, burstEnv, knobOf, glints, smooth };
+  // the beat gain g: fixed (?beatGain, a number) wins, else clock.beatGain(n) (PR A), else 1 (untouched, or no getter yet)
+  function beatGainOf(clock, n, fixed) {
+    if (fixed !== null && fixed !== undefined && fixed !== '' && Number.isFinite(+fixed)) return clamp(+fixed, 0, C.G_MAX);
+    if (!clock || typeof clock.beatGain !== 'function') return 1;
+    let g = null; try { g = clock.beatGain(n); } catch (e) { g = null; }
+    return g === null || g === undefined || !Number.isFinite(+g) ? 1 : clamp(+g, 0, C.G_MAX);
+  }
+  // the beat terms at gain g (kick, snare, pop: the page's envelopes, 0..1). Written as today's products with g in the
+  // middle (0.03 * g * kick), so at g = 1 each is bit-for-bit today's 0.03 * kick; the caps never bind at g <= 1
+  function beatTerms(g, kick, snare, pop) {
+    const gg = Number.isFinite(g) ? clamp(g, 0, C.G_MAX) : 1, k = Number.isFinite(kick) ? kick : 0, p = Number.isFinite(pop) ? pop : 0;
+    return {
+      g: gg,
+      kickSize: Math.min(C.SIZE_CAP, C.KICK_SIZE * gg * k),   // cells: x (1 + kickSize)
+      pop: Math.min(C.SIZE_CAP, C.POP * gg * p),              // cells: x (1 + pop)
+      breath: Math.min(C.SIZE_CAP, C.BREATH * gg),            // the breath's amplitude: 1 + breath * sin(...)
+      glow: Math.min(C.GLOW_CAP, C.KICK_GLOW * gg * k),       // the shader's (1 + min(1, 0.35 * uBeatG * uKick)), here for QA
+      hueG: Math.min(C.HUE_G_MAX, gg),                        // the shader's 90 * min(uBeatG, 2) * uSnare
+      snare: Number.isFinite(snare) ? snare : 0,
+    };
+  }
+  const api = { C, create, step, schedule, zoomOf, burstEnv, knobOf, glints, smooth, beatGainOf, beatTerms };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.Dive = api;
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this));
