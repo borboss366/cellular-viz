@@ -21,6 +21,9 @@
   with no step; it moves no paint, so it works with ?beatFx=0). Default 0: the look as before.
   ?pulseKnob=1..8: the pulse amount follows the controller's top-row knob N on the shared clock (?clock=shared,
   clock.knob(N), #268); until that knob moves, or without it, ?pulse as before. The set uses pulseKnob=1.
+  Beat strength (the user, 20 Nov): ?beatKnob=N (default 1) reads clock.beatGain(N): untouched = 1 (as before), bottom = 0
+  (no beat reaction), top 3; ?beatGain=0..3 fixes g (stills). g scales the kick's gloss and the colour pulse only (not
+  the song's ops, the drops or the pour). __qa.beat, __qa.fakeBeatGain(g | null).
   window.__qa: check() (truths 1, 3 on the GPU, 4, 5, 9, 10), ops, opLog, fwd(x,y), inv(x,y), traceGPU(points),
   traceCPU(points), colourAt(x,y), colourGrid(x0,y0,x1,y1,n), forceDrop() (panic.js), forceBake(), bakes, pour, view,
   palette, events (the clock's hits and jumps, an array since audio-in), beatLog, frame, clockLate, fixRejected, audioIn, setMacro(i,v), macros, pressTrigger(i,holdMs,at), releaseTrigger(i), moveTrigger(2,at),
@@ -109,7 +112,7 @@
 <script src="clock.js"></script>
 <script src="audio-in.js"></script>
 <script type="module">
-import scene, { MACROS, TRIGGERS, DETAIL, macroInputs, pourColourOf } from './24-paint-pour.mjs';
+import scene, { MACROS, TRIGGERS, DETAIL, macroInputs, pourColourOf, beatGainOf } from './24-paint-pour.mjs';
 import * as K from './24-marble.mjs';
 const $ = id => document.getElementById(id);
 const query = new URLSearchParams(location.search);
@@ -130,6 +133,10 @@ if (q('vortexOn') === '0') params.vortexOn = false;
 for (const [k, lo, hi] of [['bpm', 60, 180], ['startBar', 0, 4096], ['traceScale', 0.5, 1]]) { const v = num(k, lo, hi); if (v !== null) params[k] = v; }
 params.flat = q('qa') === 'flat'; params.freeze = q('freeze') === '1'; params.labels = q('labels') !== '0'; params.muted = q('muted') === '1';
 params.beatFx = q('beatFx') !== '0';
+// the beat gain: ?beatKnob=N (default 1) for clock.beatGain(N), ?beatGain=0..3 a fixed g (stills), QA's stand-in g
+params.beatKnob = (() => { const n = parseInt(q('beatKnob'), 10); return n >= 1 && n <= 8 ? n : 1; })();
+params.beatGain = num('beatGain', 0, 3);
+let qaBeatG = null;
 params.pulseKnob = (() => { const n = parseInt(q('pulseKnob'), 10); return n >= 1 && n <= 8 ? n : 0; })();   // 0: no knob, ?pulse as before   // ?beatFx=0: no kick combs, snare vortices or bass swirls from the song (the set passes it)
 
 // ---------- the shared clock (#95): the metronome until a page asks for another source ----------
@@ -251,6 +258,7 @@ const controls = () => ({
   dropScale: params.dropScale, cellsPerDrop: params.cellsPerDrop, blackShare: params.blackShare, tines: params.tines, tineSharp: params.tineSharp,
   vortexOn: params.vortexOn, pourRate: params.pourRate, strings: params.strings, veinWidth: params.veinWidth, bevelWidth: params.bevelWidth, ripple: params.ripple, camDrift: params.camDrift,
   bakeScale: params.bakeScale, flat: params.flat, freeze: params.freeze, beatFx: params.beatFx, pulse: K.pulseAmount(clock, params.pulseKnob, params.pulse), pattern: { kick: params.kick, snare: params.snare, hat: params.hat },
+  beatGain: qaBeatG !== null ? qaBeatG : beatGainOf(clock, params.beatKnob, params.beatGain),
 });
 window.__modules = { '24-paint-pour': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
 
@@ -305,6 +313,9 @@ let checked = null;
 const check = (fresh = false) => { const t = performance.now(); if (fresh || !checked || t - checked.t > 1000) checked = { t, r: S.check() }; return checked.r; };
 expose({
   errors, setMacro, pressTrigger, releaseTrigger, moveTrigger, dragPour, triggers: TRIGGERS, get beatFx() { return params.beatFx; }, clock, get clockSmooth() { return { ...smooth }; },
+  // the beat gain: this frame's terms, and a stand-in g for tests (null: clock.beatGain(?beatKnob) again)
+  get beat() { return { ...((S.metrics && S.metrics.beat) || {}), knob: params.beatKnob, fixed: params.beatGain, fake: qaBeatG }; },
+  fakeBeatGain: g => { qaBeatG = g === null || g === undefined || !Number.isFinite(+g) ? null : Math.max(0, Math.min(3, +g)); return qaBeatG; },
   get macros() { return MACROS.map((m, i) => ({ slot: m.slot, name: m.name, label: m.label, value: params.macro[i], default: m.default, shown: macroText(i) })); },
   get triggerLog() { return S.triggerLog; }, get triggerEnv() { return S.triggerEnv; },
   // truth 8 counts only the ops admitted inside the runner's measured window (window.__qaFTon true): after it the
