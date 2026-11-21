@@ -3,7 +3,8 @@
 // (experiments/16-neon-lines.mjs beatTerms). The key safety check: at g = 1 (and absent) every term is today's, bit for bit.
 // 21 Nov (the user: knob 1 from 0 to 100 showed no visible difference): halo 0.6 (cap +1.0) and a camera punch of
 // 3 % x g x pulse (cap 9 %), applied after the speed fade; g = 0 gives neither. viz-296-1 failed the window-rise
-// flash row at g 1 and g 3, so: halo 0.3 (cap +0.55), punch 2 % x g x pulse (cap 4 %).
+// flash row at g 1 and g 3, so: halo 0.3 (cap +0.55), punch 2 % x g x pulse (cap 4 %). viz-296-2 still failed it
+// at g 3 only: the caps above g 1 came down (width +0.55, intensity +0.75, halo +0.3); g 1 is unchanged.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -19,7 +20,7 @@ test('16c beat gain: g = 1 or absent (no beatGain() yet, knob untouched) draws e
     const T = beatTerms(g, pulse, pulseK);
     // today's 16-neon-lines.mjs terms, verbatim
     assert.equal(1 + T.width + 0.25 * 0.3, 1 + 0.35 * pulseK * pulse + 0.25 * 0.3, 'beam width');
-    assert.equal(1 + T.halo, 1 + Math.min(0.55, 0.3 * pulseK * pulse), 'halo (21 Nov, after viz-296-1: 0.3, cap +0.55)');
+    assert.equal(1 + T.halo, 1 + Math.min(0.3, 0.3 * pulseK * pulse), 'halo (21 Nov, after viz-296-2: 0.3, cap +0.3)');
     assert.equal(T.punch, Math.min(0.04, 0.02 * pulseK * pulse), 'camera punch 2 % x pulse at g = 1');
     assert.equal(1 + T.inten + 0.5 * 0.3, 1 + 0.45 * pulseK * pulse + 0.5 * 0.3, 'intensity');
     assert.equal(1 + T.dsize, 1 + 0.12 * pulse, 'diamond size');
@@ -31,7 +32,8 @@ test('16c beat gain: g = 1 or absent (no beatGain() yet, knob untouched) draws e
   assert.equal(beatGainOf({ beatGain: () => 2 }, 1, 0), 0, '?beatGain wins');
   assert.equal(beatGainOf({ beatGain: () => { throw new Error('x'); } }, 1, null), 1);
   // the scene: every pulse term goes through beatTerms; the flare, the gold and the flash guards are untouched
-  assert.equal(BEAT.HALO, 0.3); assert.equal(BEAT.HALO_CAP, 0.55); assert.equal(BEAT.PUNCH, 0.02); assert.equal(BEAT.PUNCH_CAP, 0.04);
+  assert.equal(BEAT.HALO, 0.3); assert.equal(BEAT.HALO_CAP, 0.3); assert.equal(BEAT.PUNCH, 0.02); assert.equal(BEAT.PUNCH_CAP, 0.04);
+  assert.equal(BEAT.WIDTH_CAP, 0.55); assert.equal(BEAT.INTEN_CAP, 0.75);
   for (const old of ['0.35 * pulseK * pulse', '0.25 * pulseK * pulse', '0.45 * pulseK * pulse', '(1 + 0.12 * pulse)', '0.5 * pulse +']) assert.ok(!SRC.includes(old), `old term gone: ${old}`);
   assert.match(SRC, /const BT = beatTerms\(ctl\.beatGain, pulse, pulseK\);/);
   assert.match(SRC, /\(1 \+ BT\.width \+ 0\.25 \* flare\)/); assert.match(SRC, /\(1 \+ BT\.inten \+ 0\.5 \* flare\)/);
@@ -81,9 +83,10 @@ test('16c beat gain: g = 3 stays under the caps (beam light at most 2x, diamonds
     for (const k of Object.keys(max)) max[k] = Math.max(max[k], T[k]);
     assert.ok(T.inten >= beatTerms(1, pulse, pulseK).inten, 'stronger than today');
   }
-  assert.ok(max.width <= BEAT.WIDTH_CAP && max.halo <= BEAT.HALO_CAP && max.inten <= 1.0 && max.dglow <= 1.0 && max.dsize <= 0.25 && max.punch <= 0.04, JSON.stringify(max));
-  assert.ok(max.halo > 1.5 * beatTerms(1, 1, 1).halo, 'the halo beat at g = 3 is clearly bigger than at g = 1');
-  assert.equal(max.inten, 1.0, 'the beam intensity reaches its cap (2x), never more');
+  assert.ok(max.width <= BEAT.WIDTH_CAP && max.halo <= BEAT.HALO_CAP && max.inten <= BEAT.INTEN_CAP && max.dglow <= 1.0 && max.dsize <= 0.25 && max.punch <= 0.04, JSON.stringify(max));
+  assert.ok(max.halo >= beatTerms(1, 1, 1).halo, 'the halo beat at g = 3 is never smaller than at g = 1');
+  assert.ok(max.inten > 1.5 * beatTerms(1, 1, 1).inten, 'the beam intensity at g = 3 is clearly bigger than at g = 1');
+  assert.equal(max.inten, BEAT.INTEN_CAP, 'the beam intensity reaches its cap (1.75x), never more');
   // rises of 10 % or more in the beam intensity factor at g = 3, 180 bpm (the page's top tempo): at most 3 a second
   const fps = 60, bps = 3, rises = [];
   let prev = 0;

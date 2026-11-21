@@ -22,14 +22,18 @@
 // never fades them) and goes through pulseK like the beam terms. g = 0: no punch and no halo beat.
 // The flash rows (viz-296-1 at 0f0ceed: window mean rise 0.257 at g 1, 0.339 at g 3, limit 0.25 in 100 ms) took it
 // back to halo 0.3 (cap +0.55) and a punch of 2 % x g (cap 4 %): still above 20 Nov's (halo 0.25, no punch) at g 1.
+// viz-296-2 at ed42da8: g 1 passed (0.203), g 3 still 0.293. Across the two builds the punch added nothing measurable;
+// at g 3 the rise comes from the beams' light (width and intensity, unchanged since 20 Nov) plus the halo. So the caps
+// that only bite above g 1 come down: width +0.55 (was 0.7), intensity +0.75 (was 1.0), halo +0.3 (was 0.55). g 1 is
+// unchanged (0.35 / 0.45 / 0.3 x pulse stay under every cap); the punch keeps 2 % x g (cap 4 %) for g 2 and 3.
 
 import * as K from './16-clebsch.mjs';
 
-// the beat gain: caps on the added terms: the beams' light (width +0.7, halo +1.0, intensity +1.0: at most 2x the
+// the beat gain: caps on the added terms: the beams' light (width +0.55, halo +0.3, intensity +0.75: at most 1.75x the
 // beam), the diamonds' size +0.25 and glow +1.0, the halo +0.55 and the camera punch 4 % (PUNCH x g x pulseK x
 // pulse): the halo and the punch caps keep the window rise under the flash gate (296.json g1 / g3)
 export const BEAT = { G_MAX: 3, WIDTH: 0.35, HALO: 0.3, INTEN: 0.45, DSIZE: 0.12, DGLOW: 0.5, PUNCH: 0.02,
-  WIDTH_CAP: 0.7, HALO_CAP: 0.55, INTEN_CAP: 1.0, DSIZE_CAP: 0.25, DGLOW_CAP: 1.0, PUNCH_CAP: 0.04 };
+  WIDTH_CAP: 0.55, HALO_CAP: 0.3, INTEN_CAP: 0.75, DSIZE_CAP: 0.25, DGLOW_CAP: 1.0, PUNCH_CAP: 0.04 };
 const clampG = g => Math.max(0, Math.min(BEAT.G_MAX, g));
 // g: fixed (?beatGain, a number) wins, else clock.beatGain(n) (VIZ dev's PR A), else 1 (untouched, or no getter yet)
 export function beatGainOf(clock, n, fixed) {
