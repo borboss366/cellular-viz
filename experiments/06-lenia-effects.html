@@ -576,7 +576,8 @@ void main() {
   // beat lights (?lights=1 or the switch, off in the set): a soft neon spot on the mass only, never the dark ground
   if (uSpot.z > 0.0) {
     vec2 d = vUv - uSpot.xy;
-    col += uSpotCol * uSpot.z * exp(-dot(d, d) / 0.045) * smoothstep(0.05, 0.35, t);
+    float sw = uSpot.z * exp(-dot(d, d) / 0.045) * smoothstep(0.05, 0.35, t);
+    col = mix(min(col, vec3(1.0)), uSpotCol * 0.85, sw);   // toward the spot colour, never above 0.85: no white
   }
 
   // 4 trails: the last frame, zoomed about the centre and faded, under the new one.

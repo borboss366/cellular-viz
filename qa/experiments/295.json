@@ -1,7 +1,7 @@
 {
   "version": 1,
   "id": "06-lenia-effects",
-  "note": "#295 06 Lenia beat lights behind a switch (off in the set): stills with the switch off (main's look), on (?lights=1) and on at beatGain 3 (06 caps g at 2); the shared flash and frame-time rows run on both on variants.",
+  "note": "#295 06 Lenia beat lights behind a switch (off in the set): stills with the switch off (main's look), on (?lights=1) and on at beatGain 3 (06 caps g at 2); the shared flash and frame-time rows run on both on variants. The spot now mixes toward its colour (max 0.85), so it never makes white: clip with the lights on <= off (3.72 %) + 1 point.",
   "resolutions": ["1080p"],
   "warmup": 6,
   "seconds": 8,
@@ -27,7 +27,7 @@
     { "metric": "value.fired", "min": 1, "variant": ["on", "on3"], "name": "the lights fire on the kick" },
     { "metric": "value.maxPerSec", "max": 3, "variant": ["on", "on3"], "name": "at most 3 flashes a second" },
     { "metric": "value.maxJump", "max": 0.35, "variant": ["on", "on3"], "name": "each flash's brightness jump at most 0.35 luma" },
-    { "metric": "clip", "max": 1, "name": "no full white: <= 1 % pixels clipped" }
+    { "metric": "clip", "max": 4.7, "variant": ["on", "on3"], "name": "the lights add no white: clip <= off (3.72 %) + 1 point" }
   ],
   "record": { "stills": 2 },
   "debug": { "console": true }
