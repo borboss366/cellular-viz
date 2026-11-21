@@ -27,6 +27,38 @@ Open from Mac session 2 (18 Nov), in order of risk:
 4. The run was played on the keyboard. Friday is played on the
    controller.
 
+## Change of input (the user, 21 Nov): Sunday runs on the Mac's microphone
+
+The USB audio interface (an M-Audio M-Track Solo), the RCA
+Y-splitters and the RCA-to-jack cable are ordered and arrive next
+week. So on Sunday 22 Nov the DJ's music reaches the Mac through the
+built-in microphone (or a USB microphone or webcam near a speaker, if
+the user has one). The wired chain described below is next week's
+upgrade, not Sunday's setup.
+
+- Conductor and scenes: guest mode with the microphone as the input
+  (`in=` set to its label). The pages already turn off echo
+  cancellation, noise suppression and automatic gain.
+- Saturday evening, the user with Claude Code: house at party volume
+  from the speakers, the Mac where it will stand. Check the level
+  meters (lower the macOS input level if they sit at the top), the
+  lock, tap and hold, and what talking near the Mac does to the scenes.
+  Write the result in the session notes.
+- Sunday: the Mac nearer a speaker than the guests. Expect more hand
+  fixes than on 18 Nov. Record the conductor's input as planned; the
+  box replays it on Monday as usual, and marks the session
+  "microphone" in its report.
+- Mac check: a "Line input" WARN is expected on Sunday and is not a
+  problem.
+- Box: no work for this. Do not build anything for the microphone
+  path before Sunday.
+- Next week, when the parts arrive: FLX4 master (or any player) ->
+  the Y-splitters -> the speakers, and -> the twin cable (2 RCA to 2
+  mono 6.35 mm jacks) -> the M-Track Solo inputs 1 and 2 -> USB -> the
+  Mac. Input 2 on Line, phantom power off, gains so the signal light
+  stays green. Then one wired test run, compared with Sunday's
+  microphone session.
+
 ## The goal
 
 On Saturday a DJ plays house at the user's place on a Pioneer
