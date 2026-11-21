@@ -33,7 +33,35 @@
       hat: h * hg,                                         // uHat: shimmer and sheen, never above today
     };
   }
-  const api = { C, beatGainOf, beatTerms };
+  // Beat lights (?lights=1 or the page's switch; off in the set): on each kick onset a soft neon spot lights the mass.
+  // Flash safety is here, not in the shader: at most one flash per 334 ms (3 a second), and each flash's brightness
+  // jump (the spot colour's luma × its peak) at most JUMP_MAX. The spot lights only the mass, never the dark ground, so
+  // the frame never goes white. g (the beat knob) scales the peak, g = 0 gives no light.
+  const LIGHTS = {
+    MIN_GAP_MS: 334, ATTACK_MS: 25, DECAY_MS: 170, PEAK: 0.7, JUMP_MAX: 0.35,
+    COLS: [[1.0, 0.1, 0.8], [0.1, 0.9, 1.0], [0.6, 1.0, 0.1], [1.0, 0.5, 0.05]],   // magenta, cyan, lime, orange
+    SPOTS: [[0.3, 0.35], [0.7, 0.65], [0.7, 0.35], [0.3, 0.65]],
+  };
+  const luma = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  function lightsNew(on) { return { on: !!on, last: -1e9, t0: -1e9, peak: 0, k: -1, fired: 0, skipped: 0, times: [], maxPerSec: 0, maxJump: 0, amp: 0 }; }
+  // one frame: onset = a fresh kick this frame; returns { amp, x, y, col } (amp 0 when off or between flashes)
+  function lightsStep(s, now, onset, g) {
+    const gg = Number.isFinite(g) ? clamp(g, 0, C.G_MAX) : 1;
+    if (s.on && onset && gg > 0) {
+      if (now - s.last >= LIGHTS.MIN_GAP_MS) {
+        s.last = now; s.t0 = now; s.k = (s.k + 1) % LIGHTS.COLS.length; s.fired++;
+        s.peak = Math.min(LIGHTS.PEAK * gg / 2, LIGHTS.JUMP_MAX / luma(LIGHTS.COLS[s.k]));
+        s.maxJump = Math.max(s.maxJump, s.peak * luma(LIGHTS.COLS[s.k]));
+        s.times.push(now); while (s.times.length && now - s.times[0] >= 1000) s.times.shift();
+        s.maxPerSec = Math.max(s.maxPerSec, s.times.length);
+      } else s.skipped++;
+    }
+    const t = now - s.t0, e = !s.on || s.k < 0 || t < 0 ? 0 : t < LIGHTS.ATTACK_MS ? t / LIGHTS.ATTACK_MS : Math.exp(-(t - LIGHTS.ATTACK_MS) / LIGHTS.DECAY_MS);
+    const k = Math.max(0, s.k), amp = e < 1e-3 ? 0 : s.peak * e;
+    s.amp = amp;
+    return { amp, x: LIGHTS.SPOTS[k][0], y: LIGHTS.SPOTS[k][1], col: LIGHTS.COLS[k] };
+  }
+  const api = { C, beatGainOf, beatTerms, LIGHTS, luma, lightsNew, lightsStep };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.LeniaBeat = api;
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this));
