@@ -12,6 +12,23 @@ a picture, a technique sheet, and a loop where the agent looks at its
 own frames. This trial tests it once, cheaply, before anyone relies
 on it.
 
+## Task 0, before the trial: a fixed strip script (Puggie)
+
+Builders cannot ask the box for an arbitrary run, so the skill's look
+loop needs a fixed one. Found in review by the box's agent, 21 Nov.
+
+- `qa/strip.mjs`, registered with the runner like the other checks.
+  It works on any scene: the experiment file names the page, its query
+  and its `*Knob` parameters.
+- Output: one contact sheet PNG at 960×540 per frame: 8 frames across
+  one bar with the clock locked, 4 in no-beat mode, 1 at each end of
+  every knob. Posted where the builder can open the image.
+- It runs only when a PR asks for it, never by itself. Both arms can
+  ask; only the skill tells a builder to.
+- Built and merged by a session that takes no part in the trial.
+- The trial does not start until a strip of an existing scene (Paint
+  Pour) has come back and been opened by an agent.
+
 ## The trial
 
 One scene brief, built twice, graded blind.
@@ -62,6 +79,9 @@ One verdict: X, Y, or no real difference.
 - frame time with a second scene running;
 - QA failures on first submission;
 - agent rounds, wall time and tokens for each arm;
+- box runs each arm asked for, strips included;
+- for arm B, its change log: how many changes came from the technique
+  sheet, how many from looking at a strip, how many from neither;
 - whether the conventions were followed (capture mode, no-beat mode,
   beat gain, knobs, seeded, dispose).
 
@@ -78,8 +98,10 @@ One verdict: X, Y, or no real difference.
 
 One scene is one data point. If the verdict is close, run a second
 scene before deciding. The skill mixes two things, a technique sheet
-and the look loop; if B wins, a later trial can separate them. It is
-not worth doing first.
+and the look loop. Arm B's change log says which one the changes came
+from. It is the builder's own account, so treat it as a hint: if it
+says the loop did the work, the next step is to cut the sheet down and
+see whether anything is lost.
 
 ## Afterwards
 

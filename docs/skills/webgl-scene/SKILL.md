@@ -69,9 +69,13 @@ the newest scene.
   washes out the other scene, so the background stays at zero.
 - Eight bits per channel through capture: dark gradients band. Dither
   the final colour (noise of ±0.5/255).
-- Two scenes run at once, beside OBS and Resolume on one GPU. Report
-  your frame time; halve the resolution of expensive passes first.
-- No full-frame brightness flash faster than three a second.
+- Two scenes run at once, beside OBS and Resolume on one GPU. Halve
+  the resolution of expensive passes first.
+- Light and speed are **gated by the box, with numbers**: the #88
+  light limiter and the GPU and flash gates in your PR's experiment
+  file (`qa/runner/README.md`, format and gates). Build to those
+  numbers. Nothing in this file replaces or loosens them; if this
+  file and a gate disagree, the gate is right.
 
 ## 4. Technique sheet (raw WebGL2)
 
@@ -121,9 +125,12 @@ the newest scene.
 
 ## 5. The look loop (do this before asking for review)
 
-1. Capture a strip at 960×540 with the QA runner, as the scene check
-   scripts do: 8 frames across one bar with the clock locked, 4 frames
-   in no-beat mode, 1 frame at each end of every knob.
+1. Ask the box for a strip with the fixed strip script (trial brief,
+   task 0): one contact sheet at 960×540 with 8 frames across one bar
+   with the clock locked, 4 frames in no-beat mode, and 1 frame at
+   each end of every knob. You cannot run arbitrary scripts on the
+   box; this one is the way. If the strip script is not there, say so
+   in the PR and stop the loop. Do not pretend to have looked.
 2. **Look at the images yourself** and answer in writing:
    - Is there one place the eye goes?
    - Are there true blacks and only a few highlights, or grey mush?
@@ -135,9 +142,12 @@ the newest scene.
 4. At most three rounds. Put the last strip in the PR, with one line
    per round on what changed, and one honest line on what still looks
    wrong.
+5. Keep a change log in the PR: for each change to the look, one line
+   and where it came from, as `sheet` (section 3 or 4), `loop` (you
+   saw it in a strip), or `own` (neither).
 
 ## 6. What a finished scene PR contains
 
-The five lines of the look; the scene and its check; the strip; frame
-time measured with a second scene running; the list of knobs with what
-each end does.
+The five lines of the look; the scene, its check and its experiment
+file with the usual gates; the strip; the change log; the list of
+knobs with what each end does.
