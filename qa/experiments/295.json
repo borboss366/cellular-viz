@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "id": "06-lenia-effects",
+  "note": "#295 06 Lenia beat lights behind a switch (off in the set): stills with the switch off (main's look) and on (?lights=1); the flash rows also run with the lights on.",
+  "resolutions": ["1080p"],
+  "warmup": 6,
+  "seconds": 8,
+  "variants": [
+    { "name": "off", "params": {} },
+    { "name": "on", "params": { "lights": 1 } }
+  ],
+  "shared": { "variants": ["on"] },
+  "values": {
+    "on": "__qa.lights ? __qa.lights.on : -1",
+    "fired": "__qa.lights ? __qa.lights.fired : -1",
+    "maxPerSec": "__qa.lights ? __qa.lights.maxPerSec : -1",
+    "maxJump": "__qa.lights ? __qa.lights.maxJump : -1",
+    "amp": "__qa.lights ? __qa.lights.amp : -1",
+    "g": "__qa.beat ? __qa.beat.g : -1"
+  },
+  "gates": [
+    { "metric": "errors", "max": 0 },
+    { "metric": "value.on", "equals": false, "variant": "off", "name": "switch off by default (the set's Lenia is main's)" },
+    { "metric": "value.fired", "max": 0, "variant": "off", "name": "switch off: no light at all" },
+    { "metric": "value.on", "equals": true, "variant": "on", "name": "?lights=1 turns the switch on" },
+    { "metric": "value.fired", "min": 1, "variant": "on", "name": "the lights fire on the kick" },
+    { "metric": "value.maxPerSec", "max": 3, "variant": "on", "name": "at most 3 flashes a second" },
+    { "metric": "value.maxJump", "max": 0.35, "variant": "on", "name": "each flash's brightness jump at most 0.35 luma" },
+    { "metric": "clip", "max": 1, "name": "no full white: <= 1 % pixels clipped" }
+  ],
+  "record": { "stills": 2 },
+  "debug": { "console": true }
+}
