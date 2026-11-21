@@ -1,0 +1,226 @@
+<!doctype html>
+<!--
+  28 Aurora (the user's brief, 21 Nov 23:00): curtains of northern light over a dark horizon, seen from the ground on
+  a clear night. Tall vertical rays hang in folded curtains; the folds travel slowly sideways and the rays shimmer
+  along their height. Mostly green, a violet fringe at the lower edge, a fading red top on the strongest moments. True
+  black sky with a few faint stars, a thin dark horizon at the bottom, no landscape. Slow and calm between beats.
+  The scene is a module (28-aurora.mjs, raw WebGL2); this page is its stage, on the shared clock (clock.js) with
+  audio-in.js. Not in set.json.
+
+  Music: the kick sends a ripple of light up the curtains from their lower edge (a travelling band, never the whole
+  frame); across a bar the folds drift; every 16 bars the curtains change shape and the colour balance shifts (the
+  last 4 bars blend into the next section). no-beat mode (audio-in's beat weight): with no confident beat the drift
+  runs on time, the glow drops to a faint slow glow lifted by the music's level, and ripples come only from the
+  music's own low-band onsets, smaller. Never blank, never frozen.
+
+  Knobs (the controller's knobs on ?clock=shared, through a pick-up; numbered 1 to 3 by default):
+    ?beatKnob=N   (default 1) the shared beat gain (clock.beatGain): scales the ripple; bottom = no ripple, top = 3x
+    ?heightKnob=N (default 2) a low thin band near the horizon ... curtains filling the frame
+    ?colourKnob=N (default 3) all green ... the full green, violet and red mix
+  Until a knob moves (or on another clock source): ?height=0..1 and ?colour=0..1 (default 0.6 each), ?beatGain=0..3
+  (a fixed gain, for stills; absent: the knob, 1 until it moves). The sliders below set height and colour by hand.
+
+  Other: ?clock=shared|metronome (default metronome), ?audio=line|mic|clock (default clock), ?in=, ?capture=1
+  (panic.js: the clean 1920x1080 stage, Play pressed by itself), ?bpm=, ?muted=1, ?labels=0, ?seed=, ?startBar=.
+  Panic (panic.js): B blackout, ` calm. In a slot window it runs as any set scene does (slot.html loads its URL).
+  QA: ?qaConf=0 forces the clock confidence to 0 (no-beat mode); ?qaCompanion=NN-name.html runs a second scene in a
+  960x540 frame behind this one (?capture=1&muted=1 on the metronome), so the frame time is measured with two scenes
+  running. window.__qa: aurora { phase, section, morph, w, g, glow, strength, height, colour, ripplesFired,
+  ripplesLive, driftBars, ... }, fakeBeatGain(g | null), setHeight(v), setColour(v), companion { page, frames,
+  errors }, errors; beatLog, frame, beatWeight, energy, forceConfidence (audio-in).
+  Plain ASCII only (#205).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>28 Aurora</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #000; color: #dfeee6; font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 250px)); width: min(100vw, calc(100dvh - 250px)); aspect-ratio: 16 / 9;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px; background: rgba(0,0,0,.55);
+    font: 12px/1.35 ui-monospace, Menlo, monospace; white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; color: #9fb8ab; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #8fd9b0; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 104px; flex: none; color: #b5d6c4; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 64px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #1f3a2e; border-radius: 8px; background: #0b1712; color: inherit; font: inherit; }
+  button.on { background: #1d4a36; border-color: #4fe39a; }
+  p { color: #8aa598; margin: 4px 0; }
+  a { color: #8fd9b0; }
+  #companion { position: fixed; left: 0; top: 0; width: 960px; height: 540px; border: 0; z-index: -1; pointer-events: none; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(62vw, calc(100vh * 16 / 9)); margin: 0; position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading...</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Knobs (by hand until the controller's knob moves)</h3>
+  <div class="row"><label for="height">height</label><input id="height" type="range" min="0" max="1" step="0.01"><output id="heightOut"></output></div>
+  <div class="row"><label for="colour">colour</label><input id="colour" type="range" min="0" max="1" step="0.01"><output id="colourOut"></output></div>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <p>Kick: a ripple of light up the curtains. Height: a low band near the horizon to curtains filling the frame. Colour: all green to green, violet and red. Panic: B blackout, ` calm.</p>
+  <a href="../index.html">all experiments</a>
+</div>
+<script>
+  window.__qa = window.__qa || {};
+</script>
+<script src="panic.js"></script>
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
+<script type="module">
+import scene, { beatGainOf, knobValue, pickupCreate, clamp01, AUR } from './28-aurora.mjs';
+const $ = id => document.getElementById(id);
+const query = new URLSearchParams(location.search), q = k => query.get(k);
+const num = (k, lo, hi) => { const v = parseFloat(q(k)); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null; };
+const knobN = (k, d) => { const n = parseInt(q(k), 10); return n >= 1 && n <= 8 ? n : d; };
+// the live settings object: the clock reads bpm, bpb, muted and the drum patterns from it
+const params = { bpm: 120, bpb: 4, muted: q('muted') === '1', labels: q('labels') !== '0', seed: 1, startBar: 0,
+  height: 0.6, colour: 0.6, beatGain: null,
+  beatKnob: knobN('beatKnob', 1), heightKnob: knobN('heightKnob', 2), colourKnob: knobN('colourKnob', 3),
+  kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+for (const [k, lo, hi] of [['bpm', 60, 180], ['startBar', 0, 4096], ['height', 0, 1], ['colour', 0, 1], ['beatGain', 0, 3]]) { const v = num(k, lo, hi); if (v !== null) params[k] = v; }
+if (parseInt(q('seed'), 10) > 0) params.seed = parseInt(q('seed'), 10);
+
+// ---------- the shared clock and audio-in ----------
+const metronome = Clock.create({ source: q('clock') || 'metronome', settings: params });
+const BEAT_LANES = ['kick'];   // the kick sends a ripple
+const audio = AudioIn.create({ clock: metronome, source: q('audio') || 'clock' }).start();
+let clockStart = performance.now(), lastBeats = null, lastNow = null, prevEKick = 0;
+function clockRead(now) {
+  const mb = metronome.read().beats;
+  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60) + params.startBar * params.bpb;
+  return { beats, bpb: params.bpb };
+}
+// the pattern's kicks between two beat positions (16ths), when the clock is not playing
+function patternKicks(b0, b1) {
+  if (b0 === null || b1 <= b0 || b1 - b0 > 1) return 0;
+  let n = 0; for (let k = Math.floor(b0 * 4) + 1; k <= Math.floor(b1 * 4); k++) if (params.kick[((k % 16) + 16) % 16] === 'x') n++;
+  return Math.min(n, 2);
+}
+
+// ---------- the knobs ----------
+const pick = pickupCreate();
+let qaBeatG = null;
+const gainNow = () => (qaBeatG !== null ? qaBeatG : beatGainOf(metronome, params.beatKnob, params.beatGain));
+const heightNow = () => knobValue(pick, metronome, params.heightKnob, params.height);
+const colourNow = () => knobValue(pick, metronome, params.colourKnob, params.colour);
+const SLIDERS = { height: 2, colour: 2, bpm: 0 };
+for (const name of Object.keys(SLIDERS)) $(name).addEventListener('input', e => { params[name] = parseFloat(e.target.value); sync(); });
+function sync() {
+  for (const [name, dec] of Object.entries(SLIDERS)) { $(name).value = params[name]; $(name + 'Out').textContent = Number(params[name]).toFixed(dec); }
+  $('mute').classList.toggle('on', params.muted);
+}
+$('play').onclick = () => {
+  if (metronome.playing) { metronome.stop(); $('play').textContent = 'Play'; }
+  else { metronome.start(); clockStart = performance.now(); lastBeats = null; $('play').textContent = 'Stop'; }
+};
+$('mute').onclick = () => { params.muted = !params.muted; metronome.setMuted(params.muted); sync(); };
+$('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen()).catch(() => {}); };
+window.__modules = { '28-aurora': { macros: {}, triggers: [], inputs: scene.inputs, knobs: scene.knobs, perf: scene.perf } };
+
+// ---------- QA: a second scene behind this one (?qaCompanion=NN-name.html) ----------
+const companion = { page: null, el: null };
+{
+  const p = q('qaCompanion');
+  if (p && /^\d\d-[a-z0-9-]+\.html$/.test(p) && p !== '28-aurora.html') {
+    companion.page = p;
+    const f = document.createElement('iframe');
+    f.id = 'companion'; f.setAttribute('allow', 'autoplay'); f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;
+    f.src = `${p}?clock=metronome&audio=clock&capture=1&muted=1&labels=0`;
+    document.body.appendChild(f); companion.el = f;
+  }
+}
+const companionState = () => {
+  if (!companion.page) return null;
+  let frames = -1, errs = -1;
+  try { const cq = companion.el.contentWindow.__qa; frames = cq && Number.isFinite(cq.frame) ? cq.frame : -1; errs = cq && Array.isArray(cq.errors) ? cq.errors.length : -1; } catch (e) { frames = -2; }
+  return { page: companion.page, frames, errors: errs };
+};
+
+// ---------- canvas, scene ----------
+const canvas = $('c'), hud = $('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false });
+const errors = [];
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.min(3840, Math.round(canvas.clientWidth * dpr)), h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; scene.resize(w, h); }
+}
+let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0, view = {};
+function frame(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt; steps the beat weight
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; if (window.__panicError) window.__panicError(); }
+}
+function draw(now) {
+  resize();
+  const dt = lastNow === null ? 1 / 60 : Math.min(0.25, Math.max(0, (now - lastNow) / 1000)); lastNow = now;
+  const { beats, bpb } = clockRead(now);
+  const A = audio.read(), E = audio.readEnergy();
+  const due = audio.due(BEAT_LANES);   // the kicks this frame reached, logged in __qa.beatLog
+  const kicks = metronome.playing ? due.filter(h => h.lane === 'kick').length : patternKicks(lastBeats, beats);
+  lastBeats = beats;
+  // the music's own kick onset (no-beat mode's stand-in)
+  const ek = E && Number.isFinite(E.kick) ? E.kick : 0, onset = ek > 0.35 && ek > prevEKick + 0.15; prevEKick = ek;
+  const w = A && Number.isFinite(A.beatWeight) ? A.beatWeight : (audio.bw && Number.isFinite(audio.bw.w) ? audio.bw.w : 1);
+  const controls = { g: gainNow(), height: heightNow(), colour: colourNow(), w, level: E && Number.isFinite(E.level) ? E.level : 0, kicks, onset };
+  scene.frame({ target: null, t: now / 1000, beats, bpb, dt, controls, now });
+  view = { ...scene.qa.view, ...scene.qa.metrics, knobs: { beat: params.beatKnob, height: params.heightKnob, colour: params.colourKnob } };
+  Object.assign(window.__qa, { beats, bars: beats / bpb, bpm: params.bpm });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200) {
+    lastHud = now;
+    if (!params.labels) hud.textContent = '';
+    else {
+      const s = metronome.playing ? 'playing' : (metronome.ctx ? 'stopped' : 'press Play');
+      const v = scene.qa.view;
+      hud.textContent = `28 aurora - section ${v.section} (${(v.inSection || 0).toFixed(1)}/16 bars) - beat ${v.g.toFixed(2)}x - height ${v.height.toFixed(2)} - colour ${v.colour.toFixed(2)} - w ${v.w.toFixed(2)} - ${params.bpm} bpm - ${s}\n${canvas.width}x${canvas.height} - ${fps} fps${companion.page ? ` - with ${companion.page}` : ''}`;
+    }
+  }
+}
+
+// ---------- QA ----------
+const expose = o => { for (const [k, d] of Object.entries(Object.getOwnPropertyDescriptors(o))) Object.defineProperty(window.__qa, k, { ...d, configurable: true, enumerable: true }); };
+expose({
+  errors,
+  get aurora() { return { ...view }; },
+  get companion() { return companionState(); },
+  fakeBeatGain: g => { qaBeatG = g === null || g === undefined || !Number.isFinite(+g) ? null : Math.max(0, Math.min(AUR.G_MAX, +g)); return qaBeatG; },
+  setHeight: v => { params.height = clamp01(+v); sync(); return params.height; },
+  setColour: v => { params.colour = clamp01(+v); sync(); return params.colour; },
+});
+AudioIn.qa(audio, window.__qa);   // beatLog, frame, beatLanes, audioIn, beatWeight, energy, forceConfidence, clockLate
+if (q('qaConf') === '0') window.__qa.forceConfidence(0);
+if (!gl) { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2'); }
+else {
+  try { resize(); scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed }); }
+  catch (e) { errors.push(String(e && e.stack || e)); hud.textContent = 'init error: ' + e.message; }
+  sync();
+  requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>
