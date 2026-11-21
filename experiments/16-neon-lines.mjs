@@ -16,13 +16,24 @@
 // host's controls.beatGain g (the page: clock.beatGain(?beatKnob), or ?beatGain; absent = 1, as before) scales only the
 // beat pulse's terms: the beams' width (0.35), halo (0.25) and intensity (0.45), the diamonds' size (0.12) and glow
 // (0.5). Not the base, the flare (trigger 4 and the drop), the gold wall flashes, pulseK or the speed fade.
+// Bigger beat (the user, 21 Nov: knob 1 from 0 to 100 showed no visible difference on the Mac): the halo term is 0.6
+// (was 0.25, capped at +1.0, was +0.5), and a camera punch zooms the whole frame in by 3 % x g x pulse (capped at
+// 9 %) on the beat. The punch is applied after the speed fade (the fade measures the unpunched beams, so the punch
+// never fades them) and goes through pulseK like the beam terms. g = 0: no punch and no halo beat.
+// The flash rows (viz-296-1 at 0f0ceed: window mean rise 0.257 at g 1, 0.339 at g 3, limit 0.25 in 100 ms) took it
+// back to halo 0.3 (cap +0.55) and a punch of 2 % x g (cap 4 %): still above 20 Nov's (halo 0.25, no punch) at g 1.
+// viz-296-2 at ed42da8: g 1 passed (0.203), g 3 still 0.293. Across the two builds the punch added nothing measurable;
+// at g 3 the rise comes from the beams' light (width and intensity, unchanged since 20 Nov) plus the halo. So the caps
+// that only bite above g 1 come down: width +0.55 (was 0.7), intensity +0.75 (was 1.0), halo +0.3 (was 0.55). g 1 is
+// unchanged (0.35 / 0.45 / 0.3 x pulse stay under every cap); the punch keeps 2 % x g (cap 4 %) for g 2 and 3.
 
 import * as K from './16-clebsch.mjs';
 
-// the beat gain: caps on the added terms (none binds at g <= 1, so g = 1 is today's look bit for bit): the beams' light
-// (width +0.7, halo +0.5, intensity +1.0: at most 2x the beam), the diamonds' size +0.25 and glow +1.0
-export const BEAT = { G_MAX: 3, WIDTH: 0.35, HALO: 0.25, INTEN: 0.45, DSIZE: 0.12, DGLOW: 0.5,
-  WIDTH_CAP: 0.7, HALO_CAP: 0.5, INTEN_CAP: 1.0, DSIZE_CAP: 0.25, DGLOW_CAP: 1.0 };
+// the beat gain: caps on the added terms: the beams' light (width +0.55, halo +0.3, intensity +0.75: at most 1.75x the
+// beam), the diamonds' size +0.25 and glow +1.0, the halo +0.55 and the camera punch 4 % (PUNCH x g x pulseK x
+// pulse): the halo and the punch caps keep the window rise under the flash gate (296.json g1 / g3)
+export const BEAT = { G_MAX: 3, WIDTH: 0.35, HALO: 0.3, INTEN: 0.45, DSIZE: 0.12, DGLOW: 0.5, PUNCH: 0.02,
+  WIDTH_CAP: 0.55, HALO_CAP: 0.3, INTEN_CAP: 0.75, DSIZE_CAP: 0.25, DGLOW_CAP: 1.0, PUNCH_CAP: 0.04 };
 const clampG = g => Math.max(0, Math.min(BEAT.G_MAX, g));
 // g: fixed (?beatGain, a number) wins, else clock.beatGain(n) (VIZ dev's PR A), else 1 (untouched, or no getter yet)
 export function beatGainOf(clock, n, fixed) {
@@ -37,7 +48,8 @@ export function beatTerms(g, pulse, pulseK) {
   return { g: gg,
     width: Math.min(BEAT.WIDTH_CAP, BEAT.WIDTH * gg * k * p), halo: Math.min(BEAT.HALO_CAP, BEAT.HALO * gg * k * p),
     inten: Math.min(BEAT.INTEN_CAP, BEAT.INTEN * gg * k * p),
-    dsize: Math.min(BEAT.DSIZE_CAP, BEAT.DSIZE * gg * p), dglow: Math.min(BEAT.DGLOW_CAP, BEAT.DGLOW * gg * p) };
+    dsize: Math.min(BEAT.DSIZE_CAP, BEAT.DSIZE * gg * p), dglow: Math.min(BEAT.DGLOW_CAP, BEAT.DGLOW * gg * p),
+    punch: Math.min(BEAT.PUNCH_CAP, BEAT.PUNCH * gg * k * p) };
 }
 
 export const HOLDS = [8, 4, 2, 1, 0.5];                       // bars per glide; shapeRate 0 → 8 bars … 1 → ½ bar (as 16b)
@@ -508,7 +520,11 @@ export function createScene() {
     const slotInv = K.invertPerm(st.slotOf);
     let nSeg = 0, nDrawn = 0, energy = 0, maxRel = 0, worst = null;
     const tailAmt = ctl.tails;
-    const putSeg = (a, b, i0, i1, hueNew, hueOld, alpha, phase) => {
+    // the camera punch: a zoom about the screen centre by Z, after the speed fade (beamFade saw the unpunched ends);
+    // the same as the camera's focal length x Z, which the surface gets below
+    const Z = 1 + BT.punch, zoomP = q => [W / 2 + (q[0] - W / 2) * Z, H / 2 + (q[1] - H / 2) * Z];
+    const putSeg = (a0, b0, i0, i1, hueNew, hueOld, alpha, phase) => {
+      const a = zoomP(a0), b = zoomP(b0);
       const o = nSeg * 12; lineData.set([a[0], a[1], b[0], b[1], i0 * inten, i1 * inten, width, glow, hueNew, hueOld, alpha, phase], o); nSeg++;
       energy += Math.hypot(b[0] - a[0], b[1] - a[1]) * width * inten * alpha * (i0 + i1) / 2;
     };
@@ -549,6 +565,7 @@ export function createScene() {
       let p, size;
       if (far) { p = projectDir(cam, xyz); size = dsz * 1.15; }
       else { const q = project(cam, xyz.map(v => v / w)); p = q; size = q ? dsz * Math.max(0.5, Math.min(1.8, cam.D / q[2])) : 0; }
+      if (p) { p = zoomP(p); size *= Z; }
       if (!p || p[0] < -50 || p[0] > W + 50 || p[1] < -50 || p[1] > H + 50) continue;
       diamData.set([p[0], p[1], size, 0.9 * (1 + BT.dglow + 0.8 * flare + 0.6 * gold)], nD * 4); nD++;
     }
@@ -575,7 +592,7 @@ export function createScene() {
     // surface
     const sp = progs.surf, su = sp.u; gl.useProgram(sp.p);
     gl.uniform2f(su.uRes, W, H); gl.uniform3fv(su.uCam, cam.pos); gl.uniform3fv(su.uFwd, cam.fwd); gl.uniform3fv(su.uRight, cam.right); gl.uniform3fv(su.uUp, cam.up);
-    gl.uniform3fv(su.uCenter, cam.C); gl.uniform1f(su.uFocal, cam.focal); gl.uniform1f(su.uRadius, R);
+    gl.uniform3fv(su.uCenter, cam.C); gl.uniform1f(su.uFocal, cam.focal * Z); gl.uniform1f(su.uRadius, R);
     gl.uniform1fv(su.uC, Float32Array.from(cubic));
     gl.uniform1f(su.uTime, t * ctl.speedMul); gl.uniform1f(su.uThick, ctl.thickness); gl.uniform1f(su.uFilmOp, ctl.film);
     gl.uniform1f(su.uGold, gold); gl.uniform1f(su.uDim, 0.6 + 0.4 * ctl.intensity); gl.uniform1f(su.uSmear, st.smear || 0);
