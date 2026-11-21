@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "id": "16-neon-lines",
+  "note": "#296 16c bigger beat (the user, 21 Nov: knob 1 from 0 to 100 showed no visible difference): halo 0.6 (cap +1.0) and a camera punch of 3 % x g x pulse (cap 9 %) after the speed fade. Stills at beat gain 0 (no beat effect), 1 and 3 (the knob's top), all 27 lines; the shared flash and frame-time rows run on g1 and g3.",
+  "params": { "variant": "manual", "macro3": "1", "labels": "0" },
+  "resolutions": ["1080p"],
+  "warmup": 4,
+  "seconds": 8,
+  "variants": [
+    { "name": "g0", "params": { "beatGain": 0 } },
+    { "name": "g1", "params": { "beatGain": 1 } },
+    { "name": "g3", "params": { "beatGain": 3 } }
+  ],
+  "shared": { "variants": ["g1", "g3"] },
+  "values": {
+    "truths": "__qa.check().ok",
+    "g": "__qa.beat ? __qa.beat.g : -1",
+    "halo": "__qa.beat && __qa.beat.halo !== undefined ? __qa.beat.halo : -1",
+    "punch": "__qa.beat && __qa.beat.punch !== undefined ? __qa.beat.punch : -1"
+  },
+  "gates": [
+    { "metric": "errors", "max": 0 },
+    { "metric": "fps.p05", "min": 55, "resolution": "1080p" },
+    { "metric": "value.truths", "equals": true, "name": "truths 1-6 hold" },
+    { "metric": "value.g", "equals": 0, "variant": "g0", "name": "?beatGain=0: g 0" },
+    { "metric": "value.g", "equals": 3, "variant": "g3", "name": "?beatGain=3: g 3" },
+    { "metric": "value.punch", "equals": 0, "variant": "g0", "name": "g 0: no camera punch" },
+    { "metric": "value.halo", "equals": 0, "variant": "g0", "name": "g 0: no halo beat" },
+    { "metric": "value.punch", "min": 0, "max": 0.09, "name": "the camera punch is there and never over 9 %" },
+    { "metric": "value.halo", "min": 0, "max": 1.0, "name": "the halo beat is there and never over +1.0" }
+  ],
+  "record": { "stills": 2 },
+  "debug": { "console": true }
+}
