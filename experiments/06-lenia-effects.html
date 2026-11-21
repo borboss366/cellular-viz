@@ -179,6 +179,7 @@
     <button id="pause">Pause</button>
     <button id="auto" class="on">Auto</button>
     <button id="hudMode">Info: full</button>
+    <button id="lights">Beat lights (L)</button>
     <button id="copy" class="wide">Copy setup</button>
   </div>
   <a href="../index.html">← all experiments</a>
@@ -486,6 +487,7 @@ uniform float uBloom;        // bloom strength, already pumped by the kick
 uniform float uEmboss, uSheen, uLight;   // uLight: light angle, radians
 uniform float uPalId, uPalPhase;
 uniform float uZoom, uDecay; // trails
+uniform vec3 uSpot, uSpotCol; // beat lights: spot centre xy (uv) and amp; its colour (06-beat.js limits both)
 in vec2 vUv;
 out vec4 outColor;
 
@@ -570,6 +572,12 @@ void main() {
 
   // pad: slow hue drift, up to ±0.8 rad over the LFO
   col = hueRotate(col, (uPad - 0.5) * 1.6);
+
+  // beat lights (?lights=1 or the switch, off in the set): a soft neon spot on the mass only, never the dark ground
+  if (uSpot.z > 0.0) {
+    vec2 d = vUv - uSpot.xy;
+    col += uSpotCol * uSpot.z * exp(-dot(d, d) / 0.045) * smoothstep(0.05, 0.35, t);
+  }
 
   // 4 trails: the last frame, zoomed about the centre and faded, under the new one.
   vec3 echo = texture(uPrev, 0.5 + (vUv - 0.5) / uZoom).rgb * uDecay;
@@ -890,6 +898,14 @@ $('clear').onclick = () => seed(0);
 $('pause').onclick = e => { params.paused = !params.paused; e.target.classList.toggle('on', params.paused); };
 function syncHudButton() { $('hudMode').textContent = params.hudShort ? 'Info: short' : 'Info: full'; }
 $('hudMode').onclick = () => { params.hudShort = !params.hudShort; syncHudButton(); };
+// beat lights: off unless ?lights=1, the button or the L key turns them on (live, in the set too)
+const lights = LeniaBeat.lightsNew(false);
+function setLights(on) { lights.on = !!on; $('lights').classList.toggle('on', lights.on); return lights.on; }
+$('lights').onclick = () => setLights(!lights.on);
+window.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName))) return;
+  if (e.key === 'l' || e.key === 'L') setLights(!lights.on);
+});
 $('auto').onclick = () => {
   auto.on = !auto.on; auto.sigma = params.sigma; auto.frozenSince = null;
   $('auto').classList.toggle('on', auto.on);
@@ -1071,6 +1087,7 @@ function loadFromUrl() {
   // the beat gain: ?beatKnob=N (default 1) for clock.beatGain(N), ?beatGain=0..2 a fixed g (stills)
   { const n = parseInt(query.get('beatKnob'), 10), g = parseFloat(query.get('beatGain'));
     params.beatKnob = n >= 1 && n <= 8 ? n : 1; params.beatGain = Number.isFinite(g) ? Math.max(0, Math.min(LeniaBeat.C.G_MAX, g)) : null; }
+  setLights(query.get('lights') === '1');
   syncHudButton();
   if (changed) markCustom();
   syncControls();
@@ -1206,6 +1223,7 @@ function frame(now) {
   prevSwell = nb.swell;
   const palPhase = params.fxPalDrift ? palV : 0;
   const zoomEff = 1 + (params.fxZoom - 1) * (1 + BT.zoomKick);   // trails zoom harder on the kick
+  const spot = LeniaBeat.lightsStep(lights, now, anyKick, BT.g);   // beat lights: flash-limited in 06-beat.js
 
   // Draw into the feedback texture (reading last frame's), then copy it to the screen.
   const fbPrev = feedback[fbCur], fbNext = feedback[1 - fbCur];
@@ -1234,6 +1252,8 @@ function frame(now) {
   gl.uniform1f(drawProg.u.uBeatPhase, L.beatPhase);
   gl.uniform1f(drawProg.u.uBarPhase, L.barPhase);
   gl.uniform1f(drawProg.u.uTime, now / 1000);
+  gl.uniform3f(drawProg.u.uSpot, spot.x, spot.y, spot.amp);
+  gl.uniform3f(drawProg.u.uSpotCol, spot.col[0], spot.col[1], spot.col[2]);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -1245,6 +1265,8 @@ function frame(now) {
   fbCur = 1 - fbCur;
   window.__qa.nobeat = { w: L.w, kick: L.kick, snare: L.snare, hat: L.hat, pad: L.pad, palPhase: palV, swell: nb.swell, kickOnset: nb.kickOnset };
   window.__qa.beat = { ...BT, knob: params.beatKnob, fixed: params.beatGain, fake: qaBeatG, bloomEff, lightAngle, zoomEff };
+  window.__qa.lights = { on: lights.on, fired: lights.fired, skipped: lights.skipped, maxPerSec: lights.maxPerSec, maxJump: lights.maxJump, amp: spot.amp };
+  window.__qa.setLights = setLights;
 
   frames++;
   if (now - lastFpsTime > 500) {
