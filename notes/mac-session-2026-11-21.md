@@ -97,9 +97,27 @@ notes/mac-session-2026-11-20.md (part 2 stopped after its Hodge step). Input on 
   the whole plane (on knob 4 / 8). Diffusion of the paint (no such parameter today).
 - Little Bang: a path whose curvature drifts toward changing points in the view, not always left. Brighter effects maybe.
 
-## Not done yet (at this push; the user continues later from Part 6)
+## Part 7: dress rehearsal (long set on the microphone)
+| Step | Result |
+|---|---|
+| Start | 21 Nov 22:31, tunnel up (ssh -L 8790), input = built-in microphone, profile "mic" |
+| Run | The user played a **4-hour set** (4x the brief's 1 hour) and reported: "everything works after 4 hour session and it is fine". No glitch, freeze or crash reported |
+| Not recorded | The 15-minute status-line checks, the QuickTime audio and the conductor log Download (no new conductor-*.jsonl in ~/Downloads). Result is from the user's report only |
+
+## Part 8: files on the box
+Copied to `/home/puggie/pi-durable-worker/data/conductor-logs/2026-11-21/`, sha256 the same on the Mac and the box:
+| File | sha256 |
+|---|---|
+| delay-route-offset0-2026-11-21.mp4 | 070d314541441fdcb7a5d7bd1cffaa8fe293d58914a4353adc9e53fd3bc9195c |
+| delay-route-offset151-2026-11-21.mp4 | 09b35eb2f0c7556d27aba4a74178211be09c38cac8e77ce851befcc6f3bd6b08 |
+| delay-route-slowmo-2026-11-21.mp4 | 6ae5218ac8f96c21a4acbe360740d87ee2b98391dd154df6964640aa64b4ab54 |
+
+## Offset for Sunday
+- Sunday runs on the Mac's microphone (#297): use profile **"mic" = +230 ms**.
+- Profile **"home" = +180 ms** is for the line input (next week). The measured route delay is 163 ms (slow-mo, n = 13).
+
+## Not done
 - Part 5 step 3 (peak dBFS / CLIP) and video B (kick vs flash with sound).
 - Part 6 Paint Pour finger test (open since 19 Nov).
-- Part 7 dress rehearsal (cold start, 1 hour, QuickTime audio, log).
-- Part 8 panic test, copy files to the box with sha256. The three phone clips (1000022588/90/94.mp4) are in
-  ~/Downloads only, not on the box yet.
+- Part 7 15-minute checks, QuickTime audio and conductor log (see Part 7).
+- Part 8 panic test (B).
