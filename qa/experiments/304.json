@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "id": "16-neon-lines",
+  "note": "#304 16c Sunday fix: on the beat the beams up to 10x thicker at the beat knob's top (4x at its middle), their core light lowered as they widen (a 10x beam carries 2.5x the light), a glow that jumps with the beat (+0.6 x g, cap +0.7), and a thickness knob (?thickKnob, set.json 2 / slot B 6). Stills at beat gain 0, 1 and 3, thin (knob 0) and fat (knob top) at g 3; the shared flash rows (window rise <= 0.25) on g1 and g3 as #296.",
+  "params": { "variant": "manual", "macro3": "1", "labels": "0" },
+  "resolutions": ["1080p"],
+  "warmup": 4,
+  "seconds": 8,
+  "variants": [
+    { "name": "g0", "params": { "beatGain": 0 } },
+    { "name": "g1", "params": { "beatGain": 1 } },
+    { "name": "g3", "params": { "beatGain": 3 } },
+    { "name": "thin3", "params": { "beatGain": 3, "thick": 0.25 } },
+    { "name": "fat3", "params": { "beatGain": 3, "thick": 4 } }
+  ],
+  "shared": { "variants": ["g1", "g3"] },
+  "values": {
+    "truths": "__qa.check().ok",
+    "g": "__qa.beat ? __qa.beat.g : -1",
+    "thick": "__qa.beat && __qa.beat.thick !== undefined ? __qa.beat.thick : -1",
+    "glow": "__qa.beat && __qa.beat.glow !== undefined ? __qa.beat.glow : -1",
+    "core": "__qa.beat && __qa.beat.core !== undefined ? __qa.beat.core : -1",
+    "base": "__qa.beat && __qa.beat.base !== undefined ? __qa.beat.base : -1",
+    "punch": "__qa.beat && __qa.beat.punch !== undefined ? __qa.beat.punch : -1"
+  },
+  "gates": [
+    { "metric": "errors", "max": 0 },
+    { "metric": "fps.p05", "min": 55, "resolution": "1080p" },
+    { "metric": "value.truths", "equals": true, "name": "truths 1-6 hold" },
+    { "metric": "value.g", "equals": 0, "variant": "g0", "name": "?beatGain=0: g 0" },
+    { "metric": "value.g", "equals": 3, "variant": ["g3", "thin3", "fat3"], "name": "?beatGain=3: g 3" },
+    { "metric": "value.thick", "equals": 0, "variant": "g0", "name": "g 0: no thickening" },
+    { "metric": "value.glow", "equals": 0, "variant": "g0", "name": "g 0: no glow jump" },
+    { "metric": "value.thick", "min": 0, "max": 9, "name": "the thickening is there and never over 10x" },
+    { "metric": "value.glow", "min": 0, "max": 0.7, "name": "the glow jump is there and never over +0.7" },
+    { "metric": "value.base", "equals": 0.25, "variant": "thin3", "name": "?thick=0.25: a quarter of today's beam" },
+    { "metric": "value.base", "equals": 4, "variant": "fat3", "name": "?thick=4: 4x today's beam" },
+    { "metric": "value.base", "equals": 1, "variant": ["g0", "g1", "g3"], "name": "no thickness knob: today's beam" },
+    { "metric": "value.punch", "min": 0, "max": 0.04, "name": "the camera punch never over 4 %" }
+  ],
+  "record": { "stills": 2 },
+  "debug": { "console": true }
+}
