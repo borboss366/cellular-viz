@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "id": "18-little-bang",
+  "note": "#303 18 Little Bang ray follows the beat knob (Sunday fix list, 22 Nov): stills of the set's beamline with the camera stopped (speed 0, as the user plays it) at beat gain 0 (no ray kick), 1 (the middle, as today) and 3 (the knob's top, 2 here: ray kick 2.5x); flash rows for the default URL and g3",
+  "params": { "scene": "beamline", "travel": 1, "speed": 0 },
+  "resolutions": ["1080p"],
+  "warmup": 4,
+  "seconds": 8,
+  "variants": [
+    { "name": "g0", "params": { "beatGain": 0 } },
+    { "name": "g1", "params": {} },
+    { "name": "g3", "params": { "beatGain": 3 } }
+  ],
+  "shared": { "variants": ["g3"] },
+  "values": { "g": "__qa.beat ? __qa.beat.g : -1", "kick": "__qa.beat ? __qa.beat.kick : -1", "snare": "__qa.beat ? __qa.beat.snare : -1", "hat": "__qa.beat ? __qa.beat.hat : -1", "scene": "__qa.scene", "rayOn": "__qa.ray && __qa.ray.on ? 1 : 0", "rayKick": "__qa.ray && __qa.ray.on ? __qa.ray.kick : -1", "rayEnv": "__qa.ray && __qa.ray.on ? __qa.ray.env : -1", "rayPeaks": "__qa.ray && __qa.ray.on ? __qa.ray.peaks : -1" },
+  "gates": [
+    { "metric": "errors", "max": 0 },
+    { "metric": "value.scene", "equals": "beamline", "name": "the set's beamline scene" },
+    { "metric": "value.rayOn", "equals": 1, "name": "travel mode (the ray) on" },
+    { "metric": "value.g", "equals": 0, "variant": "g0", "name": "?beatGain=0: g 0" },
+    { "metric": "value.g", "equals": 1, "variant": "g1", "name": "no knob: g 1 (as today)" },
+    { "metric": "value.g", "equals": 2, "variant": "g3", "name": "?beatGain=3: g 2 (the cap here)" },
+    { "metric": "value.rayKick", "max": 0, "variant": "g0", "name": "g 0: no ray kick" },
+    { "metric": "value.rayKick", "max": 1, "variant": "g1", "name": "g 1: the ray kick at most today's (1)" },
+    { "metric": "value.rayKick", "max": 2.5, "name": "the ray kick at most 2.5" },
+    { "metric": "value.rayEnv", "max": 1.6, "name": "the ray never over its top cap 1.6" },
+    { "metric": "value.rayPeaks", "max": 6, "name": "the ray peaks at most 3 a second (2 s window)" },
+    { "metric": "value.snare", "max": 1, "name": "the snare never above today" },
+    { "metric": "value.hat", "max": 1, "name": "the hats never above today" }
+  ],
+  "record": { "stills": 2 },
+  "debug": { "console": true }
+}
