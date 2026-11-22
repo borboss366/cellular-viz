@@ -22,6 +22,12 @@
 //   1 / max(1, g) (at most today's +0.25): scaled, never clamped, so they peak with the kick and have no flat top. The
 //   travel speed (its knob), the clock, audio-in's lanes, the bunch crossings and the sync log are untouched. At g = 1
 //   every level is today's.
+// the ray follows the knob (Sunday fix list, 22 Nov: "between knob 0 and 100 the kick reaction changes only slightly"):
+//   the ray's kick k used to jump to 1 on any kick edge past 0.5, so above about half the knob it was the same at every
+//   g. rayStep(s, kick, breath, dt, g) now takes the raw kick envelope for the edge and jumps to rayAmp(g): g up to the
+//   middle (0 at the bottom: no ray kick, 1 in the middle: today's, bit for bit), then 1 + RAY_G_HI (g - 1) above it
+//   (2.5 at the top). Above the middle the brightness cap is RAY_CAP_TOP (it falls back to RAY_CAP as k decays under 1,
+//   where the sum is under RAY_CAP anyway) and the width swells with k (1.9x at the top). Still at most 3 peaks a second.
 // pick-up (the user's Mac session, 20 Nov: a knob left up by the last scene in the slot acted at once on the next one):
 //   knobOf(clock, n) reads through pickup(p, n, clock.knobs), as 16-dive.js: a knob whose value was already there when
 //   the first knob values reached the page is ignored until it moves by more than PICK_EPS (so knob 2 left at 0 by
@@ -35,6 +41,7 @@
     RAY_BASE: 0.45, RAY_BASS: 0.2, RAY_KICK: 0.35, RAY_CAP: 1.0, RAY_TAU_K: 0.12, RAY_MIN_GAP: 1 / 3,
     RAY_W_KICK: 0.35, RAY_W_BASS: 0.1, RAY_LEN: 45,
     BEAT_G_MAX: 2, BEAT_HAT_G_MAX: 1, BEAT_SNARE_G_MAX: 1, BEAT_LIGHT_MAX: 1 / 0.6,
+    RAY_G_HI: 1.5, RAY_CAP_TOP: 1.6,
     PICK_EPS: 0.02,
   };
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x)), clamp01 = x => clamp(x, 0, 1);
@@ -103,14 +110,17 @@
   }
   // ray: { k, t, last, prev, peaks }
   const rayCreate = () => ({ k: 0, t: 0, last: -1e9, prev: 0, peaks: [] });
-  function rayStep(s, kick, breath, dt) {
+  // the ray's kick height at gain g: g up to the middle, steeper above it (2.5 at the top)
+  const rayAmp = g => { const gg = Number.isFinite(g) ? clamp(g, 0, C.BEAT_G_MAX) : 1; return gg <= 1 ? gg : 1 + C.RAY_G_HI * (gg - 1); };
+  function rayStep(s, kick, breath, dt, g = 1) {
     const d = clamp(Number.isFinite(dt) ? dt : 0, 0, 0.1), kv = Number.isFinite(kick) ? kick : 0, b = clamp01(Number.isFinite(breath) ? breath : 0);
+    const amp = rayAmp(g);
     s.t += d;
     const edge = kv > 0.5 && s.prev <= 0.5; s.prev = kv;
     let peak = false;
-    if (edge && s.t - s.last >= C.RAY_MIN_GAP - 1e-9) { s.k = 1; s.last = s.t; peak = true; s.peaks.push(s.t); if (s.peaks.length > 64) s.peaks.shift(); }
+    if (edge && amp > 0 && s.t - s.last >= C.RAY_MIN_GAP - 1e-9) { s.k = amp; s.last = s.t; peak = true; s.peaks.push(s.t); if (s.peaks.length > 64) s.peaks.shift(); }
     else s.k *= Math.exp(-d / C.RAY_TAU_K);
-    const env = Math.min(C.RAY_CAP, C.RAY_BASE + C.RAY_BASS * b + C.RAY_KICK * s.k);
+    const env = Math.min(s.k > 1 ? C.RAY_CAP_TOP : C.RAY_CAP, C.RAY_BASE + C.RAY_BASS * b + C.RAY_KICK * s.k);
     return { env, width: 1 + C.RAY_W_KICK * s.k + C.RAY_W_BASS * b, kick: s.k, peak };
   }
   // the beat gain g: fixed (?beatGain, a number) wins, else clock.beatGain(n) (VIZ dev's PR A), else 1
@@ -134,7 +144,7 @@
   const lightScale = g => Math.min(1, C.BEAT_LIGHT_MAX / gOf(g));
   const haloOf = (bass, g) => 0.9 + 0.25 * bass / Math.max(1, gOf(g));
   const glowOf = (bass, g) => 0.7 + 0.6 * bass * lightScale(g);
-  const api = { C, pcg, knobOf, speedCreate, speedStep, targetAt, rayCreate, rayStep, beatGainOf, beatLanes, lightScale, haloOf, glowOf, pickupCreate, pickup, pickupState };
+  const api = { C, pcg, knobOf, speedCreate, speedStep, targetAt, rayCreate, rayStep, rayAmp, beatGainOf, beatLanes, lightScale, haloOf, glowOf, pickupCreate, pickup, pickupState };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.Travel = api;
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : this));

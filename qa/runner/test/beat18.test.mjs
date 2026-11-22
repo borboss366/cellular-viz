@@ -40,6 +40,10 @@ test('18 beat gain: g = 0 removes every drum level (no FOV kick, magnet pulse, w
   const ray = T.rayCreate(); let peaks = 0;
   for (let f = 0; f < 240; f++) { const kick = Math.exp(-((f / 60) % 0.5) / 0.15); if (T.rayStep(ray, T.beatLanes(0, lanes(kick, 0, 0)).kick, 0, 1 / 60).peak) peaks++; }
   assert.equal(peaks, 0);
+  // the page's call (the raw kick, g 0): no peak either, the ray steady at its base
+  const ray0 = T.rayCreate(); let peaks0 = 0, maxEnv0 = 0;
+  for (let f = 0; f < 240; f++) { const kick = Math.exp(-((f / 60) % 0.5) / 0.15), R = T.rayStep(ray0, kick, 0, 1 / 60, 0); if (R.peak) peaks0++; maxEnv0 = Math.max(maxEnv0, R.env); }
+  assert.equal(peaks0, 0); assert.ok(Math.abs(maxEnv0 - T.C.RAY_BASE) < 1e-12);
 });
 
 test('18 beat gain: the knob top (3, clamped to 2) stays under the caps; snares and hats never go above today', () => {
@@ -81,14 +85,37 @@ test('18 beat gain: the knob top (3, clamped to 2) stays under the caps; snares 
       }
     }
   }
-  // the ray at g = 2 still peaks at most 3 a second and stays under its cap (18-travel.js rayStep)
+  // the ray at g = 2 still peaks at most 3 a second and stays under its top cap (18-travel.js rayStep, the page's call)
   const ray = T.rayCreate(), fps = 60, peaks = [];
   let maxEnv = 0;
   for (let f = 0; f < 6 * fps; f++) {
-    const t = f / fps, kick = Math.exp(-((t * 4) % 1) / 4 / 0.15);   // 4 kicks a second (x2 still falls under 0.5 between)
-    const R = T.rayStep(ray, T.beatLanes(2, lanes(kick, 0, 0)).kick, 0.5, 1 / fps);
+    const t = f / fps, kick = Math.exp(-((t * 4) % 1) / 4 / 0.15);   // 4 kicks a second
+    const R = T.rayStep(ray, kick, 0.5, 1 / fps, 2);
     if (R.peak) peaks.push(t); maxEnv = Math.max(maxEnv, R.env);
   }
   assert.ok(peaks.length / 6 <= 3 + 1e-9, `${(peaks.length / 6).toFixed(2)} peaks a second`);
-  assert.ok(maxEnv <= T.C.RAY_CAP + 1e-12);
+  assert.ok(maxEnv <= T.C.RAY_CAP_TOP + 1e-12);
+  assert.ok(/Travel\.rayStep\(travel\.ray, L0\.kick, travel\.breath, dt, L\.beat\.g\)/.test(PAGE), 'the page passes the raw kick and g');
+});
+
+test('18 ray follows the knob (Sunday, 22 Nov): 0 none, the middle as before, the top clearly bigger', () => {
+  // one kick at 120 bpm through the ray at each g: its peak brightness and width
+  const peakOf = g => {
+    const s = T.rayCreate(); let env = 0, width = 0;
+    for (let f = 0; f < 60; f++) { const kick = f >= 6 ? Math.exp(-(f - 6) / 60 / 0.15) : 0, R = T.rayStep(s, kick, 0, 1 / 60, g); env = Math.max(env, R.env); width = Math.max(width, R.width); }
+    return { env, width };
+  };
+  const at = [0, 0.25, 0.5, 1, 1.5, 2].map(peakOf);
+  for (let i = 1; i < at.length; i++) assert.ok(at[i].env > at[i - 1].env && at[i].width > at[i - 1].width, `grows with g (step ${i})`);
+  assert.ok(Math.abs(at[0].env - T.C.RAY_BASE) < 1e-12 && at[0].width === 1, 'g 0: no ray kick');
+  // the middle: bit for bit the old ray (the kick envelope through the old edge, k to 1)
+  const old = T.rayCreate(), mid = T.rayCreate();
+  for (let f = 0; f < 600; f++) {
+    const kick = Math.exp(-((f / 60) % 0.5) / 0.15), b = 0.5 + 0.5 * Math.sin(f / 50);
+    assert.deepEqual(T.rayStep(mid, kick, b, 1 / 60, 1), T.rayStep(old, kick, b, 1 / 60), `g 1 is today's ray (frame ${f})`);
+  }
+  // the top: 2.5x the middle's kick (brightness under RAY_CAP_TOP, width about 1.9x)
+  assert.equal(T.rayAmp(2), 2.5); assert.equal(T.rayAmp(3), 2.5, 'g clamps to 2'); assert.equal(T.rayAmp(1), 1); assert.equal(T.rayAmp(0.4), 0.4);
+  assert.ok(at[5].env > at[3].env + 0.4 && at[5].env <= T.C.RAY_CAP_TOP + 1e-12, `top brightness ${at[5].env} vs middle ${at[3].env}`);
+  assert.ok(at[5].width >= 1.8 && at[3].width <= 1.36, `top width ${at[5].width} vs middle ${at[3].width}`);
 });
