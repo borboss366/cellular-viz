@@ -26,8 +26,10 @@
   QA: ?qaConf=0 forces the clock confidence to 0 (no-beat mode); ?qaCompanion=NN-name.html runs a second scene in a
   960x540 frame behind this one (?capture=1&muted=1 on the metronome), so the frame time is measured with two scenes
   running. window.__qa: aurora { phase, section, morph, w, g, glow, strength, height, colour, ripplesFired,
-  ripplesLive, driftBars, ... }, fakeBeatGain(g | null), setHeight(v), setColour(v), companion { page, frames,
-  errors }, errors; beatLog, frame, beatWeight, energy, forceConfidence (audio-in).
+  ripplesLive, driftBars, jumpedBars, ... }, fakeBeatGain(g | null), setHeight(v), setColour(v), companion { page,
+  frames, errors }, gpu { lost, restored, retries, ready }, errors, forceDrop() (panic.js, #88: the drop is bar 12
+  of each 16-bar section, where the curtains start to change shape; the drift takes the jump whole); beatLog, frame,
+  beatWeight, energy, forceConfidence (audio-in).
   Plain ASCII only (#205).
 -->
 <html lang="en">
@@ -84,6 +86,9 @@
   <a href="../index.html">all experiments</a>
 </div>
 <script>
+  // #88 drop hook, before panic.js so its forceDrop attaches at once: the drop is bar 12 of each 16-bar section (the
+  // curtains start to change shape there)
+  window.__qaNextDrop = b => window.__qaSectionDrop(b, 16, 12);
   window.__qa = window.__qa || {};
 </script>
 <script src="panic.js"></script>
@@ -107,10 +112,11 @@ if (parseInt(q('seed'), 10) > 0) params.seed = parseInt(q('seed'), 10);
 const metronome = Clock.create({ source: q('clock') || 'metronome', settings: params });
 const BEAT_LANES = ['kick'];   // the kick sends a ripple
 const audio = AudioIn.create({ clock: metronome, source: q('audio') || 'clock' }).start();
-let clockStart = performance.now(), lastBeats = null, lastNow = null, prevEKick = 0;
+let clockStart = performance.now(), lastBeats = null, lastNow = null, prevEKick = 0, lastShift = 0;
+// the clock as the scene reads it; __qaShift (bars) is #88's forceDrop, startBar a QA offset
 function clockRead(now) {
   const mb = metronome.read().beats;
-  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60) + params.startBar * params.bpb;
+  const beats = Math.max(0, metronome.playing && mb >= 0 ? mb : (now - clockStart) / 1000 * params.bpm / 60) + (params.startBar + (window.__qaShift || 0)) * params.bpb;
   return { beats, bpb: params.bpb };
 }
 // the pattern's kicks between two beat positions (16ths), when the clock is not playing
@@ -161,8 +167,19 @@ const companionState = () => {
 
 // ---------- canvas, scene ----------
 const canvas = $('c'), hud = $('hud');
-const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false });
+// WebGL2: a lost context (a GPU reset) waits for its restore and builds the scene again instead of staying black; a
+// context the browser refuses at load (it can block WebGL for a while after a reset) is asked again every 0.5 s for
+// 20 s before the page gives up. __qa.gpu counts both.
+const GL_OPTS = { antialias: false, alpha: false, preserveDrawingBuffer: false };
+let gl = canvas.getContext('webgl2', GL_OPTS), glLost = false;
+const gpu = { lost: 0, restored: 0, retries: 0, ready: false };
 const errors = [];
+canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); glLost = true; gpu.lost++; gpu.ready = false; hud.textContent = 'WebGL context lost: waiting for it to come back'; });
+canvas.addEventListener('webglcontextrestored', () => { glLost = false; gpu.restored++; startGL(); });
+function startGL() {
+  try { resize(); scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed }); gpu.ready = true; hud.textContent = ''; }
+  catch (e) { errors.push(String(e && e.stack || e)); hud.textContent = 'init error: ' + e.message; }
+}
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = Math.min(3840, Math.round(canvas.clientWidth * dpr)), h = Math.min(2160, Math.round(canvas.clientHeight * dpr));
@@ -178,6 +195,8 @@ function draw(now) {
   resize();
   const dt = lastNow === null ? 1 / 60 : Math.min(0.25, Math.max(0, (now - lastNow) / 1000)); lastNow = now;
   const { beats, bpb } = clockRead(now);
+  const shift = window.__qaShift || 0, jump = shift - lastShift; lastShift = shift;   // forceDrop's bars this frame
+  window.__qaNowBars = beats / bpb;
   const A = audio.read(), E = audio.readEnergy();
   const due = audio.due(BEAT_LANES);   // the kicks this frame reached, logged in __qa.beatLog
   const kicks = metronome.playing ? due.filter(h => h.lane === 'kick').length : patternKicks(lastBeats, beats);
@@ -185,7 +204,7 @@ function draw(now) {
   // the music's own kick onset (no-beat mode's stand-in)
   const ek = E && Number.isFinite(E.kick) ? E.kick : 0, onset = ek > 0.35 && ek > prevEKick + 0.15; prevEKick = ek;
   const w = A && Number.isFinite(A.beatWeight) ? A.beatWeight : (audio.bw && Number.isFinite(audio.bw.w) ? audio.bw.w : 1);
-  const controls = { g: gainNow(), height: heightNow(), colour: colourNow(), w, level: E && Number.isFinite(E.level) ? E.level : 0, kicks, onset };
+  const controls = { g: gainNow(), height: heightNow(), colour: colourNow(), w, level: E && Number.isFinite(E.level) ? E.level : 0, kicks, onset, jump };
   scene.frame({ target: null, t: now / 1000, beats, bpb, dt, controls, now });
   view = { ...scene.qa.view, ...scene.qa.metrics, knobs: { beat: params.beatKnob, height: params.heightKnob, colour: params.colourKnob } };
   Object.assign(window.__qa, { beats, bars: beats / bpb, bpm: params.bpm });
@@ -206,6 +225,7 @@ function draw(now) {
 const expose = o => { for (const [k, d] of Object.entries(Object.getOwnPropertyDescriptors(o))) Object.defineProperty(window.__qa, k, { ...d, configurable: true, enumerable: true }); };
 expose({
   errors,
+  gpu,
   get aurora() { return { ...view }; },
   get companion() { return companionState(); },
   fakeBeatGain: g => { qaBeatG = g === null || g === undefined || !Number.isFinite(+g) ? null : Math.max(0, Math.min(AUR.G_MAX, +g)); return qaBeatG; },
@@ -214,13 +234,19 @@ expose({
 });
 AudioIn.qa(audio, window.__qa);   // beatLog, frame, beatLanes, audioIn, beatWeight, energy, forceConfidence, clockLate
 if (q('qaConf') === '0') window.__qa.forceConfidence(0);
-if (!gl) { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2'); }
+sync();
+if (gl) startGL();
 else {
-  try { resize(); scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed }); }
-  catch (e) { errors.push(String(e && e.stack || e)); hud.textContent = 'init error: ' + e.message; }
-  sync();
-  requestAnimationFrame(frame);
+  hud.textContent = 'WebGL2 needed: asking again';
+  const retry = () => {
+    gl = canvas.getContext('webgl2', GL_OPTS); gpu.retries++;
+    if (gl) startGL();
+    else if (gpu.retries < 40) setTimeout(retry, 500);
+    else { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2 (asked 41 times over 20 s)'); }
+  };
+  setTimeout(retry, 500);
 }
+requestAnimationFrame(frame);   // the scene's clock, ripples and values run even before the GL is there
 </script>
 </body>
 </html>

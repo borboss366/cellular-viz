@@ -27,6 +27,9 @@
     "section": "__qa.aurora ? __qa.aurora.section : -1",
     "height": "__qa.aurora ? __qa.aurora.height : -1",
     "colour": "__qa.aurora ? __qa.aurora.colour : -1",
+    "glLost": "__qa.gpu ? __qa.gpu.lost : -1",
+    "glRetries": "__qa.gpu ? __qa.gpu.retries : -1",
+    "hasForceDrop": "typeof __qa.forceDrop === 'function' ? 1 : 0",
     "companionFrames": "__qa.companion ? __qa.companion.frames : -1",
     "companionErrors": "__qa.companion ? __qa.companion.errors : -1"
   },
@@ -48,7 +51,10 @@
     { "metric": "value.w", "min": 0.95, "variant": "default", "name": "the beat path with the metronome" },
     { "metric": "value.w", "max": 0.05, "variant": "nobeat", "name": "no-beat mode with confidence 0" },
     { "metric": "value.section", "min": 1, "variant": "morph", "name": "the curtains moved on to the next section's shape" },
-    { "metric": "clip", "max": 1, "report": true, "name": "bright folds stay under clipping" }
+    { "metric": "clip", "max": 1, "report": true, "name": "bright folds stay under clipping" },
+    { "metric": "value.hasForceDrop", "equals": 1, "variant": "default", "name": "#88 __qa.forceDrop() is there" },
+    { "metric": "value.glLost", "max": 0, "report": true, "name": "WebGL context lost (a GPU reset; the page rebuilds on restore)" },
+    { "metric": "value.glRetries", "max": 0, "report": true, "name": "WebGL2 refused at load, asked again (times)" }
   ],
   "record": { "stills": 2 },
   "debug": { "console": true }

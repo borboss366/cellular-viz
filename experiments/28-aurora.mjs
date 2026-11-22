@@ -28,16 +28,19 @@
 //   colourKnob (default 3) 0: all green ... 1: the full green, violet and red mix.
 //   Both knob reads go through a pick-up (a value already there when the page met the knobs counts only once it moves).
 //
-// Flash safety: the ripple multiplies a curtain's light by at most 1 + RIPPLE_CAP over a band ~RIPPLE_WIDTH of the
-// curtain's height, at most one ripple per RIPPLE_MIN_GAP s (5 a second; 180 bpm kicks are 3); the drift and the
-// section morph are slow. Everything else is continuous.
+// Flash safety: the ripple multiplies the light by at most 1 + RIPPLE_CAP over a band ~RIPPLE_WIDTH of the curtain's
+// height, at most one ripple per RIPPLE_MIN_GAP s (3.3 a second; 180 bpm kicks are 3). The band is one front on the
+// screen for all three layers (build 1 ran it in each layer's own height, so a pixel where layers overlap lit up to
+// three times per kick: 6 flashes/s at 120 bpm, viz-299-1's general flash). So a pixel flashes at most once per
+// ripple, under the 4 a second the flash check counts. The drift and the section morph are slow.
 export const AUR = {
   HORIZON: 0.065,            // the horizon line, a share of the frame height from the bottom
   SECTION_BARS: 16, MORPH_BARS: 4,
   DRIFT_PER_BAR: 1,          // drift phase units a bar (the shader turns them into a slow sideways travel)
   IDLE_BARS_PER_S: 0.4,      // no beat: the drift phase on time (a slow 96 bpm-like pace)
   IDLE_GLOW: 0.55,           // no beat: the curtains' light (1 with a beat)
-  RIPPLE_AMP: 0.5, RIPPLE_CAP: 1.1, RIPPLE_SPEED: 1.35, RIPPLE_LIFE: 1.0, RIPPLE_WIDTH: 0.085, RIPPLE_MIN_GAP: 0.2,
+  RIPPLE_AMP: 0.5, RIPPLE_CAP: 1.1, RIPPLE_SPEED: 1.35, RIPPLE_LIFE: 1.0, RIPPLE_WIDTH: 0.085, RIPPLE_MIN_GAP: 0.3,
+  DROP_BAR: 12,              // #88 forceDrop: the drop is the start of the morph, bar 12 of each 16-bar section
   RIPPLE_ENERGY: 0.6,        // no beat: a ripple from the music's own onset, this share of a beat ripple
   MAX_RIPPLES: 6,
   G_MAX: 3,
@@ -131,15 +134,17 @@ export function sectionShape(bars, seed = 1) {
 // ---------------------------------------------------------------- the drift phase (beats, or time with no beat)
 // v advances by the bars the clock moved at w = 1 and by IDLE_BARS_PER_S on time at w = 0 (mixed in between), so it
 // never stops and never jumps when w changes. A clock jump (more than 8 bars, or backwards) moves it by nothing.
-export const phaseCreate = () => ({ v: null, lastBars: null, adv: 0 });
-export function phaseStep(p, { bars, dt, w }) {
+// jump: bars QA's forceDrop moved the clock this frame (#88); the phase takes them whole, at any w, so the drop shows.
+export const phaseCreate = () => ({ v: null, lastBars: null, adv: 0, jumped: 0 });
+export function phaseStep(p, { bars, dt, w, jump = 0 }) {
   const ww = clamp01(w), d = Math.max(0, Math.min(0.25, Number.isFinite(dt) ? dt : 0));
+  const j = Number.isFinite(jump) && jump > 0 ? jump : 0;
   if (p.v === null) { p.v = Number.isFinite(bars) ? bars : 0; p.lastBars = bars; return p.v; }
-  let db = Number.isFinite(bars) && Number.isFinite(p.lastBars) ? bars - p.lastBars : 0;
+  let db = Number.isFinite(bars) && Number.isFinite(p.lastBars) ? bars - p.lastBars - j : 0;
   if (db < 0 || db > 8) db = 0;
   p.lastBars = bars;
   const step = ww * db + (1 - ww) * d * AUR.IDLE_BARS_PER_S;
-  p.v += step; p.adv += step;
+  p.v += step + j; p.adv += step; p.jumped += j;
   return p.v;
 }
 
@@ -199,6 +204,10 @@ void main() {
   // faint airglow just above the horizon, so the dark ground reads as a line
   col += vec3(0.004, 0.010, 0.012) * exp(-(y - uHorizon) * 30.0);
   float total = 0.0;
+  // the ripple: one band on the screen for all layers, in the front layer's heights (no per-layer wiggle), so each
+  // pixel lights once per ripple even where the layers overlap
+  float dr = (y - (uHorizon + uBase + uShapeA.z + uShapeA.w * x)) / uH, rip = 0.0;
+  for (int i = 0; i < ${AUR.MAX_RIPPLES}; i++) { vec4 R = uRip[i]; if (R.y > 0.0) { float z = (dr - R.x) / R.z; rip += R.y * exp(-z * z); } }
   for (int L = 0; L < 3; L++) {
     float k = float(L), sc = 1.0 - 0.24 * k, bright = (L == 0 ? 1.0 : (L == 1 ? 0.62 : 0.4));
     float ph = uPhase * (0.11 - 0.025 * k);                      // the drift: farther layers drift slower
@@ -220,8 +229,6 @@ void main() {
     float sh = 0.7 + 0.6 * n2(vec2(u * 26.0, d * 3.2 - uTime * 0.85 + 4.0 * k));
     float along = 0.45 + 0.55 * fbm(u * 1.7 + ph * 0.25 + 5.0 * k);   // some stretches of the curtain glow more
     float I = prof * rays * sh * fold * along * bright;
-    float rip = 0.0;
-    for (int i = 0; i < ${AUR.MAX_RIPPLES}; i++) { vec4 R = uRip[i]; if (R.y > 0.0) { float z = (d - R.x) / R.z; rip += R.y * exp(-z * z); } }
     I *= 1.0 + rip;
     float red = upper * sqrt(rays * fold) * along * bright * uShapeB.z * (0.6 + 0.4 * rip);
     // colour: green, a violet fringe at the lower edge, red at the top
@@ -263,11 +270,12 @@ export function createScene() {
   }
   function resize(w, h) { W = Math.max(1, w | 0); H = Math.max(1, h | 0); }
   // one frame. t: seconds; beats / bpb: the clock; dt: seconds since the last frame; controls: { g, height, colour,
-  // w (beat weight), level (the music's mean band level), kicks (the clock's kicks this frame), onset (the music's) }
+  // w (beat weight), level (the music's mean band level), kicks (the clock's kicks this frame), onset (the music's),
+  // jump (bars QA's forceDrop moved the clock this frame) }
   function frame({ t, beats, bpb = 4, dt = 1 / 60, controls: c = {} }) {
     const w = clamp01(Number.isFinite(c.w) ? c.w : 1), g = Number.isFinite(c.g) ? clampG(c.g) : 1;
     const bars = (Number.isFinite(beats) ? beats : 0) / (bpb > 0 ? bpb : 4);
-    const ph = phaseStep(st.phase, { bars, dt, w });
+    const ph = phaseStep(st.phase, { bars, dt, w, jump: c.jump });
     const S = sectionShape(ph, seed), hs = heightShape(c.height), lvl = clamp01(c.level);
     rippleStep(st.rip, { t, kicks: c.kicks || 0, onset: !!c.onset, g, w });
     // strength: the section's arc, the recent ripples and (no beat) the music's level; slow, so the red top breathes
@@ -280,7 +288,7 @@ export function createScene() {
     st.frames++;
     st.view = { bars, phase: ph, section: S.section, inSection: +S.inSection.toFixed(3), morph: +S.m.toFixed(3), w, g, glow, strength: st.strength,
       height: clamp01(c.height), colour: clamp01(c.colour), H: hs.H, violet: C.violet * S.violet, red: C.red, ripples: rips.length };
-    st.metrics = { g, w, ripplesFired: st.rip.fired, ripplesLive: rips.length, rippleAmp: rippleAmp(g), driftBars: st.phase.adv, strength: st.strength, frames: st.frames };
+    st.metrics = { g, w, ripplesFired: st.rip.fired, ripplesLive: rips.length, rippleAmp: rippleAmp(g), driftBars: st.phase.adv, jumpedBars: st.phase.jumped, strength: st.strength, frames: st.frames };
     if (!gl) return;
     gl.viewport(0, 0, W, H);
     gl.useProgram(prog); gl.bindVertexArray(vao);

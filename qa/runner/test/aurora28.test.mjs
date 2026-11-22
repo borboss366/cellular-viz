@@ -26,7 +26,7 @@ test('28 aurora: the beat gain scales the ripple, 0 gives none, capped at the to
   assert.equal(R.fired, 0); assert.equal(R.list.length, 0);
 });
 
-test('28 aurora: each kick is a band that starts at the lower edge and travels up, at most one per 0.2 s', () => {
+test('28 aurora: each kick is a band that starts at the lower edge and travels up, at most one per 0.3 s', () => {
   const R = ripplesCreate();
   for (let i = 0; i <= 480; i++) rippleStep(R, { t: i / 60, kicks: i % 30 === 0 ? 1 : 0, g: 1, w: 1 });   // 120 bpm, 8 s
   assert.ok(R.fired >= 16 && R.fired <= 17, `${R.fired} ripples`);
@@ -41,10 +41,17 @@ test('28 aurora: each kick is a band that starts at the lower edge and travels u
   assert.ok(rippleFront(r, 10).front <= 0, 'starts at the lower edge');
   assert.ok(prev > 1, `reaches the top (${prev.toFixed(2)})`);
   assert.equal(rippleFront(r, 10 + AUR.RIPPLE_LIFE), null, 'gone after its life');
-  // kicks 0.1 s apart: only every other one starts a ripple
+  // kicks 0.1 s apart: only every third one starts a ripple (under 4 a second, the flash check's count)
   const F = ripplesCreate();
   for (let i = 0; i < 20; i++) rippleStep(F, { t: i * 0.1, kicks: 1, g: 1, w: 1 });
-  assert.equal(F.fired, 10);
+  assert.equal(F.fired, 7);
+  // 180 bpm kicks (0.333 s apart) all get through
+  const K = ripplesCreate();
+  for (let i = 0; i < 9; i++) rippleStep(K, { t: i / 3, kicks: 1, g: 1, w: 1 });
+  assert.equal(K.fired, 9);
+  // the shader runs one ripple band for all layers (not one per layer: a pixel would light up to 3 times a kick)
+  assert.match(SRC, /float dr = \(y - \(uHorizon/);
+  assert.ok(!/float z = \(d - R\.x\)/.test(SRC), 'no per-layer ripple');
 });
 
 test('28 aurora: no beat (w = 0): clock kicks do nothing, the music\'s onsets ripple smaller; the drift runs on time', () => {
@@ -66,6 +73,14 @@ test('28 aurora: no beat (w = 0): clock kicks do nothing, the music\'s onsets ri
   phaseStep(P, { bars: 400, dt: 1 / 60, w: 1 });
   phaseStep(P, { bars: 2, dt: 1 / 60, w: 1 });
   assert.ok(P.v >= before && P.v - before < 0.01, 'jumps ignored');
+  // QA's forceDrop (#88): the jump it names is taken whole, also with no beat, and is not counted as drift
+  const J = phaseCreate();
+  phaseStep(J, { bars: 3, dt: 1 / 60, w: 1 });
+  const adv = J.adv;
+  phaseStep(J, { bars: 12, dt: 1 / 60, w: 1, jump: 9 });
+  assert.ok(Math.abs(J.v - 12) < 1e-9 && J.adv === adv && J.jumped === 9, `${J.v} ${J.adv} ${J.jumped}`);
+  phaseStep(J, { bars: 12, dt: 1 / 60, w: 0, jump: 4 });
+  assert.ok(J.v > 16 && J.v < 16.01, `no beat: ${J.v}`);
 });
 
 test('28 aurora: sections change the shape every 16 bars and blend over the last 4, never a jump', () => {
@@ -124,6 +139,14 @@ test('28 aurora page: a set-ready scene (panic, ?clock=, audio-in, clockLate), A
   assert.match(PAGE, /import scene, \{[^}]*\} from '\.\/28-aurora\.mjs'/);
   assert.match(PAGE, /knobN\('beatKnob', 1\)/); assert.match(PAGE, /knobN\('heightKnob', 2\)/); assert.match(PAGE, /knobN\('colourKnob', 3\)/);
   assert.match(PAGE, /no-beat mode/);
+  // #88 forceDrop: the drop hook comes before panic.js, the clock adds __qaShift and writes __qaNowBars
+  assert.ok(PAGE.indexOf('window.__qaNextDrop = b => window.__qaSectionDrop(b, 16, 12)') >= 0 &&
+    PAGE.indexOf('window.__qaNextDrop') < PAGE.indexOf('<script src="panic.js">'), 'drop hook before panic.js');
+  assert.match(PAGE, /window\.__qaShift \|\| 0\)\) \* params\.bpb/);
+  assert.match(PAGE, /window\.__qaNowBars = beats \/ bpb/);
+  // a lost context comes back; a refused one is asked again
+  assert.match(PAGE, /webglcontextlost', e => \{ e\.preventDefault\(\)/);
+  assert.match(PAGE, /webglcontextrestored/);
   for (const [name, src] of [['28-aurora.html', PAGE], ['28-aurora.mjs', SRC]]) {
     const bad = [...src].findIndex(ch => ch.charCodeAt(0) > 0x7e || (ch.charCodeAt(0) < 0x20 && ch !== '\n'));
     assert.equal(bad, -1, `${name} is plain ASCII (first other character at ${bad})`);
