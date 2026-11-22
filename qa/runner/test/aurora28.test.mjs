@@ -19,6 +19,9 @@ test('28 aurora: the beat gain scales the ripple, 0 gives none, capped at the to
   assert.equal(rippleAmp(0), 0);
   assert.equal(rippleAmp(1), AUR.RIPPLE_AMP);
   assert.equal(rippleAmp(3), AUR.RIPPLE_CAP);
+  // round 3 (viz-299-3 general flash 64-66 %): the beat glow is half of round 2's (0.4, cap 0.9), still visible
+  assert.ok(AUR.RIPPLE_AMP <= 0.2 && AUR.RIPPLE_CAP <= 0.45, `${AUR.RIPPLE_AMP} ${AUR.RIPPLE_CAP}`);
+  assert.ok(rippleAmp(1) >= 0.15, 'the kick still shows at the middle of the knob');
   for (let g = 0; g < 3; g += 0.1) assert.ok(rippleAmp(g + 0.1) >= rippleAmp(g), 'grows with g');
   // g = 0: a kick every beat for 8 s fires nothing
   const R = ripplesCreate();

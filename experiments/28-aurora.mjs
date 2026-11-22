@@ -36,13 +36,15 @@
 // plus the rays and shimmer sliding past each pixel reached 4. So the drift is about half as fast (0.05 a bar), the
 // fine rays coarser (64, was 91), the shimmer slower (0.35, was 0.85), the ripple 0.4 (cap 0.9) and the glow 0.34
 // (was 0.42): what moves past a pixel between kicks stays under one flash a second. The section morph is slow.
+// viz-299-3 still failed the general flash (64 % default, 66 % g3), so round 3 (the user's option B) halves the beat
+// glow: the ripple 0.2 (was 0.4), cap 0.45 (was 0.9); the same ratio, so the knob still goes from none to 2.25x.
 export const AUR = {
   HORIZON: 0.065,            // the horizon line, a share of the frame height from the bottom
   SECTION_BARS: 16, MORPH_BARS: 4,
   DRIFT_PER_BAR: 1,          // drift phase units a bar (the shader turns them into a slow sideways travel)
   IDLE_BARS_PER_S: 0.4,      // no beat: the drift phase on time (a slow 96 bpm-like pace)
   IDLE_GLOW: 0.55,           // no beat: the curtains' light (1 with a beat)
-  RIPPLE_AMP: 0.4, RIPPLE_CAP: 0.9, RIPPLE_SPEED: 1.35, RIPPLE_LIFE: 1.0, RIPPLE_WIDTH: 0.085, RIPPLE_MIN_GAP: 0.3,
+  RIPPLE_AMP: 0.2, RIPPLE_CAP: 0.45, RIPPLE_SPEED: 1.35, RIPPLE_LIFE: 1.0, RIPPLE_WIDTH: 0.085, RIPPLE_MIN_GAP: 0.3,
   DROP_BAR: 12,              // #88 forceDrop: the drop is the start of the morph, bar 12 of each 16-bar section
   RIPPLE_ENERGY: 0.6,        // no beat: a ripple from the music's own onset, this share of a beat ripple
   MAX_RIPPLES: 6,
