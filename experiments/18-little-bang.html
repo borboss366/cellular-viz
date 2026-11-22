@@ -62,7 +62,10 @@
   Beat strength (the user, 20 Nov; 18-travel.js): ?beatKnob=N (default 1) reads clock.beatGain(N): untouched = 1 (as
   before), bottom = 0 (no beat reaction), top = 2 here; ?beatGain=0..2 fixes g (stills). The page draws from the drum
   levels: kick x g, snare and hat x min(g, 1) (no harder flashes than today): FOV and camera, magnets, wires, the bass
-  breath, the ray, sparks; glows and the halo width keep their caps (scaled by g, not clamped: no flat tops). Not the travel speed, the crossings or the sync log. __qa.beat, __qa.fakeBeatGain(g | null).
+  breath, the ray, sparks; glows and the halo width keep their caps (scaled by g, not clamped: no flat tops).
+  The ray follows the knob (Sunday fix list, 22 Nov): its kick height is g up to the middle and 1 + 1.5 (g - 1) above
+  (2.5 at the top, brighter and nearly twice as thick on the kick; 18-travel.js rayAmp); before, any g over about half
+  gave the same ray kick. Not the travel speed, the crossings or the sync log. __qa.beat, __qa.fakeBeatGain(g | null).
   Modules: window.__modules (ISF-style inputs).
 -->
 <html lang="en">
@@ -1047,7 +1050,7 @@ function draw(now) {
     let rayLayers = null;
     if (travel.on && !QA_WIRES) {
       travel.breath += (bassEnv - travel.breath) * (1 - Math.exp(-dt / 0.8));
-      const R = Travel.rayStep(travel.ray, L.kick, travel.breath, dt);
+      const R = Travel.rayStep(travel.ray, L0.kick, travel.breath, dt, L.beat.g);   // the raw kick for the edge, its height from the knob
       const rw = sc * R.width;
       rayLayers = [[0, [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]], 0.8 * rw], [1, ring8, 2.4 * rw], [2, ring8, 5.0 * rw]];
       travel.rayQA = { on: true, env: R.env, width: R.width, kick: R.kick, breath: travel.breath, peaks: travel.ray.peaks.filter(t => t > travel.ray.t - 2).length,
