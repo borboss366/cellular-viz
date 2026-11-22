@@ -180,13 +180,13 @@ test('set.json is valid and its URLs are right: each scene with ?clock=shared&au
   // the user's Saturday set (19 Nov 22:04): Hodge, Lenia, Paint Pour without the song's stirring, Riemann's ribbon
   // (12 Mass Gap left the set; its page stays)
   // scene 5 (20 Nov): 27 EQ calibrate with the kick square on, for setting the mixer's EQ at the venue
-  // scene 6 (20 Nov): 16c Neon Lines, no query of its own (the set's defaults)
+  // scene 6 (20 Nov): 16c Neon Lines; its thickness knob on the slot's knob 2 (22 Nov)
   // scene 7 (20 Nov): 18 Little Bang's beamline, travel speed on knob 4 (#278)
   assert.deepEqual(set.scenes.map(s => s.page), ['16-hodge-kaleidoscope.html', '06-lenia-effects.html', '24-paint-pour.html', '11-riemann-show.html', '27-eq-calibrate.html', '16-neon-lines.html', '18-little-bang.html']);
   // the knobs per slot (20 Nov 15:34; slot B adds 4, slot.js): 1 = the beat (defaults; clock.beatGain), then each
   // scene's own from 2: Hodge dive 2 + glints 3, Paint Pour pulse 2 + tilt 3 (21 Nov), Little Bang speed 2; 27 EQ has no beat knob
   assert.equal(set.defaults.beatKnob, '1');
-  const extra = ['&beatKnob=1&diveKnob=2&glintKnob=3', '&beatKnob=1&lights=1', '&beatKnob=1&beatFx=0&pulseKnob=2&pulse=1&tilt=0&tiltKnob=3', '&beatKnob=1&scene=ribbon', '&kick=1', '&beatKnob=1', '&beatKnob=1&scene=beamline&speedKnob=2'];
+  const extra = ['&beatKnob=1&diveKnob=2&glintKnob=3', '&beatKnob=1&lights=1', '&beatKnob=1&beatFx=0&pulseKnob=2&pulse=1&tilt=0&tiltKnob=3', '&beatKnob=1&scene=ribbon', '&kick=1', '&beatKnob=1&thickKnob=2', '&beatKnob=1&scene=beamline&speedKnob=2'];
   const urls = set.scenes.map(s => SetLib.buildUrl(set, s));
   for (const [i, u] of urls.entries()) {
     assert.equal(u, `${set.scenes[i].page}?clock=shared&audio=line&in=BlackHole&capture=1${extra[i]}`);

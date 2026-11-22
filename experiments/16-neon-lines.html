@@ -25,6 +25,9 @@
   = 0 (no beat pulse), centre 1, top 3; ?beatGain=0..3 fixes g (stills). g scales only the beat pulse (beam width, halo
   and intensity, diamond size and glow), capped; not the flare, the gold flashes or the flash guards (pulseK, speed
   fade). __qa.beat, __qa.fakeBeatGain(g | null).
+  Sunday 22 Nov: on the beat the beams get up to 10x thicker at the beat knob's top (4x at its middle), with their core
+  light lowered as they widen, and the glow around them jumps; ?thickKnob=N (the set: 2, slot B 6) is the thickness
+  knob (bottom a quarter of today's beam, middle today, top 4x), ?thick=0.25..4 until it moves; __qa.fakeThick(k).
 -->
 <html lang="en">
 <head>
@@ -106,7 +109,7 @@
 <script src="clock.js"></script>
 <script src="audio-in.js"></script>
 <script type="module">
-import scene, { MACROS, TRIGGERS, holdOf, LEVELS, levelOf, beatGainOf } from './16-neon-lines.mjs';
+import scene, { MACROS, TRIGGERS, holdOf, LEVELS, levelOf, beatGainOf, pickupCreate, pickup, thickOf, THICK_MIN, THICK_MAX } from './16-neon-lines.mjs';
 const $ = id => document.getElementById(id);
 const query = new URLSearchParams(location.search);
 const params = { bpm: 120, bpb: 4, muted: false, seed: 1, variant: 'auto', u: null, chart: 'affine', startBar: 0, glides: true, labels: true,
@@ -179,7 +182,24 @@ const controls = () => ({
   colourSpeed: 1, variant: params.variant, u: params.u, chart: params.chart, film: params.film, thickness: params.filmThickness,
   clipRadius: params.clipRadius, diamondSize: params.diamondSize, tails: params.tails, glides: params.glides,
   beatGain: qaBeatG !== null ? qaBeatG : beatGainOf(metronome, params.beatKnob, params.beatGain),
+  thick: thickNow(),
 });
+// the thickness knob (Sunday 22 Nov): ?thickKnob=N (the set: 2, slot B 6) reads the controller's knob N through the
+// pick-up: 0 = a quarter of today's beam, the middle = today, 1 = 4x; until it moves (or without it) ?thick=0.25..4
+// (default 1). QA: __qa.fakeThick(k 0..1 | null).
+const thickPick = pickupCreate();
+let qaThick = null;
+function thickNow() {
+  if (qaThick !== null) return thickOf(qaThick);
+  if (params.thickKnob) {
+    let all = null; try { all = Array.isArray(metronome.knobs) ? metronome.knobs : null; } catch (e) { all = null; }
+    const k = all ? pickup(thickPick, params.thickKnob, all) : null;
+    if (k !== null) return thickOf(k);
+  }
+  return params.thick;
+}
+{ const n = parseInt(query.get('thickKnob'), 10), t = parseFloat(query.get('thick'));
+  params.thickKnob = n >= 1 && n <= 8 ? n : 0; params.thick = Number.isFinite(t) ? Math.max(THICK_MIN, Math.min(THICK_MAX, t)) : 1; }
 // the beat gain: ?beatKnob=N (default 1) for clock.beatGain(N), ?beatGain=0..3 a fixed g (stills), QA's stand-in g
 let qaBeatG = null;
 { const n = parseInt(query.get('beatKnob'), 10), g = parseFloat(query.get('beatGain'));
@@ -256,6 +276,8 @@ expose({
   errors, events, setMacro, pressTrigger, triggers: TRIGGERS,
   // the beat gain: a stand-in g for tests (null: clock.beatGain(?beatKnob) again)
   fakeBeatGain: g => { qaBeatG = g === null || g === undefined || !Number.isFinite(+g) ? null : Math.max(0, Math.min(3, +g)); return qaBeatG; },
+  // the thickness knob: a stand-in knob value 0..1 for tests (null: ?thickKnob / ?thick again)
+  fakeThick: k => { qaThick = k === null || k === undefined || !Number.isFinite(+k) ? null : Math.max(0, Math.min(1, +k)); return qaThick; },
   get macros() { return MACROS.map((m, i) => ({ slot: m.slot, name: m.name, label: m.label, value: params.macro[i], default: m.default, shown: macroText(i) })); },
   get triggerLog() { return scene.qa.triggerLog; }, triggerEnv: scene.qa.triggerEnv,
   check: () => scene.qa.truths(), truths: () => scene.qa.truths(),

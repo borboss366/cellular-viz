@@ -32,8 +32,37 @@ import * as K from './16-clebsch.mjs';
 // the beat gain: caps on the added terms: the beams' light (width +0.55, halo +0.3, intensity +0.75: at most 1.75x the
 // beam), the diamonds' size +0.25 and glow +1.0, the halo +0.55 and the camera punch 4 % (PUNCH x g x pulseK x
 // pulse): the halo and the punch caps keep the window rise under the flash gate (296.json g1 / g3)
-export const BEAT = { G_MAX: 3, WIDTH: 0.35, HALO: 0.3, INTEN: 0.45, DSIZE: 0.12, DGLOW: 0.5, PUNCH: 0.02,
-  WIDTH_CAP: 0.55, HALO_CAP: 0.3, INTEN_CAP: 0.75, DSIZE_CAP: 0.25, DGLOW_CAP: 1.0, PUNCH_CAP: 0.04 };
+// Sunday 22 Nov (the user, Saturday's Mac session): at knob 1 / 5 = 100 the lines about 10x thicker on the beat, a
+// glow around them that jumps with the beat, and a thickness knob (knob 2 / slot B 6, ?thickKnob from set.json).
+// The beam's width goes x (1 + THICK x g x pulseK x pulse), capped at x10 (g 3); its core light goes down with the
+// width, (1 + thick)^-CORE_EXP, so a 10x wider beam carries 10^0.4 = 2.5x the light, not 10x (the window-rise gate,
+// 296.json: <= 0.25 in 100 ms; the old width + intensity terms carried 2.7x at g 3). The beat intensity term is gone
+// (the width carries the beat now). The halo's light jumps by 1 + GLOW x g x pulseK x pulse (cap +0.7) on top of the
+// halo width (HALO, as before). The thickness knob widens the base beam x THICK_MIN .. x THICK_MAX (4^(2k - 1), the
+// knob's middle = today) and divides the core light by the same factor above 1, so a thicker beam never adds light
+// (flash-safe at every knob position).
+export const BEAT = { G_MAX: 3, WIDTH: 0, HALO: 0.3, INTEN: 0, DSIZE: 0.12, DGLOW: 0.5, PUNCH: 0.02,
+  WIDTH_CAP: 0, HALO_CAP: 0.3, INTEN_CAP: 0, DSIZE_CAP: 0.25, DGLOW_CAP: 1.0, PUNCH_CAP: 0.04,
+  THICK: 3, THICK_CAP: 9, CORE_EXP: 0.6, GLOW: 0.6, GLOW_CAP: 0.7, WIDTH_MAX: 48 };
+export const THICK_MIN = 0.25, THICK_MAX = 4;
+// the thickness knob (0..1) -> the base width factor: 0 = a quarter, the middle = today (1), 1 = 4x
+export const thickOf = k => (Number.isFinite(k) ? Math.pow(4, 2 * Math.max(0, Math.min(1, k)) - 1) : 1);
+// the core light for a beam THICK x wider on the beat and `base` wider from the knob
+export const coreGain = (thick, base = 1) => Math.pow(1 + Math.max(0, thick), -BEAT.CORE_EXP) / Math.max(1, base);
+// pick-up (as 24's and 16b's): a knob value already there when the page met the knobs counts once that knob moves
+export const PICK_EPS = 0.02;
+export const pickupCreate = () => ({ snap: null, live: {} });
+export function pickup(p, n, knobs) {
+  const k = Math.round(+n), val = x => (x !== null && x !== undefined && Number.isFinite(+x) ? Math.max(0, Math.min(1, +x)) : null);
+  if (!p || !(k >= 1 && k <= 8) || !Array.isArray(knobs)) return null;
+  if (p.snap === null) { if (!knobs.some(x => val(x) !== null)) return null; p.snap = Array.from({ length: 8 }, (_, i) => val(knobs[i])); }
+  const v = val(knobs[k - 1]);
+  if (p.live[k]) return v;
+  if (v === null) return null;
+  const v0 = p.snap[k - 1];
+  if (v0 === null || Math.abs(v - v0) > PICK_EPS) { p.live[k] = true; return v; }
+  return null;
+}
 const clampG = g => Math.max(0, Math.min(BEAT.G_MAX, g));
 // g: fixed (?beatGain, a number) wins, else clock.beatGain(n) (VIZ dev's PR A), else 1 (untouched, or no getter yet)
 export function beatGainOf(clock, n, fixed) {
@@ -49,7 +78,8 @@ export function beatTerms(g, pulse, pulseK) {
     width: Math.min(BEAT.WIDTH_CAP, BEAT.WIDTH * gg * k * p), halo: Math.min(BEAT.HALO_CAP, BEAT.HALO * gg * k * p),
     inten: Math.min(BEAT.INTEN_CAP, BEAT.INTEN * gg * k * p),
     dsize: Math.min(BEAT.DSIZE_CAP, BEAT.DSIZE * gg * p), dglow: Math.min(BEAT.DGLOW_CAP, BEAT.DGLOW * gg * p),
-    punch: Math.min(BEAT.PUNCH_CAP, BEAT.PUNCH * gg * k * p) };
+    punch: Math.min(BEAT.PUNCH_CAP, BEAT.PUNCH * gg * k * p),
+    thick: Math.min(BEAT.THICK_CAP, BEAT.THICK * gg * k * p), glow: Math.min(BEAT.GLOW_CAP, BEAT.GLOW * gg * k * p) };
 }
 
 export const HOLDS = [8, 4, 2, 1, 0.5];                       // bars per glide; shapeRate 0 → 8 bars … 1 → ½ bar (as 16b)
@@ -161,7 +191,7 @@ void main() {
 }`;
 const LINE_FS = `#version 300 es
 precision highp float;
-uniform vec2 uRes; uniform float uFlow, uHueShift, uWipe, uWipeOn, uGain, uGold;
+uniform vec2 uRes; uniform float uFlow, uHueShift, uWipe, uWipeOn, uGain, uGold, uCore, uHalo;
 uniform vec3 uPal[4];
 in vec2 vP; flat in vec4 vSeg; flat in vec4 vInt; flat in vec4 vHue;
 out vec4 o;
@@ -175,7 +205,7 @@ void main() {
   if (uWipeOn > 0.5 && dot(vP / uRes.y, vec2(0.857, 0.514)) > uWipe) h = vHue.y;
   vec3 c = pal(h + uHueShift + 0.09 * sin(6.2832 * (1.5 * u - uFlow) + vHue.w));
   c = mix(c, vec3(1.0, 0.784, 0.239), 0.5 * uGold);
-  o = vec4(c * I * uGain * (1.6 * core + 0.30 * halo), 1.0);
+  o = vec4(c * I * uGain * (1.6 * core * uCore + 0.30 * halo * uHalo), 1.0);
 }`;
 const DIAM_VS = `#version 300 es
 precision highp float;
@@ -495,8 +525,11 @@ export function createScene() {
     const pulseK = st.glide && st.glide.cause === 'drop' && s > 0 ? 0 : 1 - smear;
     // the beat gain (controls.beatGain, 1 when absent): g into the pulse's terms only, capped
     const BT = beatTerms(ctl.beatGain, pulse, pulseK);
-    const width = (1.1 + 3.2 * glowK) * sc * (1 + BT.width + 0.25 * flare), glow = (5 + 42 * glowK) * sc * (1 + BT.halo);
-    const inten = (0.45 + 0.8 * ctl.intensity) * (1 + BT.inten + 0.5 * flare);
+    // the beam: the knob's base width x the beat's thickening (core light down with it), capped at WIDTH_MAX px at 1440p
+    const thickBase = Number.isFinite(ctl.thick) ? Math.max(THICK_MIN, Math.min(THICK_MAX, ctl.thick)) : 1;
+    const width = Math.min(BEAT.WIDTH_MAX * sc, (1.1 + 3.2 * glowK) * sc * thickBase * (1 + BT.thick + 0.25 * flare)), glow = (5 + 42 * glowK) * sc * (1 + BT.halo);
+    const inten = (0.45 + 0.8 * ctl.intensity) * (1 + 0.5 * flare);
+    const uCoreNow = coreGain(BT.thick, thickBase), uHaloNow = 1 + BT.glow;
     // Speed fade (flash safety, #124): a beam that sweeps fast across the screen lights each cell it passes for a frame
     // or two, and many such passes a second are a flash. Each line's screen speed (its faster end, px/s at 1440p) sets a
     // fade 1/(1+(v/V)²): slow beams keep their full neon, fast ones become faint streaks. The fade drops at once and
@@ -578,7 +611,7 @@ export function createScene() {
     if (base.pairs !== null) { lv.pairsChecked++; if (base.pairs !== { 3: 3, 7: 9, 15: 45, 27: 135 }[base.lines.length]) lv.pairsBad++; }
     lv.lastMaxRel = maxRel;
     st.view = { u, full: base.full, lines: base.lines.length, expected: base.expected, drawn: nDrawn, segments: nSeg, eckardt: base.eck.length, diamondsOnScreen: nD, glide: st.glide ? { type: K.cycleType(st.glide.sig), sig: st.glide.sig, s, cause: st.glide.cause } : null, pc: st.pc.slice(), slotOf: st.slotOf.slice(), mode: ctl.u ? 'fixed' : st.mode, level: st.man.level, hold: hb / bpb, bars, beats };
-    st.metrics = { lineCount: base.lines.length, laserEnergy: energy / (W * H), glidesStarted: st.glides.length, trail: ctl.macro[3] * 0.97, pulse, flare, gold, smear, beamFadeMin: fadeMin, beamFadeMean: fadeN ? fadeSum / fadeN : 1, beamSpeedMax: vMax, beat: BT };
+    st.metrics = { lineCount: base.lines.length, laserEnergy: energy / (W * H), glidesStarted: st.glides.length, trail: ctl.macro[3] * 0.97, pulse, flare, gold, smear, beamFadeMin: fadeMin, beamFadeMean: fadeN ? fadeSum / fadeN : 1, beamSpeedMax: vMax, beat: { ...BT, core: uCoreNow, haloGain: uHaloNow, base: thickBase, widthPx: width } };
     st.triggerEnv[0] = st.glide && st.glide.cause === 'trigger' ? Math.sin(Math.PI * s) : 0;
     st.triggerEnv[1] = st.glide && st.glide.cause === 'drop' ? Math.max(Math.sin(Math.PI * s), flare) : 0;
     st.triggerEnv[2] = st.wipe ? clamp01((beats - st.wipe.start) / st.wipe.len) * (1 - clamp01((beats - st.wipe.start) / st.wipe.len)) * 4 : 0;
@@ -604,6 +637,7 @@ export function createScene() {
       gl.uniform2f(lu.uRes, W, H); gl.uniform1f(lu.uFlow, t * 0.35 * ctl.speedMul); gl.uniform1f(lu.uHueShift, ctl.hue + bars / 16 * ctl.colourSpeed);
       gl.uniform1f(lu.uWipe, st.wipe ? -0.1 + 2.3 * clamp01((beats - st.wipe.start) / st.wipe.len) : 0); gl.uniform1f(lu.uWipeOn, st.wipe ? 1 : 0);
       gl.uniform1f(lu.uGain, 1); gl.uniform1f(lu.uGold, gold); gl.uniform3fv(lu.uPal, PAL_LIN);
+      gl.uniform1f(lu.uCore, uCoreNow); gl.uniform1f(lu.uHalo, uHaloNow);
       gl.bindBuffer(gl.ARRAY_BUFFER, lineBuf); gl.bufferData(gl.ARRAY_BUFFER, lineData.subarray(0, nSeg * 12), gl.DYNAMIC_DRAW);
       for (let i = 0; i < 3; i++) { gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, 4, gl.FLOAT, false, 48, i * 16); gl.vertexAttribDivisor(i, 1); }
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, nSeg);
