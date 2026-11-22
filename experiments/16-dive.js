@@ -27,6 +27,11 @@
 //   and scaled, not clamped: a cap limits the coefficient, never the envelope, so every term still peaks on its hit and
 //   decays with it (no flat top). At g = 1 the glow and the hue are at their caps, so above the middle the knob adds
 //   motion (swell up to +0.25, breath up to 0.24), not light.
+// Stronger top (the user's Sunday fix list, 22 Nov: "could be bigger, 100 is not enough"; keep the middle): up to g = 1
+//   every term is bit for bit as above. Above the middle each term adds its own slope per unit of g over 1 instead of
+//   stopping at the old caps: swell 0.12 -> 0.40 at the top, pop 0.24 -> 0.50, breath 0.08 -> 0.30, kick glow 1.0 ->
+//   1.6 (x2.6 the gem's luminance; the size carries most of the extra, the light only a little, for the window-rise
+//   gate). The snare hue stays at its 180 degree cap. SIZE_MAX / GLOW_MAX bound the top.
 // Pick-up (the user's Mac session, 20 Nov: slot B switched to Hodge, the hexagons shook on the spot until a knob moved):
 //   the controller's knobs are absolute and the shared clock keeps their last values, so a knob another scene used
 //   (knob 6 = Paint Pour's pulse at 100) became this scene's dive at full depth the moment it loaded. knobOf(clock, n)
@@ -46,6 +51,8 @@
     HAT_TAU: 0.14, SWEEP_S: 0.2, PRISM_TAU: 0.18, PRISM_PX: 4,
     PICK_EPS: 0.02,
     G_MAX: 3, KICK_SIZE: 0.12, POP: 0.24, BREATH: 0.08, KICK_GLOW: 1.4, SNARE_HUE: 360, HUE_CAP: 180, SIZE_CAP: 0.25, GLOW_CAP: 1.0,
+    // above the middle (g > 1): each term's slope per unit of g - 1, and the top's bounds
+    KICK_SIZE_HI: 0.14, POP_HI: 0.13, BREATH_HI: 0.11, GLOW_HI: 0.3, SIZE_MAX: 0.5, GLOW_MAX: 1.6,
   };
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x)), clamp01 = x => clamp(x, 0, 1);
   const smooth = x => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
@@ -155,13 +162,15 @@
   // (scaled, not clamped: the cap never flattens the hit's peak)
   function beatTerms(g, kick, snare, pop) {
     const gg = Number.isFinite(g) ? clamp(g, 0, C.G_MAX) : 1, k = Number.isFinite(kick) ? kick : 0, p = Number.isFinite(pop) ? pop : 0;
+    const lo = Math.min(gg, 1), hi = Math.max(0, gg - 1);   // the middle's part (as before) and the part above it
     const hue = Math.min(C.HUE_CAP, C.SNARE_HUE * gg);
     return {
       g: gg,
-      kickSize: Math.min(C.SIZE_CAP, C.KICK_SIZE * gg) * k,   // cells: x (1 + kickSize)
-      pop: Math.min(C.SIZE_CAP, C.POP * gg) * p,              // cells: x (1 + pop)
-      breath: Math.min(C.SIZE_CAP, C.BREATH * gg),            // the breath's amplitude: 1 + breath * sin(...)
-      glow: Math.min(C.GLOW_CAP, C.KICK_GLOW * gg) * k,       // the shader's (1 + min(1.0, 1.4 * uBeatG) * uKick), here for QA
+      kickSize: Math.min(C.SIZE_MAX, Math.min(C.SIZE_CAP, C.KICK_SIZE * lo) + C.KICK_SIZE_HI * hi) * k,   // cells: x (1 + kickSize)
+      pop: Math.min(C.SIZE_MAX, Math.min(C.SIZE_CAP, C.POP * lo) + C.POP_HI * hi) * p,                    // cells: x (1 + pop)
+      breath: Math.min(C.SIZE_MAX, Math.min(C.SIZE_CAP, C.BREATH * lo) + C.BREATH_HI * hi),               // 1 + breath * sin(...)
+      // the shader's (1 + (min(1.0, 1.4 * min(uBeatG, 1.0)) + 0.3 * max(uBeatG - 1.0, 0.0)) * uKick), here for QA
+      glow: Math.min(C.GLOW_MAX, Math.min(C.GLOW_CAP, C.KICK_GLOW * lo) + C.GLOW_HI * hi) * k,
       hue,                                                    // the shader's min(180, 360 * uBeatG) * uSnare (degrees)
       hueG: hue / 90,                                         // the same in the first beat-gain's units (90 degrees = 1)
       snare: Number.isFinite(snare) ? snare : 0,

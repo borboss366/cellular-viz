@@ -34,7 +34,7 @@ test('16b beat gain 4x: g = 1 (the knob untouched or in the middle) is 4x the fi
   assert.match(PAGE, /Dive\.beatTerms\(qaBeatG !== null \? qaBeatG : Dive\.beatGainOf\(metronome, params\.beatKnob, params\.beatGain\), kick, snare, st\.popEnv\)/);
   assert.match(PAGE, /m \* \(1 \+ BT\.kickSize\) \* pop/); assert.match(PAGE, /const pop = 1 \+ BT\.pop;/);
   assert.match(PAGE, /1 \+ BT\.breath \* Math\.sin\(2 \* Math\.PI \* bars\), 1 \+ BT\.breath \* nb\.low/);
-  assert.match(PAGE, /\(1\.0 \+ min\(1\.0, 1\.4 \* uBeatG\) \* uKick\)/); assert.match(PAGE, /min\(180\.0, 360\.0 \* uBeatG\) \* uSnare/);
+  assert.match(PAGE, /\(1\.0 \+ min\(1\.6, min\(1\.0, 1\.4 \* min\(uBeatG, 1\.0\)\) \+ 0\.3 \* max\(uBeatG - 1\.0, 0\.0\)\) \* uKick\)/); assert.match(PAGE, /min\(180\.0, 360\.0 \* uBeatG\) \* uSnare/);
   assert.match(PAGE, /params\.beatKnob = knobArg\('beatKnob'\) \|\| 1;/);
 });
 
@@ -45,18 +45,41 @@ test('16b beat gain 4x: g = 0 removes the beat terms (no swell, pop, breath, kic
   }
 });
 
+test('16b stronger top (Sunday, 22 Nov): the middle unchanged, the top clearly bigger, the shader glow matches beatTerms', () => {
+  // the middle and below: bit for bit the 4x terms (the caps above never reached for g <= 1)
+  for (const g of [0, 0.25, 0.5, 0.75, 1]) for (const k of grid) for (const p of grid) {
+    const T = Dive.beatTerms(g, k, 0.5, p);
+    near(T.kickSize, Math.min(0.25, 0.12 * g) * k, `swell g ${g}`); near(T.pop, Math.min(0.25, 0.24 * g) * p, `pop g ${g}`);
+    near(T.breath, Math.min(0.25, 0.08 * g), `breath g ${g}`); near(T.glow, Math.min(1, 1.4 * g) * k, `glow g ${g}`);
+  }
+  // the top (g 3): swell 0.40, pop 0.50, breath 0.30, glow 1.6; it grows all the way up from the middle
+  const top = Dive.beatTerms(3, 1, 0, 1);
+  near(top.kickSize, 0.40, 'swell at the top'); near(top.pop, 0.50, 'pop at the top'); near(top.breath, 0.30, 'breath at the top'); near(top.glow, 1.6, 'glow at the top');
+  const old = { kickSize: 0.25, pop: 0.25, breath: 0.24, glow: 1.0 };   // the top before (#292)
+  assert.ok(top.kickSize >= 1.5 * old.kickSize && top.pop >= 2 * old.pop - 1e-12, 'the sizes carry the extra');
+  let prev = Dive.beatTerms(1, 1, 0, 1);
+  for (let g = 1.1; g <= 3.0001; g += 0.1) {
+    const T = Dive.beatTerms(g, 1, 0, 1);
+    assert.ok(T.kickSize > prev.kickSize && T.pop > prev.pop && T.breath > prev.breath && T.glow > prev.glow, `grows at g ${g.toFixed(1)}`);
+    prev = T;
+  }
+  // the shader's glow coefficient (GLSL on the page) equals beatTerms' at every g
+  const glsl = g => Math.min(1.6, Math.min(1.0, 1.4 * Math.min(g, 1.0)) + 0.3 * Math.max(g - 1.0, 0.0));
+  for (let g = 0; g <= 3.0001; g += 0.05) near(glsl(g), Dive.beatTerms(g, 1, 0, 0).glow, `shader glow g ${g.toFixed(2)}`);
+});
+
 test('16b beat gain 4x: g = 3 stays under the caps, every term peaks on its hit (no flat top), at most 3 big rises a second', () => {
   let maxSize = 0, maxPop = 0, maxGlow = 0;
   for (const k of grid) for (const p of grid) {
     const T = Dive.beatTerms(3, k, 1, p), T9 = Dive.beatTerms(9, k, 1, p);
     assert.deepEqual(T9, T, 'g clamps to 3');
     maxSize = Math.max(maxSize, T.kickSize); maxPop = Math.max(maxPop, T.pop); maxGlow = Math.max(maxGlow, T.glow);
-    assert.ok(T.breath <= Dive.C.SIZE_CAP && T.hue <= Dive.C.HUE_CAP);
+    assert.ok(T.breath <= Dive.C.SIZE_MAX && T.hue <= Dive.C.HUE_CAP);
     assert.ok(T.kickSize >= Dive.beatTerms(1, k, 1, p).kickSize, 'the top is at least the middle');
   }
-  assert.ok(maxSize <= 0.25 + 1e-12 && maxPop <= 0.25 + 1e-12, `sizes (${maxSize}, ${maxPop})`);
-  near(maxGlow, 1.0, 'the kick glow reaches its cap (2x the gem luminance), never more');
-  near(Dive.beatTerms(3, 1, 0, 0).breath, 0.24, 'above the middle the knob adds breath');
+  assert.ok(maxSize <= Dive.C.SIZE_MAX + 1e-12 && maxPop <= Dive.C.SIZE_MAX + 1e-12, `sizes (${maxSize}, ${maxPop})`);
+  near(maxGlow, Dive.C.GLOW_MAX, 'the kick glow reaches its top (2.6x the gem luminance), never more');
+  near(Dive.beatTerms(3, 1, 0, 0).breath, 0.30, 'above the middle the knob adds breath');
   // scaled, not clamped: on a decaying kick every term falls on every frame after the hit (the old min() held a flat top)
   for (const g of [1, 2, 3]) {
     let prev = null;
