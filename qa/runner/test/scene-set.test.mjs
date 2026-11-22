@@ -186,7 +186,7 @@ test('set.json is valid and its URLs are right: each scene with ?clock=shared&au
   // the knobs per slot (20 Nov 15:34; slot B adds 4, slot.js): 1 = the beat (defaults; clock.beatGain), then each
   // scene's own from 2: Hodge dive 2 + glints 3, Paint Pour pulse 2 + tilt 3 (21 Nov), Little Bang speed 2; 27 EQ has no beat knob
   assert.equal(set.defaults.beatKnob, '1');
-  const extra = ['&beatKnob=1&diveKnob=2&glintKnob=3', '&beatKnob=1', '&beatKnob=1&beatFx=0&pulseKnob=2&pulse=1&tilt=0&tiltKnob=3', '&beatKnob=1&scene=ribbon', '&kick=1', '&beatKnob=1', '&beatKnob=1&scene=beamline&speedKnob=2'];
+  const extra = ['&beatKnob=1&diveKnob=2&glintKnob=3', '&beatKnob=1&lights=1', '&beatKnob=1&beatFx=0&pulseKnob=2&pulse=1&tilt=0&tiltKnob=3', '&beatKnob=1&scene=ribbon', '&kick=1', '&beatKnob=1', '&beatKnob=1&scene=beamline&speedKnob=2'];
   const urls = set.scenes.map(s => SetLib.buildUrl(set, s));
   for (const [i, u] of urls.entries()) {
     assert.equal(u, `${set.scenes[i].page}?clock=shared&audio=line&in=BlackHole&capture=1${extra[i]}`);

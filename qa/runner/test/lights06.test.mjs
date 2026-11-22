@@ -1,5 +1,6 @@
 // 06 · Lenia + effects, beat lights (Orchestrator's Saturday batch, task 2): a soft neon spot on the mass on each kick,
-// behind a switch that is off in the Sunday set (?lights=1, the page's button or L turn it on). Flash safety lives in
+// behind a switch (?lights=1, the page's button or L turn it on). The page's default is off; the set turns them on (the
+// user, Sunday 22 Nov: "on by default on Sunday", set.json's Lenia query lights=1). Flash safety lives in
 // experiments/06-beat.js: at most 3 flashes a second, each flash's brightness jump at most 0.35 (luma), mass only.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,13 +22,13 @@ function run(on, g, gapMs, ms = 10000) {
   return { s, out };
 }
 
-test('06 beat lights: off by default and in the Sunday set; the switch is ?lights=1, the button or L', () => {
+test('06 beat lights: off by default on the page, on in the set; the switch is ?lights=1, the button or L', () => {
   const { s, out } = run(false, 2, 500);
   assert.equal(s.fired, 0); assert.ok(out.every(f => f.amp === 0), 'no light while off');
   const lenia = SET.scenes.find(x => x.page === '06-lenia-effects.html');
   assert.ok(lenia, 'Lenia is in the set');
-  assert.ok(!lenia.query || !('lights' in lenia.query), 'the set does not turn the lights on');
-  assert.ok(!('lights' in (SET.defaults || {})), 'nor do the set defaults');
+  assert.equal(lenia.query && lenia.query.lights, '1', 'the set turns the lights on (the user, 22 Nov)');
+  assert.ok(!('lights' in (SET.defaults || {})), 'only for Lenia, not in the set defaults');
   assert.match(PAGE, /setLights\(query\.get\('lights'\) === '1'\)/, 'only ?lights=1 turns them on at load');
   assert.match(PAGE, /const lights = LeniaBeat\.lightsNew\(false\);/);
   assert.match(PAGE, /LeniaBeat\.lightsStep\(lights, now, anyKick, BT\.g\)/, 'driven by the kick and the beat knob');
