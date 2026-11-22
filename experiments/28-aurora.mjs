@@ -32,14 +32,17 @@
 // height, at most one ripple per RIPPLE_MIN_GAP s (3.3 a second; 180 bpm kicks are 3). The band is one front on the
 // screen for all three layers (build 1 ran it in each layer's own height, so a pixel where layers overlap lit up to
 // three times per kick: 6 flashes/s at 120 bpm, viz-299-1's general flash). So a pixel flashes at most once per
-// ripple, under the 4 a second the flash check counts. The drift and the section morph are slow.
+// ripple, under the 4 a second the flash check counts. viz-299-2 still failed (73-99 %): the ripple's 2 a second
+// plus the rays and shimmer sliding past each pixel reached 4. So the drift is about half as fast (0.05 a bar), the
+// fine rays coarser (64, was 91), the shimmer slower (0.35, was 0.85), the ripple 0.4 (cap 0.9) and the glow 0.34
+// (was 0.42): what moves past a pixel between kicks stays under one flash a second. The section morph is slow.
 export const AUR = {
   HORIZON: 0.065,            // the horizon line, a share of the frame height from the bottom
   SECTION_BARS: 16, MORPH_BARS: 4,
   DRIFT_PER_BAR: 1,          // drift phase units a bar (the shader turns them into a slow sideways travel)
   IDLE_BARS_PER_S: 0.4,      // no beat: the drift phase on time (a slow 96 bpm-like pace)
   IDLE_GLOW: 0.55,           // no beat: the curtains' light (1 with a beat)
-  RIPPLE_AMP: 0.5, RIPPLE_CAP: 1.1, RIPPLE_SPEED: 1.35, RIPPLE_LIFE: 1.0, RIPPLE_WIDTH: 0.085, RIPPLE_MIN_GAP: 0.3,
+  RIPPLE_AMP: 0.4, RIPPLE_CAP: 0.9, RIPPLE_SPEED: 1.35, RIPPLE_LIFE: 1.0, RIPPLE_WIDTH: 0.085, RIPPLE_MIN_GAP: 0.3,
   DROP_BAR: 12,              // #88 forceDrop: the drop is the start of the morph, bar 12 of each 16-bar section
   RIPPLE_ENERGY: 0.6,        // no beat: a ripple from the music's own onset, this share of a beat ripple
   MAX_RIPPLES: 6,
@@ -89,10 +92,11 @@ export function knobValue(p, clock, n, fallback) {
 }
 
 // ---------------------------------------------------------------- the knobs' meanings
-// height 0: a low band (curtain 0.12 of the frame tall, its edge just over the horizon) ... 1: the frame filled
+// height 0: a low band (curtain 0.12 of the frame tall, its edge just over the horizon) ... 1: the frame filled.
+// dim: taller curtains glow less, so a frame full of aurora stays a night sky (viz-299-2: tall's mean was 32 of 25)
 export function heightShape(h) {
   const k = clamp01(h);
-  return { H: 0.12 + 0.8 * k, base: 0.012 + 0.05 * k, rayLen: 0.6 + 0.4 * k };
+  return { H: 0.12 + 0.8 * k, base: 0.012 + 0.05 * k, rayLen: 0.6 + 0.4 * k, dim: 1 - 0.55 * smooth((k - 0.5) / 0.5) };
 }
 // colour 0: all green (fringe and top stay green) ... 1: violet fringe at full and the red top on strong moments
 export function colourMix(c, strength) {
@@ -210,7 +214,7 @@ void main() {
   for (int i = 0; i < ${AUR.MAX_RIPPLES}; i++) { vec4 R = uRip[i]; if (R.y > 0.0) { float z = (dr - R.x) / R.z; rip += R.y * exp(-z * z); } }
   for (int L = 0; L < 3; L++) {
     float k = float(L), sc = 1.0 - 0.24 * k, bright = (L == 0 ? 1.0 : (L == 1 ? 0.62 : 0.4));
-    float ph = uPhase * (0.11 - 0.025 * k);                      // the drift: farther layers drift slower
+    float ph = uPhase * (0.05 - 0.012 * k);                      // the drift: farther layers drift slower
     float xs = x * (1.0 + 0.4 * k) + uShapeB.w + 3.7 * k;
     float e = 0.004, w0 = warp(xs, k, ph), w1 = warp(xs + e, k, ph);
     float u = xs + w0, dudx = 1.0 + (w1 - w0) / e;
@@ -223,10 +227,10 @@ void main() {
     float prof = lower * exp(-max(d, 0.0) * 2.0 / uRayLen) * (1.0 - smoothstep(0.6, 1.05, d));
     float upper = lower * smoothstep(0.3, 0.75, d) * (1.0 - smoothstep(0.9, 1.3, d));
     // rays: streaks in u only (vertical), two scales, slow sideways creep
-    float r = 0.62 * n1(u * 34.0 + uTime * 0.08 + 13.0 * k) + 0.38 * n1(u * 91.0 - uTime * 0.13 + 5.0 * k);
+    float r = 0.62 * n1(u * 34.0 + uTime * 0.08 + 13.0 * k) + 0.38 * n1(u * 64.0 - uTime * 0.1 + 5.0 * k);
     float rays = 0.25 + 1.6 * r * r;
     // shimmer: rises along the rays
-    float sh = 0.7 + 0.6 * n2(vec2(u * 26.0, d * 3.2 - uTime * 0.85 + 4.0 * k));
+    float sh = 0.75 + 0.5 * n2(vec2(u * 18.0, d * 3.2 - uTime * 0.35 + 4.0 * k));
     float along = 0.45 + 0.55 * fbm(u * 1.7 + ph * 0.25 + 5.0 * k);   // some stretches of the curtain glow more
     float I = prof * rays * sh * fold * along * bright;
     I *= 1.0 + rip;
@@ -238,7 +242,7 @@ void main() {
     col += I * mix(green, violet, clamp(fringe, 0.0, 0.85)) + red * vec3(1.0, 0.1, 0.12) * 0.55;
     total += I;
   }
-  col *= uGlow * 0.42;
+  col *= uGlow * 0.34;
   // stars: a few faint points, dimmed where the aurora is bright and near the horizon
   float cell = max(2.0, uRes.y / 540.0 * 1.6);
   vec2 g = floor(gl_FragCoord.xy / cell);
@@ -294,7 +298,7 @@ export function createScene() {
     gl.useProgram(prog); gl.bindVertexArray(vao);
     gl.uniform2f(U.uRes, W, H); gl.uniform1f(U.uTime, t % 3600); gl.uniform1f(U.uPhase, ph * AUR.DRIFT_PER_BAR);
     gl.uniform1f(U.uHorizon, AUR.HORIZON); gl.uniform1f(U.uH, hs.H); gl.uniform1f(U.uBase, hs.base); gl.uniform1f(U.uRayLen, hs.rayLen);
-    gl.uniform1f(U.uGlow, glow); gl.uniform1f(U.uStrength, st.strength);
+    gl.uniform1f(U.uGlow, glow * hs.dim); gl.uniform1f(U.uStrength, st.strength);
     gl.uniform4f(U.uShapeA, S.foldFreq, S.foldAmp, S.baseOff, S.tilt);
     gl.uniform4f(U.uShapeB, S.hue * (1 - 0.5 * (1 - clamp01(c.colour))), Math.min(1.2, C.violet * S.violet), C.red, S.layer);
     const R = new Float32Array(4 * AUR.MAX_RIPPLES);

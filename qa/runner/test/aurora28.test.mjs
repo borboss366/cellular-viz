@@ -103,6 +103,10 @@ test('28 aurora: both ends of the height and colour knobs mean something; the kn
   const lo = heightShape(0), hi = heightShape(1);
   assert.ok(lo.H <= 0.15 && lo.base < 0.02, 'a low thin band near the horizon');
   assert.ok(AUR.HORIZON + hi.base + hi.H >= 0.95, 'curtains filling the frame');
+  // taller curtains glow less (a night sky, lum.mean <= 25 at height 1); the default height is nearly untouched
+  assert.equal(lo.dim, 1); assert.ok(heightShape(0.6).dim > 0.9 && hi.dim < 0.5, `${heightShape(0.6).dim} ${hi.dim}`);
+  // slow motion between kicks (the flash check): the drift and the shimmer
+  assert.match(SRC, /uPhase \* \(0\.05 - 0\.012 \* k\)/); assert.match(SRC, /uTime \* 0\.35/);
   const g0 = colourMix(0, 1), g1 = colourMix(1, 1), g1q = colourMix(1, 0);
   assert.equal(g0.violet, 0); assert.equal(g0.red, 0, 'all green');
   assert.equal(g1.violet, 1); assert.equal(g1.red, 1, 'full mix on a strong moment');
