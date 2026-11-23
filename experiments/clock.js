@@ -118,6 +118,11 @@
 // knob not moved yet) -> 1, exactly as before; k <= BEAT_DEAD_ZONE -> 0 (the knob fully down = beat off); else
 // 3^(2k-1) clamped to [0, BEAT_GAIN_MAX] (centre 0.5 = 1, full = 3). clock.beatGain(n) = Clock.beatGain(clock.knob(n)),
 // so a scene on any other clock source, or with no beat knob, always gets 1.
+// The beat relay (docs/CELLULAR_VIZ_BRIEF_BEAT_SERVER.md task 2): on a page that wants it (?relay=1, or served by
+// conduct-serve, whose cookie is cvrelay=1; ?relay=0 turns it off) the shared source and Clock.publish load
+// relay-lib.js and shared-link.js next to this file and use SharedLink: the same channel plus the relay socket
+// (/relay?v=1), each message once, so a page in OBS's browser (no channel there) gets the same clock. Same messages,
+// same authority, same 2 s rule; the time base stays wall time. clock.sharedState.link: the link's state (null without).
 // Hand fixes do nothing on a scene (the conductor owns them). The page shows a small "shared" badge (opts.badge false:
 // none). clock.sharedState = { state: waiting|locked|free-run, msgs, jumpsIn, lastErrMs, lost, skipped, offsetMs, offsetFrom: url|publisher }.
 //   Clock.publish(clock, { timers, post, epochNow }) → { tick(), panic(mode), setKnobs(values), stop(), sent }: the conductor side;
@@ -189,6 +194,32 @@
       s.onerror = () => reject(new Error('could not load clock-tracker.js'));
       doc.head.appendChild(s);
     });
+  }
+
+  // the beat relay (docs/CELLULAR_VIZ_BRIEF_BEAT_SERVER.md task 2): when this page should open the relay socket (the
+  // rule is SharedLink.relayWanted: ?relay=0 never; ?relay=1 or ?relay=ws://... always; else conduct-serve's cookie
+  // cvrelay=1), relay-lib.js and shared-link.js are loaded next to this file and the shared source and Clock.publish
+  // talk through SharedLink (the channel and the socket, see shared-link.js). Until they load, in node and on every
+  // other page: the channel alone, as before.
+  function relayWantedHere() {
+    let search = '', cookie = '';
+    try { search = root.location ? root.location.search : ''; cookie = root.document ? root.document.cookie : ''; } catch (e) { return false; }
+    const m = /[?&]relay=([^&#]*)/.exec(search || '');
+    if (m) return m[1] !== '0';
+    return /(?:^|;\s*)cvrelay=1(?:;|$)/.test(cookie || '');
+  }
+  function linkLib(cb) {
+    if (root.SharedLink && root.RelayLib) { cb(root.SharedLink); return; }
+    const doc = root.document;
+    if (!doc || !doc.head || !SELF_SRC) { cb(null); return; }
+    const add = (name, next) => {
+      const s = doc.createElement('script');
+      s.src = new URL(name, SELF_SRC).href;
+      s.onload = next;
+      s.onerror = () => { if (root.console) root.console.warn(`[clock] could not load ${name}: the channel only`); cb(null); };
+      doc.head.appendChild(s);
+    };
+    add('relay-lib.js', () => add('shared-link.js', () => cb(root.SharedLink || null)));
   }
 
   function defaultContext() {
@@ -332,7 +363,7 @@
       step: null, lastBooked: -Infinity, seenJumps: 0, stateLog: [], rises: [], taps: [] } : null;
     // shared: the flywheel from the conductor's messages (see the header)
     const shared = source === 'shared' ? { state: 'waiting', model: null, pending: 0, slewAt: null, lastMsg: null, msgs: 0, jumpsIn: 0,
-      lastErrMs: null, lost: false, step: null, lastBooked: -Infinity, skipped: 0, channel: null, badge: null, stateLog: [], fixedOffset: null, knobs: new Array(KNOBS).fill(null), knobMsgs: 0 } : null;
+      lastErrMs: null, lost: false, step: null, lastBooked: -Infinity, skipped: 0, channel: null, link: null, badge: null, stateLog: [], fixedOffset: null, knobs: new Array(KNOBS).fill(null), knobMsgs: 0 } : null;
     if (shared) {   // ?offset=<ms> on a scene's URL (or opts.offset) wins over the publisher's offsetMs
       const v = parseFloat(opts.offset !== undefined ? opts.offset : queryParam('offset'));
       if (Number.isFinite(v)) shared.fixedOffset = v;
@@ -377,6 +408,7 @@
       },
       stop() {
         clearInterval(this.timer); this.playing = false;
+        if (shared && shared.link) { try { shared.link.close(); } catch (e) {} shared.link = null; }
         if (shared && shared.channel) { try { shared.channel.close(); } catch (e) {} shared.channel = null; }
         if (file && file.src) { try { file.src.stop(); } catch (e) {} try { file.src.disconnect(); } catch (e) {} file.src = null; }
       },
@@ -741,6 +773,15 @@
           const ch = opts.channel || (typeof root.BroadcastChannel === 'function' ? new root.BroadcastChannel(SHARED_CHANNEL) : null);
           if (ch) { ch.onmessage = e => this.sharedMessage(e && e.data); shared.channel = ch; }
           else warnOnce('channel', 'shared source: BroadcastChannel is not available');
+          // the relay socket too (task 2): the link takes over the channel and hears both, each message once
+          if (!opts.channel && relayWantedHere()) {
+            const self = this, mine = shared.channel;
+            linkLib(L => {
+              if (!L || !shared || !self.playing || shared.channel !== mine || shared.link) return;
+              shared.link = L.create({ channel: mine || undefined });
+              shared.link.onmessage = e => self.sharedMessage(e && e.data);
+            });
+          }
         }
         if (opts.badge !== false && queryParam('capture') !== '1' && root.document && root.document.body && !shared.badge) {
           const b = root.document.createElement('div');
@@ -876,7 +917,7 @@
         if (!shared) return null;
         return { state: shared.state, msgs: shared.msgs, jumpsIn: shared.jumpsIn, lost: shared.lost, skipped: shared.skipped,
           lastErrMs: shared.lastErrMs === null ? null : +shared.lastErrMs.toFixed(3), bpm: shared.model ? shared.model.bpm : null, states: shared.stateLog.slice(-16),
-          offsetMs: this.offsetMs, offsetFrom: shared.fixedOffset !== null ? 'url' : 'publisher' };
+          offsetMs: this.offsetMs, offsetFrom: shared.fixedOffset !== null ? 'url' : 'publisher', link: shared.link ? shared.link.state : null };
       },
 
       // ---------- the line source (#173, PR 3b) ----------
@@ -1209,8 +1250,16 @@
   // SHARED_PUBLISH_MS) and every new jump as an event. opts.post(msg) and opts.epochNow() replace the channel and the
   // clock in tests; opts.timers false: the caller calls tick(). Nothing goes out before the clock has beats.
   function publish(clock, opts = {}) {
-    let ch = null;
-    const post = opts.post || (typeof root.BroadcastChannel === 'function' ? (ch = new root.BroadcastChannel(SHARED_CHANNEL), m => ch.postMessage(m)) : () => {});
+    let ch = null, link = null, stopped = false;
+    let post = opts.post || (typeof root.BroadcastChannel === 'function' ? (ch = new root.BroadcastChannel(SHARED_CHANNEL), m => ch.postMessage(m)) : () => {});
+    // the relay socket too (task 2): once the link is loaded every message goes to the channel and the socket
+    if (!opts.post && relayWantedHere()) {
+      linkLib(L => {
+        if (!L || stopped) return;
+        link = L.create({ channel: ch || undefined });
+        post = m => link.postMessage(m);
+      });
+    }
     const now = opts.epochNow || epochNowDefault;
     const pub = {
       sent: 0, events: 0, last: -Infinity, timer: 0, seenJumps: clock.jumps ? clock.jumps.length : 0,
@@ -1265,7 +1314,12 @@
         return m;
       },
       slots: 0,
-      stop() { clearInterval(this.timer); this.timer = 0; if (ch) { try { ch.close(); } catch (err) {} ch = null; } },
+      stop() {
+        clearInterval(this.timer); this.timer = 0; stopped = true;
+        if (link) { try { link.close(); } catch (err) {} link = null; }
+        if (ch) { try { ch.close(); } catch (err) {} ch = null; }
+      },
+      get link() { return link ? link.state : null; },
     };
     if (opts.timers !== false) pub.timer = setInterval(() => pub.tick(), SHARED_PUBLISH_MS / 2);
     return pub;

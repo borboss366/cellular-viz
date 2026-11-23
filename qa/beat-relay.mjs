@@ -255,25 +255,28 @@ export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, le
     if (err) {
       counts.rejected++; c.rejected++;
       if (c.rejected <= 3) c.peer.send({ type: 'relay-error', v: RELAY_VERSION, error: err });
-      return;
+      return null;
     }
     if (m.type === 'resync') {   // the late state again, to this page only
       counts.resyncs++;
       for (const s of snapshot()) c.peer.send(s);
-      return;
+      return null;
     }
     if (m.type === 'time-ask') {
       counts.timeAsks++;
       c.peer.send({ type: 'time', v: RELAY_VERSION, id: m.id === undefined ? null : m.id, t0: m.t0 === undefined ? null : m.t0, ts: now() });
-      return;
+      return null;
     }
-    if (repeated(m)) { counts.duplicates++; return; }
+    if (repeated(m)) { counts.duplicates++; return null; }
     m.rt = now();
     m.seq = seqs[m.type] = (seqs[m.type] || 0) + 1;
     remember(m);
     const out = JSON.stringify(m);
     for (const o of clients) if (o !== c) deliver(o, out, m.type);
+    return out;
   }
+  // a sender with no socket (tests): its answers (relay-error, time, the late state) go to reply()
+  const ghost = reply => ({ peer: { closed: false, buffered: 0, send: m => reply(typeof m === 'string' ? JSON.parse(m) : m) }, rejected: 0 });
   function join(peer, v) {
     if (v !== String(RELAY_VERSION)) {
       counts.versionRefused++;
@@ -317,6 +320,9 @@ export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, le
       if (!timer && pingMs > 0) { timer = setInterval(sweep, pingMs); timer.unref(); }
       return this;
     },
+    /** one message through the relay's own steps as if a page had sent it (node tests: the same checks, seq, ids and
+     *  state, no socket): the text passed on to the other pages, or null; the relay's answers go to reply */
+    pass(text, reply = () => {}) { return onMessage(ghost(reply), typeof text === 'string' ? text : JSON.stringify(text)); },
     stats() {
       return { version: RELAY_VERSION, clients: clients.size, ...counts,
         state: { clock: !!state.clock, knobs: !!state.knobs, panic: state.panic ? state.panic.mode : null, controls: [...state.controls.keys()] } };
