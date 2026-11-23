@@ -23,6 +23,15 @@
 //   'file:<url>'       a decoded file, looped through the speakers and the analyser; lanes as for 'mic'.
 //                      ?audioFrom=<s>&audioTo=<s> (opts.fileFrom / fileTo) play and loop only that excerpt
 //                      (qa/check-nobeat.mjs plays a beatless intro this way).
+//   'shared'           (beat server task 3) no input here: the conductor's levels message through ?clock=shared's link
+//                      (channel or relay socket; experiments/levels.js), for a page in OBS's browser, which cannot open
+//                      an audio input. bands and the energy envelopes come from the message (re-smoothed here with
+//                      this page's own frame time, today's attack and release); energy.kick from the message's kicks,
+//                      each aged from its OWN time (the conductor's wall time, mapped to this page's audio clock), so
+//                      relay delay does not move it. INTENSITY ONLY (docs/BEAT_RELAY_PROTOCOL.md): the lanes (kick,
+//                      snare, hat, level) and the beat stay the clock's; nothing here works out tempo, phase or the bar.
+//                      No message for SHARED_STALE_MS: the bands fall to 0 (status 'waiting'). __qa.audioIn.shared =
+//                      { levelsIn, ageMs, kicksSeen }.
 // Anything else falls back to 'clock' and says so in .fallback (as the clock does). Analysis runs once per read();
 // the fixed 57 Hz AudioWorklet cadence comes with the live tracker (clock PR 3).
 //
@@ -59,6 +68,7 @@
   const nowSec = () => (root.performance ? root.performance.now() : Date.now()) / 1000;   // the frame clock (rAF time)
   // no-beat mode: below this confidence the beat weight heads to 0; the energy envelopes' attack and release (s)
   const BEAT_CONF_MIN = 0.4, ENERGY_ATTACK = 0.01, ENERGY_RELEASE = 0.25;
+  const SHARED_STALE_MS = 1000, SHARED_KICKS_KEPT = 32;
   const smooth = r => r * r * (3 - 2 * r);
 
   // magnitude spectrum (dB per bin) → 8 band levels 0..1 (mean over each band's bins, dB mapped −90 … −20 → 0 … 1)
@@ -95,7 +105,7 @@
     const clock = opts.clock;
     if (!clock || typeof clock.read !== 'function') throw new Error('AudioIn.create needs { clock }');
     const requested = opts.source || 'clock';
-    const source = /^(clock|mic|line|file:.+)$/.test(requested) ? requested : 'clock';
+    const source = /^(clock|mic|line|shared|file:.+)$/.test(requested) ? requested : 'clock';
     const fallback = source === requested ? null : `unknown audio source ${requested}; reading the clock`;
     if (fallback && root.console) root.console.warn('[audio-in] ' + fallback);
     const md = () => root.navigator && root.navigator.mediaDevices;
@@ -126,6 +136,8 @@
       // no-beat mode: the weight's state (r: the linear ramp, w = smoothstep(r)), the forced confidence (QA), energy
       bw: { r: null, w: 0, target: 0, conf: 0, lost: false, forced: null, barS: 2, at: null },
       energyState: { env: ZERO(), kick: 0, level: 0, at: null }, eKick: onsetLane('kick'),
+      // ?audio=shared: the conductor's kicks heard so far (each by its own wall time, once), and counts for QA
+      sharedKicks: [], sharedSeen: 0, sharedLastT: null,
       // the time a step uses: an explicit one (tests), else the frame's own time from frameStart (so beatWeight() and
       // read() later in the same frame do not move the weight again: VIZ pages, #231), else the clock now (a page that
       // never calls frameStart)
@@ -174,8 +186,41 @@
         return { bands: { ...e.env }, kick: e.kick, level: e.level };
       },
       get energy() { const e = this.energyState; return { bands: { ...e.env }, kick: e.kick, level: e.level }; },
+      // ?audio=shared: the latest levels message -> band levels (0 when there is none or it is older than
+      // SHARED_STALE_MS), its kicks kept by their own time; then the same envelopes as a local input, and energy.kick
+      // from those kicks aged from when they happened (mapped onto this page's audio clock by the shared clock)
+      sharedBands() {
+        const L = clock.sharedLevels || null, out = ZERO();
+        if (!L || !(L.ageMs <= SHARED_STALE_MS)) { this.status = 'waiting'; return out; }
+        this.status = 'shared';
+        BANDS.forEach((b, i) => { const v = L.msg.bands[i]; out[b] = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0; });
+        if (L.msg.t !== this.sharedLastT) {
+          this.sharedLastT = L.msg.t;
+          for (const k of L.msg.kicks || []) {
+            if (!Number.isFinite(k.t) || this.sharedKicks.some(x => x.t === k.t)) continue;
+            this.sharedKicks.push({ t: k.t, vel: Number.isFinite(k.vel) ? Math.max(0, Math.min(1, k.vel)) : 0.5 }); this.sharedSeen++;
+          }
+          this.sharedKicks.sort((x, y) => x.t - y.t);
+          while (this.sharedKicks.length > SHARED_KICKS_KEPT) this.sharedKicks.shift();
+        }
+        return out;
+      },
+      stepShared(now) {
+        const e = this.stepEnergy(this.sharedBands(), now);
+        const at = clock.ctx ? clock.now({ raw: true }) : null;
+        let k = 0;
+        if (Number.isFinite(at) && typeof clock.heardAt === 'function') {
+          for (const h of this.sharedKicks) {
+            const ht = clock.heardAt(h.t), d = Number.isFinite(ht) ? at - ht : NaN;
+            if (d >= 0) k = Math.max(k, h.vel * (1 - Math.exp(-d / 0.005)) * Math.exp(-d / TAU.kick));
+          }
+        }
+        this.energyState.kick = k;
+        return { bands: e.bands, kick: k, level: e.level };
+      },
       // the energy alone, for a page with its own analyser path (16b never calls read()): once per frame
       readEnergy() {
+        if (source === 'shared') return this.running ? this.stepShared() : this.energy;
         if (!this.running || !this.attach() || !this.analyser) return this.energy;
         if (!(this.dbFrame === this.frame)) { this.analyser.getFloatFrequencyData(this.db); this.dbFrame = this.frame; }
         return this.stepEnergy(bandLevels(this.db, this.ctx.sampleRate, {}), undefined, this.ctx.currentTime);
@@ -201,6 +246,7 @@
         this.attached = true;
         const ctx = this.ctx;
         if (source === 'clock') { if (clock.master) clock.master.connect(this.analyser); this.status = 'clock'; }
+        else if (source === 'shared') { this.status = 'waiting'; this.openedAt = nowSec(); }   // nothing to open: the levels come by the link
         else if (source === 'mic' || source === 'line') {
           this.status = 'asking';
           this.openInput().then(stream => {
@@ -291,6 +337,12 @@
       read() {
         const c = clock.read();
         const out = { level: c.level, kick: c.kick, snare: c.snare, hat: c.hat, bands: ZERO(), wave: null, beatWeight: this.stepWeight(c), energy: this.energy };
+        if (source === 'shared') {   // the lanes stay the clock's; bands and energy from the conductor's levels
+          if (!this.running || !this.attach()) return out;
+          out.energy = this.stepShared();
+          out.bands = { ...out.energy.bands };
+          return out;
+        }
         if (!this.running || !this.attach() || !this.analyser) return out;
         const fresh = !(this.logOn && this.dbFrame === this.frame);   // frameStart's log reading, if this frame has one
         if (fresh) this.analyser.getFloatFrequencyData(this.db);
@@ -351,6 +403,7 @@
       warning: a.warning, device: a.device, banner: !!a.warning, openedAt: a.openedAt, log: a.log,
       smoothing: a.analyser ? a.analyser.smoothingTimeConstant : null, fftSize: a.analyser ? a.analyser.fftSize : null,
       sampleRate: a.ctx ? a.ctx.sampleRate : null,
+      shared: a.source === 'shared' ? { levelsIn: a.clock.sharedLevels ? a.clock.sharedLevels.n : 0, ageMs: a.clock.sharedLevels ? Math.round(a.clock.sharedLevels.ageMs) : null, kicksSeen: a.sharedSeen } : null,
       now: a.clock.ctx && a.clock.now ? a.clock.now() : null, playing: !!a.clock.playing }));
     return target;
   }

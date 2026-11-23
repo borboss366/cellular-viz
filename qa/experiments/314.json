@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "id": "00-levels-host",
+  "page": "levels-host",
+  "note": "Beat server task 3: 16b Hodge on ?clock=shared&audio=shared in no-beat mode (confidence 0); its energy path runs on the shared levels only (a synthetic signal with no beat, no file). The host publishes 30 levels a second.",
+  "kind": "render",
+  "params": { "scene": "16-hodge-kaleidoscope.html" },
+  "resolutions": ["1080p"],
+  "warmup": 6,
+  "seconds": 12,
+  "values": {
+    "sent": "__qa.levelsHost.sent",
+    "levelsIn": "__qa.levelsHost.scene ? __qa.levelsHost.scene.levelsIn : null",
+    "status": "__qa.levelsHost.scene ? __qa.levelsHost.scene.status : null",
+    "kicksSeen": "__qa.levelsHost.scene ? __qa.levelsHost.scene.kicksSeen : null",
+    "w": "__qa.levelsHost.scene ? __qa.levelsHost.scene.w : null",
+    "levelMax": "__qa.levelsHost.max.level",
+    "kickMax": "__qa.levelsHost.max.kick",
+    "energyFrames": "__qa.levelsHost.energyFrames"
+  },
+  "gates": [
+    { "metric": "value.sent", "min": 300, "name": "the host published levels, 30 a second (about 540 in 18 s)" },
+    { "metric": "value.levelsIn", "min": 300, "name": "the scene received them (?audio=shared)" },
+    { "metric": "value.status", "equals": "shared", "name": "audio-in's shared source is live at the end" },
+    { "metric": "value.w", "max": 0.01, "name": "no-beat mode: the beat weight is 0" },
+    { "metric": "value.levelMax", "min": 0.05, "name": "the no-beat path saw the music's level" },
+    { "metric": "value.kicksSeen", "min": 5, "name": "the thumps came as kicks with their own time" },
+    { "metric": "value.kickMax", "min": 0.2, "name": "energy.kick rose on them" },
+    { "metric": "value.energyFrames", "min": 100, "name": "the host read the scene's energy every frame (software rendering: about 20 a second at least)" },
+    { "metric": "errors", "max": 0 }
+  ],
+  "record": { "stills": 1 }
+}

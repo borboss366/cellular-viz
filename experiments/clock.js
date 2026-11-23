@@ -209,7 +209,7 @@
     return /(?:^|;\s*)cvrelay=1(?:;|$)/.test(cookie || '');
   }
   function linkLib(cb) {
-    if (root.SharedLink && root.RelayLib) { cb(root.SharedLink); return; }
+    if (root.SharedLink && root.RelayLib && root.LevelsLib) { cb(root.SharedLink); return; }
     const doc = root.document;
     if (!doc || !doc.head || !SELF_SRC) { cb(null); return; }
     const add = (name, next) => {
@@ -219,7 +219,7 @@
       s.onerror = () => { if (root.console) root.console.warn(`[clock] could not load ${name}: the channel only`); cb(null); };
       doc.head.appendChild(s);
     };
-    add('relay-lib.js', () => add('shared-link.js', () => cb(root.SharedLink || null)));
+    add('relay-lib.js', () => add('levels.js', () => add('shared-link.js', () => cb(root.SharedLink || null))));
   }
 
   function defaultContext() {
@@ -363,7 +363,7 @@
       step: null, lastBooked: -Infinity, seenJumps: 0, stateLog: [], rises: [], taps: [] } : null;
     // shared: the flywheel from the conductor's messages (see the header)
     const shared = source === 'shared' ? { state: 'waiting', model: null, pending: 0, slewAt: null, lastMsg: null, msgs: 0, jumpsIn: 0,
-      lastErrMs: null, lost: false, step: null, lastBooked: -Infinity, skipped: 0, channel: null, link: null, badge: null, stateLog: [], fixedOffset: null, knobs: new Array(KNOBS).fill(null), knobMsgs: 0 } : null;
+      lastErrMs: null, lost: false, step: null, lastBooked: -Infinity, skipped: 0, channel: null, link: null, levels: null, levelsAt: null, levelsIn: 0, badge: null, stateLog: [], fixedOffset: null, knobs: new Array(KNOBS).fill(null), knobMsgs: 0 } : null;
     if (shared) {   // ?offset=<ms> on a scene's URL (or opts.offset) wins over the publisher's offsetMs
       const v = parseFloat(opts.offset !== undefined ? opts.offset : queryParam('offset'));
       if (Number.isFinite(v)) shared.fixedOffset = v;
@@ -823,6 +823,8 @@
         if (!shared || !msg || typeof msg !== 'object') return;
         // the conductor's knobs: their own message, or riding on a clock message; stored even before Play
         if (msg.type === 'knobs' || msg.type === 'clock') { const k = knobList(msg.knobs); if (k) { shared.knobs = k; shared.knobMsgs++; } }
+        // the conductor's levels (levels.js): kept for audio-in's ?audio=shared, intensity only, never the beat
+        if (msg.type === 'levels') { if (Number.isFinite(msg.t) && Array.isArray(msg.bands)) { shared.levels = msg; shared.levelsAt = epochNow(); shared.levelsIn++; } return; }
         if (!this.ctx) return;
         if (msg.type === 'jump') return this.sharedJump(msg);
         if (msg.type !== 'clock' || !(msg.bpm > 0) || !Number.isFinite(msg.beats) || !Number.isFinite(msg.t)) return;
@@ -915,6 +917,10 @@
       },
       // the conductor's pot row 1 (see the header): 8 values 0..1, null until known; knob(n) for n 1-8
       get knobs() { return shared ? shared.knobs.slice() : new Array(KNOBS).fill(null); },
+      // ?clock=shared: the conductor's latest levels message and its age (ms), for audio-in's 'shared' source only
+      get sharedLevels() { return shared && shared.levels ? { msg: shared.levels, ageMs: epochNow() - shared.levelsAt, n: shared.levelsIn } : null; },
+      // a conductor wall time (ms) -> this page's audio time (s), raw: for a kick's own time (?audio=shared)
+      heardAt(te) { return shared && this.ctx && Number.isFinite(te) ? this.sharedHeard(te) : null; },
       knob(n) { return shared && Number.isInteger(n) && n >= 1 && n <= KNOBS ? shared.knobs[n - 1] : null; },
       // the beat knob's gain (see the header): 1 until knob n is known, 0 at the bottom, 3 at the top
       beatGain(n) { return beatGain(shared && Number.isInteger(n) && n >= 1 && n <= KNOBS ? shared.knobs[n - 1] : null); },
@@ -1328,6 +1334,15 @@
       },
       get link() { return link ? link.state : null; },
       onOffset: null,   // the conductor page: fn(report) for each scene's offset report (an 'offset' log record)
+      // the conductor's levels (levels.js), at most RATE_HZ (30) a second: the object on the channel, binary on the socket
+      levelsLast: -Infinity, levelsSent: 0,
+      levels(m) {
+        if (!m || m.type !== 'levels') return null;
+        const e = now();
+        if (e - this.levelsLast < 1000 / 30 - 1) return null;
+        post(m); this.levelsLast = e; this.levelsSent++;
+        return m;
+      },
     };
     if (opts.timers !== false) pub.timer = setInterval(() => pub.tick(), SHARED_PUBLISH_MS / 2);
     return pub;

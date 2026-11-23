@@ -74,6 +74,7 @@ button.reject{background:#c0182b !important;color:#fff}
 </style>
 <script src="clock.js"></script>
 <script src="relay-lib.js"></script>
+<script src="levels.js"></script>
 <script src="shared-link.js"></script>
 <script src="clock-tracker.js"></script>
 <script src="midi-controller.js"></script>
@@ -213,6 +214,19 @@ $('session').textContent = $('session').title = id;
 // each scene's measured offset to this page's wall clock, once per page load, through the relay (the owner's call A,
 // report only): an 'offset' record in the session log; over 5 ms is a finding
 publisher.onOffset = r => { const rec = offsetRecord(r); if (rec) log.add('offset', rec); };
+// the levels (beat server task 3, levels.js): what this page hears (the line input, or the decks' mix), 30 a second,
+// for scenes on ?audio=shared (OBS Browser Sources have no audio input). Intensity only: the scenes' beat stays the
+// clock's (docs/BEAT_RELAY_PROTOCOL.md). The phase is the clock's own, for the record
+let levelsMeter = null;
+if (window.LevelsLib) setInterval(() => {
+  if (!levelsMeter) {
+    const node = inputMode === 'line' ? clock.lineInputNode : mixBus;
+    if (!node) return;
+    levelsMeter = LevelsLib.createMeter({ ctx, node });
+  }
+  const r = clock.read({ raw: true });
+  publisher.levels(levelsMeter.sample({ phase: r.phase }));
+}, 1000 / LevelsLib.RATE_HZ);
 // the recording of the clock's input next to the log (Saturday brief task 3, qa/conduct-rec.mjs): <session>.wav on the
 // box, its sample 0 at the log's ctx time in <session>.wav.json. On in guest mode (?clock=line; ?rec=0 turns it off),
 // off with the playlist (?rec=1 turns it on)

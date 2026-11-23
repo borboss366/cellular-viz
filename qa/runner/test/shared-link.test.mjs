@@ -57,7 +57,7 @@ test('shared-link: the socket opens on ?relay=1 or conduct-serve\'s cookie (neve
   assert.equal(L.relayUrl({ protocol: 'http:', host: 'a' }, '?relay=ws%3A%2F%2Fb%3A9%2Frelay%3Fv%3D1'), 'ws://b:9/relay?v=1');
   const src = fs.readFileSync(path.join(EX, 'clock.js'), 'utf8');
   assert.match(src, /cvrelay=1/, 'clock.js decides on the same cookie');
-  assert.match(src, /add\('relay-lib\.js', \(\) => add\('shared-link\.js'/, 'clock.js loads relay-lib.js, then shared-link.js');
+  assert.match(src, /add\('relay-lib\.js', \(\) => add\('levels\.js', \(\) => add\('shared-link\.js'/, 'clock.js loads relay-lib.js, levels.js, then shared-link.js');
   assert.match(src, /shared\.link = L\.create\(\{ channel: mine \|\| undefined \}\)/, 'the shared source hands its channel to the link');
   assert.match(src, /post = m => link\.postMessage\(m\)/, 'Clock.publish posts through the link');
   // conduct-serve: every page comes with the cookie when the relay is there; without the relay, none
