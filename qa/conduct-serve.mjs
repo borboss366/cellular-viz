@@ -41,6 +41,8 @@
 //                                BroadcastChannel carries (clock, jumps, knobs, slot commands, controls, panic), passed
 //                                to every other page, with the latest state for a page that joins late
 //   GET  /api/relay              the relay's counts { version, clients, joined, left, in, out, rejected, slow, ... }
+//   With the relay, every page (.html under /experiments/) comes with the cookie cvrelay=1: the shared clock opens the
+//   relay socket on it (experiments/shared-link.js), and pages served anywhere else (the QA viewer, GitHub Pages) do not.
 // The tracks are read, never copied or listed outside this server; the session logs stay in the sessions folder
 // (default: beside the tracks folder), outside git (R9).
 import http from 'node:http';
@@ -58,6 +60,7 @@ export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 export const BROWSER_MODULES = ['marks.mjs', 'conduct-log.mjs', 'audition.mjs', 'conduct-rec.mjs'];
 export const SESSION_RE = /^conductor-\d{8}-\d{6}(-[a-z0-9]{1,8})?$/;
 export const MAX_POST = 4 << 20, MAX_LINE = 64 << 10;
+export const RELAY_COOKIE = 'cvrelay=1';
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
   '.flac': 'audio/flac', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.aif': 'audio/aiff', '.aiff': 'audio/aiff' };
 const SAFE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(html|js|mjs|css|json)$/;
@@ -147,7 +150,9 @@ export function createHandler({ tracksDir, sessionsDir, repo = REPO, qaHome = pr
     try {
       if (req.method === 'GET' && !parts.length) { res.writeHead(302, { location: '/experiments/clock-conductor.html' }); return res.end(); }
       if ((req.method === 'GET' || req.method === 'HEAD') && parts[0] === 'experiments' && parts.length === 2 && SAFE_FILE.test(parts[1])) {
-        return sendFile(req, res, path.join(repo, 'experiments', parts[1]));
+        // with the relay here, a page is told so (clock.js / shared-link.js open the socket on this cookie; task 2)
+        const extra = relay && parts[1].endsWith('.html') ? { 'set-cookie': `${RELAY_COOKIE}; Path=/; SameSite=Lax` } : {};
+        return sendFile(req, res, path.join(repo, 'experiments', parts[1]), undefined, extra);
       }
       if (req.method === 'GET' && parts[0] === 'qa' && parts.length === 2 && BROWSER_MODULES.includes(parts[1])) return sendFile(req, res, path.join(repo, 'qa', parts[1]));
       if (req.method === 'GET' && parts[0] === 'api' && parts[1] === 'relay' && parts.length === 2) {
