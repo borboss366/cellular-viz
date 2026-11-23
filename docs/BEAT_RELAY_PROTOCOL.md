@@ -6,6 +6,35 @@ OBS's browser). From `docs/CELLULAR_VIZ_BRIEF_BEAT_SERVER.md` and the owner's ca
 23 Nov (A, B, C). Code: `qa/beat-relay.mjs` (the relay), `experiments/relay-lib.js`,
 `experiments/shared-link.js` (a page's link: channel + socket), `experiments/levels.js`.
 
+## How the beat relay works
+
+1. **The conductor is the brain.** The conductor page runs in Chrome on the Mac. It
+   hears the music, finds the beat and reads the LCXL3. The relay makes no beat
+   decisions.
+2. **The relay is a post office only.** The relay is part of conduct-serve on the box.
+   It sends the conductor's clock, controls, panic and levels to each page that is
+   connected.
+3. **Chrome does not need the relay.** Chrome windows also get all messages directly
+   through the BroadcastChannel. If the relay stops, the Chrome windows continue to work.
+   OBS Browser Sources need the relay.
+4. **Nothing to install on the Mac.**
+   1. Open the normal tunnel: `ssh -L 8790:localhost:8790 puggie@192.168.8.164`.
+   2. Open the pages from `http://localhost:8790`. A page that conduct-serve sends turns
+      the relay on (the cookie `cvrelay=1`).
+   3. To check the relay, open `http://localhost:8790/experiments/setup-check.html` and
+      push "Run checks". Make sure that the "Beat server" line shows PASS.
+5. **Why the relay is on the box.** conduct-serve already sends the pages from the box.
+   The cost:
+   - OBS messages go from the Mac to the box and back to the Mac. The delay on the box
+     alone is p50 0.36 ms, max 1.26 ms. The delay through the tunnel was measured on
+     23 Nov: p50 ___ ms, p99 ___ ms (write the result here; see
+     `docs/BEAT_RELAY_DELAY.md`).
+   - The OBS sources need the tunnel and the Wi-Fi. If the tunnel stops, the OBS sources
+     stop. The Chrome windows continue.
+6. **Option for later: the relay on the Mac.** conduct-serve with the relay can run on
+   the Mac. This needs Node and a copy of the repo. Nobody has tested it on macOS yet.
+   Decide after the tunnel delay result.
+
 ## Rules
 
 1. **The conductor is the only authority.** It decides the clock and publishes it. The

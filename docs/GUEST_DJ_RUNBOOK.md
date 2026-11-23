@@ -22,6 +22,8 @@ Fallback, if the interface does not work: use the Mac's built-in microphone. Put
 
 ## 2. Check the Mac
 1. In Terminal, run `ssh -L 8790:localhost:8790 puggie@192.168.8.164`. Keep this window open.
+   This tunnel also carries the beat relay. For how the relay works, read
+   "How the beat relay works" in `docs/BEAT_RELAY_PROTOCOL.md`.
 2. In a second Terminal window, run `curl -fsSL https://raw.githubusercontent.com/borboss366/cellular-viz/main/tools/mac-check.sh | sh`
 3. Read the line "Line input". It must say PASS and name `<interface>`.
 4. Do the fix step of each FAIL. Ignore the Wi-Fi WARN.
