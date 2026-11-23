@@ -15,6 +15,8 @@
 //
 // Protocol (version RELAY_VERSION = 1)
 //   - Connect to /relay?v=1. Another v: { type: 'hello', v: 1, ok: false, error: 'version', want: 1 }, then close 4001.
+//   - Binary frames are the levels message only (experiments/levels.js; checked by its 4-byte head and length), passed
+//     on unchanged as levels (may be lost), never stored; see docs/BEAT_RELAY_PROTOCOL.md.
 //   - Every message is one JSON object in one text frame (at most MAX_MSG bytes) with v: 1 and a type ([a-z-], 32
 //     chars at most). Messages that do not fit are not passed on; the sender hears { type: 'relay-error', v, error }
 //     (the first 3 times). 'hello' and 'relay-error' come only from the relay.
@@ -138,7 +140,8 @@ export class Peer extends EventEmitter {
       if (f.opcode === 10) continue;
       if (f.opcode === 1 || f.opcode === 2) {
         if (this.parts) { this.close(1002, 'interleaved'); return; }
-        if (f.opcode === 2) { this.close(1003, 'text only'); return; }
+        // binary: one whole frame only (the levels message, experiments/levels.js); a fragmented binary is refused
+        if (f.opcode === 2) { if (!f.fin) { this.close(1003, 'fragmented binary'); return; } this.emit('binary', f.payload); continue; }
         if (f.fin) this.emit('message', f.payload.toString('utf8'));
         else { this.parts = [f.payload]; this.partsLen = f.payload.length; }
         continue;
@@ -159,7 +162,11 @@ export class Peer extends EventEmitter {
     this.socket.write(encodeFrame(opcode, payload, this.mask));
     return true;
   }
-  send(msg) { return this.closed ? false : this.writeFrame(1, typeof msg === 'string' ? msg : JSON.stringify(msg)); }
+  send(msg) {
+    if (this.closed) return false;
+    if (Buffer.isBuffer(msg)) return this.writeFrame(2, msg);   // a binary frame (levels)
+    return this.writeFrame(1, typeof msg === 'string' ? msg : JSON.stringify(msg));
+  }
   ping() { if (!this.closed) this.writeFrame(9, ''); }
   close(code = 1000, reason = '') {
     if (this.closed) return;
@@ -194,7 +201,7 @@ export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, le
   const clients = new Set();
   const state = { clock: null, knobs: null, panic: null, controls: new Map() };
   const seqs = {}, seenIds = new Set(), idOrder = [];
-  const counts = { joined: 0, left: 0, in: 0, out: 0, rejected: 0, slow: 0, silent: 0, versionRefused: 0, levelsDropped: 0, resyncs: 0, timeAsks: 0, duplicates: 0 };
+  const counts = { joined: 0, left: 0, in: 0, out: 0, rejected: 0, slow: 0, silent: 0, versionRefused: 0, levelsDropped: 0, resyncs: 0, timeAsks: 0, duplicates: 0, binaryIn: 0 };
   // a command with an id is passed on once (a page that reconnects may send it again)
   function repeated(m) {
     if (!COMMAND_TYPES.includes(m.type) || m.id === undefined || m.id === null) return false;
@@ -275,6 +282,19 @@ export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, le
     for (const o of clients) if (o !== c) deliver(o, out, m.type);
     return out;
   }
+  // a binary frame: the levels message (experiments/levels.js: 'L', version 1, 60 + 12 n bytes). Passed on as it is to
+  // every other page, as levels (may be lost: only the newest waits for a backed-up page); never stored or replayed
+  function onBinary(c, buf) {
+    counts.in++;
+    const n = buf.length >= 3 ? buf[2] : -1;
+    if (buf.length < 60 || buf[0] !== 0x4c || buf[1] !== 1 || n > 8 || buf.length !== 60 + 12 * n) {
+      counts.rejected++; c.rejected++;
+      if (c.rejected <= 3) c.peer.send({ type: 'relay-error', v: RELAY_VERSION, error: 'binary' });
+      return;
+    }
+    counts.binaryIn++;
+    for (const o of clients) if (o !== c) deliver(o, buf, 'levels');
+  }
   // a sender with no socket (tests): its answers (relay-error, time, the late state) go to reply()
   const ghost = reply => ({ peer: { closed: false, buffered: 0, send: m => reply(typeof m === 'string' ? JSON.parse(m) : m) }, rejected: 0 });
   function join(peer, v) {
@@ -287,6 +307,7 @@ export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, le
     const c = { peer, rejected: 0, pendingLevels: null, drainWait: false, drainTimer: null };
     clients.add(c); counts.joined++;
     peer.on('message', text => onMessage(c, text));
+    peer.on('binary', buf => onBinary(c, buf));
     peer.on('close', () => { if (c.drainTimer) { clearTimeout(c.drainTimer); c.drainTimer = null; } if (clients.delete(c)) counts.left++; });
     peer.send({ type: 'hello', v: RELAY_VERSION, ok: true, relay: RELAY_VERSION, t: now(), clients: clients.size });
     for (const m of snapshot()) peer.send(m);
@@ -341,6 +362,8 @@ export class RelayClient extends EventEmitter {
     super();
     this.peer = peer; this.messages = []; this.closed = null;
     peer.on('message', text => { let m; try { m = JSON.parse(text); } catch (e) { return; } this.messages.push(m); this.emit('msg', m); });
+    peer.on('binary', buf => { this.binary.push(buf); this.emit('bin', buf); });
+    this.binary = [];
     peer.on('close', code => { this.closed = code; this.emit('closed', code); });
   }
   send(m) { return this.peer.send(m); }

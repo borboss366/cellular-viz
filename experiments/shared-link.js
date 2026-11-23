@@ -34,8 +34,10 @@
 (function (root) {
   'use strict';
   const Lib = root.RelayLib || (typeof module === 'object' && module.exports && typeof require === 'function' ? require('./relay-lib.js') : null);
+  // the levels message's binary form (levels.js); without it a binary frame is dropped
+  const levelsLib = () => root.LevelsLib || (typeof module === 'object' && module.exports && typeof require === 'function' ? require('./levels.js') : null);
   const CHANNEL = 'cellular-viz-clock';
-  const MONO_TYPES = ['clock', 'knobs'];
+  const MONO_TYPES = ['clock', 'knobs', 'levels'];
   const OFFSET_ASK_MS = 100, OFFSET_IDLE_MS = 1000, OFFSET_LOG_KEPT = 32;
   const PING_N = 5, PING_MS = 100, PING_WAIT_MS = 3000, FINDING_MS = 5;
   // the page's file name and slot, for its offset report (R9: no names of people or tracks)
@@ -124,7 +126,11 @@
       let m = msg;
       if (Lib.COMMAND_TYPES.indexOf(m.type) >= 0 && (m.id === undefined || m.id === null)) m = Object.assign({}, m, { id: ids() });
       if (ch) { try { ch.postMessage(m); } catch (e) { /* closed */ } }
-      if (ws && ws.readyState === 1) { try { ws.send(JSON.stringify(m)); st.sent++; } catch (e) { /* closing */ } }
+      if (ws && ws.readyState === 1) {
+        // levels go as one binary frame on the socket (VIZ research note 4), the object on the channel
+        const LL = m.type === 'levels' ? levelsLib() : null;
+        try { ws.send(LL ? LL.encode(m) : JSON.stringify(m)); st.sent++; } catch (e) { /* closing */ }
+      }
     }
     // the offset to the conductor, once per load (see the header)
     function onPong(msg) {
@@ -185,11 +191,14 @@
       let s;
       try { s = new WS(st.url); } catch (e) { later(); return; }
       ws = s;
+      try { s.binaryType = 'arraybuffer'; } catch (e) { /* a stand-in */ }
       s.onopen = () => { if (ws !== s) return; st.socket = 'open'; st.opens++; retry = 0; st.nextMs = null; pumpOffset(); startPing(); };
       s.onmessage = e => {
         if (ws !== s) return;
         let m = null;
-        try { m = JSON.parse(e && e.data); } catch (err) { m = null; }
+        const d = e && e.data;
+        if (typeof d !== 'string') { const LL = levelsLib(); m = LL ? LL.decode(d) : null; if (m) st.levelsIn = (st.levelsIn || 0) + 1; }
+        else { try { m = JSON.parse(d); } catch (err) { m = null; } }
         if (m) deliver(m, 'socket');
       };
       s.onclose = () => { if (ws !== s) return; ws = null; st.socket = 'closed'; if (offsetTimer) { clearT(offsetTimer); offsetTimer = null; } later(); };

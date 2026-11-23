@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>levels host (QA)</title>
+<!--
+  QA host for ?audio=shared (docs/CELLULAR_VIZ_BRIEF_BEAT_SERVER.md task 3): a stand-in conductor and one scene in an
+  iframe of the same origin, so the shared clock's channel joins them as on the show laptop. The host runs a silent
+  metronome on the shared clock (Clock.publish) and a synthetic signal with NO beat: a slow noise bed and low thumps at
+  uneven gaps (0.55 to 1.4 s, seeded), never routed to the speakers. LevelsLib.createMeter turns it into the levels
+  message, 30 a second (publisher.levels), as the conductor does with its input. The scene runs with
+  ?clock=shared&audio=shared and its confidence forced to 0 (no-beat mode), so its energy path runs on the shared
+  levels alone (not ?capture=1: that presses the scene's Play by itself, and the host presses it). No audio file, no names (R9).
+  ?scene=16-hodge-kaleidoscope.html (default)  ?sceneQuery=<extra scene query, URL-encoded>  ?seed=7
+  Play (#play) starts the clock, the signal and the scene. __qa.levelsHost = { sent, scene: { status, levelsIn,
+  kicksSeen, level, kick, w }, max: { level, kick }, energyFrames }; __qa.errors = the scene's page errors.
+  Plain ASCII only (#205).
+-->
+<style>
+html, body { margin: 0; height: 100%; background: #000; color: #889; font: 12px ui-monospace, Menlo, monospace; overflow: hidden; }
+#bar { position: fixed; left: 0; top: 0; z-index: 2; padding: 4px 8px; background: rgba(0,0,0,0.6); }
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; }
+</style>
+</head>
+<body>
+<iframe id="scene" allow="autoplay"></iframe>
+<div id="bar"><button id="play">Play</button> <span id="state">stopped</span></div>
+<script src="clock.js"></script>
+<script src="relay-lib.js"></script>
+<script src="levels.js"></script>
+<script>
+(function () {
+  const qs = new URLSearchParams(location.search), $ = id => document.getElementById(id);
+  const scene = /^[\w.-]+\.html$/.test(qs.get('scene') || '') ? qs.get('scene') : '16-hodge-kaleidoscope.html';
+  const extra = qs.get('sceneQuery') || '';
+  let seed = Number(qs.get('seed')) > 0 ? Number(qs.get('seed')) : 7;
+  const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const clock = Clock.create({ source: 'metronome', settings: { bpm: 120, bpb: 4, muted: true, kick: 'x---x---x---x---', snare: '----x-------x---', hat: '--x---x---x---x-' }, keys: false });
+  const publisher = Clock.publish(clock);
+  const host = { sent: 0, scene: null, max: { level: 0, kick: 0 }, energyFrames: 0 }, errors = [];
+  window.__qa = Object.assign(window.__qa || {}, {});
+  Object.defineProperty(window.__qa, 'levelsHost', { get: () => host, configurable: true, enumerable: true });
+  Object.defineProperty(window.__qa, 'errors', { get: () => errors, configurable: true, enumerable: true });
+  Object.defineProperty(window.__qa, 'clockLate', { get: () => clock.lateStats, configurable: true, enumerable: true });
+  const frame = $('scene');
+  frame.src = `${scene}?clock=shared&audio=shared${extra ? '&' + extra : ''}`;
+  frame.addEventListener('load', () => {
+    try { frame.contentWindow.addEventListener('error', e => errors.push(String((e && e.message) || e))); } catch (e) { errors.push('scene not reachable: ' + e.message); }
+  });
+  let meter = null, started = false;
+  // the signal: a slow noise bed and low thumps at uneven gaps (no beat), into the meter only
+  function startSignal() {
+    const ctx = clock.ctx, out = ctx.createGain();
+    const n = ctx.createBufferSource(), buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = rand() * 2 - 1;
+    n.buffer = buf; n.loop = true;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
+    const bed = ctx.createGain(); bed.gain.value = 0.08;
+    n.connect(lp); lp.connect(bed); bed.connect(out); n.start();
+    const swell = () => { const t = ctx.currentTime; bed.gain.setValueAtTime(bed.gain.value, t); bed.gain.linearRampToValueAtTime(0.04 + 0.12 * rand(), t + 2); setTimeout(swell, 2000); };
+    swell();
+    const thump = () => {
+      const t = ctx.currentTime + 0.02, o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.15);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.9, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+      o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.3);
+      setTimeout(thump, 550 + 850 * rand());   // uneven gaps: no tempo to find
+    };
+    thump();
+    meter = LevelsLib.createMeter({ ctx, node: out });
+    setInterval(() => {
+      const r = clock.read({ raw: true });
+      if (publisher.levels(meter.sample({ phase: r.phase }))) host.sent++;
+    }, 1000 / LevelsLib.RATE_HZ);
+  }
+  // the scene's side, read every frame
+  function watch() {
+    requestAnimationFrame(watch);
+    let q = null;
+    try { q = frame.contentWindow && frame.contentWindow.__qa; } catch (e) { q = null; }
+    if (!q) return;
+    const ai = q.audioIn || {}, sh = ai.shared || {}, e = q.energy || null, bw = q.beatWeight || null;
+    host.scene = { status: ai.status || null, levelsIn: sh.levelsIn || 0, kicksSeen: sh.kicksSeen || 0, level: e ? e.level : null, kick: e ? e.kick : null, w: bw ? bw.w : null };
+    if (e && started) {
+      host.energyFrames++;
+      if (e.level > host.max.level) host.max.level = e.level;
+      if (e.kick > host.max.kick) host.max.kick = e.kick;
+    }
+  }
+  requestAnimationFrame(watch);
+  $('play').onclick = () => {
+    if (started) return;
+    started = true;
+    clock.start();
+    startSignal();
+    $('state').textContent = 'publishing';
+    // the scene: Play, and no-beat mode (confidence 0), once it is there
+    const go = () => {
+      let w = null;
+      try { w = frame.contentWindow; } catch (e) { w = null; }
+      const btn = w && w.document && w.document.getElementById('play');
+      if (!btn || !w.__qa || typeof w.__qa.forceConfidence !== 'function') { setTimeout(go, 200); return; }
+      btn.click(); w.__qa.forceConfidence(0);
+    };
+    go();
+  };
+})();
+</script>
+</body>
+</html>
