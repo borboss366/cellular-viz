@@ -124,3 +124,64 @@ runbook's main path or the Chrome route changes.
 The order in #308 (delay report before levels, so the measured delay
 sets the levels rate) is accepted. The "up to 60 a second" above is
 then a ceiling, not a target.
+
+## Task 7: the show runs from the Mac (owner, 23 Nov; the user's go)
+
+**Why.** With the relay on the box, every message for an OBS source
+goes from the Mac to the box and back over Wi-Fi and the tunnel. The
+beat is safe (clock messages carry their own time), but a Wi-Fi stall
+freezes the levels and a dropped tunnel stops every OBS source. A
+party, here or elsewhere, must not depend on that. `conduct-serve`
+already runs on a laptop and needs only Node, so this is a start
+script and a test, not an extraction.
+
+**What stays the same.** The address is still
+`http://localhost:8790`. OBS sources, the saved offset profiles and
+the runbook's URLs therefore do not change. The box keeps its own
+conduct-serve for building and testing; the tunnel becomes the
+development route.
+
+**For the box**
+1. `tools/start-show.sh`, in the style of `start-chrome.sh` (with
+   `--dry-run` and node tests):
+   - checks Node (the box runner's major version or newer);
+   - prints the tag and commit of the checkout, and warns when it is
+     not on a release tag or has local changes;
+   - refuses to start when port 8790 is taken, and says why (the
+     tunnel uses the same port: close it);
+   - starts `conduct-serve` on 127.0.0.1 with the sessions folder
+     outside the repo, in guest mode by default (no tracks folder),
+     `--dir` for a playlist;
+   - then calls `start-chrome.sh` with the conductor and the slots.
+2. A test: conduct-serve with no tracks folder serves the pages, the
+   relay and the session log.
+3. `/api/relay` and the setup check's "Beat server" line say where the
+   server runs, from a `--label` given at start (`mac`, `box`). No
+   host names.
+4. `tools/copy-session.sh`: copies a session's log and audio from the
+   Mac to the private folder on the box and prints the sha256 of both
+   ends (done by hand on 21 Nov). Nothing from a session enters the
+   repo.
+5. Fill the box row of the table in `docs/BEAT_RELAY_DELAY.md`; the
+   protocol doc quotes a figure the table does not have.
+6. Runbook: the local server is the main path; the tunnel is the
+   fallback and the development route.
+
+**Mac session (Claude Code on the Mac, with the user)**
+- Fill the delay table: through the tunnel and on the Mac alone, at
+  20 and 60 a second. Then set the levels rate from the numbers.
+- From the local server, **with Wi-Fi off**: 30 minutes on Browser
+  Sources and on Chrome windows; ten slot switches each; knobs, a
+  flip, panic and release.
+- The route comparison of the main brief (window capture against
+  Browser Sources, 120 fps video) is done in the same session, from
+  the local server.
+- Copy the session to the box with the new tool.
+
+**The user's gate.** A full set runs with Wi-Fi off and the tunnel
+closed. If it does, the rehearsal runs from the Mac.
+
+**Out of scope.** Beat source adapters (each one is its own small
+process on the Mac, sending the reserved `source` message, when a
+source is proven). Moving the conductor's logic out of its page.
+Starting at login.
