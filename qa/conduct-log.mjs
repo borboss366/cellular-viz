@@ -10,8 +10,23 @@
 // v3 (#239, hand-held mode): adds 'hold' and 'holdSuspect' (the clock's state when it changes, { on }) and 'holdPress'
 // (a hold or auto-hold press { kind: 'hold' | 'autoHold', origin, on }): presses, never hand fixes
 // v3 addition (#244): 'holdRecentre' { from, to, n } when the held tempo re-centred (trackerState.held.recentres grew)
+// v3 addition (beat server brief, owner's call A, 23 Nov): 'offset' { loadId, page, slot, ms, rttMs, n, finding }, one per
+// page load: a scene measured its wall-clock offset to the conductor through the relay (5 pings, the shortest round
+// trip) and reported it; finding when |ms| > OFFSET_FINDING_MS. Report only: nothing applies the offset. page is the
+// scene's file name and loadId a random id per load (R9: no names of people or tracks); offsetRecord() makes the record.
 export const SCHEMA_V = 3;
-export const TYPES = ['session', 'latency', 'track', 'pair', 'xfade', 'beat', 'sample', 'fix', 'jump', 'state', 'mark', 'key', 'wheel', 'hold', 'holdSuspect', 'holdPress', 'holdRecentre'];
+export const TYPES = ['session', 'latency', 'track', 'pair', 'xfade', 'beat', 'sample', 'fix', 'jump', 'state', 'mark', 'key', 'wheel', 'hold', 'holdSuspect', 'holdPress', 'holdRecentre', 'offset'];
+export const OFFSET_FINDING_MS = 5;
+/** a page's offset report (the relay's { type: 'offset-report' }) -> the log record's fields, or null when it does not fit */
+export function offsetRecord(m) {
+  if (!m || typeof m !== 'object') return null;
+  const id = typeof m.loadId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(m.loadId) ? m.loadId : null;
+  const page = typeof m.page === 'string' && /^[A-Za-z0-9._-]{1,64}$/.test(m.page) ? m.page : null;
+  if (!id || !page || !Number.isFinite(m.ms) || !Number.isFinite(m.rttMs) || !(m.n >= 1)) return null;
+  const slot = m.slot === 'A' || m.slot === 'B' ? m.slot : null;
+  const ms = Math.round(m.ms * 100) / 100;
+  return { loadId: id, page, slot, ms, rttMs: Math.round(m.rttMs * 100) / 100, n: Math.floor(m.n), finding: Math.abs(ms) > OFFSET_FINDING_MS };
+}
 export const PAIR_EVERY_S = 5, SAMPLE_EVERY_S = 0.1;
 const pad = n => String(n).padStart(2, '0');
 

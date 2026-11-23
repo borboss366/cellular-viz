@@ -9,7 +9,8 @@
   at full window and steps through the set: the controller's upper buttons 3/4 (slot A) and 7/8 (slot B) through the
   conductor, or the left / right arrow keys (Page Up / Page Down) in this window. A black cover hides each switch
   until the new scene's shared clock is locked. Open both from set.html ("Open slots"). ?in=<label>: the audio input
-  for every scene, as on set.html; ?scene=N (1-based): start on scene N. Logic: slot.js (SlotLib).
+  for every scene, as on set.html; ?scene=N (1-based): start on scene N. Logic: slot.js (SlotLib). The commands come
+  by the shared clock's channel and, when conduct-serve has the relay, its socket too (shared-link.js, beat server task 2).
   __qa.slot = { slot, index, scene, url, n, loading, coverOn, panicMode, loads, lost, frames, switches }.
   Plain ASCII only (#205).
 -->
@@ -27,6 +28,8 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 <div id="cover" class="on"></div>
 <div id="msg"></div>
 <script src="set.js"></script>
+<script src="relay-lib.js"></script>
+<script src="shared-link.js"></script>
 <script src="slot.js"></script>
 <script>
 (function () {
@@ -44,8 +47,13 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
   }).then(set => {
     const errs = SetLib.validate(set);
     if (errs.length) throw new Error('set.json has problems:\n' + errs.join('\n'));
+    // the channel, and the relay socket when conduct-serve served this page (shared-link.js): in OBS's browser the
+    // slot commands and the controls asks come by the socket; a slot measures no offset (its scene does)
     let channel = null;
-    try { if (typeof BroadcastChannel === 'function') channel = new BroadcastChannel('cellular-viz-clock'); } catch (e) { channel = null; }
+    try {
+      if (window.SharedLink) channel = SharedLink.create({ measureConductor: false });
+      else if (typeof BroadcastChannel === 'function') channel = new BroadcastChannel('cellular-viz-clock');
+    } catch (e) { channel = null; }
     qa.slot = SlotLib.create({ doc: document, win: window, set, slot: slotName, start: SlotLib.startIndex(slotName, search, set.scenes.length),
       inLabel, channel });
     qa.slot.show(qa.slot.qa.index);

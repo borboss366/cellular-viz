@@ -272,7 +272,8 @@ test('slot.html, the conductor and the controller wiring; plain ASCII (#205)', (
   const html = fs.readFileSync(path.join(EX, 'slot.html'), 'utf8');
   assert.ok(/^[\x09\x0a\x0d\x20-\x7e]*$/.test(html), 'slot.html is plain ASCII');
   assert.ok(/^[\x09\x0a\x0d\x20-\x7e]*$/.test(fs.readFileSync(path.join(EX, 'slot.js'), 'utf8')), 'slot.js is plain ASCII');
-  assert.match(html, /<script src="set\.js"><\/script>\s*<script src="slot\.js"><\/script>/);
+  assert.match(html, /<script src="set\.js"><\/script>\s*<script src="relay-lib\.js"><\/script>\s*<script src="shared-link\.js"><\/script>\s*<script src="slot\.js"><\/script>/);
+  assert.match(html, /SharedLink\.create\(\{ measureConductor: false \}\)/, 'the relay socket too, when conduct-serve has it (beat server task 2)');
   assert.match(html, /fetch\('set\.json', \{ cache: 'no-store' \}\)/);
   assert.match(html, /new BroadcastChannel\('cellular-viz-clock'\)/);
   assert.match(html, /SlotLib\.create\(\{ doc: document, win: window, set, slot: slotName, start: SlotLib\.startIndex\(slotName, search, set\.scenes\.length\)/);

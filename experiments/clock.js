@@ -779,7 +779,12 @@
             linkLib(L => {
               if (!L || !shared || !self.playing || shared.channel !== mine || shared.link) return;
               shared.link = L.create({ channel: mine || undefined });
-              shared.link.onmessage = e => self.sharedMessage(e && e.data);
+              shared.link.onmessage = e => {
+                const m = e && e.data;
+                // the conductor's panic by the socket too (an OBS Browser Source has no channel for panic.js to hear)
+                if (m && m.type === 'panic' && root.__panic && root.PanicLib) { const mode = root.PanicLib.panicMode(m); if (mode) root.__panic.set(mode); }
+                self.sharedMessage(m);
+              };
             });
           }
         }
@@ -1256,7 +1261,9 @@
     if (!opts.post && relayWantedHere()) {
       linkLib(L => {
         if (!L || stopped) return;
-        link = L.create({ channel: ch || undefined });
+        link = L.create({ channel: ch || undefined, answerPings: true });
+        // a scene's offset report (the owner's call A): the conductor page logs it (pub.onOffset)
+        link.onmessage = e => { const m = e && e.data; if (m && m.type === 'offset-report' && typeof pub.onOffset === 'function') pub.onOffset(m); };
         post = m => link.postMessage(m);
       });
     }
@@ -1320,6 +1327,7 @@
         if (ch) { try { ch.close(); } catch (err) {} ch = null; }
       },
       get link() { return link ? link.state : null; },
+      onOffset: null,   // the conductor page: fn(report) for each scene's offset report (an 'offset' log record)
     };
     if (opts.timers !== false) pub.timer = setInterval(() => pub.tick(), SHARED_PUBLISH_MS / 2);
     return pub;

@@ -73,6 +73,8 @@ export const RECORD_FIELDS = {
   session: ['v'], latency: [], track: ['idx', 'event'], pair: ['idx', 'posMs'], xfade: ['from', 'to', 'event'], beat: ['src'],
   sample: [], fix: ['id', 'kind'], jump: ['fromBeats', 'toBeats'], state: ['to'], mark: ['idx', 'name', 'trackMs'], key: ['shown'],
   wheel: ['kind'], hold: ['on'], holdSuspect: ['on'], holdPress: ['kind', 'origin'], holdRecentre: ['to'],
+  // v3 addition (beat server, owner's call A): a page's measured offset to the conductor, one per load, report only
+  offset: ['loadId', 'page', 'slot', 'ms', 'rttMs', 'n', 'finding'],
 };
 export const SCHEMA_VERSIONS = [1, 2, 3];
 /** every jump kind a session can log (Q9: each clock.jumps entry appears once): the tracker's own (acquire, override,
@@ -179,7 +181,13 @@ export function readSession(records) {
   return { head, input: head.input || 'line:page', latency, clockLatency, clock, shadow, samples, sampleT: samples.map(s => s.t),
     tracks, xfades, fixes: recs.filter(r => r.type === 'fix'), jumps: recs.filter(r => r.type === 'jump'), keyShownS, endCtx,
     held: onSpans(recs, 'hold', endCtx), suspect: onSpans(recs, 'holdSuspect', endCtx), holdPresses: recs.filter(r => r.type === 'holdPress'),
-    recentres: recs.filter(r => r.type === 'holdRecentre') };
+    recentres: recs.filter(r => r.type === 'holdRecentre'), offsets: offsetSummary(recs) };
+}
+/** v3 offset records -> { loads, maxAbsMs, findings: the loads over the limit, pages } (report only) */
+export function offsetSummary(recs) {
+  const rows = recs.filter(r => r.type === 'offset' && num(r.ms));
+  return { loads: rows.length, maxAbsMs: rows.length ? Math.max(...rows.map(r => Math.abs(r.ms))) : null,
+    findings: rows.filter(r => r.finding).length, pages: [...new Set(rows.map(r => r.page))].sort() };
 }
 /** v3: the [from, to) spans while a hold / holdSuspect record said on (the last one open to the end of the log) */
 function onSpans(recs, type, endCtx) {
