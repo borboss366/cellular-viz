@@ -86,7 +86,7 @@ test('shared-link: the socket opens on ?relay=1 or conduct-serve\'s cookie (neve
 test('shared-link: each message once from channel or socket, old seq and stale late clocks dropped, commands get ids, offset, resync, reconnect with backoff', () => {
   const wall = 1e6, N = fakeNet(), T = fakeTimers(), ch = new FakeChannel();
   const doc = { listeners: {}, visibilityState: 'visible', addEventListener(k, f) { this.listeners[k] = f; } };
-  const link = L.create({ channel: ch, WebSocket: N.FakeWS, url: 'ws://h/relay?v=1', now: () => wall, setTimeout: T.setTimeout, clearTimeout: T.clearTimeout, random: () => 1, document: doc });
+  const link = L.create({ channel: ch, WebSocket: N.FakeWS, url: 'ws://h/relay?v=1', now: () => wall, setTimeout: T.setTimeout, clearTimeout: T.clearTimeout, random: () => 1, document: doc, measureConductor: false });
   const got = [];
   link.onmessage = e => got.push(e.data);
   assert.equal(N.sockets.length, 1);
@@ -143,6 +143,48 @@ test('shared-link: each message once from channel or socket, old seq and stale l
   assert.equal(link.state.opens, 2); assert.equal(link.state.socket, 'open');
   link.close();
   assert.equal(ch.closed, true); assert.equal(link.state.socket, 'off');
+});
+
+test('shared-link offset to the conductor (owner\'s call A): 5 pings at the first open, the conductor answers, one report per load; >5 ms is a finding; nothing applies it', async () => {
+  const LG = await import('../../conduct-log.mjs');
+  let wall = 5e6;
+  const relay = R.createRelay({ pingMs: 0 }), N = fakeNet(), TS = fakeTimers(), TC = fakeTimers();
+  // the conductor's wall clock runs 7.2 ms ahead of the scene's
+  const cond = L.create({ BroadcastChannel: null, WebSocket: N.FakeWS, url: 'ws://relay', now: () => wall + 7.2, setTimeout: TC.setTimeout, clearTimeout: TC.clearTimeout, answerPings: true, measureConductor: false });
+  const scene = L.create({ BroadcastChannel: null, WebSocket: N.FakeWS, url: 'ws://relay', now: () => wall, setTimeout: TS.setTimeout, clearTimeout: TS.clearTimeout,
+    location: { pathname: '/experiments/16-dive.html', search: '?clock=shared&slot=B' }, search: '?clock=shared&slot=B', idBase: 'pscene1' });
+  const [cs, ss] = N.sockets;
+  cs.send = text => { const out = relay.pass(text); if (out) ss.recv(out); };   // the relay passes each on to the other page
+  ss.send = text => { wall += 1; const out = relay.pass(text); if (out) cs.recv(out); };   // 1 ms on the way there
+  const reports = [], seen = [];
+  cond.onmessage = e => reports.push(e.data);
+  scene.onmessage = e => seen.push(e.data);
+  cs.open();
+  assert.equal(cond.state.conductorPing, 'answers');
+  ss.open();
+  assert.equal(scene.state.conductorPing, 'pinging');
+  for (let i = 0; i < 20 && scene.state.conductorPing === 'pinging'; i++) TS.q.splice(0).forEach(t => t.f());   // the next 100 ms steps
+  assert.equal(cond.state.pongs, 5, 'five answers');
+  assert.equal(scene.state.conductorPing, 'done');
+  const off = scene.state.conductorOffset;
+  assert.ok(Math.abs(off.ms - 7.7) < 0.01, `offset ${off.ms} ms (7.2 ahead, plus half the 1 ms one-way trip)`);
+  assert.deepEqual([off.rttMs, off.n, off.finding], [1, 5, true], 'over 5 ms: a finding');
+  assert.equal(reports.length, 1, 'one report per load, on the conductor\'s link');
+  const rec = LG.offsetRecord(reports[0]);
+  assert.deepEqual(rec, { loadId: 'pscene1', page: '16-dive.html', slot: 'B', ms: off.ms, rttMs: 1, n: 5, finding: true });
+  assert.equal(seen.filter(m => /clock-p|offset-report/.test(m.type)).length, 0, 'pings, pongs and reports never reach the scene');
+  // a reconnect does not ping again (once per load); a scene with no conductor gives up after 3 s with no report
+  ss.drop(); TS.q.splice(0).forEach(t => t.ms >= 100 && t.ms < 10000 && t.f());
+  assert.equal(reports.length, 1);
+  const N2 = fakeNet(), T2 = fakeTimers();
+  let w2 = 0;
+  const alone = L.create({ BroadcastChannel: null, WebSocket: N2.FakeWS, url: 'ws://relay', now: () => w2, setTimeout: T2.setTimeout, clearTimeout: T2.clearTimeout });
+  N2.sockets[0].open();
+  for (let i = 0; i < 50 && alone.state.conductorPing === 'pinging'; i++) { const due = T2.q.splice(0); if (!due.length) break; w2 += Math.max(...due.map(t => t.ms)); due.forEach(t => t.f()); }
+  assert.equal(alone.state.conductorPing, 'no answer');
+  assert.equal(alone.state.conductorOffset, null);
+  assert.equal(N2.sockets[0].sent.filter(m => m.type === 'offset-report').length, 0);
+  for (const l of [cond, scene, alone]) l.close();
 });
 
 // ---------- the shared clock's tests through the relay ----------

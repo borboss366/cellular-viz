@@ -73,6 +73,8 @@ button.reject{background:#c0182b !important;color:#fff}
 #helpPanel{padding:8px 16px 12px;background:#141a26;border-top:1px solid #3a4560;font-size:14px}#helpPanel h2{margin:10px 0 4px}#helpPanel ol,#helpPanel ul{margin:0;padding-left:22px}
 </style>
 <script src="clock.js"></script>
+<script src="relay-lib.js"></script>
+<script src="shared-link.js"></script>
 <script src="clock-tracker.js"></script>
 <script src="midi-controller.js"></script>
 </head>
@@ -183,7 +185,7 @@ button.reject{background:#c0182b !important;color:#fff}
 </main>
 <script type="module">
 import { snapMark, stepMark, markRecord, beatTimes } from '../qa/marks.mjs';
-import { ConductLog, sessionId } from '../qa/conduct-log.mjs';
+import { ConductLog, sessionId, offsetRecord } from '../qa/conduct-log.mjs';
 import * as C from './conductor.mjs';
 import { createCorrections, PANEL_HZ } from './corrections.mjs';
 import { createRecorder } from '../qa/conduct-rec.mjs';
@@ -208,6 +210,9 @@ const id = sessionId();
 const log = new ConductLog({ id, input: inputMode, now: () => ctx.currentTime,
   post: async body => { const r = await fetch(`/log/${id}`, { method: 'POST', body }); if (!r.ok) throw new Error(`HTTP ${r.status}`); } });
 $('session').textContent = $('session').title = id;
+// each scene's measured offset to this page's wall clock, once per page load, through the relay (the owner's call A,
+// report only): an 'offset' record in the session log; over 5 ms is a finding
+publisher.onOffset = r => { const rec = offsetRecord(r); if (rec) log.add('offset', rec); };
 // the recording of the clock's input next to the log (Saturday brief task 3, qa/conduct-rec.mjs): <session>.wav on the
 // box, its sample 0 at the log's ctx time in <session>.wav.json. On in guest mode (?clock=line; ?rec=0 turns it off),
 // off with the playlist (?rec=1 turns it on)
@@ -406,7 +411,12 @@ function onSlot(slot, dir) {
 // the knobs per slot: each slot window sends its scene's knobs (slot.js); the latest per slot, one line (plain ASCII)
 const slotControls = {};
 let controlsChannel = null;
-try { if (typeof BroadcastChannel === 'function') controlsChannel = new BroadcastChannel(Clock.SHARED_CHANNEL); } catch (e) { controlsChannel = null; }
+// the channel and, when this page has the relay (conduct-serve), its socket: slot windows in OBS's browser send their
+// knobs through the relay (shared-link.js); this link measures nothing (the page is the conductor)
+try {
+  if (window.SharedLink) controlsChannel = SharedLink.create({ measureConductor: false });
+  else if (typeof BroadcastChannel === 'function') controlsChannel = new BroadcastChannel(Clock.SHARED_CHANNEL);
+} catch (e) { controlsChannel = null; }
 const slotLayout = C.slotLayout(typeof MidiController === 'object' && MidiController.MAP ? MidiController.MAP.SLOT_CCS : null);
 const showControls = () => { $('controls').textContent = 'slot knobs: ' + C.controlsLine(slotControls, slotLayout); };
 // the encoder LEDs (midi-controller.js setControls): slot A's active knobs blue, B's orange; once the controller exists

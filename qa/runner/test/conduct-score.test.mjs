@@ -372,3 +372,27 @@ test('schema v3 (#239 hand-held mode): hold / holdSuspect / holdPress parse; tim
   assert.deepEqual(C.checkRecord({ type: 'holdPress', ctx: 1, kind: 'hold' }), ['holdPress: origin missing']);
   assert.deepEqual(C.checkRecord({ type: 'holdRecentre', ctx: 1, from: 126 }), ['holdRecentre: to missing']);
 });
+
+test('schema v3 offset record (beat server, owner\'s call A): the log module makes it, the scorer reads it, the score is unchanged, a summary', async () => {
+  const L = await import('../../conduct-log.mjs');
+  const { records, info } = one({ clock: beatsList(T) });
+  const v3 = records.map(r => (r.type === 'session' ? { ...r, v: 3 } : r));
+  const base = C.scoreSession(C.parseLog(v3.map(r => JSON.stringify(r)).join('\n') + '\n'), info);
+  const a = L.offsetRecord({ loadId: 'pabc123-1', page: '16-dive.html', slot: 'A', ms: 0.371, rttMs: 1.2, n: 5 });
+  const b = L.offsetRecord({ loadId: 'pdef', page: '13-flow-lab.html', slot: 'C', ms: -6.234, rttMs: 3, n: 4 });
+  assert.deepEqual(a, { loadId: 'pabc123-1', page: '16-dive.html', slot: 'A', ms: 0.37, rttMs: 1.2, n: 5, finding: false });
+  assert.deepEqual([b.slot, b.ms, b.finding], [null, -6.23, true], 'over 5 ms: a finding; an unknown slot: null');
+  assert.equal(L.offsetRecord({ loadId: 'x', page: 'a b.html', ms: 1, rttMs: 1, n: 1 }), null, 'a file name only (R9)');
+  assert.equal(L.offsetRecord({ loadId: 'x', page: 'a.html', ms: NaN, rttMs: 1, n: 1 }), null);
+  assert.ok(L.TYPES.includes('offset'));
+  const withOff = v3.concat([{ type: 'offset', ctx: 5, ...a }, { type: 'offset', ctx: 9, ...b }]);
+  const parsed = C.parseLog(withOff.map(r => JSON.stringify(r)).join('\n') + '\n');
+  assert.equal(parsed.filter(r => r.type === 'offset').length, 2);
+  const res = C.scoreSession(parsed, info);
+  assert.deepEqual([res.session.inPct, res.session.pass], [base.session.inPct, base.session.pass], 'report only: the score is unchanged');
+  assert.deepEqual(C.offsetSummary(parsed), { loads: 2, maxAbsMs: 6.23, findings: 1, pages: ['13-flow-lab.html', '16-dive.html'] });
+  assert.deepEqual(C.checkRecord({ type: 'offset', ctx: 1, loadId: 'x', page: 'a.html', slot: null, ms: 1, rttMs: 1, n: 1 }), ['offset: finding missing']);
+  const log = new L.ConductLog({ id: 'conductor-20261123-140000', now: () => 2 });
+  log.add('offset', a);
+  assert.equal(C.parseLog(log.toJsonl()).filter(r => r.type === 'offset')[0].page, '16-dive.html', 'what the conductor writes parses');
+});
