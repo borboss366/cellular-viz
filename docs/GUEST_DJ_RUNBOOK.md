@@ -163,3 +163,52 @@ All files go to one folder on the box, outside the repo: `/home/puggie/pi-durabl
 8. If you made an OBS recording, copy it to the `video/` folder the same way.
 9. Write the file names in `notes/mac-session-2026-11-21.md`. Do not put the files, the DJ's name or the track names
    in the repo.
+
+## 8. OBS Browser Sources (test route, not the main path)
+
+Beat server brief, task 5 (`docs/CELLULAR_VIZ_BRIEF_BEAT_SERVER.md`). Use this route only to test it, for example in
+the Mac session. The main path stays the Chrome windows of sections 3 and 4. Do not change `set.json`. If the test
+fails, use the Chrome route.
+
+In this route each slot is a Browser Source in OBS. A Browser Source has no audio input, no MIDI and no channel to
+the conductor, so the slot gets everything through the beat relay in conduct-serve: the clock, the slot buttons, the
+knobs, panic and the music's levels (`?audio=shared`).
+
+Before you start:
+1. Make sure that conduct-serve on the box has the relay. Open
+   http://localhost:8790/experiments/setup-check.html in Chrome. Push "Run checks".
+2. Make sure that the "Beat server" line shows PASS. If it shows FAIL, stop. Use the Chrome route.
+
+Add the two slots:
+1. Do steps 1 to 7 of section 3 (Chrome, the conductor). Do not open the slot windows in Chrome.
+2. In OBS, select the scene for the set. Under Sources, push + and select Browser.
+3. Type the name `CV slot A`. Push OK.
+4. Set these values:
+   - URL: `http://localhost:8790/experiments/slot.html?slot=A&obs=1&relay=1`
+   - Width: 1920. Height: 1080.
+   - Select "Use custom frame rate". Set it to 60.
+   - Clear "Shutdown source when not visible".
+   - Clear "Refresh browser when scene becomes active".
+5. Push OK.
+6. Right-click `CV slot A`. Select Filters. Under Effect Filters, push + and select the DistroAV NDI output filter.
+   Type the NDI name `CV-A`. Push Close.
+7. Do steps 2 to 6 again for slot B: the name `CV slot B`, the URL
+   `http://localhost:8790/experiments/slot.html?slot=B&obs=1&relay=1`, the NDI name `CV-B`.
+8. In Resolume, put the NDI source `CV-A` in layer 1 and `CV-B` in layer 2.
+
+Check the slots:
+1. Make sure that each source shows a scene. A slot is black for up to 3 seconds when it loads a scene. This is
+   correct.
+2. Push the controller's upper buttons 3 and 4. Make sure that slot A changes its scene. Push 7 and 8 for slot B.
+3. Turn knob 1 and knob 5. Make sure that the beat of the scene in each slot changes.
+4. On the conductor, push B (blackout). Make sure that both slots go black. Push B again. Make sure that both slots
+   come back.
+5. Make sure that OBS shows no microphone or MIDI request. The slots do not need them.
+
+If a slot stays black for more than 5 seconds:
+1. Open the source's properties. Push "Refresh cache of current page".
+2. If it stays black, do the checks in "Before you start" again.
+3. If it stays black, hide `CV slot A` and `CV slot B`. Use the Chrome route (sections 3 and 4).
+
+The Mac session measures the delay of both routes, as on 21 Nov (120 fps video). Write the result in the session
+notes.

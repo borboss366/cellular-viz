@@ -22,7 +22,12 @@
 //   SlotLib.step(i, dir, n), slotCommand(msg, slot) -> -1 | 1 | 0, keyDir(e) -> -1 | 1 | 0
 //   SlotLib.slotKnobs(set, scene, slot) -> { [param]: 'N' } (the *Knob params, slot B + 4); controls(set, scene, slot)
 //     -> [{ knob, name }] by knob
-//   SlotLib.create({ doc, win, set, slot, start, inLabel, channel, now, setTimeout, clearTimeout, setInterval, clearInterval })
+//   SlotLib.obsOverrides(search) -> the scene query for the OBS route (?obs=1, beat server task 5), else null: a Browser
+//     Source in OBS has no audio input, no MIDI and no BroadcastChannel to the conductor, so every scene gets
+//     { audio: 'shared' (the conductor's levels by the relay), in: null (no input to pick), relay: '1' (the socket
+//     even without conduct-serve's cookie) }. The Chrome route (no ?obs) and set.json are unchanged.
+//   SlotLib.create({ doc, win, set, slot, start, inLabel, over, channel, now, setTimeout, clearTimeout, setInterval, clearInterval })
+//     over: query keys on top of each scene's URL (obsOverrides); null removes a key
 //     -> { show(i), step(dir), onMessage(msg), onKey(e), qa, stop() }
 // Include after set.js (SetLib). Node's tests require it with SetLib passed in.
 (function (root) {
@@ -39,6 +44,7 @@
     try { return decodeURIComponent(m[1].replace(/\+/g, ' ')).trim(); } catch (e) { return ''; }
   }
   const parseSlot = search => (param(search, 'slot').toUpperCase() === 'B' ? 'B' : 'A');
+  const obsOverrides = search => (param(search, 'obs') === '1' ? { audio: 'shared', in: null, relay: '1' } : null);
   const step = (i, dir, n) => (n > 0 ? (((i + dir) % n) + n) % n : 0);
   function startIndex(slot, search, n) {
     const k = parseInt(param(search, 'scene'), 10);
@@ -91,7 +97,7 @@
     let index = step(Number.isInteger(o.start) ? o.start : SLOT_NAMES.indexOf(slot), 0, n);
     let frame = null, token = 0, poll = null, deadline = null, loading = false, panicMode = 'off', loads = 0, lost = 0;
     const switches = [];
-    const url = i => SetLib.buildUrl(set, set.scenes[i], Object.assign(slotKnobs(set, set.scenes[i], slot), o.inLabel ? { in: o.inLabel } : {}));
+    const url = i => SetLib.buildUrl(set, set.scenes[i], Object.assign(slotKnobs(set, set.scenes[i], slot), o.inLabel ? { in: o.inLabel } : {}, o.over || {}));
     let controlsSent = 0;
     // the scene's knobs to the conductor (its controls line, the LEDs)
     function sendControls() {
@@ -202,7 +208,7 @@
     return api;
   }
 
-  const api = { SLOT_NAMES, READY_MS, KEYS, KNOB_OFFSET, SLOT_KNOBS, parseSlot, startIndex, step, slotCommand, keyDir, slotKnobs, controls, create };
+  const api = { SLOT_NAMES, READY_MS, KEYS, KNOB_OFFSET, SLOT_KNOBS, parseSlot, obsOverrides, startIndex, step, slotCommand, keyDir, slotKnobs, controls, create };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.SlotLib = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

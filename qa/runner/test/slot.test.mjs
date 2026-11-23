@@ -48,7 +48,7 @@ function world(o = {}) {
   const win = el('window');
   const posted = [];
   const channel = { onmessage: null, postMessage: m => posted.push(m) };
-  const s = SlotLib.create({ SetLib, doc, win, set: o.set || SET, slot: o.slot || 'A', start: o.start, inLabel: o.inLabel, channel,
+  const s = SlotLib.create({ SetLib, doc, win, set: o.set || SET, slot: o.slot || 'A', start: o.start, inLabel: o.inLabel, over: o.over, channel,
     now: () => t, setTimeout: (f, ms) => add(f, ms, false), clearTimeout: id => timers.delete(id),
     setInterval: (f, ms) => add(f, ms, true), clearInterval: id => timers.delete(id) });
   // the scene in the current frame loads: a fake window whose shared clock is waiting (or locked)
@@ -318,4 +318,27 @@ test('set.html: "Open slots" opens slot A and slot B (the input label passed) on
   el2('openAll').onclick();
   assert.equal(opened.length, 2 + SET.scenes.length, '"Open all scenes" still opens every scene');
   assert.ok(opened.slice(2).every(o => /^\d{2}-[a-z0-9-]+\.html\?/.test(o.url)));
+});
+
+test('slot OBS route (?obs=1, beat server task 5): each scene on audio=shared with no in= and relay=1; the Chrome route and set.json stay as they are', () => {
+  assert.deepEqual(SlotLib.obsOverrides('?slot=A&obs=1'), { audio: 'shared', in: null, relay: '1' });
+  assert.equal(SlotLib.obsOverrides('?slot=A'), null);
+  assert.equal(SlotLib.obsOverrides('?slot=B&obs=0'), null);
+  const O = world({ over: SlotLib.obsOverrides('?obs=1'), inLabel: 'USB Audio' });
+  O.s.show(0);
+  const u = O.stage.children[0].src;
+  for (const re of [/[?&]audio=shared(&|$)/, /[?&]relay=1(&|$)/, /[?&]clock=shared(&|$)/, /[?&]capture=1(&|$)/, /[?&]beatKnob=1(&|$)/]) assert.match(u, re, u);
+  assert.doesNotMatch(u, /[?&]in=/, 'no input to pick in OBS');
+  assert.doesNotMatch(u, /audio=line/);
+  const C = world({ inLabel: 'USB Audio' });
+  C.s.show(0);
+  assert.match(C.stage.children[0].src, /audio=line/, 'the Chrome route as before');
+  assert.match(C.stage.children[0].src, /in=USB%20Audio/);
+  assert.deepEqual(SET.defaults, { clock: 'shared', audio: 'line', in: 'BlackHole', capture: '1', beatKnob: '1' }, 'set.json unchanged');
+  const html = fs.readFileSync(path.join(EX, 'slot.html'), 'utf8');
+  assert.match(html, /inLabel, over: SlotLib\.obsOverrides\(search\), channel \}\)/);
+  const runbook = fs.readFileSync(path.join(EX, '..', 'docs', 'GUEST_DJ_RUNBOOK.md'), 'utf8');
+  assert.match(runbook, /## 8\. OBS Browser Sources/);
+  assert.match(runbook, /slot\.html\?slot=A&obs=1/);
+  assert.match(runbook, /Shutdown source when not visible/);
 });
