@@ -37,6 +37,10 @@
 //                                newest check results hold (qa/<id>/checks/ under QA_HOME, or --qa-home), else 'unknown'
 //   POST /api/audition/<stamp>   the user's verdicts ({ version: 1, stamp, verdicts }) to <sessions>/<stamp>.json
 //   GET  /api/audition/<stamp>   that file (the page's download); stamp = audition-YYYYMMDD-HHMMSS, never committed
+//   GET  /relay?v=1 (WebSocket)  the beat relay (qa/beat-relay.mjs, docs/CELLULAR_VIZ_BRIEF_BEAT_SERVER.md task 1): what the
+//                                BroadcastChannel carries (clock, jumps, knobs, slot commands, controls, panic), passed
+//                                to every other page, with the latest state for a page that joins late
+//   GET  /api/relay              the relay's counts { version, clients, joined, left, in, out, rejected, slow, ... }
 // The tracks are read, never copied or listed outside this server; the session logs stay in the sessions folder
 // (default: beside the tracks folder), outside git (R9).
 import http from 'node:http';
@@ -48,6 +52,7 @@ import { loadMap } from './corpus.mjs';
 import { checkRecord } from './conduct-score.mjs';
 import * as AU from './audition.mjs';
 import { wavHeader } from './conduct-rec.mjs';
+import { createRelay } from './beat-relay.mjs';
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const BROWSER_MODULES = ['marks.mjs', 'conduct-log.mjs', 'audition.mjs', 'conduct-rec.mjs'];
@@ -135,7 +140,7 @@ export function auditionScenes(repo = REPO, qaHome = repo) {
 }
 
 /** the request handler for a tracks folder and a sessions folder (node-tested without a socket of its own) */
-export function createHandler({ tracksDir, sessionsDir, repo = REPO, qaHome = process.env.QA_HOME || repo }) {
+export function createHandler({ tracksDir, sessionsDir, repo = REPO, qaHome = process.env.QA_HOME || repo, relay = null }) {
   return (req, res) => {
     const url = new URL(req.url, 'http://local');
     const parts = url.pathname.split('/').filter(Boolean).map(p => { try { return decodeURIComponent(p); } catch { return '\u0000'; } });
@@ -145,6 +150,9 @@ export function createHandler({ tracksDir, sessionsDir, repo = REPO, qaHome = pr
         return sendFile(req, res, path.join(repo, 'experiments', parts[1]));
       }
       if (req.method === 'GET' && parts[0] === 'qa' && parts.length === 2 && BROWSER_MODULES.includes(parts[1])) return sendFile(req, res, path.join(repo, 'qa', parts[1]));
+      if (req.method === 'GET' && parts[0] === 'api' && parts[1] === 'relay' && parts.length === 2) {
+        return relay ? json(res, 200, relay.stats()) : json(res, 404, { error: 'no relay' });
+      }
       if (req.method === 'GET' && parts[0] === 'api' && parts[1] === 'tracks' && parts.length === 2) {
         let rows = [];
         try { rows = JSON.parse(fs.readFileSync(path.join(repo, 'qa', 'corpus.json'), 'utf8')); } catch { /* no corpus: no mark names */ }
@@ -255,6 +263,14 @@ export function createHandler({ tracksDir, sessionsDir, repo = REPO, qaHome = pr
   };
 }
 
+/** the server main() runs: the handler and the beat relay on one http server (same origin, same port) */
+export function makeServer({ tracksDir, sessionsDir, repo = REPO, qaHome = process.env.QA_HOME || repo, relayOpts = {} }) {
+  const relay = createRelay(relayOpts);
+  const server = http.createServer(createHandler({ tracksDir, sessionsDir, repo, qaHome, relay }));
+  relay.attach(server);
+  return { server, relay };
+}
+
 /** listen on a Unix socket: a stale socket file (left by a crash) is removed first, then the socket is made 0600 */
 export function listenSocket(server, sock) {
   try { if (!fs.lstatSync(sock).isDirectory()) fs.unlinkSync(sock); } catch { /* none there */ }
@@ -271,11 +287,11 @@ function main(argv) {
   const port = +opt('--port', 8790), host = opt('--host', '127.0.0.1'), sock = opt('--socket');
   const qaHome = path.resolve(opt('--qa-home', process.env.QA_HOME || REPO));
   const n = listTracks(tracksDir).length;
-  const server = http.createServer(createHandler({ tracksDir, sessionsDir, qaHome }));
+  const { server, relay } = makeServer({ tracksDir, sessionsDir, qaHome });
   if (sock) {
-    listenSocket(server, sock).then(() => console.log(`conductor on ${sock} (${n} track(s); logs → ${sessionsDir})`),
+    listenSocket(server, sock).then(() => console.log(`conductor on ${sock} (${n} track(s); logs → ${sessionsDir}; relay at /relay)`),
       e => { console.error(`conductor: cannot listen on ${sock}: ${e.message}`); process.exit(1); });
-    for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => server.close(() => process.exit(0)));
+    for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { relay.close(); server.close(() => process.exit(0)); });
     return;
   }
   server.listen(port, host, () =>
