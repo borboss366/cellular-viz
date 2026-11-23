@@ -97,3 +97,30 @@ Other trackers (`CELLULAR_VIZ_BRIEF_BEAT_BAKEOFF.md`); the bridge for
 the DJ software helper or for link players (their own briefs, they
 plug into the reserved message); a second machine or the tablet (they
 need clock offset between machines); HTTPS.
+
+## Owner's calls, 23 Nov (after VIZ research's notes on #308)
+
+**A. Clock basis: wall time stays.** Everything runs on one machine,
+and the channel already relies on it inside Chrome. One addition,
+report only: on joining, each page does a short ping exchange with
+the conductor through the relay and logs its measured offset. Nothing
+applies it. An offset above 5 ms on one machine is a finding, and the
+numbers are what a second machine will need later. Note that every
+slot switch loads a new page with a new time origin, so the log
+should show the offset per load across a long run.
+
+**B. Kick hits stay in the levels message, with two rules.**
+- Scenes use them only for no-beat effects, weighted as the no-beat
+  mix is today. No page derives tempo, phase or the bar from levels
+  or kicks. A scene that does fails review.
+- Each kick carries its own time, so a scene ages it from when it
+  happened, not from when the message arrived.
+
+**C. Slots as Browser Sources: build now.** The relay's delay report
+does not compare routes; only the Mac session does, and it needs the
+feature. Until the user's gate passes, nothing in `set.json`, the
+runbook's main path or the Chrome route changes.
+
+The order in #308 (delay report before levels, so the measured delay
+sets the levels rate) is accepted. The "up to 60 a second" above is
+then a ceiling, not a target.
