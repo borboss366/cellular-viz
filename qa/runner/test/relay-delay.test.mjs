@@ -40,10 +40,12 @@ test('relay delay on one machine: 300 probes through an in-process test relay, n
     relay.close();
     await new Promise(r => server.close(r));
   }
-  // the box script starts this test relay, never conduct-serve; the doc's steps name both commands
-  const sh = fs.readFileSync(path.join(D.REPO, 'qa', 'runner', 'relay-test.sh'), 'utf8');
-  assert.match(sh, /qa\/relay-delay\.mjs" --serve --socket "\$SOCK"/);
-  assert.doesNotMatch(sh, /node [^\n]*conduct-serve/, 'it never starts conduct-serve');
+  // the tunnel measure (user, 23 Nov): conduct-serve's own relay through the normal tunnel; no box script, no test relay there
+  assert.ok(!fs.existsSync(path.join(D.REPO, 'qa', 'runner', 'relay-test.sh')), 'no test relay script on the box');
   const doc = fs.readFileSync(path.join(D.REPO, 'docs', 'BEAT_RELAY_DELAY.md'), 'utf8');
-  assert.match(doc, /relay-test\.sh/); assert.match(doc, /ssh -N -L 8791:/);
+  const two = doc.slice(doc.indexOf('## 2. Through the tunnel'), doc.indexOf('## 3. One machine'));
+  assert.match(two, /ssh -L 8790:localhost:8790 puggie@192\.168\.8\.164/);
+  assert.match(two, /http:\/\/localhost:8790\/experiments\/relay-delay\.html/);
+  assert.match(two, /http:\/\/localhost:8790\/api\/relay/);
+  assert.doesNotMatch(doc, /relay-test|8791:\//, 'no test relay through the tunnel');
 });

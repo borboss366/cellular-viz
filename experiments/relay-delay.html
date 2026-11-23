@@ -6,8 +6,9 @@
 <title>relay delay</title>
 <!--
   The beat relay's delay from a browser (docs/CELLULAR_VIZ_BRIEF_BEAT_SERVER.md task 6; the steps:
-  docs/BEAT_RELAY_DELAY.md). Served at / by the TEST relay (node qa/relay-delay.mjs --serve), so it reaches the
-  box through the tunnel without a conduct-serve restart; it also works on any page origin with a relay at /relay.
+  docs/BEAT_RELAY_DELAY.md). Through the tunnel: conduct-serve serves it at /experiments/relay-delay.html and its
+  relay is /relay on the same port. On one machine the test relay (node qa/relay-delay.mjs --serve) serves it at /.
+  It works on any page origin with a relay at /relay.
   Two sockets on this page: one sends { type: 'delay-probe', v: 1, i, t } at the rate set below, the other takes
   now - t for each (one clock, so no offset in it): sender -> relay -> receiver, as a scene sees the conductor.
   Also 20 time-ask pings: the round trip to the relay and its clock offset (the box's clock against this machine's).
@@ -45,7 +46,7 @@ th:first-child,td:first-child{text-align:left}small{color:#8a96ad}
     const ws = new WebSocket(url);
     const t = setTimeout(() => reject(new Error('no hello in 5 s')), 5000);
     ws.onmessage = e => { let m = null; try { m = JSON.parse(e.data); } catch (err) { m = null; } if (m && m.type === 'hello') { clearTimeout(t); ws.onmessage = null; resolve(ws); } };
-    ws.onerror = () => { clearTimeout(t); reject(new Error('the socket failed: is the test relay running, and the tunnel open?')); };
+    ws.onerror = () => { clearTimeout(t); reject(new Error('the socket failed: is the relay running, and the tunnel open?')); };
   });
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   let last = null;
