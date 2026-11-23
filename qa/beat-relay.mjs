@@ -23,6 +23,9 @@
 //     move the beat; receivers ignore rt and late.
 //   - Every message passed on also gets seq: a number per message type, rising by 1 (VIZ research note 2: a page
 //     that rejoins can tell a replayed state from a new one). The late state keeps its seq.
+//   - Commands (COMMAND_TYPES: panic, slot, jump) that carry an id are passed on once: the same type and id again (a
+//     resend after a reconnect) is dropped and counted (duplicates), over the last ONCE_KEEP ids (note 2). Pages
+//     filter again with experiments/relay-lib.js onceFilter, since a command can also come by the channel.
 //   - Type 'source' is reserved for beat sources (none is built in this brief); only the version is checked, like
 //     every message (VIZ research: build only the version field).
 //   - Asks to the relay itself, never passed on: { type: 'resync', v } -> the late state again, to that page only (a
@@ -51,6 +54,7 @@ export const LEVEL_BYTES = 64 << 10;
 export const SERVER_TYPES = ['hello', 'relay-error', 'time'];
 export const RELAY_ASKS = ['resync', 'time-ask'];
 export const DROPPABLE = ['levels'];
+export const COMMAND_TYPES = ['panic', 'slot', 'jump'], ONCE_KEEP = 256;
 const TYPE_RE = /^[a-z][a-z-]{0,31}$/;
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
@@ -186,8 +190,17 @@ export function checkMessage(m) {
 export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, levelBytes = LEVEL_BYTES, pingMs = PING_MS, maxMsg = MAX_MSG } = {}) {
   const clients = new Set();
   const state = { clock: null, knobs: null, panic: null, controls: new Map() };
-  const seqs = {};
-  const counts = { joined: 0, left: 0, in: 0, out: 0, rejected: 0, slow: 0, silent: 0, versionRefused: 0, levelsDropped: 0, resyncs: 0, timeAsks: 0 };
+  const seqs = {}, seenIds = new Set(), idOrder = [];
+  const counts = { joined: 0, left: 0, in: 0, out: 0, rejected: 0, slow: 0, silent: 0, versionRefused: 0, levelsDropped: 0, resyncs: 0, timeAsks: 0, duplicates: 0 };
+  // a command with an id is passed on once (a page that reconnects may send it again)
+  function repeated(m) {
+    if (!COMMAND_TYPES.includes(m.type) || m.id === undefined || m.id === null) return false;
+    const k = `${m.type}:${m.id}`;
+    if (seenIds.has(k)) return true;
+    seenIds.add(k); idOrder.push(k);
+    if (idOrder.length > ONCE_KEEP) seenIds.delete(idOrder.shift());
+    return false;
+  }
   let timer = null;
 
   function remember(m) {
@@ -249,6 +262,7 @@ export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, le
       c.peer.send({ type: 'time', v: RELAY_VERSION, id: m.id === undefined ? null : m.id, t0: m.t0 === undefined ? null : m.t0, ts: now() });
       return;
     }
+    if (repeated(m)) { counts.duplicates++; return; }
     m.rt = now();
     m.seq = seqs[m.type] = (seqs[m.type] || 0) + 1;
     remember(m);

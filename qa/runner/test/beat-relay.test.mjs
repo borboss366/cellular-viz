@@ -87,8 +87,13 @@ test('beat relay seq, resync and time: a seq per type, the late state keeps it, 
     const tm = await a.wait(m => m.type === 'time');
     assert.deepEqual([tm.id, tm.t0], [7, 123.5]); assert.ok(Number.isFinite(tm.ts));
     assert.equal(b.messages.filter(m => m.type === 'time' || m.type === 'time-ask' || m.type === 'resync').length, 0, 'asks are never passed on');
+    // a command sent again with the same id (a resend after a reconnect) is passed on once
+    cond.send({ type: 'panic', v: 1, t: 4, mode: 'calm', id: 'p1' });
+    cond.send({ type: 'panic', v: 1, t: 5, mode: 'clear', id: 'p2' });
+    await b.wait(m => m.type === 'panic' && m.id === 'p2');
+    assert.equal(b.messages.filter(m => m.type === 'panic' && m.id === 'p1').length, 1, 'p1 once');
     const st = H.relay.stats();
-    assert.deepEqual([st.resyncs, st.timeAsks], [1, 1]);
+    assert.deepEqual([st.resyncs, st.timeAsks, st.duplicates], [1, 1, 1]);
   } finally { await H.close(); }
 });
 
