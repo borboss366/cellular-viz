@@ -50,7 +50,7 @@ export const RELAY_VERSION = 1;
 export const MAX_MSG = 64 << 10;
 export const SLOW_BYTES = 1 << 20;
 export const PING_MS = 15000;
-export const LEVEL_BYTES = 64 << 10;
+export const LEVEL_BYTES = 64 << 10, DRAIN_POLL_MS = 10;
 export const SERVER_TYPES = ['hello', 'relay-error', 'time'];
 export const RELAY_ASKS = ['resync', 'time-ask'];
 export const DROPPABLE = ['levels'];
@@ -114,6 +114,9 @@ export class Peer extends EventEmitter {
     if (typeof socket.setNoDelay === 'function') socket.setNoDelay(true);
     socket.on('data', c => this.onData(c));
     socket.on('close', () => this.finish(1006));
+    // the other end went away without a close frame: an http server's sockets are half-open (allowHalfOpen), so
+    // without this the relay would keep a dropped page until the ping sweep (box test-pr, 23 Nov)
+    socket.on('end', () => this.finish(1006));
     socket.on('error', () => this.finish(1006));
   }
   get buffered() { return this.socket.writableLength || 0; }
@@ -225,10 +228,12 @@ export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, le
     c.pendingLevels = null;
     c.peer.send(text); counts.out++;
   }
+  // polled, not on 'drain': a socket emits drain only after a write returned false, and levelBytes is below the
+  // stream's highWaterMark (64 KB in Node 22), so drain may never come (box test-pr, 23 Nov)
   function waitDrain(c) {
     if (c.drainWait) return;
     c.drainWait = true;
-    c.peer.socket.once('drain', () => flushLevels(c));
+    c.drainTimer = setTimeout(() => { c.drainTimer = null; flushLevels(c); }, DRAIN_POLL_MS);
   }
   function deliver(c, text, type) {
     if (c.peer.closed) return;
@@ -276,10 +281,10 @@ export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, le
       peer.close(4001, 'version');
       return null;
     }
-    const c = { peer, rejected: 0, pendingLevels: null, drainWait: false };
+    const c = { peer, rejected: 0, pendingLevels: null, drainWait: false, drainTimer: null };
     clients.add(c); counts.joined++;
     peer.on('message', text => onMessage(c, text));
-    peer.on('close', () => { if (clients.delete(c)) counts.left++; });
+    peer.on('close', () => { if (c.drainTimer) { clearTimeout(c.drainTimer); c.drainTimer = null; } if (clients.delete(c)) counts.left++; });
     peer.send({ type: 'hello', v: RELAY_VERSION, ok: true, relay: RELAY_VERSION, t: now(), clients: clients.size });
     for (const m of snapshot()) peer.send(m);
     return c;

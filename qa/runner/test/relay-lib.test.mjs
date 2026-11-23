@@ -54,9 +54,10 @@ test('relay-lib offsetTracker: a round of 5 asks at connect, none until 30 s lat
   assert.equal(tr.estimate.rtt, 10, 'the fastest answer');
   assert.equal(tr.estimate.offset, 500 + 5 - 5, 'its offset');
   assert.equal(tr.rounds, 1);
-  t += 10;
-  assert.equal(tr.ask(t + 1000), null, 'not due for 30 s');
-  const again = tr.ask(t + 30000);
+  const roundEnd = t + 10 + 2 * 4;   // the last answer's time
+  assert.equal(tr.ask(roundEnd + 1000), null, 'not due for 30 s');
+  assert.equal(tr.ask(roundEnd + 29999), null, 'still not due');
+  const again = tr.ask(roundEnd + 30000);
   assert.ok(again, 'a new round after 30 s');
   // an ask left unanswered past the timeout makes room for another
   const tr2 = L.offsetTracker({ samples: 2 });

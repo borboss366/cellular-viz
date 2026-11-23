@@ -76,6 +76,7 @@ test('beat relay seq, resync and time: a seq per type, the late state keeps it, 
     const p = await a.wait(m => m.type === 'panic');
     assert.equal(c2.seq, 2, 'clock seq 2'); assert.equal(p.seq, 1, 'panic has its own seq');
     assert.equal(p.id, 'p1', 'a command keeps the id its sender gave it');
+    await b.wait(m => m.type === 'panic');   // b has all three before it is counted (box test-pr: counted too early)
     const n = b.messages.length;
     a.send({ type: 'resync', v: 1 });
     const again = await a.wait(m => m.type === 'clock' && m.late === true);
@@ -245,16 +246,22 @@ test('beat relay: a subscriber that stops reading is cut off and does not hold u
     slow.peer.socket.pause();   // stops reading: the kernel buffers fill, then the relay's
     const N = 8000, pad = 'x'.repeat(4000);   // 32 MB: more than the loopback's kernel buffers hold for the stalled page
     const t0 = Date.now();
-    for (let i = 0; i < N; i++) cond.send({ type: 'clock', v: 1, t: i, beats: i, bpm: 120, pad });
-    await fast.wait(m => m.type === 'clock' && m.beats === N - 1, 20000);
+    // paced in batches, so the reading page (in this same process) gets its turn and only the stalled one backs up
+    // (box test-pr, 23 Nov: sent in one go, the fast page's own backlog passed slowBytes too)
+    for (let i = 0; i < N; i++) {
+      cond.send({ type: 'clock', v: 1, t: i, beats: i, bpm: 120, pad });
+      if (i % 40 === 39) await sleep(1);
+    }
+    await fast.wait(m => m.type === 'clock' && m.beats === N - 1, 30000);
     const ms = Date.now() - t0;
     const beats = fast.messages.filter(m => m.type === 'clock').map(m => m.beats);
     assert.equal(beats.length, N, 'the fast page got every message');
     assert.ok(beats.every((b, i) => b === i), 'in order');
     const st = H.relay.stats();
     assert.equal(st.slow, 1, `the stalled page was cut off (${JSON.stringify(st)})`);
+    assert.equal(fast.closed, null, 'the reading page stays');
     assert.equal(st.clients, 2);
-    assert.ok(ms < 15000, `${N} messages of 4 KB through the relay in ${ms} ms`);
+    assert.ok(ms < 30000, `${N} messages of 4 KB through the relay in ${ms} ms`);
     console.log(`# relay fan-out with a stalled subscriber: ${N} x 4 KB in ${ms} ms`);
   } finally { await H.close(); }
 });
