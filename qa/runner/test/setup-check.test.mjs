@@ -82,6 +82,61 @@ test('setup-check: set.json -> the pages to check, every one a file in experimen
   for (const f of ['setup-check.html', 'setup-check.mjs']) assert.ok(safe.test(f), `${f} is served by conduct-serve`);
 });
 
+test('setup-check timeouts (beat server task 4): a silent check answers with its fallback, a late answer is dropped; every check in the page is timed', async () => {
+  assert.equal(await S.withTimeout(() => 7, 50, () => 'late'), 7, 'a value at once');
+  assert.equal(await S.withTimeout(new Promise(r => setTimeout(() => r('ok'), 10)), 200, () => 'late'), 'ok');
+  const never = new Promise(() => {});   // the MIDI prompt that OBS never shows
+  const t0 = Date.now();
+  const row = await S.withTimeout(never, 60, () => S.classifyTimeout('MIDI access', 15000));
+  assert.ok(Date.now() - t0 < 1000, 'it does not wait for the silent check');
+  assert.deepEqual([row.item, row.status], ['MIDI access', 'WARN']);
+  assert.match(row.detail, /no answer in 15 s/); assert.match(row.fix, /OBS Browser Source this check does not apply/);
+  assert.equal(await S.withTimeout(() => { throw new Error('boom'); }, 50, () => 'late', e => `caught ${e.message}`), 'caught boom');
+  await assert.rejects(S.withTimeout(Promise.reject(new Error('x')), 50, () => 'late'), /x/, 'no onError: the rejection stays');
+  let lateRan = false;
+  assert.equal(await S.withTimeout(new Promise(r => setTimeout(() => { lateRan = true; r('too late'); }, 80)), 20, () => 'fallback'), 'fallback');
+  await new Promise(r => setTimeout(r, 100));
+  assert.ok(lateRan, 'the slow check finished later; its answer was dropped');
+  for (const k of ['webgl', 'midi', 'audio', 'clock', 'server']) assert.ok(S.TIMEOUTS[k] > 0, `${k} has a timeout`);
+  assert.ok(S.TIMEOUTS.clock > S.LISTEN_MS, 'the clock check may listen its full 3 s');
+  const html = fs.readFileSync(path.join(EXP, 'setup-check.html'), 'utf8');
+  for (const [name, fn] of [['webgl', 'webgl'], ['midi', 'midi'], ['audio', 'audioIn'], ['clock', 'clockAndPanic'], ['server', 'server']]) {
+    assert.match(html, new RegExp(`add\\(await timed\\('${name}', '[^']+', ${fn}\\)\\)`), `${fn} runs through its timeout`);
+  }
+  assert.ok(!/add\(await (midi|audioIn|clockAndPanic)\(\)\)/.test(html), 'no untimed check is left');
+});
+
+test('setup-check server line: PASS against conduct-serve\'s relay; FAIL with no relay or another version; WARN when the socket does not open', async () => {
+  const R = await import('../../beat-relay.mjs');
+  const CS = await import('../../conduct-serve.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-relay-'));
+  fs.mkdirSync(path.join(root, 'tracks'));
+  const { server, relay } = CS.makeServer({ tracksDir: path.join(root, 'tracks'), sessionsDir: path.join(root, 'sessions') });
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const host = `127.0.0.1:${server.address().port}`;
+  try {
+    const stats = await (await fetch(`http://${host}${S.RELAY_STATS}`)).json();
+    const c = await R.connect(`ws://${host}${S.RELAY_PATH}?v=${S.RELAY_VERSION}`);
+    const hello = await c.wait(m => m.type === 'hello');
+    const ok = S.classifyServer({ stats, hello });
+    assert.equal(ok.status, 'PASS', ok.detail);
+    assert.match(ok.detail, /relay v1, 1 page\(s\) on the socket, clock not heard yet/);
+    c.peer.destroy();
+  } finally {
+    relay.close();
+    await new Promise(r => server.close(r));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+  const none = S.classifyServer({ statsError: 'HTTP 404' });
+  assert.equal(none.status, 'FAIL'); assert.match(none.detail, /does not answer \/api\/relay: HTTP 404/); assert.match(none.fix, /Start conduct-serve from main/);
+  assert.equal(S.classifyServer({ stats: { version: 2 } }).status, 'FAIL', 'another relay version');
+  assert.equal(S.classifyServer({ stats: { version: 1 }, helloError: 'no hello in 4 s' }).status, 'WARN');
+  assert.equal(S.classifyServer({ stats: { version: 1 }, hello: { ok: false, error: 'version' } }).status, 'FAIL');
+  assert.equal(S.classifyServer({ stats: { version: 1, state: { clock: true } }, hello: { ok: true, clients: 3 } }).detail, 'relay v1, 3 page(s) on the socket, clock heard');
+  const html = fs.readFileSync(path.join(EXP, 'setup-check.html'), 'utf8');
+  assert.match(html, /fetch\(S\.RELAY_STATS/); assert.match(html, /new WebSocket\(/);
+});
+
 /** a fake Mac: canned command output and a fake /Applications, then the script with the given flags */
 function fakeMac({ pages404 = [], noBlackHole = false, wifiOn = false, obs = null, usb = 'USB:\n    Launch Control XL 3:\n      Product ID: 0x0001\n', chromePs = null, lineIn = 'USB Audio CODEC', mic = false } = {}) {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'mac-check-')), cmd = path.join(d, 'cmd'), root = path.join(d, 'root');

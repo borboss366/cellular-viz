@@ -9,8 +9,10 @@
   tunnel (http://localhost:8790/experiments/setup-check.html, a secure context). "Run checks" (a user gesture) asks
   for MIDI with system exclusive messages and for the microphone, then lists PASS / WARN / FAIL with one fix step:
   secure context, WebGL2 and the GPU, the LCXL3 DAW ports and IAC Driver Bus 1, BlackHole as an audio input, the
-  shared clock (3 s on BroadcastChannel 'cellular-viz-clock'), the panic channel. The rules are in setup-check.mjs.
-  Plain ASCII only (#205).
+  shared clock (3 s on BroadcastChannel 'cellular-viz-clock'), the panic channel, and the beat server (conduct-serve's
+  relay: /api/relay and the socket /relay?v=1). Every check has a timeout (S.TIMEOUTS): one that does not answer is a
+  WARN row and the next check runs (on 18 Nov the MIDI check hung this page in OBS's browser). The rules are in
+  setup-check.mjs. Plain ASCII only (#205).
 -->
 <style>
 :root{color-scheme:dark}body{margin:0;font:16px/1.45 system-ui,sans-serif;background:#0b0e14;color:#dde3ee}
@@ -87,15 +89,46 @@ function clockAndPanic() {
     setTimeout(() => { ch.close(); resolve([S.classifyClock(msgs), S.classifyPanic(true)]); }, S.LISTEN_MS);
   });
 }
+// the beat server: GET /api/relay, then the relay socket until its hello
+async function relayStats() {
+  try {
+    const r = await fetch(S.RELAY_STATS, { cache: 'no-store' });
+    if (!r.ok) return { statsError: `HTTP ${r.status}` };
+    return { stats: await r.json() };
+  } catch (e) { return { statsError: String((e && e.message) || e) }; }
+}
+function relayHello(ms) {
+  return new Promise(resolve => {
+    let ws = null, done = false;
+    const end = v => { if (done) return; done = true; clearTimeout(timer); try { if (ws) ws.close(); } catch (e) { /* closed */ } resolve(v); };
+    const timer = setTimeout(() => end({ helloError: `no hello in ${Math.round(ms / 1000)} s` }), ms);
+    try { ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${S.RELAY_PATH}?v=${S.RELAY_VERSION}`); }
+    catch (e) { end({ helloError: String((e && e.message) || e) }); return; }
+    ws.onmessage = e => { let m = null; try { m = JSON.parse(e.data); } catch (err) { m = null; } if (m && m.type === 'hello') end({ hello: m }); };
+    ws.onerror = () => end({ helloError: 'the socket failed' });
+  });
+}
+async function server() {
+  const s = await relayStats();
+  if (!s.stats) return S.classifyServer(s);
+  return S.classifyServer({ ...s, ...(await relayHello(S.TIMEOUTS.server - 500)) });
+}
+// one check with its timeout: an error is its own FAIL row from the check, silence is a WARN row
+const timed = (name, item, run) => S.withTimeout(run, S.TIMEOUTS[name], () => S.classifyTimeout(item, S.TIMEOUTS[name]),
+  e => ({ item, status: 'FAIL', detail: `the check failed: ${String((e && e.message) || e)}`, fix: 'Reload this page. Then push Run checks again' }));
 $('run').onclick = async () => {
   $('run').disabled = true; rows.length = 0; $('ports').textContent = ''; show();
   $('state').textContent = 'running ...';
   add(S.classifySecure(window.isSecureContext, location.href));
-  add(webgl());
-  add(await midi());
-  add(await audioIn());
+  add(await timed('webgl', 'WebGL2', webgl));
+  $('state').textContent = 'MIDI (answer the prompt) ...';
+  add(await timed('midi', 'MIDI access', midi));
+  $('state').textContent = 'microphone (answer the prompt) ...';
+  add(await timed('audio', 'Audio input', audioIn));
   $('state').textContent = `listening ${S.LISTEN_MS / 1000} s on the clock channel ...`;
-  add(await clockAndPanic());
+  add(await timed('clock', 'Shared clock', clockAndPanic));
+  $('state').textContent = 'beat server ...';
+  add(await timed('server', 'Beat server', server));
   $('state').textContent = 'done';
   $('run').disabled = false;
 };
