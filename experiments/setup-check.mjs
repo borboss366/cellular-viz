@@ -4,6 +4,10 @@
 //   { item, status: 'PASS' | 'WARN' | 'FAIL', detail, fix, hint? }   (fix: one short step, ASD-STE100 style; '' on PASS;
 //   hint: shown whatever the status)
 // Text is plain ASCII (#205).
+// Every check has a timeout (the beat server brief, task 4: on 18 Nov the MIDI check hung the page in OBS's browser,
+// which shows no permission prompt): the page runs each check through withTimeout(check, TIMEOUTS[name], fallback),
+// and a check that does not answer becomes a WARN row (classifyTimeout) instead of stopping the page. The server line
+// (classifyServer) asks conduct-serve's GET /api/relay and opens the relay socket /relay?v=1 (qa/beat-relay.mjs).
 
 // the shared clock's BroadcastChannel (clock.js SHARED_CHANNEL; panic.js CHANNEL is the same channel)
 export const CLOCK_CHANNEL = 'cellular-viz-clock';
@@ -13,6 +17,22 @@ export const LCXL3_RE = /LCXL3/, DAW_RE = /DAW/, IAC_BUS = 'IAC Driver Bus 1';
 // shown with the IAC row whatever its status (Resolume must listen on the bus too; resolume.com/support/en/midi-shortcuts)
 export const RESOLUME_IAC_HINT = 'In Resolume, open Preferences > MIDI. Turn on MIDI Input for IAC Driver Bus 1. Open the MIDI monitor to see the messages.';
 export const BLACKHOLE_RE = /BlackHole/i;
+// the longest each check may take (ms); the two permission checks wait for the user's answer to Chrome's prompt
+export const TIMEOUTS = { webgl: 3000, midi: 15000, audio: 15000, clock: LISTEN_MS + 2000, server: 4000 };
+export const RELAY_VERSION = 1, RELAY_STATS = '/api/relay', RELAY_PATH = '/relay';
+
+/** run(): a value, or a promise of one; it answers within ms, else fallback() is the answer (run's late answer is
+ *  dropped). A thrown error or a rejection is passed to onError(e) when given, else it rejects. */
+export function withTimeout(run, ms, fallback, onError = null) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const finish = (f, v) => { if (!done) { done = true; clearTimeout(timer); f(v); } };
+    const timer = setTimeout(() => finish(resolve, fallback()), ms);
+    let p;
+    try { p = Promise.resolve(typeof run === 'function' ? run() : run); } catch (e) { p = Promise.reject(e); }
+    p.then(v => finish(resolve, v), e => (onError ? finish(resolve, onError(e)) : finish(reject, e)));
+  });
+}
 
 const row = (item, status, detail, fix = '') => ({ item, status, detail, fix: status === 'PASS' ? '' : fix });
 
@@ -72,6 +92,28 @@ export function classifyClock(msgs = []) {
 export function classifyPanic(opened, error = null) {
   return opened ? row('Panic channel', 'PASS', `channel "${CLOCK_CHANNEL}" opens`)
     : row('Panic channel', 'FAIL', `the channel does not open${error ? ': ' + error : ''}`, 'Use a current version of Chrome');
+}
+
+/** a check that did not answer in ms: WARN with what to do (in OBS's browser MIDI and the microphone never answer) */
+export function classifyTimeout(item, ms) {
+  return row(item, 'WARN', `no answer in ${Math.round(ms / 1000)} s`,
+    'In Chrome, answer the permission prompt. Then push Run checks again. In an OBS Browser Source this check does not apply');
+}
+
+/** the server line: { stats } from GET /api/relay (or statsError), { hello } from the relay socket (or helloError) */
+export function classifyServer({ stats = null, statsError = null, hello = null, helloError = null } = {}) {
+  const item = 'Beat server';
+  if (!stats || statsError) {
+    return row(item, 'FAIL', `conduct-serve does not answer ${RELAY_STATS}${statsError ? ': ' + statsError : ''}`,
+      'Start conduct-serve from main. Open this page through it (http://localhost:8790/experiments/setup-check.html)');
+  }
+  if (stats.version !== RELAY_VERSION) {
+    return row(item, 'FAIL', `the relay speaks version ${stats.version}, this page version ${RELAY_VERSION}`, 'Update the clone to main. Restart conduct-serve. Reload this page');
+  }
+  if (!hello || helloError) return row(item, 'WARN', `the relay answers, but its socket does not open${helloError ? ': ' + helloError : ''}`, 'Reload this page. If it stays, restart conduct-serve');
+  if (!hello.ok) return row(item, 'FAIL', `the relay refused the socket: ${hello.error || 'unknown'}`, 'Update the clone to main. Restart conduct-serve. Reload this page');
+  const st = stats.state || {};
+  return row(item, 'PASS', `relay v${stats.version}, ${hello.clients} page(s) on the socket, clock ${st.clock ? 'heard' : 'not heard yet'}`);
 }
 
 /** set.json -> the pages the server must serve: the conductor, the set page, set.json and each scene (in order, once) */
