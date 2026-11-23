@@ -184,7 +184,7 @@ Add the two slots:
 2. In OBS, select the scene for the set. Under Sources, push + and select Browser.
 3. Type the name `CV slot A`. Push OK.
 4. Set these values:
-   - URL: `http://localhost:8790/experiments/slot.html?slot=A&obs=1`
+   - URL: `http://localhost:8790/experiments/slot.html?slot=A&obs=1&relay=1`
    - Width: 1920. Height: 1080.
    - Select "Use custom frame rate". Set it to 60.
    - Clear "Shutdown source when not visible".
@@ -193,7 +193,7 @@ Add the two slots:
 6. Right-click `CV slot A`. Select Filters. Under Effect Filters, push + and select the DistroAV NDI output filter.
    Type the NDI name `CV-A`. Push Close.
 7. Do steps 2 to 6 again for slot B: the name `CV slot B`, the URL
-   `http://localhost:8790/experiments/slot.html?slot=B&obs=1`, the NDI name `CV-B`.
+   `http://localhost:8790/experiments/slot.html?slot=B&obs=1&relay=1`, the NDI name `CV-B`.
 8. In Resolume, put the NDI source `CV-A` in layer 1 and `CV-B` in layer 2.
 
 Check the slots:

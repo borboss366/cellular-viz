@@ -75,9 +75,9 @@ test('slot.html?obs=1 as a Browser Source: the scene on audio=shared locks throu
   for (const [p, tag] of [[pub, 'publisher'], [slot, 'slot']]) p.on('pageerror', e => errors.push(`${tag}: ${String(e && e.message || e)}`));
   await pub.goto(`${base}/clock-publish.html?bpm=128`, { timeout: 20e3 });
   await pub.waitForFunction(() => window.__qa && window.__qa.publisher && window.__qa.publisher.publisher.link && window.__qa.publisher.publisher.link.socket === 'open', null, { timeout: 15e3 });
-  await slot.goto(`${base}/slot.html?slot=A&obs=1`, { timeout: 20e3 });
+  await slot.goto(`${base}/slot.html?slot=A&obs=1&relay=1`, { timeout: 20e3 });
   await slot.waitForFunction(() => window.__qa && window.__qa.slot && window.__qa.slot.loads >= 1, null, { timeout: 20e3 });
-  const sceneFrame = () => slot.frames().find(f => /16-hodge-kaleidoscope\.html|\.html\?/.test(f.url()) && f !== slot.mainFrame());
+  const sceneFrame = () => slot.frames().find(f => f !== slot.mainFrame());
   // the scene: Play (OBS has no key press; capture=1 presses it), then locked through the socket
   await slot.waitForTimeout(1500);
   let fr = sceneFrame();
