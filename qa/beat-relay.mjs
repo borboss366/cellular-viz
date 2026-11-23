@@ -21,10 +21,19 @@
 //   - Every message passed on gets rt: the relay's wall time (ms) when it arrived, for the delay report (task 6).
 //     The clock messages carry their own time t (performance.timeOrigin + performance.now()), so relay delay does not
 //     move the beat; receivers ignore rt and late.
-//   - Reserved for beat sources (none is built in this brief): { type: 'source', v: 1, id, t, beats, bpm, confidence }
-//     (id [a-z0-9_-], numbers finite); the brief writes it as kind: 'source', which is taken as type 'source'.
-//   - A subscriber with more than slowBytes not yet sent (it stopped reading) is cut off, so it never holds up the
-//     others or grows the server's memory. Every pingMs the relay pings; a client silent for 2 x pingMs is cut off.
+//   - Every message passed on also gets seq: a number per message type, rising by 1 (VIZ research note 2: a page
+//     that rejoins can tell a replayed state from a new one). The late state keeps its seq.
+//   - Type 'source' is reserved for beat sources (none is built in this brief); only the version is checked, like
+//     every message (VIZ research: build only the version field).
+//   - Asks to the relay itself, never passed on: { type: 'resync', v } -> the late state again, to that page only (a
+//     page that becomes visible again resyncs instead of extrapolating across the gap, VIZ research note 3);
+//     { type: 'time-ask', v, id, t0 } -> { type: 'time', v, id, t0, ts: the relay's wall time } (for the delay report
+//     through the tunnel, task 6, where the two machines' wall clocks differ).
+//   - Two kinds of message (VIZ research note 3). 'levels' may be lost: when a page has more than levelBytes unsent,
+//     only its newest levels message is kept and sent once the socket drains (the older ones are dropped). Everything
+//     else (clock, jumps, knobs, slot, controls, panic) is never dropped: a page with more than slowBytes unsent (it
+//     stopped reading) is cut off and rejoins through the late state, so it never holds up the others or grows the
+//     server's memory. Every pingMs the relay pings; a page silent for 2 x pingMs is cut off.
 //   - Nothing is logged per message (R9: no names of people or tracks reach a log); stats() counts only.
 //
 //   createRelay({ now, slowBytes, pingMs, maxMsg }) -> { attach(httpServer), stats(), close(), clients }
@@ -38,8 +47,11 @@ export const RELAY_VERSION = 1;
 export const MAX_MSG = 64 << 10;
 export const SLOW_BYTES = 1 << 20;
 export const PING_MS = 15000;
-export const SERVER_TYPES = ['hello', 'relay-error'];
-const TYPE_RE = /^[a-z][a-z-]{0,31}$/, SOURCE_ID = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+export const LEVEL_BYTES = 64 << 10;
+export const SERVER_TYPES = ['hello', 'relay-error', 'time'];
+export const RELAY_ASKS = ['resync', 'time-ask'];
+export const DROPPABLE = ['levels'];
+const TYPE_RE = /^[a-z][a-z-]{0,31}$/;
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
 /** the Sec-WebSocket-Accept value for a client's key (RFC 6455 4.2.2) */
@@ -165,21 +177,17 @@ export class Peer extends EventEmitter {
 /** '' when a client's message may be passed on, else why not */
 export function checkMessage(m) {
   if (!m || typeof m !== 'object' || Array.isArray(m)) return 'not an object';
-  if (m.type === undefined && m.kind === 'source') m.type = 'source';   // the brief's spelling of the reserved kind
   if (m.v !== RELAY_VERSION) return 'version';
   if (typeof m.type !== 'string' || !TYPE_RE.test(m.type)) return 'type';
   if (SERVER_TYPES.includes(m.type)) return 'reserved';
-  if (m.type === 'source') {
-    if (typeof m.id !== 'string' || !SOURCE_ID.test(m.id)) return 'source id';
-    for (const k of ['t', 'beats', 'bpm', 'confidence']) if (!Number.isFinite(m[k])) return `source ${k}`;
-  }
   return '';
 }
 
-export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, pingMs = PING_MS, maxMsg = MAX_MSG } = {}) {
+export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, levelBytes = LEVEL_BYTES, pingMs = PING_MS, maxMsg = MAX_MSG } = {}) {
   const clients = new Set();
   const state = { clock: null, knobs: null, panic: null, controls: new Map() };
-  const counts = { joined: 0, left: 0, in: 0, out: 0, rejected: 0, slow: 0, silent: 0, versionRefused: 0 };
+  const seqs = {};
+  const counts = { joined: 0, left: 0, in: 0, out: 0, rejected: 0, slow: 0, silent: 0, versionRefused: 0, levelsDropped: 0, resyncs: 0, timeAsks: 0 };
   let timer = null;
 
   function remember(m) {
@@ -195,9 +203,30 @@ export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, pi
     if (state.clock) out.push(state.clock);
     return out.map(m => ({ ...m, late: true }));
   }
-  function deliver(c, text) {
+  // levels may be lost: past levelBytes unsent, only the newest waits for the socket to drain
+  function flushLevels(c) {
+    c.drainWait = false;
+    if (!c.pendingLevels || c.peer.closed) return;
+    if (c.peer.buffered > levelBytes) { waitDrain(c); return; }
+    const text = c.pendingLevels;
+    c.pendingLevels = null;
+    c.peer.send(text); counts.out++;
+  }
+  function waitDrain(c) {
+    if (c.drainWait) return;
+    c.drainWait = true;
+    c.peer.socket.once('drain', () => flushLevels(c));
+  }
+  function deliver(c, text, type) {
     if (c.peer.closed) return;
-    if (c.peer.buffered > slowBytes) { counts.slow++; c.peer.destroy(); return; }   // stopped reading: cut off, the rest go on
+    if (DROPPABLE.includes(type)) {
+      if (c.pendingLevels || c.peer.buffered > levelBytes) {
+        if (c.pendingLevels) counts.levelsDropped++;
+        c.pendingLevels = text;
+        waitDrain(c);
+        return;
+      }
+    } else if (c.peer.buffered > slowBytes) { counts.slow++; c.peer.destroy(); return; }   // stopped reading: cut off, the rest go on
     c.peer.send(text); counts.out++;
   }
   function onMessage(c, text) {
@@ -210,10 +239,21 @@ export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, pi
       if (c.rejected <= 3) c.peer.send({ type: 'relay-error', v: RELAY_VERSION, error: err });
       return;
     }
+    if (m.type === 'resync') {   // the late state again, to this page only
+      counts.resyncs++;
+      for (const s of snapshot()) c.peer.send(s);
+      return;
+    }
+    if (m.type === 'time-ask') {
+      counts.timeAsks++;
+      c.peer.send({ type: 'time', v: RELAY_VERSION, id: m.id === undefined ? null : m.id, t0: m.t0 === undefined ? null : m.t0, ts: now() });
+      return;
+    }
     m.rt = now();
+    m.seq = seqs[m.type] = (seqs[m.type] || 0) + 1;
     remember(m);
     const out = JSON.stringify(m);
-    for (const o of clients) if (o !== c) deliver(o, out);
+    for (const o of clients) if (o !== c) deliver(o, out, m.type);
   }
   function join(peer, v) {
     if (v !== String(RELAY_VERSION)) {
@@ -222,7 +262,7 @@ export function createRelay({ now = () => Date.now(), slowBytes = SLOW_BYTES, pi
       peer.close(4001, 'version');
       return null;
     }
-    const c = { peer, rejected: 0 };
+    const c = { peer, rejected: 0, pendingLevels: null, drainWait: false };
     clients.add(c); counts.joined++;
     peer.on('message', text => onMessage(c, text));
     peer.on('close', () => { if (clients.delete(c)) counts.left++; });

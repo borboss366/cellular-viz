@@ -53,7 +53,7 @@ test('beat relay framing: RFC 6455 accept key, frames of every length class roun
   assert.throws(() => new R.FrameReader(10).push(R.encodeFrame(1, 'x'.repeat(11))), e => e.code === 1009, 'over the limit: 1009');
 });
 
-test('beat relay messages: v 1 and a type, the server types reserved, source checked (the brief\'s kind: source taken as type)', () => {
+test('beat relay messages: v 1 and a type, the relay\'s own types reserved, source reserved by its version only', () => {
   assert.equal(R.checkMessage(clockMsg(1, 0)), '');
   assert.equal(R.checkMessage({ type: 'clock', v: 2 }), 'version');
   assert.equal(R.checkMessage({ v: 1 }), 'type');
@@ -61,10 +61,58 @@ test('beat relay messages: v 1 and a type, the server types reserved, source che
   assert.equal(R.checkMessage([1]), 'not an object');
   assert.equal(R.checkMessage({ type: 'hello', v: 1 }), 'reserved');
   assert.equal(R.checkMessage({ type: 'relay-error', v: 1 }), 'reserved');
-  const src = { kind: 'source', v: 1, id: 'hand', t: 1, beats: 2, bpm: 120, confidence: 1 };
-  assert.equal(R.checkMessage(src), ''); assert.equal(src.type, 'source');
-  assert.equal(R.checkMessage({ type: 'source', v: 1, id: 'Some Name', t: 1, beats: 2, bpm: 120, confidence: 1 }), 'source id');
-  assert.equal(R.checkMessage({ type: 'source', v: 1, id: 'hand', t: 1, beats: 2, bpm: NaN, confidence: 1 }), 'source bpm');
+  assert.equal(R.checkMessage({ type: 'time', v: 1 }), 'reserved');
+  assert.equal(R.checkMessage({ type: 'source', v: 1, id: 'hand', t: 1, beats: 2, bpm: 120, confidence: 1 }), '');
+  assert.equal(R.checkMessage({ type: 'source', v: 2 }), 'version', 'only the version is checked on a source');
+});
+
+test('beat relay seq, resync and time: a seq per type, the late state keeps it, resync to the asker only, a time echo', async () => {
+  const H = await startRelay();
+  try {
+    const cond = await H.join(), a = await H.join(), b = await H.join();
+    cond.send(clockMsg(1, 1)); cond.send(clockMsg(2, 2));
+    cond.send({ type: 'panic', v: 1, t: 3, mode: 'calm', id: 'p1' });
+    const c2 = await a.wait(m => m.type === 'clock' && m.beats === 2);
+    const p = await a.wait(m => m.type === 'panic');
+    assert.equal(c2.seq, 2, 'clock seq 2'); assert.equal(p.seq, 1, 'panic has its own seq');
+    assert.equal(p.id, 'p1', 'a command keeps the id its sender gave it');
+    const n = b.messages.length;
+    a.send({ type: 'resync', v: 1 });
+    const again = await a.wait(m => m.type === 'clock' && m.late === true);
+    assert.equal(again.seq, 2, 'the late state carries its seq');
+    await a.wait(m => m.type === 'panic' && m.late === true);
+    await sleep(50);
+    assert.equal(b.messages.length, n, 'a resync goes to the asker only');
+    a.send({ type: 'time-ask', v: 1, id: 7, t0: 123.5 });
+    const tm = await a.wait(m => m.type === 'time');
+    assert.deepEqual([tm.id, tm.t0], [7, 123.5]); assert.ok(Number.isFinite(tm.ts));
+    assert.equal(b.messages.filter(m => m.type === 'time' || m.type === 'time-ask' || m.type === 'resync').length, 0, 'asks are never passed on');
+    const st = H.relay.stats();
+    assert.deepEqual([st.resyncs, st.timeAsks], [1, 1]);
+  } finally { await H.close(); }
+});
+
+test('beat relay levels may be lost, commands never: a backed-up page keeps only the newest levels and still gets the panic', async () => {
+  const H = await startRelay({ levelBytes: 16 << 10, slowBytes: 256 << 20 });
+  try {
+    const cond = await H.join(), lag = await H.join();
+    lag.peer.socket.pause();
+    const N = 8000, pad = 'x'.repeat(4000);   // 32 MB of levels: far more than the kernel buffers hold
+    for (let i = 0; i < N; i++) cond.send({ type: 'levels', v: 1, t: i, i, pad });
+    cond.send({ type: 'panic', v: 1, t: N, mode: 'blackout', id: 'p-last' });
+    for (let k = 0; k < 800 && H.relay.stats().in < N + 1; k++) await sleep(25);
+    const st = H.relay.stats();
+    assert.equal(st.in, N + 1, 'the relay read everything');
+    assert.ok(st.levelsDropped > 0, `older levels were dropped (${st.levelsDropped})`);
+    assert.equal(st.slow, 0, 'the page was not cut off for levels');
+    lag.peer.socket.resume();
+    await lag.wait(m => m.type === 'panic' && m.id === 'p-last', 20000);
+    const last = await lag.wait(m => m.type === 'levels' && m.i === N - 1, 20000);
+    assert.ok(last, 'the newest levels arrive once the page reads again');
+    const got = lag.messages.filter(m => m.type === 'levels').map(m => m.i);
+    assert.ok(got.length < N, `${got.length} of ${N} levels delivered`);
+    assert.ok(got.every((x, k) => k === 0 || x > got[k - 1]), 'levels stay in order');
+  } finally { await H.close(); }
 });
 
 test('beat relay fan-out: every message reaches every other page once, never the sender, stamped rt', async () => {
