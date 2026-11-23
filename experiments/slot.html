@@ -11,6 +11,9 @@
   until the new scene's shared clock is locked. Open both from set.html ("Open slots"). ?in=<label>: the audio input
   for every scene, as on set.html; ?scene=N (1-based): start on scene N. Logic: slot.js (SlotLib). The commands come
   by the shared clock's channel and, when conduct-serve has the relay, its socket too (shared-link.js, beat server task 2).
+  ?obs=1 (beat server task 5): the OBS Browser Source route. Each scene gets ?audio=shared (the conductor's levels by
+  the relay), no ?in=, and ?relay=1, since a Browser Source has no audio input, no MIDI and no channel to the
+  conductor. The Chrome route (no ?obs) is unchanged; docs/GUEST_DJ_RUNBOOK.md section 8 has the OBS steps.
   __qa.slot = { slot, index, scene, url, n, loading, coverOn, panicMode, loads, lost, frames, switches }.
   Plain ASCII only (#205).
 -->
@@ -56,7 +59,7 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
       else if (typeof BroadcastChannel === 'function') channel = new BroadcastChannel('cellular-viz-clock');
     } catch (e) { channel = null; }
     qa.slot = SlotLib.create({ doc: document, win: window, set, slot: slotName, start: SlotLib.startIndex(slotName, search, set.scenes.length),
-      inLabel, channel });
+      inLabel, over: SlotLib.obsOverrides(search), channel });
     qa.slot.show(qa.slot.qa.index);
     window.__slot = qa.slot;
   }).catch(e => { qa.error = ascii((e && e.message) || e); $('msg').textContent = `slot ${slotName}: ${qa.error}`; });
