@@ -37,7 +37,7 @@ function headlessShell(fullExe) {
   return null;
 }
 // the slot page and the scene in its frame
-const slotState = () => (window.__qa && window.__qa.slot ? { index: window.__qa.slot.index, url: window.__qa.slot.url, panicMode: window.__qa.slot.panicMode, loads: window.__qa.slot.loads, error: window.__qa.slot.error || null } : null);
+const slotState = () => (window.__qa && window.__qa.slot ? { index: window.__qa.slot.index, n: window.__qa.slot.n, url: window.__qa.slot.url, panicMode: window.__qa.slot.panicMode, loads: window.__qa.slot.loads, error: window.__qa.slot.error || null } : null);
 const sceneState = () => {
   const qa = window.__qa || {}, sh = qa.sharedClock || null, ai = qa.audioIn || {};
   return { shared: sh && { state: sh.state, link: sh.link }, audio: { source: ai.source, status: ai.status, error: ai.error || null, device: ai.device || null },
@@ -109,7 +109,7 @@ test('slot.html?obs=1 as a Browser Source: the scene on audio=shared locks throu
   assert.equal(sc.audio.source, 'shared', 'audio-in on the conductor\'s levels');
   assert.equal(sc.audio.error, null, 'no audio input was opened (or refused)');
   assert.equal(sc.audio.device, null, 'no device picked');
-  assert.equal(stepped.index, (first.slot.index + 1) % 7, 'the slot stepped on the publisher\'s command (the relay)');
+  assert.equal(stepped.index, (first.slot.index + 1) % first.slot.n, 'the slot stepped on the publisher\'s command (the relay)');
   assert.ok(stepped.loads >= 2);
   assert.deepEqual(black, { slot: 'blackout', scene: 'blackout' }, 'the blackout reached the slot and its scene');
   assert.deepEqual(clear, { slot: 'off', scene: 'off' }, 'and its release');
