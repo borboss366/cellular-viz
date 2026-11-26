@@ -49,3 +49,9 @@ Chrome with `--disable-backgrounding-occluded-windows`.
 Give the user a summary of five lines or fewer to paste to his
 Orchestrator bot: what passed, what failed, what he decided, what the
 box should do next.
+
+## Scene looks
+
+When the user asks you to change how a scene looks, read
+`.claude/skills/webgl-scene/SKILL.md` first and follow it (adopted
+26 Nov). Otherwise looks are his to tune.

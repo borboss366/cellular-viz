@@ -12,6 +12,23 @@ a picture, a technique sheet, and a loop where the agent looks at its
 own frames. This trial tests it once, cheaply, before anyone relies
 on it.
 
+## Task 0, before the trial: a fixed strip script (Puggie)
+
+Builders cannot ask the box for an arbitrary run, so the skill's look
+loop needs a fixed one. Found in review by the box's agent, 21 Nov.
+
+- `qa/strip.mjs`, registered with the runner like the other checks.
+  It works on any scene: the experiment file names the page, its query
+  and its `*Knob` parameters.
+- Output: one contact sheet PNG at 960×540 per frame: 8 frames across
+  one bar with the clock locked, 4 in no-beat mode, 1 at each end of
+  every knob. Posted where the builder can open the image.
+- It runs only when a PR asks for it, never by itself. Both arms can
+  ask; only the skill tells a builder to.
+- Built and merged by a session that takes no part in the trial.
+- The trial does not start until a strip of an existing scene (Paint
+  Pour) has come back and been opened by an agent.
+
 ## The trial
 
 One scene brief, built twice, graded blind.
@@ -62,6 +79,9 @@ One verdict: X, Y, or no real difference.
 - frame time with a second scene running;
 - QA failures on first submission;
 - agent rounds, wall time and tokens for each arm;
+- box runs each arm asked for, strips included;
+- for arm B, its change log: how many changes came from the technique
+  sheet, how many from looking at a strip, how many from neither;
 - whether the conventions were followed (capture mode, no-beat mode,
   beat gain, knobs, seeded, dispose).
 
@@ -78,8 +98,10 @@ One verdict: X, Y, or no real difference.
 
 One scene is one data point. If the verdict is close, run a second
 scene before deciding. The skill mixes two things, a technique sheet
-and the look loop; if B wins, a later trial can separate them. It is
-not worth doing first.
+and the look loop. Arm B's change log says which one the changes came
+from. It is the builder's own account, so treat it as a hint: if it
+says the loop did the work, the next step is to cut the sheet down and
+see whether anything is lost.
 
 ## Afterwards
 
@@ -91,3 +113,25 @@ keep.
 
 Three.js or any library; changes to shared files; the scene kit;
 levels or any audio work.
+
+## Result, 26 Nov
+
+The user graded the two Aurora builds: **the build with the skill was
+much better.** It is merged (#305) and in the set as scene 8 (#318);
+the other build is closed (#299).
+
+What the result does and does not show:
+- **The skill is adopted.** It moves to
+  `.claude/skills/webgl-scene/SKILL.md` and both agent files name it.
+- **The look loop was never run.** The build with the skill did zero
+  rounds: the strip script (task 0) was not built, and the build was
+  written on a machine with no browser. So the win came from the rest:
+  the five lines of the look written first, the projector facts and
+  the technique sheet. The owner and the box's agent both guessed the
+  loop would do most of the work; this one scene says otherwise.
+- **The loop is therefore still untested**, not disproved. Task 0
+  stays open as an ordinary task. Its first use is the two scenes the
+  guest DJ found too empty (Little Bang, Lenia).
+- **Limits.** One scene. The winning build also added a lake and a far
+  shore where the scene brief said no landscape; part of the win may
+  be that fuller picture. The grading was not confirmed blind.

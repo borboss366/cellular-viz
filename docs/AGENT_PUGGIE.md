@@ -12,8 +12,11 @@ the product. Everything else serves them.
 ## Closed
 - `experiments/clock-tracker.js`. No change without a finding from the
   user's own sitting and his go. The frozen-hash test must stay green.
-- New scenes, reference-grid tooling, the browser host page.
-- Any change to how a scene looks. The user tunes looks himself.
+- New scenes unless the user asks for one (then: the scene skill),
+  reference-grid tooling, the browser host page.
+- Any change to how a scene looks, unless the user asks for it. When
+  he does, read `.claude/skills/webgl-scene/SKILL.md` first and follow
+  it (adopted 26 Nov).
 
 ## How to work
 - One task at a time, in the brief's order. Stop and report after
