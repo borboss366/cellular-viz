@@ -101,7 +101,7 @@ the no-beat effects, weighted as the no-beat mix is today
 | `offset-report` | scene | `{ loadId, page, slot, ms, rttMs, n, finding }`, once per load |
 | `levels` | conductor | `{ t, broadband, low, bands: [8], kicks: [{ t, vel }], phase, side }`: an object on the channel, one binary frame on the socket (below) |
 | `delay-probe` | delay tool | `{ i, t }`: the delay report's probes, on a test relay |
-| `source` | (reserved) | for beat sources later; only the version is checked |
+| `source` | beatd (the Mac) | `{ id, t, beats, bpm, confidence, state }`: one beat source's state, at most 20 a second per source; `id` a short fixed name (`fake`, later `beatnet`, `madmom`, ...), `t` wall time (ms), `beats` since the source started, `state` waiting / locked / free-run / lost (`beatd/`, brief `CELLULAR_VIZ_BRIEF_BEAT_SOURCES.md` task 2). Only the version is checked; not stored for late joiners |
 
 Every message has `v: 1`. The relay adds `rt` (its arrival time) and `seq` to the JSON
 messages it passes on.
