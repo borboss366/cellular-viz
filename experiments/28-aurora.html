@@ -1,0 +1,219 @@
+<!doctype html>
+<!--
+  28 · Aurora   (the scene brief: docs/CELLULAR_VIZ_BRIEF_SKILL_TRIAL.md; built with docs/skills/webgl-scene/SKILL.md)
+
+  Curtains of northern light over a dark lake shore: slow drift, folds that travel sideways, the kick sends a ripple up
+  the curtains, silence leaves a faint slow glow. The scene is a #85 module (28-aurora.mjs, maths in 28-aurora-math.mjs)
+  on the shared clock (clock.js) and the shared audio input (audio-in.js).
+
+  Knobs (the controller's top-row knobs on ?clock=shared, through the pick-up: a knob left by the last scene does
+  nothing until it moves): ?beatKnob=N (default 1): the kick's ripple, clock.beatGain(N): bottom 0 = no ripple, middle
+  = as designed, top 3 = 2x the brightness band and 2.3x the kink (capped); ?heightKnob=N (default 2): the curtains'
+  height, low and wide (0) to tall, running off the top (1); ?colourKnob=N (default 3): green / crimson with a violet
+  fringe (0) to cyan / violet with a pink fringe (1), mixed in Oklab. Without a knob (or before it moves) the page's
+  sliders, ?macro1 (height), ?macro2 (colour), ?macro3 (drift), ?macro4 (intensity), are used. ?beatGain=0..3 fixes g.
+  No-beat mode: below clock confidence 0.4 (or the shared clock not locked) the ripple follows the music's own kick
+  (audio-in's energy.kick) and the light and drift follow its loudness; silence leaves 28 % light at 35 % drift.
+  Triggers: 1 ripple (Z, now), 2 surge (X, now: the curtains brighten over 0.25 s, settle over 2.5 s).
+  ?capture=1 (panic.js): no text, buttons or cursor, Play pressed by itself. ?seed=, ?renderScale=0.25..1 (the
+  curtains' and bloom's size, default 0.5), ?bpm=, ?startBar=, ?muted=1, ?labels=0, ?clock=, ?audio=clock|mic|line,
+  ?qaConfidence=0..1 (QA: the confidence the beat weight sees; 0 = no-beat mode while the metronome plays).
+  window.__qa: beat { g, ripple, kink, now, knob, fixed, fake }, fakeBeatGain(g | null), aurora (the activity, beat
+  weight, drift, height, colour, ripples), view, setMacro(i, v), macros, pressTrigger(i), releaseTrigger(i),
+  triggers, triggerLog, triggerEnv, forceDrop() (panic.js: the next 16-bar section), setRenderScale(s), errors, plus
+  audio-in's beatLog, beatWeight, energy, forceConfidence(c), events, clockLate.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>28 · Aurora</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #000; color: #e6f2ee;
+    font: 14px/1.3 system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #wrap { position: relative; width: min(100vw, calc(100vh - 230px)); width: min(100vw, calc(100dvh - 230px)); aspect-ratio: 16 / 9;
+    margin: 0 auto; flex: none; background: #000; }
+  #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #wrap:fullscreen #hud { display: none; }
+  canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.55); font: 12px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; max-width: calc(100% - 12px); pointer-events: none; }
+  #panel { flex: 1; min-height: 200px; padding: 8px 12px 16px; }
+  h3 { margin: 12px 0 2px; font-size: 13px; color: #2cff9a; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { width: 104px; flex: none; color: #b9cfc8; }
+  .row input[type=range] { flex: 1; }
+  .row output { width: 64px; text-align: right; font-family: ui-monospace, monospace; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  button { flex: 1 1 18%; padding: 9px 6px; border: 1px solid #1f3a33; border-radius: 8px;
+    background: #0b1512; color: inherit; font: inherit; }
+  button.on { background: #183c2f; border-color: #2cff9a; }
+  a { color: #36d6ff; }
+  @media (orientation: landscape) {
+    body { flex-direction: row; }
+    #wrap { width: min(62vw, calc(100vh * 16 / 9)); margin: 0; position: sticky; top: 0; align-self: flex-start; }
+    #panel { min-height: 0; min-width: 38vw; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">loading…</div>
+</div>
+<div id="panel">
+  <div class="buttons">
+    <button id="play">▶ Play</button>
+    <button id="mute">Mute clicks</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <h3>Macros</h3>
+  <div class="row"><label for="m1">1 height</label><input id="m1" type="range" min="0" max="1" step="0.01"><output id="m1Out"></output></div>
+  <div class="row"><label for="m2">2 colour</label><input id="m2" type="range" min="0" max="1" step="0.01"><output id="m2Out"></output></div>
+  <div class="row"><label for="m3">3 drift</label><input id="m3" type="range" min="0" max="1" step="0.01"><output id="m3Out"></output></div>
+  <div class="row"><label for="m4">4 intensity</label><input id="m4" type="range" min="0" max="1" step="0.01"><output id="m4Out"></output></div>
+  <h3>Triggers</h3>
+  <div class="buttons"><button id="t1">Z ripple</button><button id="t2">X surge</button></div>
+  <h3>Detail</h3>
+  <div class="row"><label for="bpm">BPM</label><input id="bpm" type="range" min="60" max="180" step="1"><output id="bpmOut"></output></div>
+  <a href="../index.html">← all experiments</a>
+</div>
+<script>
+  // #88 drop hook, before panic.js so its forceDrop attaches at once: the next 16-bar section
+  window.__qaNextDrop = b => window.__qaSectionDrop(b, 16, 0);
+  window.__qa = window.__qa || {};
+</script>
+<script src="panic.js"></script>
+<script src="clock.js"></script>
+<script src="audio-in.js"></script>
+<script type="module">
+import scene, { MACROS, TRIGGERS, intensityOf } from './28-aurora.mjs';
+import * as M from './28-aurora-math.mjs';
+const $ = id => document.getElementById(id);
+const query = new URLSearchParams(location.search);
+const q = k => query.get(k), num = (k, lo, hi) => { const v = parseFloat(q(k)); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null; };
+const knobParam = (k, d) => { const n = parseInt(q(k), 10); return n >= 1 && n <= 8 ? n : d; };
+// the live settings object: the clock reads bpm, bpb, muted and the drum patterns from it at every step
+const params = { bpm: 120, bpb: 4, muted: false, startBar: 0, labels: true, seed: 1, renderScale: 0.5,
+  macro: MACROS.map(m => m.default), kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' };
+for (let i = 1; i <= 4; i++) { const v = num('macro' + i, 0, 1); if (v !== null) params.macro[i - 1] = v; }
+for (const [k, lo, hi] of [['bpm', 60, 180], ['startBar', 0, 4096], ['seed', 1, 1e6], ['renderScale', 0.25, 1]]) { const v = num(k, lo, hi); if (v !== null) params[k] = v; }
+params.seed = Math.round(params.seed); params.labels = q('labels') !== '0'; params.muted = q('muted') === '1';
+params.beatKnob = knobParam('beatKnob', 1); params.heightKnob = knobParam('heightKnob', 2); params.colourKnob = knobParam('colourKnob', 3);
+params.beatGain = num('beatGain', 0, 3);
+let qaBeatG = null;
+
+// ---------- the shared clock and audio-in ----------
+const clock = Clock.create({ source: q('clock') || 'metronome', settings: params });
+const BEAT_LANES = ['kick'];   // the ripple answers the kick; audio.due() logs each one in __qa.beatLog (beat-match row)
+const audio = AudioIn.create({ clock, source: q('audio') || 'clock' }).start();
+// QA: ?qaConfidence=0..1 fixes the confidence the beat weight sees (0: no-beat mode while the metronome plays)
+if (num('qaConfidence', 0, 1) !== null) audio.forceConfidence(num('qaConfidence', 0, 1));
+const picks = M.pickupCreate();
+let clockStart = performance.now();
+// beats as the scene reads them: the clock's while it plays, else running on from the page's start (startBar and
+// __qaShift, #88's forceDrop, in bars on top)
+function beatsNow(now) {
+  const shift = (params.startBar + (window.__qaShift || 0)) * params.bpb;
+  if (clock.playing) { const r = clock.read(); if (r.beats >= 0) return r.beats + shift; return shift; }
+  return (now - clockStart) / 1000 * params.bpm / 60 + shift;
+}
+
+// ---------- controls (#85 contract) ----------
+function setMacro(i, v) { if (!(i >= 1 && i <= 4)) return null; params.macro[i - 1] = Math.max(0, Math.min(1, +v)); sync(); return params.macro[i - 1]; }
+for (let i = 1; i <= 4; i++) $('m' + i).addEventListener('input', e => setMacro(i, parseFloat(e.target.value)));
+function pressTrigger(i, holdMs = 0) { return scene.press(i, holdMs, performance.now()); }
+function releaseTrigger(i) { return scene.release(i, performance.now()); }
+$('t1').onclick = () => pressTrigger(1); $('t2').onclick = () => pressTrigger(2);
+window.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target && (e.target.tagName === 'TEXTAREA' || (e.target.tagName === 'INPUT' && e.target.type === 'text'))) return;
+  const k = 'zx'.indexOf(e.key.toLowerCase());
+  if (k >= 0) { e.preventDefault(); pressTrigger(k + 1); }
+});
+$('bpm').addEventListener('input', e => { params.bpm = parseFloat(e.target.value); sync(); });
+function sync() {
+  for (let i = 1; i <= 4; i++) { $('m' + i).value = params.macro[i - 1]; $('m' + i + 'Out').textContent = params.macro[i - 1].toFixed(2); }
+  $('bpm').value = params.bpm; $('bpmOut').textContent = String(params.bpm);
+  $('mute').classList.toggle('on', params.muted);
+}
+$('play').onclick = () => {
+  if (clock.playing) { clock.stop(); $('play').textContent = '▶ Play'; }
+  else { clock.start(); clockStart = performance.now(); scene.reset(); $('play').textContent = '■ Stop'; }
+};
+$('mute').onclick = () => { params.muted = !params.muted; clock.setMuted(params.muted); sync(); };
+$('full').onclick = () => { const w = $('wrap'); (document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen()).catch(() => {}); };
+let ctlNow = null;
+const controls = () => (ctlNow = {
+  height: M.knobOr(clock, picks, params.heightKnob, params.macro[0]),
+  colour: M.knobOr(clock, picks, params.colourKnob, params.macro[1]),
+  drift: params.macro[2], intensity: intensityOf(params.macro[3]),
+  beatGain: qaBeatG !== null ? qaBeatG : M.beatGainOf(clock, params.beatKnob, params.beatGain),
+});
+window.__modules = { '28-aurora': { macros: Object.fromEntries(MACROS.map(m => [m.slot, m.name])), triggers: TRIGGERS.map(t => ({ slot: t.slot, name: t.name })), inputs: scene.inputs, perf: scene.perf } };
+
+// ---------- canvas, scene ----------
+const canvas = $('c'), hud = $('hud');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false });
+const errors = [];
+let ready = false;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.min(3840, Math.round(canvas.clientWidth * dpr))), h = Math.max(1, Math.min(2160, Math.round(canvas.clientHeight * dpr)));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; if (ready) scene.resize(w, h); }
+}
+let frames = 0, fps = 0, lastFpsTime = performance.now(), lastHud = 0;
+function frame(now) {
+  audio.frameStart(now);   // __qa.frame, t, dt and the beat weight's step (audio-in)
+  requestAnimationFrame(frame);
+  try { draw(now); } catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e)); console.error(e); } hud.textContent = `frame error: ${e && e.message}`; if (window.__panicError) window.__panicError(); }
+}
+function draw(now) {
+  resize();
+  const beats = beatsNow(now);
+  const hits = audio.due(BEAT_LANES);   // the kicks this frame reached, logged in __qa.beatLog
+  const at = Number.isFinite(audio.now) ? audio.now : null;
+  const kicks = hits.map(h => (at !== null && Number.isFinite(h.time) ? Math.max(0, at - h.time) : 0));
+  const w = audio.bw && Number.isFinite(audio.bw.w) ? audio.bw.w : audio.beatWeight();   // the weight frameStart stepped
+  const energy = audio.readEnergy();
+  window.__qaNowBars = beats / params.bpb;
+  scene.frame({ target: null, t: now / 1000, beats, bpb: params.bpb, bpm: params.bpm, controls: controls(), now, kicks, beatWeight: w, energy });
+  frames++;
+  if (now - lastFpsTime > 500) { fps = Math.round(frames * 1000 / (now - lastFpsTime)); frames = 0; lastFpsTime = now; }
+  if (now - lastHud > 200 && params.labels) {
+    lastHud = now;
+    const m = scene.qa.metrics, v = scene.qa.view, s = clock.playing ? '▶' : (clock.ctx ? '■' : 'tap ▶ Play');
+    const bar = ((Math.floor(beats / params.bpb) % 16) + 16) % 16;
+    hud.textContent = `28 aurora · bar ${bar}/16 · section ${v.section} · beat ${m.w.toFixed(2)} · light ${m.glow.toFixed(2)} · g ${m.beat.g.toFixed(2)} · ${params.bpm} bpm · ${s}\n${canvas.width}×${canvas.height} (curtains ${v.render[0]}×${v.render[1]}${v.floatTargets ? '' : ', 8-bit'}) · ${fps} fps`;
+  }
+}
+
+// ---------- QA ----------
+const expose = o => { for (const [k, d] of Object.entries(Object.getOwnPropertyDescriptors(o))) Object.defineProperty(window.__qa, k, { ...d, configurable: true, enumerable: true }); };
+const S = scene.qa;
+expose({
+  errors, setMacro, pressTrigger, releaseTrigger, triggers: TRIGGERS, clock,
+  get beats() { return beatsNow(performance.now()); }, get bars() { return beatsNow(performance.now()) / params.bpb; }, get bpm() { return params.bpm; },
+  // the beat gain: this frame's terms, and a stand-in g for tests (null: clock.beatGain(?beatKnob) again)
+  get beat() { return { ...((S.metrics && S.metrics.beat) || {}), knob: params.beatKnob, fixed: params.beatGain, fake: qaBeatG }; },
+  fakeBeatGain: g => { qaBeatG = g === null || g === undefined || !Number.isFinite(+g) ? null : Math.max(0, Math.min(3, +g)); return qaBeatG; },
+  get aurora() { const m = S.metrics || {}; return { act: m.act, w: m.w, tau: m.tau, glow: m.glow, surge: m.surge, height: m.height, colour: m.colour, ripples: m.ripples, ripplesStarted: m.ripplesStarted, ripplesFromEnergy: m.ripplesFromEnergy, knobs: { beat: params.beatKnob, height: params.heightKnob, colour: params.colourKnob }, controls: ctlNow }; },
+  get view() { return S.view; }, get metrics() { return S.metrics; },
+  get macros() { return MACROS.map((m, i) => ({ slot: m.slot, name: m.name, label: m.label, value: params.macro[i], default: m.default })); },
+  get triggerLog() { return S.triggerLog; }, get triggerEnv() { return S.triggerEnv; },
+  setRenderScale: s => scene.setRenderScale(s),
+});
+AudioIn.qa(audio, window.__qa);   // beatLog, frame, beatLanes, clockLate, beatWeight, energy, forceConfidence, events, audioIn
+if (!gl) { hud.textContent = 'WebGL2 needed'; errors.push('no WebGL2'); if (window.__panic) window.__panic.calm('no WebGL2'); }
+else {
+  try { resize(); scene.init(gl, { width: canvas.width || 1, height: canvas.height || 1, seed: params.seed, renderScale: params.renderScale }); ready = true; }
+  catch (e) { errors.push(String(e && e.stack || e)); console.error(e); hud.textContent = 'init error: ' + e.message; if (window.__panic) window.__panic.calm('init error'); }
+  sync();
+  if (ready) requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>
