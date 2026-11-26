@@ -95,6 +95,10 @@ Mac session, not here.
 | Where | Rate | p50 ms | p99 ms | max ms | lost | Date |
 |---|---|---|---|---|---|---|
 | one machine (box, node) | 20/s | | | | | |
+| Mac to box to Mac (tunnel, node `--url`) | 20/s | 4.71 | 9.46 | 11.97 | 0 of 600 | 26 Nov 2026 |
 | Mac to box to Mac (tunnel, Chrome) | 20/s | | | | | |
 | Mac to box to Mac (tunnel, Chrome) | 60/s | | | | | |
 | one machine (Mac, Chrome, optional) | 20/s | | | | | |
+
+26 Nov 2026, through the tunnel: p90 5.68 ms. The run used `node qa/relay-delay.mjs --url` on the Mac
+against conduct-serve's relay on the box (the same probes as the page).
