@@ -5,8 +5,9 @@ description: Build or restyle a cellular-viz scene (raw WebGL2, no library) so i
 
 # Writing a scene for cellular-viz
 
-On trial (see `docs/CELLULAR_VIZ_BRIEF_SKILL_TRIAL.md`). Until the
-trial ends, read this only when your task says so.
+Adopted on 26 Nov after a trial on one scene (28 Aurora; see
+`docs/CELLULAR_VIZ_BRIEF_SKILL_TRIAL.md`). Read it before any work on
+how a scene looks.
 
 A scene here is judged by eye, in a dark room, on a projector, next to
 a second scene blended over it. Passing checks is the floor. The work
@@ -125,8 +126,8 @@ the newest scene.
 
 ## 5. The look loop (do this before asking for review)
 
-1. Ask the box for a strip with the fixed strip script (trial brief,
-   task 0): one contact sheet at 960×540 with 8 frames across one bar
+1. Ask the box for a strip with the fixed strip script (`qa/strip.mjs`,
+   trial brief, task 0; not built yet on 26 Nov): one contact sheet at 960×540 with 8 frames across one bar
    with the clock locked, 4 frames in no-beat mode, and 1 frame at
    each end of every knob. You cannot run arbitrary scripts on the
    box; this one is the way. If the strip script is not there, say so

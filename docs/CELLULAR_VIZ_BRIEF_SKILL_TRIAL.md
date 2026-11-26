@@ -113,3 +113,25 @@ keep.
 
 Three.js or any library; changes to shared files; the scene kit;
 levels or any audio work.
+
+## Result, 26 Nov
+
+The user graded the two Aurora builds: **the build with the skill was
+much better.** It is merged (#305) and in the set as scene 8 (#318);
+the other build is closed (#299).
+
+What the result does and does not show:
+- **The skill is adopted.** It moves to
+  `.claude/skills/webgl-scene/SKILL.md` and both agent files name it.
+- **The look loop was never run.** The build with the skill did zero
+  rounds: the strip script (task 0) was not built, and the build was
+  written on a machine with no browser. So the win came from the rest:
+  the five lines of the look written first, the projector facts and
+  the technique sheet. The owner and the box's agent both guessed the
+  loop would do most of the work; this one scene says otherwise.
+- **The loop is therefore still untested**, not disproved. Task 0
+  stays open as an ordinary task. Its first use is the two scenes the
+  guest DJ found too empty (Little Bang, Lenia).
+- **Limits.** One scene. The winning build also added a lake and a far
+  shore where the scene brief said no landscape; part of the win may
+  be that fuller picture. The grading was not confirmed blind.
