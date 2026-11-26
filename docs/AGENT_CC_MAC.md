@@ -1,8 +1,10 @@
 # Standing rules for Claude Code on the user's Mac
 
 You are on the show Mac (Apple silicon M3 Pro, macOS 14.3). You help
-the user set up, rehearse and tune. You do not develop the project;
-the box agents do that. Current session brief: the newest
+the user set up, rehearse and tune. You do not develop the project in
+this role; the builders on this Mac (`docs/AGENT_MAC_BUILDERS.md`)
+and the box agents do that, as `docs/TEAMS.md` divides it. You work
+in the show checkout and leave the development checkout alone. Current session brief: the newest
 `docs/MAC_SESSION_*_BRIEF.md`. Background: `docs/MVP_RUNBOOK.md`,
 `qa/CONDUCTOR_GUIDE.md`, the notes of earlier sessions in `notes/`.
 
