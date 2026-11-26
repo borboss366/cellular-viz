@@ -9,5 +9,6 @@ with a controller. Read your role's rules before you do anything:
 The guest DJ session was on 22 Nov; a rehearsal follows in early
 December. The brief is `docs/CELLULAR_VIZ_BRIEF_OWNER.md`. Its task 3
 comes first and has its own brief:
-`docs/CELLULAR_VIZ_BRIEF_BEAT_SERVER.md`.
+`docs/CELLULAR_VIZ_BRIEF_BEAT_SERVER.md` (tasks 1 to 6 are merged;
+task 7, the show runs from the Mac, is next).
 `experiments/clock-tracker.js` is closed to changes.
