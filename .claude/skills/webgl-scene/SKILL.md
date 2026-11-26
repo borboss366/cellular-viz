@@ -66,8 +66,12 @@ the newest scene.
 
 - The window is captured at **960×540** and scaled up. Detail finer
   than two pixels turns to shimmer. Lines and points need real width.
-- **Black is black.** Scenes are blended by adding. A grey floor
-  washes out the other scene, so the background stays at zero.
+- **Dark, never empty.** A scene must hold the wall by itself: most
+  of the frame carries something, even if faint and slow. Large
+  areas of plain black read as "empty" (the guest DJ, 22 Nov). Keep
+  the darkest parts truly black and free of grey haze, so a second
+  scene can still be faded over it; the user crossfades two slots
+  more often than he stacks them.
 - Eight bits per channel through capture: dark gradients band. Dither
   the final colour (noise of ±0.5/255).
 - Two scenes run at once, beside OBS and Resolume on one GPU. Halve
@@ -77,6 +81,17 @@ the newest scene.
   file (`qa/runner/README.md`, format and gates). Build to those
   numbers. Nothing in this file replaces or loosens them; if this
   file and a gate disagree, the gate is right.
+
+### What the audience has told us
+
+- **Liked (the guest DJ, on Hodge Kaleidoscope):** the lights that
+  fade in and out, the scene as a whole, no black spots, a pleasant
+  1980s feel. Hodge is the house reference for coverage and for slow
+  fades.
+- **Disliked:** scenes with too much black space (Little Bang, Lenia
+  wanted stars or sparkles behind).
+
+Add to this list only what a viewer actually said, with the date.
 
 ## 4. Technique sheet (raw WebGL2)
 
