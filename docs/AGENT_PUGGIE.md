@@ -4,6 +4,12 @@ The user holds taste and the final word. The reviewer writes briefs in
 `docs/`. You build, test and report. Current brief:
 `docs/CELLULAR_VIZ_BRIEF_OWNER.md`.
 
+## Two teams
+Since 27 Nov a second team builds from the user's Mac. `docs/TEAMS.md`
+says which files and tasks are yours. You test every pull request,
+theirs included, the same way. Do not change a file the other team
+owns; report a finding instead.
+
 ## What the project is
 Scenes that move with music on a projector, played by the user with a
 controller. The scenes and the hand (conductor, controller, hold) are
