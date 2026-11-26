@@ -27,7 +27,7 @@ OBS's browser). From `docs/CELLULAR_VIZ_BRIEF_BEAT_SERVER.md` and the owner's ca
    The cost:
    - OBS messages go from the Mac to the box and back to the Mac. The delay on the box
      alone is p50 0.36 ms, max 1.26 ms. The delay through the tunnel was measured on
-     23 Nov: p50 ___ ms, p99 ___ ms (write the result here; see
+     26 Nov: p50 4.71 ms, p99 9.46 ms, max 11.97 ms, 0 of 600 lost (see
      `docs/BEAT_RELAY_DELAY.md`).
    - The OBS sources need the tunnel and the Wi-Fi. If the tunnel stops, the OBS sources
      stop. The Chrome windows continue.
