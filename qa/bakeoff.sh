@@ -11,9 +11,11 @@
 #
 # Steps, each one line of output:
 #   1. the reference: Beat This! over the recording (the venv of qa/ref-beats.sh; run that script once first)
-#   2. per tracker: its own venv under the data folder, installed from qa/bakeoff/<id>.txt within an hour
-#      (BAKEOFF_INSTALL_S, default 3600) or dropped with one line why; then qa/bakeoff_run.py runs it causally over
-#      the recording. A dropped or failed tracker is a row in the report, never a stop.
+#   2. per tracker: its own venv under the data folder, installed within an hour (BAKEOFF_INSTALL_S, default 3600) or
+#      dropped with one line why: qa/bakeoff/<id>.pre.txt (build tools, numpy), then <id>.txt with
+#      --no-build-isolation (source builds against the venv's own numpy), then <id>.nodeps.txt with --no-deps; then
+#      qa/bakeoff_run.py runs it causally over the recording (at most BAKEOFF_RUN_S, default 4 h). A dropped or
+#      failed tracker is a row in the report, never a stop. Pins and recipes: VIZ research's install check, 26 Nov.
 #   3. the scorer (qa/bakeoff-score.mjs): <out>/report.md and <out>/result.json
 # Output: <data>/bakeoff/<row>/ (outside git). The recording is read in place, never copied; the outputs hold beat
 # times and numbers only, no names (R9). Heavy steps wait for the GPU lock (qa/gpu-lock.sh), as the runner does.
@@ -23,8 +25,10 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 DATA=${QA_DATA_DIR:-/home/puggie/pi-durable-worker/data/qa-audio}
 SESS=${CONDUCTOR_SESSIONS:-$DATA/sessions}
 INSTALL_S=${BAKEOFF_INSTALL_S:-3600}
-RUN_S=${BAKEOFF_RUN_S:-7200}
+RUN_S=${BAKEOFF_RUN_S:-14400}
 export PIP_CACHE_DIR="$DATA/.cache/pip" PIP_DISABLE_PIP_VERSION_CHECK=1 TORCH_HOME="$DATA/.models"
+# one thread for BLAS / OpenMP in every run: CPU per second of audio compares trackers, not BLAS builds (madmom #524)
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 
 die() { echo "bakeoff.sh: $*" >&2; exit 1; }
 [ $# -ge 2 ] || die "usage: sh qa/bakeoff.sh <session like conductor-20261126-223503> <row like wired-1> [tracker ...]"
@@ -79,13 +83,14 @@ check_import() {   # id -> the import that proves the tracker is usable
   case $1 in
     aubio) echo 'import aubio' ;;
     madmom) echo 'import madmom.features.beats' ;;
-    beatnet) echo 'from BeatNet.BeatNet import BeatNet' ;;
+    beatnet) echo 'import sys, types; sys.modules.setdefault("pyaudio", types.ModuleType("pyaudio")); from BeatNet.BeatNet import BeatNet' ;;
     *) echo 'pass' ;;
   esac
 }
 for id in $TRACKERS; do
   VENV=$DATA/.venv-bakeoff-$id; PY=$VENV/bin/python; REQ=$HERE/bakeoff/$id.txt; NODEPS=$HERE/bakeoff/$id.nodeps.txt
-  SUM=$(cat "$REQ" "$NODEPS" 2>/dev/null | cksum | cut -d' ' -f1)
+  PRE=$HERE/bakeoff/$id.pre.txt
+  SUM=$(cat "$PRE" "$REQ" "$NODEPS" 2>/dev/null | cksum | cut -d' ' -f1)
   # madmom: the vote's venv (qa/ref-beats-vote.sh) already has a madmom that imports on this box (a git build, or the
   # prebuilt wheel with its metadata fixed); it is used as it is, nothing installed or changed in it
   if [ "$id" = madmom ] && [ -x "$DATA/.venv-vote/bin/python" ] && "$DATA/.venv-vote/bin/python" -c "$(check_import madmom)" >/dev/null 2>&1; then
@@ -96,9 +101,10 @@ for id in $TRACKERS; do
     LOGF=$OUT/$id.install.log
     if make_venv "$VENV" > "$LOGF" 2>&1 && timeout "$INSTALL_S" sh -c '
         set -e
-        "$1" -m pip install -q -r "$2"
-        if [ -f "$3" ]; then "$1" -m pip install -q --no-deps -r "$3"; fi
-        "$1" -c "$4"' sh "$PY" "$REQ" "$NODEPS" "$(check_import "$id")" >> "$LOGF" 2>&1; then
+        if [ -f "$5" ]; then "$1" -m pip install -q -r "$5"; fi
+        "$1" -m pip install -q --no-build-isolation -r "$2"
+        if [ -f "$3" ]; then "$1" -m pip install -q --no-deps --no-build-isolation -r "$3"; fi
+        "$1" -c "$4"' sh "$PY" "$REQ" "$NODEPS" "$(check_import "$id")" "$PRE" >> "$LOGF" 2>&1; then
       rm -f "$VENV"/.bakeoff-ok-*; touch "$VENV/.bakeoff-ok-$SUM"
       echo "$id: installed"
     else

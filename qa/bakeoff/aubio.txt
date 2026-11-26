@@ -1,4 +1,3 @@
-# aubio's tempo tracker: the light baseline (qa/bakeoff_run.py run_aubio). pip install -r, into its own venv.
-# Pins to confirm against VIZ research's install check (beatd task 1); a change here reinstalls (bakeoff.sh cksum).
-numpy<2
+# aubio's tempo tracker: the light baseline (qa/bakeoff_run.py run_aubio). Installed with --no-build-isolation after
+# aubio.pre.txt.
 aubio==0.4.9

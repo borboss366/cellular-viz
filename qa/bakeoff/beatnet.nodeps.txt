@@ -1,1 +1,1 @@
-BeatNet
+BeatNet @ git+https://github.com/mjhydri/BeatNet@81cedd4beeb7235262db80969a0c9ce9a48a0ed4

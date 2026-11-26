@@ -1,0 +1,13 @@
+# BeatNet's dependencies (its setup.py at the pinned commit, without pytest / tensorboard: tests and training only;
+# pyaudio is commented out there). CPU torch. madmom's build needs Cython 3.0.x and numpy in the venv. VIZ research,
+# 26 Nov: the PyPI release 1.1.3 pins numba 0.54.1 (no Python 3.11 wheel), so BeatNet comes from git (1.2.0).
+--extra-index-url https://download.pytorch.org/whl/cpu
+Cython==3.0.10
+setuptools
+numpy<2
+scipy
+mido
+librosa
+matplotlib
+pyyaml
+torch

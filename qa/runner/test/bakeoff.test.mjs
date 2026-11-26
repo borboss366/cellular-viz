@@ -99,6 +99,13 @@ test('bakeoff.sh: a fixed script for QA box (sh -n), named session and row only,
   assert.match(sh, /note "\$id" dropped/, 'a tracker that does not install is a row, not a stop');
   assert.match(sh, /\.venv-beatthis/, 'the reference uses the Beat This! venv of ref-beats.sh');
   assert.match(sh, /\.venv-vote\/bin\/python/, 'madmom reuses the vote venv when it imports there');
+  assert.match(sh, /pip install -q --no-build-isolation -r "\$2"/, 'source builds against the venv numpy (pre list first)');
+  assert.match(sh, /OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1/, 'one BLAS thread: CPU compares trackers, not BLAS builds');
+  assert.match(sh, /sys\.modules\.setdefault\("pyaudio"/, 'BeatNet imports with the pyaudio stand-in');
+  // the git installs are pinned to commits, Cython 3.0.x for madmom's build
+  const pins = ['madmom.txt', 'beatnet.txt', 'beatnet.nodeps.txt'].map(f => fs.readFileSync(path.join(QA, 'bakeoff', f), 'utf8')).join('\n');
+  for (const m of pins.matchAll(/git\+https:\/\/github\.com\/\S+/g)) assert.match(m[0], /@[0-9a-f]{40}$/, `pinned: ${m[0]}`);
+  assert.match(fs.readFileSync(path.join(QA, 'bakeoff', 'madmom.pre.txt'), 'utf8'), /^Cython==3\.0\.\d+$/m);
   assert.doesNotMatch(sh, /\bapt(-get)?\b\s+install/, 'no apt');
   for (const id of ['aubio', 'madmom', 'beatnet']) assert.ok(fs.existsSync(path.join(QA, 'bakeoff', `${id}.txt`)), `qa/bakeoff/${id}.txt`);
   // a usage error: no session and row
@@ -111,10 +118,13 @@ test('bakeoff.sh: a fixed script for QA box (sh -n), named session and row only,
 test('bakeoff runner: the three trackers in their online modes, beats as [t, at], no tuning knobs', () => {
   const py = fs.readFileSync(path.join(QA, 'bakeoff_run.py'), 'utf8');
   for (const id of ['aubio', 'madmom', 'beatnet']) assert.match(py, new RegExp(`'${id}': \\{'run': run_${id}`), id);
-  assert.match(py, /RNNBeatProcessor\(online=True\)/); assert.match(py, /DBNBeatTrackingProcessor\(fps=fps, online=True\)/);
-  assert.match(py, /process_online\(act\[i:i \+ 1\], reset=False\)/, 'madmom fed one frame at a time');
-  assert.match(py, /mode='online', inference_model='PF'/, 'BeatNet online, particle filter');
-  assert.match(py, /aubio\.tempo\('default', win, hop, rate\)/);
+  assert.match(py, /RNNBeatProcessor\(online=True, nn_files=\[BEATS_LSTM\[0\]\], fps=fps\)/, 'madmom: the online program\'s one network');
+  assert.match(py, /DBNBeatTrackingProcessor\(fps=fps, online=True\)/);
+  assert.match(py, /process_online\(act\[i:i \+ 1\], reset=\(i == 0\)\)/, 'madmom fed one frame at a time, state kept');
+  assert.match(py, /mode='realtime', inference_model='PF'/, 'BeatNet realtime, particle filter, frame by frame');
+  assert.match(py, /activation_extractor_realtime\(path\)/);
+  assert.match(py, /aubio\.tempo\('default', win, hop, rate\)/); assert.match(py, /win, hop = 512, 256/, 'aubio command line defaults');
+  assert.match(py, /'build': numpy_build\(\)/, 'the numpy / BLAS build is recorded');
   assert.doesNotMatch(py, /argparse[\s\S]*add_argument\('--(threshold|bpm|tempo|min_bpm|max_bpm)/, 'no per-recording settings');
   const ref = fs.readFileSync(path.join(QA, 'bakeoff_ref.py'), 'utf8');
   assert.match(ref, /Audio2Beats\(checkpoint_path=a\.model, device='cpu', dbn=False\)/, 'the same Beat This! call as ref_beats.py');

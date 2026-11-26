@@ -1,0 +1,7 @@
+# madmom's build needs Cython and numpy in the venv itself (it is built with --no-build-isolation). Cython 3.1 dropped
+# numpy/math INFINITY.pxd, so 3.0.x (madmom PR #548 / #551); numpy < 2 as on the box's other venvs. VIZ research, 26 Nov.
+Cython==3.0.10
+setuptools
+numpy<2
+scipy
+mido

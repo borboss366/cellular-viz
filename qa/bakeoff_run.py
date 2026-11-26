@@ -89,10 +89,11 @@ def version(pkg):
 # ---------- the trackers: run(x at `rate`, rate, path) -> (beats [[t, at]], settings) ----------
 
 def run_aubio(x, rate, path):
-    """aubio's tempo tracker, its default method and the window / hop of its own tempo demo; aubio reports a beat
-    inside the hop it just read: t = get_last_s(), at = the end of that hop"""
+    """aubio's tempo tracker: the default method with the window / hop of the aubio command line (512 / 256); a beat
+    is reported in the hop just read: t = get_last_s() (aubio places it, its own 4-hop look-back included), at = the
+    end of that hop"""
     import aubio
-    win, hop = 1024, 512
+    win, hop = 512, 256
     tr = aubio.tempo('default', win, hop, rate)
     beats = []
     for i in range(0, len(x) - hop + 1, hop):
@@ -102,31 +103,57 @@ def run_aubio(x, rate, path):
 
 
 def run_madmom(x, rate, path):
-    """madmom's online beat tracker: RNNBeatProcessor(online=True) (the unidirectional network, causal frames) and
-    DBNBeatTrackingProcessor(online=True) fed one activation frame at a time (process_online, state kept); a beat is
-    reported at the frame it is decided on, so t = at = that frame's time"""
+    """madmom's online beat tracker as its DBNBeatTracker program runs it online: RNNBeatProcessor(online=True) with the
+    one network the online mode uses (BEATS_LSTM[0]); the network is causal, so activations over the whole file equal
+    streamed ones. They go to DBNBeatTrackingProcessor(online=True) one frame at a time (process_online, state kept from
+    frame 0): at = i / fps is how far the tracker had read when it reported beat t"""
     from madmom.audio.signal import Signal
     from madmom.features.beats import RNNBeatProcessor, DBNBeatTrackingProcessor
+    from madmom.models import BEATS_LSTM
     fps = 100
-    act = RNNBeatProcessor(online=True)(Signal(x, sample_rate=rate, num_channels=1))
+    act = RNNBeatProcessor(online=True, nn_files=[BEATS_LSTM[0]], fps=fps)(Signal(x, sample_rate=rate, num_channels=1))
     dbn = DBNBeatTrackingProcessor(fps=fps, online=True)
-    dbn.reset()
     beats = []
     for i in range(len(act)):
-        for t in np.atleast_1d(dbn.process_online(act[i:i + 1], reset=False)):
-            beats.append([float(t), (i + 1) / fps])
-    return beats, {'rnn': 'RNNBeatProcessor(online=True)', 'dbn': 'DBNBeatTrackingProcessor(fps=100, online=True)', 'rate': rate}
+        for t in np.atleast_1d(dbn.process_online(act[i:i + 1], reset=(i == 0))):
+            beats.append([float(t), i / fps])
+    return beats, {'rnn': 'RNNBeatProcessor(online=True, nn_files=[BEATS_LSTM[0]], fps=100)',
+                   'dbn': 'DBNBeatTrackingProcessor(fps=100, online=True)', 'rate': rate}
+
+
+def pyaudio_stub():
+    """BeatNet imports pyaudio at module level, but only its 'stream' mode (the live microphone) uses it, and PyAudio
+    has no Linux wheel: an empty module stands in for it. Nothing of BeatNet itself is changed."""
+    import types
+    try:
+        import pyaudio  # noqa: F401
+    except ImportError:
+        sys.modules['pyaudio'] = types.ModuleType('pyaudio')
 
 
 def run_beatnet(x, rate, path):
-    """BeatNet in its online mode with particle-filter inference (model 1, as its README's online example); it reads
-    the file itself (librosa, 22050 Hz) frame by frame and reports each beat at the frame it is decided on, so
-    t = at. Downbeats count as beats here."""
+    """BeatNet in its realtime mode (model 1, particle filter), the loop of its own process() driven here frame by frame
+    (20 ms hop, 50 fps): it reads the file itself (librosa, 22050 Hz). Frame c uses the audio up to c * hop + the 64 ms
+    window; the particle filter reports a beat at c * 20 ms. So t = c * 0.02 and at = t + win / sr. Downbeats count
+    as beats. (Its 'stream' mode has a documented 0.084 s window offset; realtime is the same network on a file.)"""
+    pyaudio_stub()
     from BeatNet.BeatNet import BeatNet
-    est = BeatNet(1, mode='online', inference_model='PF', plot=[], thread=False)
-    out = np.asarray(est.process(path))
-    beats = [[float(r[0]), float(r[0])] for r in np.atleast_2d(out) if r.size]
-    return beats, {'model': 1, 'mode': 'online', 'inference_model': 'PF', 'rate': 22050, 'reads': 'the file itself'}
+    bn = BeatNet(1, mode='realtime', inference_model='PF', plot=[], thread=False)
+    look = bn.log_spec_win_length / bn.sample_rate
+    bn.counter, bn.completed = 0, 0
+    beats, seen = [], 0
+    while bn.completed == 0:
+        bn.activation_extractor_realtime(path)
+        if bn.completed:
+            break
+        out = np.atleast_2d(np.asarray(bn.estimator.process(bn.pred), dtype=float))
+        n = out.shape[0] if out.size else 0
+        for r in out[seen:n]:
+            beats.append([float(r[0]), float(r[0]) + look])
+        seen = max(seen, n)
+        bn.counter += 1
+    return beats, {'model': 1, 'mode': 'realtime', 'inference_model': 'PF', 'fps': 50, 'rate': bn.sample_rate,
+                   'lookS': round(look, 4), 'reads': 'the file itself', 'pyaudio': 'stub (stream mode only)'}
 
 
 TRACKERS = {
@@ -134,6 +161,18 @@ TRACKERS = {
     'madmom': {'run': run_madmom, 'rate': 44100, 'pkgs': ['madmom', 'numpy', 'scipy']},
     'beatnet': {'run': run_beatnet, 'rate': None, 'own_reader': True, 'pkgs': ['BeatNet', 'madmom', 'librosa', 'torch', 'numpy']},
 }
+
+
+def numpy_build():
+    """the numpy and its BLAS (a slow BLAS would look like a slow tracker: madmom #524)"""
+    out = {'numpy': np.__version__, 'threads': {k: os.environ.get(k) for k in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS')}}
+    try:
+        cfg = np.show_config(mode='dicts')
+        blas = (cfg.get('Build Dependencies') or {}).get('blas') or {}
+        out['blas'] = blas.get('name')
+    except Exception:
+        out['blas'] = None
+    return out
 
 
 def main():
@@ -160,7 +199,7 @@ def main():
         beats.sort(key=lambda b: b[0])
         res.update({'status': 'ok', 'seconds': round(seconds, 3), 'sampleRate': sr, 'rate': settings.get('rate'),
                     'cpuS': round(c2 - c1, 2), 'wallS': round(t2 - t0, 2), 'cpuPerAudioS': round((c2 - c1) / seconds, 4) if seconds else None,
-                    'settings': settings, 'versions': {p: version(p) for p in spec['pkgs']},
+                    'settings': settings, 'versions': {p: version(p) for p in spec['pkgs']}, 'build': numpy_build(),
                     'beats': [[round(t, 4), round(at, 4)] for t, at in beats]})
         print(f'{a.tracker}: {len(beats)} beats over {seconds:.0f} s, CPU {c2 - c1:.1f} s ({(c2 - c1) / seconds:.3f} s per s)')
     except Exception as e:   # one line why, the rest to stderr; the scorer lists it as failed

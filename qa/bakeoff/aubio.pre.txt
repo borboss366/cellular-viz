@@ -1,0 +1,4 @@
+# aubio has no wheel since 0.4.3a2: a source build (vendored libaubio, a C compiler, no apt) against the venv's own
+# numpy (--no-build-isolation), numpy < 2 (aubio #413). VIZ research, 26 Nov.
+setuptools
+numpy<2
