@@ -1,0 +1,8 @@
+# madmom's online beat tracker (qa/bakeoff_run.py run_madmom). pip install -r, into its own venv.
+# The last PyPI release (0.16.1, 2018) does not import on Python 3.10+; the authors' main branch does.
+# Pins to confirm against VIZ research's install check (beatd task 1); a change here reinstalls (bakeoff.sh cksum).
+numpy<2
+scipy
+cython
+mido
+madmom @ git+https://github.com/CPJKU/madmom.git

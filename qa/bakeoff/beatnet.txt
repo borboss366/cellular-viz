@@ -1,0 +1,12 @@
+# BeatNet in its online mode (qa/bakeoff_run.py run_beatnet). pip install -r, into its own venv; BeatNet itself is in
+# beatnet.nodeps.txt (installed with --no-deps: its pyaudio dependency is for the live microphone and needs PortAudio
+# headers the box does not have). CPU torch only.
+# Pins to confirm against VIZ research's install check (beatd task 1); a change here reinstalls (bakeoff.sh cksum).
+--extra-index-url https://download.pytorch.org/whl/cpu
+numpy<2
+cython
+mido
+madmom @ git+https://github.com/CPJKU/madmom.git
+librosa
+numba
+torch
