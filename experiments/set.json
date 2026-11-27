@@ -11,6 +11,7 @@
     { "name": "EQ Calibrate", "page": "27-eq-calibrate.html", "query": { "kick": "1", "beatKnob": null } },
     { "name": "Neon Lines", "page": "16-neon-lines.html", "query": { "thickKnob": "2" } },
     { "name": "Little Bang Beamline", "page": "18-little-bang.html", "query": { "scene": "beamline", "speedKnob": "2" } },
-    { "name": "Aurora", "page": "28-aurora.html", "query": { "heightKnob": "2", "colourKnob": "3" } }
+    { "name": "Aurora", "page": "28-aurora.html", "query": { "heightKnob": "2", "colourKnob": "3" } },
+    { "name": "Little Bang Tunnel", "page": "18-little-bang-2.html", "query": { "speedKnob": "2" } }
   ]
 }

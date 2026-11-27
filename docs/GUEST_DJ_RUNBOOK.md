@@ -43,27 +43,29 @@ Gate: no FAIL, "Line input" PASS.
 8. In a new tab, open http://localhost:8790/experiments/set.html?in=<interface>
 9. Check that the "Input" field shows `<interface>`.
 10. Push "Open all scenes".
-11. Check the scene windows: "Open all scenes" opens the set's eight scenes (Hodge Kaleidoscope, Lenia Effects,
-    Paint Pour, Riemann Ribbon, EQ Calibrate, Neon Lines, Little Bang Beamline, Aurora; experiments/set.json) at 960 x 603 pt
+11. Check the scene windows: "Open all scenes" opens the set's nine scenes (Hodge Kaleidoscope, Lenia Effects,
+    Paint Pour, Riemann Ribbon, EQ Calibrate, Neon Lines, Little Bang Beamline, Aurora, Little Bang Tunnel;
+    experiments/set.json) at 960 x 603 pt
     on a diagonal. Move one only if it does not fit. EQ Calibrate (scene 5, the kick square on) is for setting the
-    mixer's EQ; it needs no OBS source. Neon Lines (scene 6), Little Bang Beamline (scene 7) and Aurora (scene 8) are shown through the
-    slot windows below; this fallback path has no OBS source for them.
+    mixer's EQ; it needs no OBS source. Neon Lines (scene 6), Little Bang Beamline (scene 7), Aurora (scene 8) and Little Bang Tunnel
+    (scene 9) are shown through the slot windows below; this fallback path has no OBS source for them.
 12. In each scene window, push a key one time.
 Gate: the scenes move with the music. Shift+F on the conductor flips all of them at the same bar.
 
 The slot windows (instead of steps 10 to 12; "Open all scenes" stays the fallback):
 1. On set.html, push "Open slots". Two windows open on the diagonal: slot A (starts on scene 1) and slot B (scene 2).
    Each shows one scene of the set at a time.
-2. Step through the set (eight scenes; the ends wrap around). One half of the controller per slot: upper buttons
+2. Step through the set (nine scenes; the ends wrap around). One half of the controller per slot: upper buttons
    3 / 4 = slot A previous / next, 7 / 8 = slot B previous / next (upper 1 / 2 stay hold / auto-hold; 5 / 6 select the
    previous / next beat source on the conductor, lit yellow / orange). Presses from each slot's start:
 
    | Scene | Slot A (starts on 1) | Slot B (starts on 2) |
    |---|---|---|
-   | 5 EQ Calibrate | 4 x button 3, or 4 x 4 | 3 x button 8, or 5 x 7 |
-   | 6 Neon Lines | 3 x button 3, or 5 x 4 | 4 x button 8, or 4 x 7 |
-   | 7 Little Bang Beamline | 2 x button 3, or 6 x 4 | 3 x button 7, or 5 x 8 |
-   | 8 Aurora | 1 x button 3, or 7 x 4 | 2 x button 7, or 6 x 8 |
+   | 5 EQ Calibrate | 4 x button 4, or 5 x 3 | 3 x button 8, or 6 x 7 |
+   | 6 Neon Lines | 4 x button 3, or 5 x 4 | 4 x button 8, or 5 x 7 |
+   | 7 Little Bang Beamline | 3 x button 3, or 6 x 4 | 4 x button 7, or 5 x 8 |
+   | 8 Aurora | 2 x button 3, or 7 x 4 | 3 x button 7, or 6 x 8 |
+   | 9 Little Bang Tunnel | 1 x button 3, or 8 x 4 | 2 x button 7, or 7 x 8 |
 
    In a slot window the left / right arrow keys do the same. A switch is
    black for about a second, until the new scene is on the beat. A blackout stays black across a switch.
@@ -108,6 +110,7 @@ the beat off, the middle = as before, fully up = three times as strong. The next
 | Paint Pour | 1 beat, 2 pulse (full until turned), 3 tilt (flat until turned; up tips the plane to 60 degrees, the paint runs downhill and the view follows it) | 5 beat, 6 pulse (full until turned), 7 tilt |
 | EQ Calibrate | none | none |
 | Little Bang Beamline | 1 beat, 2 travel speed (down = the camera stops, up = one lap a bar) | 5 beat, 6 travel speed |
+| Little Bang Tunnel | 1 beat (the light rings and the ray on each kick), 2 travel speed (down = the camera stops) | 5 beat, 6 travel speed |
 | Aurora | 1 beat (the ripple up the curtains on each kick), 2 height (low and wide to tall), 3 colour (green to crimson) | 5 beat, 6 height, 7 colour |
 
 The conductor shows the knob values ("knobs 1-8") and, below, each slot's buttons and knobs and what its scene does
