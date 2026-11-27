@@ -1269,7 +1269,12 @@
         if (!L || stopped) return;
         link = L.create({ channel: ch || undefined, answerPings: true });
         // a scene's offset report (the owner's call A): the conductor page logs it (pub.onOffset)
-        link.onmessage = e => { const m = e && e.data; if (m && m.type === 'offset-report' && typeof pub.onOffset === 'function') pub.onOffset(m); };
+        // and beatd's beat sources (docs/CELLULAR_VIZ_BRIEF_BEAT_SOURCES.md task 3): the conductor page shows them (pub.onSource)
+        link.onmessage = e => {
+          const m = e && e.data;
+          if (m && m.type === 'offset-report' && typeof pub.onOffset === 'function') pub.onOffset(m);
+          else if (m && m.type === 'source' && typeof pub.onSource === 'function') pub.onSource(m);
+        };
         post = m => link.postMessage(m);
       });
     }
@@ -1334,6 +1339,7 @@
       },
       get link() { return link ? link.state : null; },
       onOffset: null,   // the conductor page: fn(report) for each scene's offset report (an 'offset' log record)
+      onSource: null,   // the conductor page: fn(msg) for each beatd source message (the sources panel, 'source' log records)
       // the conductor's levels (levels.js), at most RATE_HZ (30) a second: the object on the channel, binary on the socket
       levelsLast: -Infinity, levelsSent: 0,
       levels(m) {

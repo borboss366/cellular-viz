@@ -71,7 +71,11 @@ export function pageKey(e) {
   if (e.altKey) return e.code === 'Comma' ? { type: 'offset', dir: -1 } : e.code === 'Period' ? { type: 'offset', dir: 1 } : null;
   if (e.repeat) return null;
   if (e.key === '?') return { type: 'help' };   // the Help panel (Shift+/ on most layouts)
-  if (e.shiftKey) return e.code === 'KeyS' ? { type: 'barOk' } : e.code === 'KeyU' ? { type: 'autoHold' } : null;   // Shift+U: auto-hold (#239)
+  // Shift+U: auto-hold (#239); Shift+O / Shift+P: the previous / next beat source (beat sources task 3, sources.mjs)
+  if (e.shiftKey) {
+    return e.code === 'KeyS' ? { type: 'barOk' } : e.code === 'KeyU' ? { type: 'autoHold' }
+      : e.code === 'KeyO' ? { type: 'source', dir: -1 } : e.code === 'KeyP' ? { type: 'source', dir: 1 } : null;
+  }
   return { KeyM: { type: 'mark' }, BracketLeft: { type: 'step', delta: -1 }, BracketRight: { type: 'step', delta: 1 },
     Space: { type: 'playPause' }, KeyN: { type: 'next' }, KeyK: { type: 'keyLamp' },
     KeyB: { type: 'panic', mode: 'blackout' }, Backquote: { type: 'panic', mode: 'calm' } }[e.code] || null;

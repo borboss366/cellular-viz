@@ -41,7 +41,7 @@ async function rig(o = {}) {
   let now = 1000;
   const nav = o.noMidi ? {} : { requestMIDIAccess: async q => { if (o.deny) throw new Error('denied'); if (o.denySysex && q && q.sysex) throw new Error('no sysex'); return access; } };
   const bridges = [];
-  const ctl = M.create({ clock, navigator: nav, perfNow: () => now, lastFix: () => o.lastFix || '', storage: o.storage, onBridge: (b, n) => bridges.push([b, n]), toggleAutoHold: o.toggleAutoHold, onKnob: o.onKnob, onSlot: o.onSlot, log: o.log,
+  const ctl = M.create({ clock, navigator: nav, perfNow: () => now, lastFix: () => o.lastFix || '', storage: o.storage, onBridge: (b, n) => bridges.push([b, n]), toggleAutoHold: o.toggleAutoHold, onKnob: o.onKnob, onSlot: o.onSlot, onSource: o.onSource, log: o.log,
     setInterval: () => 1, clearInterval: () => {}, setTimeout: (f, ms) => { timers.push({ f, at: now + ms }); return timers.length; },
     clearTimeout: h => { timers[h - 1] = null; }, onStatus: s => statuses.push(s) });
   clock.nowRef = () => now;
@@ -418,7 +418,7 @@ test('knobs: pot row 1 (CC 13-20) → ctl.knobs and onKnob (0..1); never on the 
 test('slots: upper buttons 3/4 (CC 39/40) = slot A prev/next, 7/8 (CC 43/44) = slot B; presses only, no clock fix, never on the bus', async () => {
   assert.deepEqual(M.MAP.SLOT_CCS, { 39: ['A', -1], 40: ['A', 1], 43: ['B', -1], 44: ['B', 1] });
   for (const cc of [39, 40, 43, 44]) assert.match(MAP.buttons.upperRow.use[String(cc)], /^slot [AB] (previous|next)/, `map: ${cc}`);
-  for (const cc of [41, 42]) assert.match(MAP.buttons.upperRow.use[String(cc)], /^audition (previous|next)/, `map: ${cc}`);
+  for (const cc of [41, 42]) assert.match(MAP.buttons.upperRow.use[String(cc)], /^beat source (previous|next) .*also audition/, `map: ${cc} (the source picker since 27 Nov)`);
   assert.equal(MAP.buttons.upperRow.use['39-40'], undefined);
   assert.deepEqual(M.MAP.UPPER, [37, 38], 'hold and auto-hold stay on 37 / 38');
   const calls = [];
@@ -433,7 +433,7 @@ test('slots: upper buttons 3/4 (CC 39/40) = slot A prev/next, 7/8 (CC 43/44) = s
   for (const cc of [41, 42]) inp().onmidimessage({ data: [0xB0, cc, 127], timeStamp: 3 });
   assert.equal(calls.length, 4, 'CC 41 / 42 (the audition page\'s) step no slot');
   assert.deepEqual(M.decode([0xB0, 39, 127]), { type: 'slot', slot: 'A', dir: -1, down: true });
-  assert.equal(M.decode([0xB0, 41, 127]), null);
+  assert.deepEqual(M.decode([0xB0, 41, 127]), { type: 'source', dir: -1, down: true }, 'upper 5: the beat source (27 Nov), not a slot');
   inp().onmidimessage({ data: [0xB0, 37, 127], timeStamp: 4 });
   assert.deepEqual(clock.fixes.map(f => f.kind), ['hold'], 'upper 1 is still hold');
   assert.deepEqual(M.decode([0xB0, 43, 127]), { type: 'slot', slot: 'B', dir: -1, down: true });
@@ -580,4 +580,35 @@ test('the conductor hands the controls to the controller: on each controls messa
   assert.match(html, /slotControls\[c\.slot\] = c;\s*showControls\(\);\s*pushLeds\(\);/);
   assert.match(html, /ledsOn = true; pushLeds\(\);[^\n]*\ncontroller\.start\(\)/);
   assert.ok(html.indexOf('ledsOn = true; pushLeds();') > html.indexOf('const controller = MidiController.create('), 'after the controller exists');
+});
+
+// ---------- the beat source picker (the user, 27 Nov; beat sources task 3): upper 5/6, yellow / orange ----------
+test('source buttons: upper 5/6 (CC 41/42) = previous / next beat source, one call per press; lit yellow / orange with the ring SysEx in the rings\' batch, only on a page that picks sources', async () => {
+  assert.deepEqual(M.MAP.SOURCE_CCS, { 41: -1, 42: 1 });
+  assert.deepEqual(M.MAP.SOURCE_BUTTON_CCS, [41, 42]);
+  const [yellow, orange] = [M.MAP.SOURCE_BUTTON_RGB[41], M.MAP.SOURCE_BUTTON_RGB[42]];
+  assert.ok(yellow[0] === 127 && yellow[1] >= 80 && yellow[2] === 0, `5 yellow: ${yellow}`);
+  assert.ok(orange[0] === 127 && orange[1] > 0 && orange[1] < yellow[1] && orange[2] === 0, `6 orange, apart from 5: ${orange}`);
+  for (const rgb of [yellow, orange]) {
+    assert.notDeepEqual(rgb, M.MAP.SLOT_BUTTON_RGB, 'not the slot buttons\' purple');
+    assert.notDeepEqual(rgb, M.MAP.KNOB_RGB.A, 'not slot A\'s ring blue'); assert.notDeepEqual(rgb, M.MAP.KNOB_RGB.B, 'not slot B\'s ring orange');
+  }
+  const calls = [];
+  const access = fakeAccess();
+  const { ctl, inp, clock, out, clear, advance } = await rig({ access, onSource: d => calls.push(d), onSlot: () => calls.push('slot') });
+  const srcSx = sent => encSx(sent).filter(b => [41, 42].includes(b[8])).map(hex);
+  assert.deepEqual(srcSx(out().sent), [ring(41, yellow), ring(42, orange)], 'connect: 5 yellow, 6 orange');
+  assert.deepEqual(encSx(out().sent).map(b => b[8]).slice(-6), [39, 40, 43, 44, 41, 42], 'in the rings\' batch, after the slot buttons');
+  clear();
+  for (const cc of [41, 42, 42]) { inp().onmidimessage({ data: [0xB0, cc, 127], timeStamp: 1 }); inp().onmidimessage({ data: [0xB0, cc, 0], timeStamp: 2 }); }
+  assert.deepEqual(calls, [-1, 1, 1], 'one call per press, none on release, never a slot step');
+  assert.equal(clock.fixes.length, 0, 'no clock fix');
+  for (let i = 0; i < 10; i++) { advance(50); ctl.tick(); }
+  assert.deepEqual(srcSx(out().sent), [], 'not per frame');
+  // a page without onSource (the audition page reads 41 / 42 itself): the two buttons stay dark here
+  const plain = await rig({ access: fakeAccess() });
+  assert.deepEqual(encSx(plain.out().sent).filter(b => [41, 42].includes(b[8])), [], 'no source colours without onSource');
+  // the conductor gives onSource: the press picks the previous / next source (origin controller)
+  const html = fs.readFileSync(path.join(REPO, 'experiments', 'clock-conductor.html'), 'utf8');
+  assert.match(html, /onSource: dir => pickSource\(dir, 'controller'\)/);
 });
