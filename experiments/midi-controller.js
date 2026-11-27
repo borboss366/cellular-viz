@@ -20,8 +20,10 @@
 // clock.fix('autoHold'); LED green when on, dark when off). The two slot windows (19 Nov; one half of the device per
 // slot, the user 20 Nov 15:47): upper buttons 3 / 4 (CC 39 / 40) = slot A previous / next, 7 / 8 (CC 43 / 44) = slot
 // B previous / next, each press opts.onSlot('A' | 'B', -1 | 1) (the conductor sends it on the shared clock's channel,
-// Clock.publish slot()); no clock fix, no LED. Upper buttons 5 / 6 (CC 41 / 42) are the audition page's previous /
-// next (qa/audition.mjs), nothing here; Shift is not used yet; the faders and pot rows 2–3 go to the bridge.
+// Clock.publish slot()); no clock fix, no LED. Upper buttons 5 / 6 (CC 41 / 42) = the previous / next beat source (the
+// user, 27 Nov; beat sources task 3): each press opts.onSource(-1 | 1), lit yellow / orange with the ring SysEx while the
+// page gives onSource (the audition page reads the same two buttons when it is open); Shift is not used yet; the faders
+// and pot rows 2–3 go to the bridge.
 // Pot row 1 (ch16 CC 13–20, absolute 0–127; the fix list, 19 Nov 22:00): the page's own knobs, never bridged. Each
 // value is kept in ctl.knobs (8 entries, 0..1 = value / 127, null until that pot moves) and handed to
 // opts.onKnob(n 1–8, value, all 8); the conductor publishes them to the scenes on the shared clock (clock.js
@@ -66,6 +68,11 @@
   // the slot windows' buttons, one half of the device per slot (20 Nov): CC -> [slot, dir]; upper 3 / 4 = slot A,
   // 7 / 8 = slot B (upper 5 / 6, CC 41 / 42: the audition page's, not here)
   const SLOT_CCS = { 39: ['A', -1], 40: ['A', 1], 43: ['B', -1], 44: ['B', 1] };
+  // the beat source picker (27 Nov): upper 5 / 6 = previous / next source, warm colours apart from the slot buttons'
+  // purple and the rings' blue / orange (B is [127, 40, 0]): 5 yellow, 6 a lighter orange than slot B's rings
+  const SOURCE_CCS = { 41: -1, 42: 1 };
+  const SOURCE_BUTTON_RGB = { 41: [127, 120, 0], 42: [127, 64, 0] };
+  const SOURCE_BUTTON_CCS = [41, 42];
   const COLOUR = { off: 0, red: 5, amber: 9, green: 21 };
   const POT_CH = 0xBF, BRIDGE_CCS = [[5, 12], [21, 36]], BRIDGE_DEFAULT = /IAC/, DEVICE_PORT = /LCXL3/;
   const KNOB_CCS = [13, 20], KNOBS = 8;   // pot row 1: the page's knobs (not bridged)
@@ -117,6 +124,7 @@
     if (st === BUTTON_CH && LOWER.includes(cc)) return { type: 'button', index: LOWER.indexOf(cc), down: v > 0 };
     if (st === BUTTON_CH && UPPER.includes(cc)) return { type: 'upper', which: cc === HOLD_CC ? 'hold' : 'autoHold', down: v > 0 };
     if (st === BUTTON_CH && SLOT_CCS[cc]) return { type: 'slot', slot: SLOT_CCS[cc][0], dir: SLOT_CCS[cc][1], down: v > 0 };
+    if (st === BUTTON_CH && SOURCE_CCS[cc]) return { type: 'source', dir: SOURCE_CCS[cc], down: v > 0 };
     if (st === FEATURE_CH && cc === MODE_CC) return { type: 'mode', value: v };
     return null;
   }
@@ -159,6 +167,8 @@
     try { bridgeWant = storage ? storage.getItem(BRIDGE_KEY) : null; } catch (e) { /* storage blocked: the default bus */ }
     let access = null, input = null, output = null, timer = null, holdTimer = null, stopped = false;
     let knobSent = {}, controls = {}, ledWarned = false;
+    // the source buttons light only on a page that picks sources with them (the conductor gives onSource)
+    const sourceCcs = () => (typeof o.onSource === 'function' ? SOURCE_BUTTON_CCS : []);
     const warn = msg => { if (ledWarned) return; ledWarned = true; try { (o.log || (m => root.console && root.console.warn(m)))(msg); } catch (e) { /* never in the way */ } };
     let ledSent = {}, linesSent = [], bookedBeat = null, lastTickAt = null, gaps = [], lastDisplayAt = -1e9, rejectUntil = -1e9, modeSelectUntil = -1e9, restartHeld = false;
     const ctl = { status: 'off', sysex: false, sent: 0, bridge: 'off', bridgePort: null, forwarded: 0, start, stop, tick, bridgePorts, setBridgePort,
@@ -202,7 +212,8 @@
       if (!output) return 0;
       if (!ctl.sysex) { if (Object.values(controls).some(c => c)) warn('LCXL3: the encoder LEDs need SysEx (allow it for this page); the knobs work without'); return 0; }
       const rings = knobColours(controls);
-      const want = [...rings.map((rgb, i) => [KNOB_CCS[0] + i, rgb]), ...SLOT_BUTTON_CCS.map(cc => [cc, SLOT_BUTTON_RGB])];
+      const want = [...rings.map((rgb, i) => [KNOB_CCS[0] + i, rgb]), ...SLOT_BUTTON_CCS.map(cc => [cc, SLOT_BUTTON_RGB]),
+        ...sourceCcs().map(cc => [cc, SOURCE_BUTTON_RGB[cc]])];
       let n = 0;
       for (const [cc, rgb] of want) {
         const key = rgb.join(',');
@@ -258,7 +269,8 @@
       if (!m) return;
       if (m.type === 'button') return onButton(m.index, m.down, e.timeStamp);
       if (m.type === 'upper') return onUpper(m.which, m.down, e.timeStamp);
-      if (m.type === 'slot') { if (m.down && o.onSlot) o.onSlot(m.slot, m.dir); return; }   // upper 5-8: the slot windows
+      if (m.type === 'slot') { if (m.down && o.onSlot) o.onSlot(m.slot, m.dir); return; }   // upper 3/4, 7/8: the slot windows
+      if (m.type === 'source') { if (m.down && o.onSource) o.onSource(m.dir); return; }   // upper 5/6: the beat source
       if (m.type === 'knob') {   // pot row 1: kept and handed to the page (the scenes' knobs), never bridged
         ctl.knobs[m.index] = m.value;
         if (o.onKnob) o.onKnob(m.index + 1, m.value, ctl.knobs.slice());
@@ -331,7 +343,7 @@
         send(m); ledSent[cc] = key;
       }
       if (!ctl.sysex) return;
-      if (!ctl.ledError && Object.keys(knobSent).length < KNOBS + SLOT_BUTTON_CCS.length) knobLeds();   // only after Mode Select cleared them: nothing per frame
+      if (!ctl.ledError && Object.keys(knobSent).length < KNOBS + SLOT_BUTTON_CCS.length + sourceCcs().length) knobLeds();   // only after Mode Select cleared them: nothing per frame
       const lines = displayLines(v);
       if (now - lastDisplayAt < DISPLAY_MS || (lines[0] === linesSent[0] && lines[1] === linesSent[1])) return;
       lastDisplayAt = now;
@@ -362,7 +374,7 @@
         if (ctl.sysex) send(displayConfig(0x00));
         for (const cc of LOWER) { send([FLASH_CH, cc, COLOUR.off]); send([BUTTON_CH, cc, COLOUR.off]); }
         for (const cc of UPPER) send([BUTTON_CH, cc, COLOUR.off]);
-        if (ctl.sysex) for (const cc of [...Array.from({ length: KNOBS }, (_, i) => KNOB_CCS[0] + i), ...SLOT_BUTTON_CCS]) send(encoderLed(cc, KNOB_RGB.off));
+        if (ctl.sysex) for (const cc of [...Array.from({ length: KNOBS }, (_, i) => KNOB_CCS[0] + i), ...SLOT_BUTTON_CCS, ...sourceCcs()]) send(encoderLed(cc, KNOB_RGB.off));
         send(DAW_OFF);
       }
       setStatus('off');
@@ -372,7 +384,8 @@
   }
 
   const api = { create, decode, forwarded, leds, displayLines, encoderLed, knobColours,
-    MAP: { KNOB_RGB, LED_RGB, SYSEX, SLOT_BUTTON_RGB, SLOT_BUTTON_CCS, LOWER, UPPER, HOLD_CC, AUTO_HOLD_CC, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS, POT_CH, BRIDGE_CCS, BRIDGE_KEY, KNOB_CCS, SLOT_CCS } };
+    MAP: { KNOB_RGB, LED_RGB, SYSEX, SLOT_BUTTON_RGB, SLOT_BUTTON_CCS, LOWER, UPPER, HOLD_CC, AUTO_HOLD_CC, COLOUR, FLASH_CH, BUTTON_CH, FEATURE_CH, QUERY_CH, DAW_ON, DAW_OFF, MODE_CC, DISPLAY_TARGET, ACTIONS, BEAT_ON, RESTART_HOLD_MS, POT_CH, BRIDGE_CCS, BRIDGE_KEY, KNOB_CCS, SLOT_CCS,
+      SOURCE_CCS, SOURCE_BUTTON_RGB, SOURCE_BUTTON_CCS } };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MidiController = api;
 })(typeof window !== 'undefined' ? window : globalThis);

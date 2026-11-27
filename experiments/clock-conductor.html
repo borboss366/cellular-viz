@@ -14,7 +14,8 @@
   Log (R2): schema v1 (qa/conduct-score.mjs) through qa/conduct-log.mjs, POSTed every second to /log/<session>.
   Keys: Shift + the clock's keys = hand fixes (A tap, H ÷2, D ×2, F flip, , . nudge, 1 set 1, 0 reset, R restart, L hold);
         Shift+U auto-hold on/off (#239: kept in localStorage, default off; on = a tap, flip, nudge or set 1 also holds);
-        Shift+O / Shift+P the previous / next beat source (beat sources task 3: lands on the next bar line, logged);
+        Shift+O / Shift+P (controller: upper 5 yellow / 6 orange) the previous / next beat source (beat sources task 3:
+        lands on the next bar line, logged);
         M mark (the chosen name, snapped to the nearest reference beat, R13) · [ ] step bar1 · Shift+S confirm the
         bar while the bar lamp shows (A7b) · Space play/pause · N next (crossfade) · K answer-key lamp (R7: 0 s in the
         gate run) · Alt+, / Alt+. calibrate offset (R10).
@@ -122,7 +123,7 @@ button.reject{background:#c0182b !important;color:#fff}
   <h2>Beat sources</h2>
   <ul><li>The table "Beat sources" shows each source: ours (this page's own tracker) and the sources of beatd on this Mac.</li>
     <li>The lamp flashes on each beat of the source. "from clock" is how far its beat is from the clock that plays (+ = later).</li>
-    <li>Shift+O and Shift+P select the previous and the next source. The selection changes on the next bar line ("&gt;" until then, "*" after).</li>
+    <li>Shift+O and Shift+P select the previous and the next source. On the controller: upper buttons 5 (yellow) and 6 (orange). The selection changes on the next bar line ("&gt;" until then, "*" after).</li>
     <li>A source with no message for 2 s shows "lost". The selection does not change the clock yet.</li></ul>
   <h2>Marks and the bar</h2>
   <ul><li>Select a name in the Marks list. Push M on that moment. [ and ] move bar1 by one beat.</li>
@@ -167,7 +168,7 @@ button.reject{background:#c0182b !important;color:#fff}
       <small id="panicState">scenes: on</small></div>
     <div class="fixline"><small>last fix:</small> <span id="lastFix">–</span> <small>last taps:</small> <span id="lastTap">–</span></div>
     <div class="corrBox"><small>Corrections now</small><div id="corrections">-</div></div>
-    <div class="corrBox"><small>Beat sources (Shift+O / Shift+P to pick)</small>
+    <div class="corrBox"><small>Beat sources (Shift+O / Shift+P, or upper buttons 5 / 6, to pick)</small>
       <table id="sources" class="sources"><tr><td>ours</td><td><span class="srcLamp" id="srcLamp-ours"></span></td><td>-</td></tr></table></div>
   </section>
   <section>
@@ -509,6 +510,7 @@ if (controlsChannel) {
   try { controlsChannel.postMessage(C.CONTROLS_ASK); } catch (e) { /* no slot window yet: it sends on its first scene */ }
 }
 const controller = MidiController.create({ clock, lastFix: () => lastFixShort, storage: pageStorage, toggleAutoHold, onKnob, onSlot,
+  onSource: dir => pickSource(dir, 'controller'),   // upper 5 / 6: the previous / next beat source (the user, 27 Nov)
   onBridge: (b, name) => { $('bridge').textContent = BRIDGE_TEXT[b] || `bridge: ${b}`; $('bridge').title = name || 'no IAC bus: turn on the IAC Driver (Help)'; $('bridge').classList.toggle('unscored', b !== 'on'); showBridgePorts(); },
   onStatus: s => { $('ctl').textContent = CTL_TEXT[s] || `controller: ${s}`; $('ctl').classList.toggle('unscored', s !== 'connected'); } });
 ledsOn = true; pushLeds();   // the controls known so far; the controller sends them on connect (and on every replug)

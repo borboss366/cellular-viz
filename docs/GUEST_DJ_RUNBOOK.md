@@ -55,8 +55,8 @@ The slot windows (instead of steps 10 to 12; "Open all scenes" stays the fallbac
 1. On set.html, push "Open slots". Two windows open on the diagonal: slot A (starts on scene 1) and slot B (scene 2).
    Each shows one scene of the set at a time.
 2. Step through the set (eight scenes; the ends wrap around). One half of the controller per slot: upper buttons
-   3 / 4 = slot A previous / next, 7 / 8 = slot B previous / next (upper 1 / 2 stay hold / auto-hold; 5 / 6 are the
-   audition page's). Presses from each slot's start:
+   3 / 4 = slot A previous / next, 7 / 8 = slot B previous / next (upper 1 / 2 stay hold / auto-hold; 5 / 6 select the
+   previous / next beat source on the conductor, lit yellow / orange). Presses from each slot's start:
 
    | Scene | Slot A (starts on 1) | Slot B (starts on 2) |
    |---|---|---|

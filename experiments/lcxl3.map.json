@@ -42,7 +42,7 @@
     "press": 127,
     "release": 0,
     "upperRow": { "ccs": [37, 38, 39, 40, 41, 42, 43, 44], "verified": "hardware 15 Nov",
-      "use": { "37": "hold (hand-held mode, #239): LED green held, amber held + holdSuspect, off not held", "38": "auto-hold on/off: LED green on, off off", "39": "slot A previous (slot.html; one half per slot, 20 Nov)", "40": "slot A next", "41": "audition previous (audition.html, 20 Nov)", "42": "audition next", "43": "slot B previous", "44": "slot B next" } },
+      "use": { "37": "hold (hand-held mode, #239): LED green held, amber held + holdSuspect, off not held", "38": "auto-hold on/off: LED green on, off off", "39": "slot A previous (slot.html; one half per slot, 20 Nov)", "40": "slot A next", "41": "beat source previous (conductor, the user 27 Nov; SysEx yellow); also audition previous when audition.html is open", "42": "beat source next (conductor; SysEx orange); also audition next", "43": "slot B previous", "44": "slot B next" } },
     "lowerRow": { "ccs": [45, 46, 47, 48, 49, 50, 51, 52], "verified": "hardware 15 Nov" },
     "pageUp": { "cc": 106, "verified": "hardware 15 Nov" },
     "pageDown": { "cc": 107, "verified": "hardware 15 Nov" },
