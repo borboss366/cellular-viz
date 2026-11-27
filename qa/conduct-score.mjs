@@ -75,6 +75,8 @@ export const RECORD_FIELDS = {
   wheel: ['kind'], hold: ['on'], holdSuspect: ['on'], holdPress: ['kind', 'origin'], holdRecentre: ['to'],
   // v3 addition (beat server, owner's call A): a page's measured offset to the conductor, one per load, report only
   offset: ['loadId', 'page', 'slot', 'ms', 'rttMs', 'n', 'finding'],
+  // v3 addition (beat sources, task 3): a beatd source's state, and the user's pick of a source (report only for now)
+  source: ['id', 't', 'beats', 'bpm', 'state'], sourcePick: ['id', 'from'],
 };
 export const SCHEMA_VERSIONS = [1, 2, 3];
 /** every jump kind a session can log (Q9: each clock.jumps entry appears once): the tracker's own (acquire, override,

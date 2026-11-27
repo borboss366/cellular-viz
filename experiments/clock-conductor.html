@@ -14,11 +14,16 @@
   Log (R2): schema v1 (qa/conduct-score.mjs) through qa/conduct-log.mjs, POSTed every second to /log/<session>.
   Keys: Shift + the clock's keys = hand fixes (A tap, H ÷2, D ×2, F flip, , . nudge, 1 set 1, 0 reset, R restart, L hold);
         Shift+U auto-hold on/off (#239: kept in localStorage, default off; on = a tap, flip, nudge or set 1 also holds);
+        Shift+O / Shift+P the previous / next beat source (beat sources task 3: lands on the next bar line, logged);
         M mark (the chosen name, snapped to the nearest reference beat, R13) · [ ] step bar1 · Shift+S confirm the
         bar while the bar lamp shows (A7b) · Space play/pause · N next (crossfade) · K answer-key lamp (R7: 0 s in the
         gate run) · Alt+, / Alt+. calibrate offset (R10).
   ?clock=line uses the mic / mixer input instead of the page's mix bus; ?click=1 sounds the output beats.
-  __qa.conductor: { log, clock, shadow, publisher, decks, tracks, load(i, deck?), play(), next(), mark(name), state() }.
+  __qa.conductor: { log, clock, shadow, publisher, decks, tracks, load(i, deck?), play(), next(), mark(name), state(),
+  sources (the board, experiments/sources.mjs), pickSource(dir) }.
+  Beat sources (docs/CELLULAR_VIZ_BRIEF_BEAT_SOURCES.md task 3): beatd's sources through the relay, side by side with
+  ours (the shadow tracker): a beat lamp, tempo, confidence and how far each beat is from the playing clock. The pick
+  is shown and logged ('source' / 'sourcePick' records); it does not steer the clock yet.
   Controller (experiments/midi-controller.js): a Launch Control XL 3 on its DAW port; the lower button row = tap, flip,
   ÷2, ×2, nudge −10 / +10, set 1, restart (hold 1 s), as origin 'fix:controller'; its LEDs and display follow read().
   Upper buttons 1 and 2 (CC 37, 38) = hold and auto-hold (#239): hold LED green held / amber suspect, auto-hold LED green on.
@@ -49,6 +54,9 @@ main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;pad
 section{background:#141a26;border-radius:12px;padding:12px;min-width:0}
 .deck .name,#msg,#lastFix,#bar1,#tail{overflow-wrap:anywhere}.deck{min-height:2.8em}.fixline{min-height:2.8em}
 .corrBox{margin-top:6px}#corrections{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.35}
+.sources{border-collapse:collapse;font-size:12px}.sources td,.sources th{padding:1px 6px;text-align:left}.sources th{color:#8a94a8;font-weight:normal}
+.sources tr.picked{background:#23314d;font-weight:bold}.sources tr.pending{background:#2a2a18}
+.srcLamp{display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a3142}.srcLamp.on{background:#ffd23f}
 select{max-width:100%}#tracks{width:100%}
 h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#8a96ad;margin:0 0 8px}
 .big{font-size:44px;font-weight:700;font-variant-numeric:tabular-nums}.row{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
@@ -111,6 +119,11 @@ button.reject{background:#c0182b !important;color:#fff}
     <li>Hold: when the beat is right, push Shift+L (or "hold"). The hold lamp goes on. The clock keeps your beat and tempo through breaks; it only trims small errors. Push Shift+L again to let the tracker move on its own.</li>
     <li>Suspect lamp: the music seems to disagree with the held beat. Nothing moves. Check the wheel; fix by hand or release the hold.</li>
     <li>Auto-hold: Shift+U (or "auto-hold") switches it on or off. When on, a tap, flip, nudge or set 1 also holds. The page keeps the choice; it starts off.</li></ul>
+  <h2>Beat sources</h2>
+  <ul><li>The table "Beat sources" shows each source: ours (this page's own tracker) and the sources of beatd on this Mac.</li>
+    <li>The lamp flashes on each beat of the source. "from clock" is how far its beat is from the clock that plays (+ = later).</li>
+    <li>Shift+O and Shift+P select the previous and the next source. The selection changes on the next bar line ("&gt;" until then, "*" after).</li>
+    <li>A source with no message for 2 s shows "lost". The selection does not change the clock yet.</li></ul>
   <h2>Marks and the bar</h2>
   <ul><li>Select a name in the Marks list. Push M on that moment. [ and ] move bar1 by one beat.</li>
     <li>Shift+S confirms the bar. Push it on the "1" while the bar 1 lamp is on.</li>
@@ -154,6 +167,8 @@ button.reject{background:#c0182b !important;color:#fff}
       <small id="panicState">scenes: on</small></div>
     <div class="fixline"><small>last fix:</small> <span id="lastFix">–</span> <small>last taps:</small> <span id="lastTap">–</span></div>
     <div class="corrBox"><small>Corrections now</small><div id="corrections">-</div></div>
+    <div class="corrBox"><small>Beat sources (Shift+O / Shift+P to pick)</small>
+      <table id="sources" class="sources"><tr><td>ours</td><td><span class="srcLamp" id="srcLamp-ours"></span></td><td>-</td></tr></table></div>
   </section>
   <section>
     <h2>Playlist</h2>
@@ -190,6 +205,7 @@ import { ConductLog, sessionId, offsetRecord } from '../qa/conduct-log.mjs';
 import * as C from './conductor.mjs';
 import { createCorrections, PANEL_HZ } from './corrections.mjs';
 import { createRecorder } from '../qa/conduct-rec.mjs';
+import { createBoard, rowText } from './sources.mjs';
 
 const qs = new URLSearchParams(location.search), $ = id => document.getElementById(id);
 const inputMode = qs.get('clock') === 'line' ? 'line' : 'line:page';
@@ -214,6 +230,50 @@ $('session').textContent = $('session').title = id;
 // each scene's measured offset to this page's wall clock, once per page load, through the relay (the owner's call A,
 // report only): an 'offset' record in the session log; over 5 ms is a finding
 publisher.onOffset = r => { const rec = offsetRecord(r); if (rec) log.add('offset', rec); };
+// beat sources (docs/CELLULAR_VIZ_BRIEF_BEAT_SOURCES.md task 3): beatd's sources through the relay, side by side with
+// ours; each logged as 'source' (every 250 ms and on a state change), the pick as 'sourcePick' when it lands on a bar
+const sources = createBoard();
+const wallNow = () => performance.timeOrigin + performance.now();
+let srcOrigin = null, srcBar = null, srcPanelAt = -Infinity, srcHtml = '';
+publisher.onSource = m => {
+  const w = wallNow();
+  if (!sources.ingest(m, w)) return;
+  const rec = sources.logRecord(m.id, w);
+  if (rec) log.add('source', rec);
+};
+function landSource() {
+  const l = sources.land();
+  if (l) log.add('sourcePick', { id: l.to, from: l.from, origin: srcOrigin || 'key' });
+  srcOrigin = null;
+  return l;
+}
+/** the previous (-1) or next (1) source; it lands on the next bar line, or at once while the clock has no beats */
+function pickSource(dir, origin = 'key') {
+  const p = sources.step(dir);
+  srcOrigin = origin;
+  if (p && !(clock.read({ raw: true }).beats >= 0)) landSource();
+  return p;
+}
+function drawSources(now) {
+  const w = wallNow(), r = clock.read({ raw: true });
+  for (const lostId of sources.lostNow(w)) { const rec = sources.logRecord(lostId, w); if (rec) log.add('source', rec); }
+  if (sources.pending && (!(r.beats >= 0) || (srcBar !== null && r.bar !== srcBar))) landSource();
+  srcBar = r.beats >= 0 ? r.bar : null;
+  let sb = -1;
+  try { sb = shadow.beatsAt ? shadow.beatsAt(now) : -1; } catch (e) { sb = -1; }   // a tracker before its first frame
+  const view = sources.view(w, { clockBeats: r.beats, clockBpm: r.bpm,
+    ours: { beats: sb >= 0 ? sb : null, bpm: shadow.bpm || null, conf: shadow.confidence, state: shadow.state || 'waiting' } });
+  if (now - srcPanelAt >= 1 / PANEL_HZ) {
+    srcPanelAt = now;
+    const html = '<tr><th></th><th>source</th><th></th><th>bpm</th><th>conf</th><th>from clock</th><th>state</th></tr>' + view.map(v => {
+      const t = rowText(v);
+      return `<tr class="${v.picked ? 'picked' : v.pending ? 'pending' : ''}"><td>${t.mark}</td><td>${t.id}</td><td><span class="srcLamp" id="srcLamp-${t.id}"></span></td>` +
+        `<td>${t.bpm}</td><td>${t.conf}</td><td>${t.delta}</td><td>${t.state}</td></tr>`;
+    }).join('');
+    if (html !== srcHtml) { $('sources').innerHTML = html; srcHtml = html; }
+  }
+  for (const v of view) { const el = document.getElementById(`srcLamp-${v.id}`); if (el) el.classList.toggle('on', v.lamp); }
+}
 // the levels (beat server task 3, levels.js): what this page hears (the line input, or the decks' mix), 30 a second,
 // for scenes on ?audio=shared (OBS Browser Sources have no audio input). Intensity only: the scenes' beat stays the
 // clock's (docs/BEAT_RELAY_PROTOCOL.md). The phase is the clock's own, for the record
@@ -569,6 +629,7 @@ function tick() {
   for (const d of decks) if (d.playing && d.track && now - d.lastPair >= C.PAIR_S) { d.lastPair = now; log.add('pair', { idx: d.track.idx, posMs: Math.round(posMs(d, now)) }); }
   if (fade && now >= fade.end) { log.add('xfade', { from: fade.from, to: fade.to, event: 'end', mode: 'B', ctx: fade.end }); stopDeck(fade.out); fade = null; render(); }
   monitor(now, ts);
+  drawSources(now);
   if (now - corrAt >= 1 / PANEL_HZ) {   // the corrections panel: at most PANEL_HZ times a second, text set only on a change
     corrAt = now;
     setText('corrections', corr.text({ ts, hand: clock.handState, autoHold: clock.autoHold, nowMs: trackAt(now), trackAt,
@@ -696,6 +757,7 @@ addEventListener('keydown', e => {
   else if (a.type === 'playPause') { start(); playPause(); } else if (a.type === 'next') { start(); next(); } else if (a.type === 'keyLamp') toggleKey();
   else if (a.type === 'help') toggleHelp();
   else if (a.type === 'autoHold') toggleAutoHold();
+  else if (a.type === 'source') pickSource(a.dir, 'key');
   else if (a.type === 'panic') panic(a.mode);
 });
 setInterval(async () => { const n = await log.flush(); $('logState').textContent = $('logState').title = log.pending.length ? `log: ${log.pending.length} waiting` : `log: ok (${log.all.length})`; $('tail').textContent = log.all.slice(-12).map(r => JSON.stringify(r)).join('\n'); }, 1000);
@@ -710,6 +772,7 @@ window.__qa = Object.assign(window.__qa || {}, { conductor: {
   log, clock, shadow, publisher, controller, decks, get tracks() { return tracks; }, start, load, play: playPause, next, mark, step, barOk,
   setOffset, toggleKey, panic, get panicSent() { return panicSent; }, setAutoHold, toggleAutoHold,   // hand-held mode (#239)
   slotControls: () => JSON.parse(JSON.stringify(slotControls)), onControls,   // the knobs per slot (20 Nov)
+  sources, pickSource, sourceRows: () => sources.view(wallNow(), { clockBeats: clock.read({ raw: true }).beats, clockBpm: clock.read({ raw: true }).bpm }),   // beat sources (task 3)
   // the recording (Saturday brief task 3)
   rec: () => recorder && { started: recorder.state.started, ready: recorder.state.ready, bytes: recorder.state.bytes, startCtx: recorder.state.startCtx,
     sampleRate: recorder.state.sampleRate, gaps: recorder.state.gaps, skipped: recorder.state.skipped, waiting: recorder.state.queue.length, error: recorder.state.error, text: recorder.text() },

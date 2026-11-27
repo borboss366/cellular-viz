@@ -14,8 +14,12 @@
 // page load: a scene measured its wall-clock offset to the conductor through the relay (5 pings, the shortest round
 // trip) and reported it; finding when |ms| > OFFSET_FINDING_MS. Report only: nothing applies the offset. page is the
 // scene's file name and loadId a random id per load (R9: no names of people or tracks); offsetRecord() makes the record.
+// v3 addition (beat sources, docs/CELLULAR_VIZ_BRIEF_BEAT_SOURCES.md task 3, 27 Nov): 'source' { id, t, beats, bpm, conf,
+// state }, one beatd source's state (t its wall time in ms), every 250 ms per source and at once on a state change (lost
+// after 2 s of silence: state 'lost'); 'sourcePick' { id, from, origin } when the user's pick of a source landed on a bar
+// line (experiments/sources.mjs). Report only until the clock is steered from the pick.
 export const SCHEMA_V = 3;
-export const TYPES = ['session', 'latency', 'track', 'pair', 'xfade', 'beat', 'sample', 'fix', 'jump', 'state', 'mark', 'key', 'wheel', 'hold', 'holdSuspect', 'holdPress', 'holdRecentre', 'offset'];
+export const TYPES = ['session', 'latency', 'track', 'pair', 'xfade', 'beat', 'sample', 'fix', 'jump', 'state', 'mark', 'key', 'wheel', 'hold', 'holdSuspect', 'holdPress', 'holdRecentre', 'offset', 'source', 'sourcePick'];
 export const OFFSET_FINDING_MS = 5;
 /** a page's offset report (the relay's { type: 'offset-report' }) -> the log record's fields, or null when it does not fit */
 export function offsetRecord(m) {
